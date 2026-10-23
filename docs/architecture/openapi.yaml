@@ -72,6 +72,8 @@ x-site-rbac:
     değiştirilmez.
 
 tags:
+  - name: CRM
+    description: Paket N — ziyaretçi analitiği, talep yönetimi, hasta yolculuğu, Google entegrasyonları.
   - name: Auth
   - name: Users
   - name: Organizations
@@ -12848,6 +12850,125 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ==========================================================================
+  # CRM — Paket N (2026-10-23). Public takip uçları YALNIZCA kendi origin'imizden (Origin başlığı
+  # FRONTEND_URL olmalı, aksi 403) ve yalnızca analitik çerez onayı veren tarayıcıdan çağrılır.
+  # Admin uçları: ADMIN rolü + hesapta 2FA açık (`TWO_FACTOR_REQUIRED` 403). Takip varsayılan KAPALI.
+  # ==========================================================================
+  /crm/config:
+    get:
+      tags: [CRM]
+      summary: Takip yapılandırması (public)
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CrmPublicConfig" }
+  /crm/collect:
+    post:
+      tags: [CRM]
+      summary: Olay paketi (sendBeacon, text/plain JSON)
+      description: >
+        Gövde `text/plain` (sendBeacon) ya da `application/json` olabilir; içerik `CrmCollectPayload`
+        şemasıyla KATI doğrulanır (bilinmeyen alan 400). En fazla 50 olay / 64 KB. Hız sınırı IP başına
+        120/dk; 10 sn'de 60'tan fazla olay gönderen oturum bot sayılıp işaretlenir. Takip kapalıyken,
+        bot user-agent'ta, hariç IP/yolda hiçbir şey yazılmaz — yanıt her durumda 204'tür (eleme
+        sonucu istemciye bildirilmez). IP varsayılan maskeli saklanır; input değeri hiç kabul edilmez.
+      security: []
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: { $ref: "#/components/schemas/CrmCollectPayload" }
+          application/json:
+            schema: { $ref: "#/components/schemas/CrmCollectPayload" }
+      responses:
+        "204": { description: Alındı (ya da sessizce elendi) }
+        "400": { description: Geçersiz gövde }
+        "403": { description: Origin izinli değil }
+        "413": { description: Gövde çok büyük }
+        "429": { description: Hız sınırı }
+  /crm/consent:
+    post:
+      tags: [CRM]
+      summary: Çerez onayı kaydı (reddetme dahil)
+      description: >
+        Hesap verebilirlik kaydı. `a=false` ve `vid` verilirse o anonim ziyaretçinin bütün ziyaret
+        verisi silinir (onayın geri alınması). IP/UA saklanmaz. Hız sınırı 20/dk.
+      security: []
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: { $ref: "#/components/schemas/CrmConsentRequest" }
+      responses:
+        "204": { description: Kaydedildi }
+        "400": { description: Geçersiz gövde }
+        "403": { description: Origin izinli değil }
+  /crm/attribution:
+    post:
+      tags: [CRM]
+      summary: Randevu atfı (oturum düzeyinde)
+      description: >
+        Randevu oluşturulduktan sonra (en fazla 2 saat) takip modülü çağırır. Sahiplik randevunun erişim
+        token'ının hash'iyle doğrulanır; token saklanmaz. Yazılan kayıt oturum düzeyinde anlık görüntüdür
+        (ilk/son kaynak, UTM, açılış sayfası, ülke, dil, cihaz, pazarlama onayıyla gclid); ziyaretçi/oturum
+        kimliği ve sayfa geçmişi randevuya BAĞLANMAZ. Yanıt her durumda 204.
+      security: []
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: { $ref: "#/components/schemas/CrmAttributionRequest" }
+      responses:
+        "204": { description: İşlendi }
+        "400": { description: Geçersiz gövde }
+        "403": { description: Origin izinli değil }
+  /admin/crm/settings:
+    get:
+      tags: [CRM]
+      summary: CRM ayarları (ADMIN + 2FA)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CrmSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      tags: [CRM]
+      summary: CRM ayarlarını güncelle (ADMIN + 2FA)
+      description: Kısmi; `searchConsole` buradan yazılamaz. Denetim kaydı `crm.settings.update`; ardından `crm-config` önbelleği yenilenir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmSettingsRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CrmSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -13505,6 +13626,144 @@ components:
       schema: { type: integer, example: 42 }
 
   schemas:
+    # --- CRM (Paket N) -------------------------------------------------------
+    CrmPublicConfig:
+      type: object
+      required: [trackingEnabled, trackStaff, whatsappRef, excludedPaths, consentVersion, heartbeatSeconds]
+      properties:
+        trackingEnabled: { type: boolean }
+        trackStaff: { type: boolean }
+        whatsappRef: { type: boolean }
+        excludedPaths: { type: array, items: { type: string } }
+        consentVersion: { type: string, example: "2026-10-23" }
+        heartbeatSeconds: { type: integer, example: 15 }
+    CrmCollectEvent:
+      type: object
+      additionalProperties: false
+      required: [t, ts, p]
+      properties:
+        t: { type: string, enum: [pageview, heartbeat, click, scroll, whatsapp_click, phone_click, email_click, form_submit, booking_step, custom] }
+        ts: { type: integer, description: "İstemci zamanı (ms); 10 dk geçmiş / 1 dk gelecek dışı sunucu saatine çekilir" }
+        p: { type: string, maxLength: 500, description: "Yol (sorgu/parça atılır)" }
+        ti: { type: string, maxLength: 300, description: Sayfa başlığı }
+        sel: { type: string, maxLength: 400, description: Öğe seçicisi }
+        tx: { type: string, maxLength: 300, description: "Öğe metni — yalnızca link/buton, sunucu 80 karaktere keser" }
+        hr: { type: string, maxLength: 1000, description: "Hedef — sunucu sorgu dizesini atar" }
+        n: { type: string, maxLength: 100, description: "data-track / özel olay adı" }
+        pr: { type: object, maxProperties: 10, additionalProperties: { oneOf: [{ type: string }, { type: number }, { type: boolean }] } }
+        x: { type: number, minimum: 0, maximum: 100, description: "Viewport genişliğine göre yüzde" }
+        y: { type: number, minimum: 0, maximum: 100, description: "Belge yüksekliğine göre yüzde" }
+        ex: { type: number, minimum: 0, maximum: 100, description: "Öğe kutusuna göre yatay yüzde" }
+        ey: { type: number, minimum: 0, maximum: 100, description: "Öğe kutusuna göre dikey yüzde" }
+        vw: { type: integer }
+        vh: { type: integer }
+        dh: { type: integer }
+        sc: { type: integer, minimum: 0, maximum: 100, description: "En fazla kaydırma yüzdesi" }
+        st: { type: integer, minimum: 1, maximum: 10, description: "Randevu sihirbazı adımı" }
+        rg: { type: boolean, description: Öfkeli tıklama }
+        dd: { type: boolean, description: Ölü tıklama }
+    CrmCollectPayload:
+      type: object
+      additionalProperties: false
+      required: [v, vid, sid, cv, mk, events]
+      properties:
+        v: { type: integer, enum: [1] }
+        vid: { type: string, pattern: "^[A-Za-z0-9_-]{16,40}$" }
+        sid: { type: string, pattern: "^[A-Za-z0-9_-]{16,40}$" }
+        cv: { type: string, maxLength: 40, description: Onay sürümü }
+        mk: { type: boolean, description: "Pazarlama onayı — false ise gclid/gbraid/wbraid yok sayılır" }
+        ref: { type: string, pattern: "^[A-HJ-NP-Z2-9]{6}$", description: WhatsApp Ref kodu }
+        ctx:
+          type: object
+          additionalProperties: false
+          properties:
+            lang: { type: string }
+            tz: { type: string }
+            rf: { type: string, description: document.referrer }
+            us: { type: string }
+            um: { type: string }
+            uc: { type: string }
+            ut: { type: string }
+            ucn: { type: string }
+            gclid: { type: string }
+            gbraid: { type: string }
+            wbraid: { type: string }
+        events: { type: array, minItems: 1, maxItems: 50, items: { $ref: "#/components/schemas/CrmCollectEvent" } }
+    CrmConsentRequest:
+      type: object
+      additionalProperties: false
+      required: [cid, v, a, m, act]
+      properties:
+        cid: { type: string, pattern: "^[A-Za-z0-9_-]{16,40}$" }
+        vid: { type: string, pattern: "^[A-Za-z0-9_-]{16,40}$" }
+        v: { type: string, maxLength: 40 }
+        a: { type: boolean, description: Analitik }
+        m: { type: boolean, description: Pazarlama }
+        act: { type: string, enum: [ACCEPT_ALL, REJECT_ALL, CUSTOM, WITHDRAW] }
+        l: { type: string, maxLength: 10 }
+    CrmAttributionRequest:
+      type: object
+      additionalProperties: false
+      required: [bookingId, token, sid, vid]
+      properties:
+        bookingId: { type: string, format: uuid }
+        token: { type: string, description: "Randevu erişim token'ı (yalnızca hash karşılaştırması; saklanmaz)" }
+        sid: { type: string }
+        vid: { type: string }
+    CrmScoreWeights:
+      type: object
+      properties:
+        perEngagedMinute: { type: integer, minimum: 0, maximum: 20 }
+        perPageview: { type: integer, minimum: 0, maximum: 20 }
+        perReturnVisit: { type: integer, minimum: 0, maximum: 30 }
+        bookingPage: { type: integer, minimum: 0, maximum: 50 }
+        contactClick: { type: integer, minimum: 0, maximum: 50 }
+        hotThreshold: { type: integer, minimum: 1, maximum: 100 }
+    CrmSettings:
+      type: object
+      properties:
+        trackingEnabled: { type: boolean, default: false }
+        trackStaff: { type: boolean, default: false }
+        ipMode: { type: string, enum: [masked, full], default: masked }
+        excludedIps: { type: array, items: { type: string, description: IP ya da CIDR } }
+        excludedPaths: { type: array, items: { type: string } }
+        retentionDays: { type: integer, minimum: 7, maximum: 730, default: 180 }
+        leadRetentionDays: { type: integer, minimum: 30, maximum: 3650, default: 730 }
+        notificationEmail: { type: string, format: email, nullable: true }
+        whatsappRef: { type: boolean, default: false }
+        scoreWeights: { $ref: "#/components/schemas/CrmScoreWeights" }
+        slaHours: { type: integer, minimum: 1, maximum: 168, default: 2 }
+        adsConversionName: { type: string }
+        adsLeadConversionName: { type: string }
+        searchConsole:
+          type: object
+          description: "Kimlik bilgisi ASLA dönmez; yalnızca bağlı olup olmadığı ve maskeli servis hesabı e-postası."
+          properties:
+            propertyUrl: { type: string, nullable: true }
+            connected: { type: boolean }
+            clientEmailMasked: { type: string, nullable: true }
+            lastSyncAt: { type: string, format: date-time, nullable: true }
+            lastSyncError: { type: string, nullable: true }
+            initialSyncDone: { type: boolean }
+    UpdateCrmSettingsRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: "CrmSettings alanlarının kısmi alt kümesi (searchConsole hariç); scoreWeights kısmi olabilir."
+      properties:
+        trackingEnabled: { type: boolean }
+        trackStaff: { type: boolean }
+        ipMode: { type: string, enum: [masked, full] }
+        excludedIps: { type: array, items: { type: string } }
+        excludedPaths: { type: array, items: { type: string } }
+        retentionDays: { type: integer }
+        leadRetentionDays: { type: integer }
+        notificationEmail: { type: string, nullable: true }
+        whatsappRef: { type: boolean }
+        scoreWeights: { $ref: "#/components/schemas/CrmScoreWeights" }
+        slaHours: { type: integer }
+        adsConversionName: { type: string }
+        adsLeadConversionName: { type: string }
     # -------------------------------------------------------------------------
     # Localization (§10.5 — bkz. .claude/architect-scope-i18n.md)
     # -------------------------------------------------------------------------

@@ -162,6 +162,7 @@ export const CACHE_TAGS = {
   contactPage: "contact-page",
   blog: "blog",
   telehealthTheme: "telehealth-theme",
+  crmConfig: "crm-config",
 } as const;
 
 /** Slider başına etiket — frontend `sliderCacheTag` ile aynı biçim. */

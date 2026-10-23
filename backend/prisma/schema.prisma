@@ -3243,3 +3243,213 @@ model SupportReplyTemplate {
   @@index([isActive, sortOrder])
   @@map("support_reply_templates")
 }
+
+// =============================================================================================
+// Paket N (2026-10-23) — WM Health CRM. YALNIZCA YENİ TABLOLAR (mevcut tablolara kolon/FK EKLENMEZ;
+// randevu/talep bağları düz metin kimlik olarak tutulur). Gizlilik kuralları için bkz.
+// `backend/src/modules/crm/README.md`. Takip varsayılan KAPALI; açık rıza olmadan hiçbir satır yazılmaz.
+// =============================================================================================
+
+enum CrmEventType {
+  PAGEVIEW
+  HEARTBEAT
+  CLICK
+  SCROLL
+  WHATSAPP_CLICK
+  PHONE_CLICK
+  EMAIL_CLICK
+  FORM_SUBMIT
+  BOOKING_STEP
+  BOOKING_COMPLETED
+  CUSTOM
+}
+
+/// Anonim ziyaretçi. `id` istemcide (analitik onayından SONRA) üretilen rastgele kimliktir; kişiyle
+/// otomatik eşleştirilmez. Sayaçlar sıcaklık puanı için denormalizedir.
+model CrmVisitor {
+  id                String     @id
+  firstSeenAt       DateTime   @default(now())
+  lastSeenAt        DateTime   @default(now())
+  firstSource       String?
+  firstMedium       String?
+  firstCampaign     String?
+  firstReferrerHost String?
+  firstLandingPath  String?
+  country           String?
+  language          String?
+  timezone          String?
+  deviceType        DeviceType @default(UNKNOWN)
+  consentVersion    String?
+  /// WhatsApp "(Ref: XXXXXX)" kodu — yalnızca admin'in elle eşleştirmesi için aranır.
+  refCode           String?
+  sessionCount      Int        @default(0)
+  pageviewCount     Int        @default(0)
+  engagedSeconds    Int        @default(0)
+  contactClicks     Int        @default(0)
+  reachedBooking    Boolean    @default(false)
+  score             Int        @default(0)
+  botFlagged        Boolean    @default(false)
+
+  sessions CrmSession[]
+
+  @@index([lastSeenAt])
+  @@index([score])
+  @@index([refCode])
+  @@map("crm_visitors")
+}
+
+/// Oturum (30 dk hareketsizlikte yenisi açılır). IP varsayılan MASKELİ saklanır (IPv4 /24, IPv6 /48);
+/// ülke/şehir maskelemeden ÖNCE çıkarılır. Ham user-agent saklanmaz (yalnızca aile adları).
+model CrmSession {
+  id                String     @id
+  visitorId         String
+  startedAt         DateTime   @default(now())
+  lastSeenAt        DateTime   @default(now())
+  source            String
+  medium            String
+  campaign          String?
+  term              String?
+  content           String?
+  referrerHost      String?
+  landingPath       String
+  exitPath          String?
+  durationSeconds   Int        @default(0)
+  pageCount         Int        @default(0)
+  country           String?
+  city              String?
+  ip                String?
+  deviceType        DeviceType @default(UNKNOWN)
+  browser           String?
+  os                String?
+  language          String?
+  timezone          String?
+  /// Yalnızca PAZARLAMA onayı varsa dolu.
+  gclid             String?
+  gbraid            String?
+  wbraid            String?
+  reachedDoctorPage Boolean    @default(false)
+  bookingStarted    Boolean    @default(false)
+  contactClicked    Boolean    @default(false)
+  botFlagged        Boolean    @default(false)
+
+  visitor CrmVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  events  CrmEvent[]
+
+  @@index([startedAt])
+  @@index([lastSeenAt])
+  @@index([visitorId, startedAt])
+  @@map("crm_sessions")
+}
+
+/// Ham olay. Form alanı değeri / tuş vuruşu ASLA yazılmaz; `text` yalnızca link/buton için ≤80 karakter.
+/// Koordinatlar: `xPct` viewport genişliğine, `yPct` belge yüksekliğine göre yüzde; `elXPct/elYPct`
+/// tıklanan öğenin kutusuna göre yüzde (farklı ekran genişliklerinde ısı haritası için).
+model CrmEvent {
+  id         BigInt       @id @default(autoincrement())
+  sessionId  String
+  visitorId  String
+  type       CrmEventType
+  occurredAt DateTime
+  path       String
+  title      String?
+  selector   String?
+  text       String?
+  target     String?
+  name       String?
+  props      Json?
+  xPct       Float?
+  yPct       Float?
+  elXPct     Float?
+  elYPct     Float?
+  viewportW  Int?
+  viewportH  Int?
+  docH       Int?
+  scrollPct  Int?
+  step       Int?
+  deviceType DeviceType   @default(UNKNOWN)
+  isRage     Boolean      @default(false)
+  isDead     Boolean      @default(false)
+
+  session CrmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([occurredAt])
+  @@index([type, occurredAt])
+  @@index([sessionId, occurredAt])
+  @@index([visitorId, occurredAt])
+  @@index([path, type, occurredAt])
+  @@map("crm_events")
+}
+
+/// Çerez onayı kaydı (hesap verebilirlik). Reddetme de kaydedilir; `visitorId` yalnızca analitik
+/// onayı verildiyse dolu. IP/UA tutulmaz.
+model CrmConsent {
+  id        String   @id @default(uuid())
+  consentId String
+  visitorId String?
+  version   String
+  analytics Boolean
+  marketing Boolean
+  /// ACCEPT_ALL | REJECT_ALL | CUSTOM | WITHDRAW
+  action    String
+  locale    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([consentId])
+  @@map("crm_consents")
+}
+
+/// Günlük özet (Europe/Istanbul takvim günü). Panel sorguları buradan okunur; ham olaylar yalnızca
+/// ziyaretçi detayı ve ısı haritası içindir. `dimension`: total|source|page|prePage|country|language|
+/// timezone|device|click|doctor|specialty. `visitors` = o günün tekil ziyaretçisi.
+model CrmDailyRollup {
+  id              String   @id @default(uuid())
+  date            DateTime @db.Date
+  dimension       String
+  key             String
+  label           String?
+  visitors        Int      @default(0)
+  sessions        Int      @default(0)
+  pageviews       Int      @default(0)
+  entries         Int      @default(0)
+  engagedSeconds  Int      @default(0)
+  scrollSum       Int      @default(0)
+  scrollCount     Int      @default(0)
+  clicks          Int      @default(0)
+  whatsappClicks  Int      @default(0)
+  phoneClicks     Int      @default(0)
+  emailClicks     Int      @default(0)
+  contacts        Int      @default(0)
+  bookingsStarted Int      @default(0)
+
+  @@unique([date, dimension, key])
+  @@index([dimension, date])
+  @@map("crm_daily_rollups")
+}
+
+/// Randevu atfı — OTURUM DÜZEYİNDE anlık görüntü. Ziyaretçi/oturum kimliği BİLİNÇLİ OLARAK tutulmaz
+/// (hastanın kaydına sayfa geçmişi bağlanmaz). `bookingId` → `appointment_bookings.id` (FK YOK).
+model CrmAttribution {
+  id            String     @id @default(uuid())
+  bookingId     String     @unique
+  createdAt     DateTime   @default(now())
+  firstSource   String?
+  firstMedium   String?
+  firstCampaign String?
+  lastSource    String
+  lastMedium    String
+  lastCampaign  String?
+  term          String?
+  content       String?
+  landingPath   String?
+  referrerHost  String?
+  country       String?
+  language      String?
+  deviceType    DeviceType @default(UNKNOWN)
+  gclid         String?
+  gbraid        String?
+  wbraid        String?
+
+  @@index([createdAt])
+  @@map("crm_attributions")
+}

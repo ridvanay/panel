@@ -87,6 +87,9 @@ import { registerQaListenerSweeper } from "./modules/telehealth/lib/qa-listener-
 import { adminSupportRoutes } from "./modules/support/support.routes";
 import { supportPublicRoutes } from "./modules/support/support.public.routes";
 import { registerSupportRetentionScheduler } from "./lib/support-retention";
+import { crmPublicRoutes } from "./modules/crm/crm.public.routes";
+import { crmAdminRoutes } from "./modules/crm/crm.admin.routes";
+import { registerCrmSchedulers } from "./modules/crm/crm.rollup";
 import { warnIfRevalidationDisabled } from "./lib/revalidate";
 
 export function buildApp() {
@@ -350,6 +353,10 @@ export function buildApp() {
       // (`SiteRole = ADMIN veya MANAGER`) AYRI dosyalarda/AYRI prefix'lerde bağlanır.
       api.register(supportPublicRoutes, { prefix: "/support" });
       api.register(adminSupportRoutes, { prefix: "/admin/support" });
+      // Paket N (2026-10-23) — CRM: public takip uçları (yalnızca onaylı istemci, origin kontrollü) ve
+      // ADMIN + 2FA'ya açık yönetim uçları.
+      api.register(crmPublicRoutes, { prefix: "/crm" });
+      api.register(crmAdminRoutes, { prefix: "/admin/crm" });
     },
     { prefix: "/api/v1" }
   );
@@ -492,6 +499,13 @@ export function buildApp() {
       registerSupportRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Canlı Destek saklama süresi scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket N — CRM günlük özet (15 dk) ve saklama süresi temizliği (saatlik). Test ortamında kurulmaz.
+      registerCrmSchedulers(app);
+    } catch (err) {
+      app.log.error({ err }, "CRM zamanlayıcıları kurulamadı.");
     }
   });
 

@@ -17,6 +17,7 @@ export const CACHE_TAGS = {
   contactPage: "contact-page",
   blog: "blog",
   telehealthTheme: "telehealth-theme",
+  crmConfig: "crm-config",
 } as const;
 
 export type CacheTag = (typeof CACHE_TAGS)[keyof typeof CACHE_TAGS];
