@@ -12968,6 +12968,199 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  # --- CRM N2: talepler ve hasta yolculuğu (ADMIN + 2FA) -----------------------------------
+  /admin/crm/leads:
+    get:
+      tags: [CRM]
+      summary: Talepleri listele (filtre + sayfalama)
+      parameters:
+        - { name: status, in: query, schema: { type: string }, description: "Virgülle ayrılmış CrmLeadStatus listesi" }
+        - { name: channel, in: query, schema: { type: string }, description: "Virgülle ayrılmış CrmLeadChannel listesi" }
+        - { name: q, in: query, schema: { type: string }, description: "Ad, e-posta, telefon (rakam) ya da Ref kodu" }
+        - { name: candidate, in: query, schema: { type: string, enum: ["true", "false", "all"], default: all } }
+        - { name: assignedToId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 25, maximum: 100 } }
+      responses:
+        "200":
+          description: "OK — meta: { total, page, pageSize, statusCounts }"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/CrmLead" } }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      pageSize: { type: integer }
+                      statusCounts: { type: object, additionalProperties: { type: integer } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [CRM]
+      summary: Elle talep oluştur (isteğe bağlı ziyaretçi bağlama ve ilk not)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmLeadRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/CrmLead" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/leads/today:
+    get:
+      tags: [CRM]
+      summary: Bugün aranacaklar (sonraki aksiyonu bugün ya da geçmiş, sonuçlanmamış)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/CrmLead" } }
+  /admin/crm/leads/assignees:
+    get:
+      tags: [CRM]
+      summary: Atanabilecek kişiler (aktif ADMIN/MANAGER)
+      responses:
+        "200": { description: OK }
+  /admin/crm/leads/export:
+    get:
+      tags: [CRM]
+      summary: Talepleri CSV olarak indir (Excel uyumlu, UTF-8 BOM)
+      description: Liste ile aynı filtreler; en fazla 10.000 satır. Denetim kaydı `crm.export` (yalnızca satır sayısı ve filtre türleri). Formül enjeksiyonu nötrlenir.
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv: { schema: { type: string } }
+  /admin/crm/leads/sync:
+    post:
+      tags: [CRM]
+      summary: Kaynaklardan şimdi içe al (iletişim formu, canlı destek, yarım randevu, temas tıklamaları)
+      responses:
+        "200": { description: "OK — { created }" }
+  /admin/crm/leads/bulk-status:
+    post:
+      tags: [CRM]
+      summary: Toplu durum değiştir (en fazla 200)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ids, status]
+              properties:
+                ids: { type: array, items: { type: string, format: uuid }, maxItems: 200 }
+                status: { $ref: "#/components/schemas/CrmLeadStatus" }
+      responses:
+        "200": { description: "OK — { updated }" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/leads/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [CRM]
+      summary: Talep detayı (notlar çözülmüş, randevu önerileri) — denetim kaydı `crm.lead.viewed`
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/CrmLeadDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [CRM]
+      summary: Talebi güncelle (durum, atama, sonraki aksiyon, kişi, elle randevu/ziyaretçi bağlama)
+      description: Durum değişimi zaman çizelgesine not olarak yazılır; ilk NEW dışı durum ilk yanıt zamanını damgalar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmLeadRequest" }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [CRM]
+      summary: Talebi sil — denetim kaydı `crm.lead.deleted`
+      responses:
+        "204": { description: Silindi }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/crm/leads/{id}/notes:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [CRM]
+      summary: Not ekle (AES-256-GCM şifreli saklanır)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 5000 }
+      responses:
+        "201": { description: Eklendi }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/crm/leads/{id}/visitor-candidates:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [CRM]
+      summary: Elle bağlamak için aday ziyaretçiler (Ref kodu / zaman yakınlığı) — otomatik bağlama YOK
+      responses:
+        "200": { description: OK }
+  /admin/crm/funnel:
+    get:
+      tags: [CRM]
+      summary: Hasta yolculuğu hunisi
+      description: >
+        ziyaret → doktor/uzmanlık sayfası → sihirbaz başladı → randevu → ödendi → görüşme yapıldı. Ciro yalnızca
+        PAID randevuların totalCents toplamı (para birimine göre). İlk/son temas modeli seçilebilir. Arşivli
+        (test) randevular hariç.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: model, in: query, schema: { type: string, enum: [first, last], default: last } }
+        - { name: groupBy, in: query, schema: { type: string, enum: [none, source, campaign, country, language, device, doctor], default: source } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      rows: { type: array, items: { $ref: "#/components/schemas/CrmFunnelRow" } }
+                      total: { $ref: "#/components/schemas/CrmFunnelRow" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
 components:
   securitySchemes:
@@ -13626,6 +13819,117 @@ components:
       schema: { type: integer, example: 42 }
 
   schemas:
+    CrmLeadStatus:
+      type: string
+      enum: [NEW, CALLED, UNREACHABLE, APPOINTMENT_GIVEN, CONSULTED, TREATMENT_PLANNED, TREATED, NEGATIVE, SPAM]
+      description: "Yeni, Arandı, Ulaşılamadı, Randevu Verildi, Görüşme Yapıldı, Tedavi Planlandı, Tedavi Oldu, Olumsuz, Test/Spam"
+    CrmLeadChannel:
+      type: string
+      enum: [CONTACT_FORM, LIVE_CHAT, WHATSAPP, PHONE, EMAIL, BOOKING_ABANDONED, MANUAL, ADS_IMPORT]
+    CrmLead:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        seq: { type: integer }
+        channel: { $ref: "#/components/schemas/CrmLeadChannel" }
+        status: { $ref: "#/components/schemas/CrmLeadStatus" }
+        candidate: { type: boolean, description: "Temas tıklamasından doğan aday (kişi bilgisi yok)" }
+        name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        language: { type: string, nullable: true }
+        specialtyId: { type: string, nullable: true }
+        specialtyName: { type: string, nullable: true }
+        doctorId: { type: string, nullable: true }
+        doctorName: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        medium: { type: string, nullable: true }
+        campaign: { type: string, nullable: true }
+        landingPath: { type: string, nullable: true }
+        refCode: { type: string, nullable: true }
+        gclid: { type: string, nullable: true }
+        assignedToId: { type: string, nullable: true }
+        assignedToName: { type: string, nullable: true }
+        firstResponseAt: { type: string, format: date-time, nullable: true }
+        nextActionAt: { type: string, format: date-time, nullable: true }
+        statusChangedAt: { type: string, format: date-time }
+        bookingId: { type: string, nullable: true, description: "Yalnızca admin onayıyla bağlanır" }
+        visitorId: { type: string, nullable: true, description: "Yalnızca admin onayıyla bağlanır" }
+        anonymizedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        sla:
+          type: object
+          properties:
+            state: { type: string, enum: [met, late, pending, breached] }
+            minutes: { type: integer }
+    CrmLeadDetail:
+      allOf:
+        - $ref: "#/components/schemas/CrmLead"
+        - type: object
+          properties:
+            notes:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  kind: { type: string, enum: [NOTE, STATUS, SYSTEM] }
+                  authorName: { type: string, nullable: true }
+                  body: { type: string }
+                  createdAt: { type: string, format: date-time }
+            bookingSuggestions:
+              type: array
+              description: "Aynı e-postalı randevular — sistem ÖNERİR, bağlamayı admin onaylar"
+              items: { type: object }
+            linkedBooking: { type: object, nullable: true }
+    CreateCrmLeadRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        channel: { $ref: "#/components/schemas/CrmLeadChannel" }
+        name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        country: { type: string, nullable: true, maxLength: 2 }
+        language: { type: string, nullable: true }
+        specialtyId: { type: string, format: uuid, nullable: true }
+        doctorId: { type: string, format: uuid, nullable: true }
+        source: { type: string, nullable: true }
+        campaign: { type: string, nullable: true }
+        visitorId: { type: string, nullable: true }
+        note: { type: string, maxLength: 5000 }
+    UpdateCrmLeadRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        status: { $ref: "#/components/schemas/CrmLeadStatus" }
+        assignedToId: { type: string, format: uuid, nullable: true }
+        nextActionAt: { type: string, format: date-time, nullable: true }
+        name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        language: { type: string, nullable: true }
+        specialtyId: { type: string, format: uuid, nullable: true }
+        doctorId: { type: string, format: uuid, nullable: true }
+        bookingId: { type: string, format: uuid, nullable: true }
+        visitorId: { type: string, nullable: true }
+        candidate: { type: boolean }
+    CrmFunnelRow:
+      type: object
+      properties:
+        key: { type: string }
+        label: { type: string }
+        visits: { type: integer }
+        doctorPage: { type: integer }
+        bookingStarted: { type: integer }
+        bookings: { type: integer }
+        paid: { type: integer }
+        consulted: { type: integer }
+        revenue: { type: object, additionalProperties: { type: integer }, description: "Para birimi → kuruş" }
+        conversionRate: { type: number, description: "Ödenen / ziyaret (%)" }
     # --- CRM (Paket N) -------------------------------------------------------
     CrmPublicConfig:
       type: object

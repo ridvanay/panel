@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { env } from "../../config/env";
 import { CRM_HEARTBEAT_SECONDS } from "./crm.collect";
 import { readCrmSettings } from "./crm.settings";
+import { anonymizeExpiredLeads, CRM_LEAD_INGEST_INTERVAL_MS, runLeadIngest } from "./crm.leads";
 
 /**
  * Paket N1 — günlük özet (`crm_daily_rollups`) ve saklama süresi temizliği.
@@ -216,19 +217,28 @@ export function registerCrmSchedulers(app: FastifyInstance): void {
   const retention = () => {
     (async () => {
       await runCrmRetentionSweep(app);
+      await anonymizeExpiredLeads(app);
       for (const step of extraRetentionSteps) await step(app, new Date());
     })().catch((err) => app.log.error({ err }, "CRM saklama süresi temizliği başarısız oldu"));
   };
 
+  const leadIngest = () => {
+    runLeadIngest(app).catch((err) => app.log.error({ err }, "CRM talep içe alma başarısız oldu"));
+  };
+
   rollup(3);
   retention();
+  leadIngest();
   const rollupTimer = setInterval(() => rollup(2), CRM_ROLLUP_INTERVAL_MS);
   const retentionTimer = setInterval(retention, CRM_RETENTION_INTERVAL_MS);
+  const leadTimer = setInterval(leadIngest, CRM_LEAD_INGEST_INTERVAL_MS);
+  leadTimer.unref();
   rollupTimer.unref();
   retentionTimer.unref();
   app.addHook("onClose", () => {
     clearInterval(rollupTimer);
     clearInterval(retentionTimer);
+    clearInterval(leadTimer);
   });
 }
 

@@ -3453,3 +3453,96 @@ model CrmAttribution {
   @@index([createdAt])
   @@map("crm_attributions")
 }
+
+/// Paket N2 — talep durumları (tıbbi süreç adlarıyla).
+enum CrmLeadStatus {
+  NEW
+  CALLED
+  UNREACHABLE
+  APPOINTMENT_GIVEN
+  CONSULTED
+  TREATMENT_PLANNED
+  TREATED
+  NEGATIVE
+  SPAM
+}
+
+enum CrmLeadChannel {
+  CONTACT_FORM
+  LIVE_CHAT
+  WHATSAPP
+  PHONE
+  EMAIL
+  BOOKING_ABANDONED
+  MANUAL
+  ADS_IMPORT
+}
+
+/// Paket N2 — talep (lead). Kaynak kayıtlara (iletişim formu, canlı destek, randevu) YALNIZCA düz
+/// kimlikle referans verir (`sourceRefId`); mevcut tablolar DEĞİŞTİRİLMEZ. `visitorId` ve `bookingId`
+/// yalnızca admin onayıyla (elle) dolar. Saklama süresi dolunca kişi alanları silinir (`anonymizedAt`).
+model CrmLead {
+  id              String         @id @default(uuid())
+  seq             Int            @unique @default(autoincrement())
+  channel         CrmLeadChannel
+  status          CrmLeadStatus  @default(NEW)
+  /// WhatsApp/telefon tıklamasından doğan "aday" talep — henüz kişi bilgisi yok.
+  candidate       Boolean        @default(false)
+  name            String?
+  phone           String?
+  email           String?
+  country         String?
+  language        String?
+  specialtyId     String?
+  specialtyName   String?
+  doctorId        String?
+  doctorName      String?
+  source          String?
+  medium          String?
+  campaign        String?
+  landingPath     String?
+  gclid           String?
+  refCode         String?
+  /// Kaynak kaydın kimliği (ContactSubmission/SupportChatSession/AppointmentBooking id, Ads Lead ID,
+  /// aday talepte `oturum:kanal`). `(channel, sourceRefId)` tekil → içe alma idempotent.
+  sourceRefId     String?
+  assignedToId    String?
+  firstResponseAt DateTime?
+  nextActionAt    DateTime?
+  statusChangedAt DateTime       @default(now())
+  bookingId       String?
+  visitorId       String?
+  anonymizedAt    DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  notes CrmLeadNote[]
+
+  @@unique([channel, sourceRefId])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([nextActionAt])
+  @@index([email])
+  @@index([phone])
+  @@index([refCode])
+  @@index([assignedToId])
+  @@map("crm_leads")
+}
+
+/// Talep notu / zaman çizelgesi. Not metni sağlık bilgisi içerebileceği için AES-256-GCM ŞİFRELİ
+/// (`lib/crypto.ts::encryptSecret`); düz metin saklanmaz, aranmaz.
+model CrmLeadNote {
+  id             String   @id @default(uuid())
+  leadId         String
+  /// NOTE | STATUS | SYSTEM
+  kind           String   @default("NOTE")
+  authorId       String?
+  authorName     String?
+  bodyCiphertext String
+  createdAt      DateTime @default(now())
+
+  lead CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@map("crm_lead_notes")
+}

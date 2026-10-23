@@ -113,7 +113,7 @@ describe("CRM N1 — saf yardımcılar", () => {
     expect(isBotUserAgent(UA)).toBe(false);
     expect(parseUserAgent(UA)).toEqual({ deviceType: "MOBILE", browser: "Safari", os: "iOS" });
     expect(parseUserAgent(DESKTOP_UA)).toEqual({ deviceType: "DESKTOP", browser: "Chrome", os: "Windows" });
-    expect(sanitizeText("  a\u0000b‮c\n\n d  ", 80)).toBe("a b c d");
+    expect(sanitizeText("  a\u0000b\u202Ec\n\n d  ", 80)).toBe("a b c d");
     expect(sanitizeTarget("https://wa.me/905551112233?text=Merhaba%20ad%C4%B1m%20Ali")).toBe("wa.me/905551112233");
     expect(sanitizeTarget("tel:+905551112233")).toBe("tel:+905551112233");
     expect(sanitizeTarget("javascript:alert(1)")).toBeNull();

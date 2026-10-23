@@ -66,7 +66,7 @@ export function normalizePath(path: string): string {
 export function sanitizeText(value: string | null | undefined, max: number): string {
   if (!value) return "";
   // eslint-disable-next-line no-control-regex
-  const cleaned = value.replace(/[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
+  const cleaned = value.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim();
   return cleaned.length > max ? cleaned.slice(0, max) : cleaned;
 }
 
