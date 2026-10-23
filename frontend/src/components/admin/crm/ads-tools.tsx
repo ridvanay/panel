@@ -57,7 +57,7 @@ export function AdsTools({ onImported }: { onImported: () => void }) {
 
   return (
     <>
-      <input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" aria-label="Google Ads CSV dosyası" onChange={(e) => void onFile(e)} />
+      <input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" tabIndex={-1} aria-label="Google Ads CSV dosyası" onChange={(e) => void onFile(e)} />
       <Button type="button" variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
         <FileUp className="h-4 w-4" aria-hidden="true" /> Ads CSV içe aktar
       </Button>

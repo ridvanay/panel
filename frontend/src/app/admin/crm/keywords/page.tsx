@@ -28,12 +28,14 @@ function Change({ value }: { value: number | null }) {
   if (value === null) return <span className="text-foreground/40">yeni</span>;
   if (value === 0) return <span className="text-foreground/50">0</span>;
   return value > 0 ? (
-    <span className="text-success" aria-label={`${value} sıra yükseldi`}>
-      ▲ {value}
+    <span className="text-success">
+      <span aria-hidden="true">▲ {value}</span>
+      <span className="sr-only">{`${value} sıra yükseldi`}</span>
     </span>
   ) : (
-    <span className="text-danger" aria-label={`${-value} sıra düştü`}>
-      ▼ {-value}
+    <span className="text-danger">
+      <span aria-hidden="true">▼ {-value}</span>
+      <span className="sr-only">{`${-value} sıra düştü`}</span>
     </span>
   );
 }

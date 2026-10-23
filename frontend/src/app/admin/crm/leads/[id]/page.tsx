@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Link2, Trash2, UserSearch } from "lucide-react";
 import * as crmApi from "@/lib/api/crm";
-import { CRM_LEAD_STATUS_OPTIONS, leadChannelLabel, type CrmLeadDetail, type CrmLeadStatus } from "@/lib/api/crm";
+import { CRM_LEAD_STATUS_OPTIONS, leadChannelLabel, type CrmLead, type CrmLeadStatus } from "@/lib/api/crm";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ interface EditForm {
   language: string;
 }
 
-function toForm(lead: CrmLeadDetail): EditForm {
+function toForm(lead: CrmLead): EditForm {
   return {
     status: lead.status,
     assignedToId: lead.assignedToId ?? "",
@@ -75,9 +75,10 @@ export default function CrmLeadDetailPage({ params }: { params: Promise<{ id: st
   });
 
   useEffect(() => {
+    // Form yalnızca ilk yüklemede doldurulur; not eklemek (yeniden yükleme) kaydedilmemiş düzenlemeleri silmez.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sunucu verisi gelince formu doldur
-    if (lead.data) setForm(toForm(lead.data));
-  }, [lead.data]);
+    if (lead.data && !form) setForm(toForm(lead.data));
+  }, [lead.data, form]);
 
   const reload = () => {
     void queryClient.invalidateQueries({ queryKey: ["crm-lead", id] });
@@ -88,8 +89,10 @@ export default function CrmLeadDetailPage({ params }: { params: Promise<{ id: st
     setSaving(true);
     setErrors({});
     try {
-      await crmApi.updateCrmLead(id, input);
+      const updated = await crmApi.updateCrmLead(id, input);
       toast.success(success);
+      // Form kaydedilen sunucu durumuyla yenilenir (not eklemek ise formu ellemez).
+      setForm(toForm(updated));
       reload();
     } catch (err) {
       setErrors(fieldErrorsFrom(err));

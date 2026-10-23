@@ -92,6 +92,18 @@ export default function CrmSettingsPage() {
 
   async function save() {
     if (!form) return;
+    const numberFields: [string, string][] = [
+      ["retentionDays", form.retentionDays],
+      ["leadRetentionDays", form.leadRetentionDays],
+      ["slaHours", form.slaHours],
+      ...Object.entries(form.scoreWeights).map(([k, v]) => [`scoreWeights.${k}`, v] as [string, string]),
+    ];
+    const empty = numberFields.filter(([, v]) => v.trim() === "" || !Number.isFinite(Number(v)));
+    if (empty.length > 0) {
+      setErrors(Object.fromEntries(empty.map(([k]) => [k, "Bir sayı girin."])));
+      toast.error("Boş ya da geçersiz sayı alanları var.");
+      return;
+    }
     setSaving(true);
     setErrors({});
     try {
@@ -189,8 +201,8 @@ export default function CrmSettingsPage() {
           {(p) => <Textarea {...p} dir="ltr" rows={3} value={form.excludedPaths} onChange={(e) => set("excludedPaths", e.target.value)} />}
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="crm-retention" label="Ziyaret verisi saklama (gün)" error={errors.retentionDays} hint="7–730, varsayılan 180">
-            {(p) => <Input {...p} type="number" min={7} max={730} value={form.retentionDays} onChange={(e) => set("retentionDays", e.target.value)} />}
+          <Field id="crm-retention" label="Ziyaret verisi saklama (gün)" error={errors.retentionDays} hint="7–365, varsayılan 180">
+            {(p) => <Input {...p} type="number" min={7} max={365} value={form.retentionDays} onChange={(e) => set("retentionDays", e.target.value)} />}
           </Field>
           <Field id="crm-lead-retention" label="Talep saklama (gün)" error={errors.leadRetentionDays} hint="Süre dolunca anonimleştirilir; varsayılan 730">
             {(p) => <Input {...p} type="number" min={30} max={3650} value={form.leadRetentionDays} onChange={(e) => set("leadRetentionDays", e.target.value)} />}

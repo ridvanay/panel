@@ -55,8 +55,15 @@ function rand(length: number, alphabet: string): string {
 
 const ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
+/** Kalıcı ziyaretçi kimliğinin azami ömrü — saklama süresiyle aynı (180 gün); sonra yeni kimlik. */
+const VISITOR_ID_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+
 function visitorId(): string {
-  return store("wmcrm_vid") ?? store("wmcrm_vid", rand(22, ID_ALPHABET)) ?? rand(22, ID_ALPHABET);
+  const createdAt = Number(store("wmcrm_vid_at") ?? 0);
+  const existing = store("wmcrm_vid");
+  if (existing && createdAt > 0 && Date.now() - createdAt < VISITOR_ID_MAX_AGE_MS) return existing;
+  store("wmcrm_vid_at", String(Date.now()));
+  return store("wmcrm_vid", rand(22, ID_ALPHABET)) ?? rand(22, ID_ALPHABET);
 }
 
 function sessionId(): string {
@@ -86,13 +93,24 @@ function pct(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value * 1000) / 10));
 }
 
+function referrerOrigin(): string | undefined {
+  try {
+    return document.referrer ? new URL(document.referrer).origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const AD_CLICK_KEYS = ["gclid", "gbraid", "wbraid"];
+
 function context() {
   const params = new URLSearchParams(location.search);
   const get = (key: string) => params.get(key)?.slice(0, 150) || undefined;
   const ctx: Record<string, string | undefined> = {
     lang: navigator.language?.slice(0, 20),
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone?.slice(0, 60),
-    rf: document.referrer ? document.referrer.slice(0, 1000) : undefined,
+    // Veri minimizasyonu: yalnızca yönlendiren sitenin kökü (yol/sorgu gönderilmez).
+    rf: referrerOrigin(),
     us: get("utm_source"),
     um: get("utm_medium"),
     uc: get("utm_campaign"),
@@ -127,7 +145,8 @@ export function flush(): void {
     cv: cfg.consentVersion,
     mk: cfg.marketing,
     ...(ref ? { ref } : {}),
-    ctx: landingContext,
+    // Pazarlama onayı sonradan geri alındıysa reklam tıklama kimlikleri artık gönderilmez.
+    ctx: cfg.marketing ? landingContext : Object.fromEntries(Object.entries(landingContext).filter(([k]) => !AD_CLICK_KEYS.includes(k))),
     events,
   });
   const url = `${cfg.apiBase}/crm/collect`;
@@ -153,6 +172,8 @@ function pageview() {
   if (path === currentPath) return;
   finishPage();
   currentPath = path;
+  // Kaydırmadan çıkan ziyaretçi için de ilk görünür alan ölçülür (kaydırma haritası yukarı yanlı olmasın).
+  window.setTimeout(onScroll, 350);
   // Next.js başlığı rota değişiminden hemen sonra günceller — kısa gecikmeyle okunur.
   window.setTimeout(() => push({ t: "pageview", p: path, ti: document.title.slice(0, 300) }), 300);
 }
@@ -166,7 +187,7 @@ function onScroll() {
 function selectorOf(el: Element): string {
   const parts: string[] = [];
   let node: Element | null = el;
-  while (node && node !== document.body && parts.length < 8) {
+  while (node && node !== document.body && parts.length < 30) {
     if (node.id && /^[A-Za-z][\w-]{0,40}$/.test(node.id)) {
       parts.unshift(`#${node.id}`);
       break;
@@ -177,7 +198,10 @@ function selectorOf(el: Element): string {
     parts.unshift(index > 1 ? `${tag}:nth-of-type(${index})` : tag);
     node = parent;
   }
-  return parts.join(">").slice(-400);
+  // `body`'ye sabitlenmiş tam yol (ya da kimlikli bir ataya); 400 karakteri aşan seçici gönderilmez
+  // (ısı haritası o noktada yüzde konumuna düşer — yanlış öğeye eşlenmesin).
+  const selector = node === document.body ? `body>${parts.join(">")}` : parts.join(">");
+  return selector.length <= 400 ? selector : "";
 }
 
 function contactType(href: string): string | null {
@@ -231,7 +255,7 @@ function onClick(event: MouseEvent) {
 
   push({
     t: contact ?? "click",
-    sel: selectorOf(el),
+    sel: selectorOf(el) || undefined,
     tx: text || undefined,
     hr: href ? cleanHref(href) : undefined,
     n: (target.closest("[data-track]") as HTMLElement | null)?.dataset.track?.slice(0, 100),

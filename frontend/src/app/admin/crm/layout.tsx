@@ -19,7 +19,9 @@ export default function CrmLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const pathname = usePathname();
 
-  if (user && user.role !== "ADMIN") {
+  if (!user) return null;
+
+  if (user.role !== "ADMIN") {
     return (
       <div className="space-y-6">
         <PageHeading icon={Radar} title="CRM" />
@@ -35,7 +37,7 @@ export default function CrmLayout({ children }: { children: ReactNode }) {
         title="CRM"
         description="Ziyaretçi analitiği, talep yönetimi ve hasta yolculuğu. Veriler yalnızca analitik çerez onayı veren ziyaretçilerden toplanır."
       />
-      {user && !user.twoFactorEnabled ? (
+      {!user.twoFactorEnabled ? (
         <Alert variant="error">
           <span className="flex items-start gap-2">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />

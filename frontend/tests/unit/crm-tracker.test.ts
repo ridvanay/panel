@@ -66,15 +66,39 @@ describe("takip modülü", () => {
     expect(sent[0]!.body.ctx.gclid).toBeUndefined();
     expect(sent[0]!.body.mk).toBe(false);
     expect(sent[0]!.body.vid).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    // Referrer: yalnızca köken (yol/sorgu gönderilmez).
+    expect(sent[0]!.body.ctx.rf ?? null).toBeNull();
   });
 
-  it("pazarlama onayıyla gclid gönderilir", async () => {
+  it("pazarlama onayıyla gclid gönderilir; onay sonradan geri alınınca artık gönderilmez", async () => {
     window.history.replaceState({}, "", "/en?gclid=abc123");
     startTracker({ ...CONFIG, marketing: true });
     vi.advanceTimersByTime(400);
     await collected();
     expect(sent[0]!.body.ctx.gclid).toBe("abc123");
     expect(sent[0]!.body.mk).toBe(true);
+
+    startTracker({ ...CONFIG, marketing: false });
+    sent = [];
+    window.dispatchEvent(new CustomEvent("wmcrm:booking-step", { detail: { step: 2 } }));
+    await collected();
+    expect(sent[0]!.body.ctx.gclid).toBeUndefined();
+    expect(sent[0]!.body.mk).toBe(false);
+  });
+
+  it("seçici body'ye sabitlenir; sayfa açılışında görünür alan ölçülür", async () => {
+    window.history.replaceState({}, "", "/en");
+    document.body.innerHTML = `<main><section><p>a</p></section><section><button id="b">B</button><span class="x">t</span></section></main>`;
+    startTracker(CONFIG);
+    vi.advanceTimersByTime(400);
+    document.querySelector("span.x")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    window.history.pushState({}, "", "/en/other");
+    vi.advanceTimersByTime(400);
+    const events = await collected();
+    const click = events.find((e) => e.t === "click")!;
+    expect(click.sel).toBe("body>main>section:nth-of-type(2)>span");
+    expect(document.querySelector(String(click.sel))).toBe(document.querySelector("span.x"));
+    expect(events.find((e) => e.t === "scroll" && e.p === "/en")).toBeDefined();
   });
 
   it("input değeri ve tuş vuruşu ASLA gönderilmez; buton metni ≤80; ölü tıklama işaretlenir", async () => {
@@ -122,7 +146,8 @@ describe("takip modülü", () => {
     window.history.pushState({}, "", "/tr/checkout");
     vi.advanceTimersByTime(400);
     const events = await collected();
-    expect(events.map((e) => [e.t, e.p])).toEqual([["pageview", "/tr/doctors/x"]]);
+    expect(events.filter((e) => e.t !== "scroll").map((e) => [e.t, e.p])).toEqual([["pageview", "/tr/doctors/x"]]);
+    expect(events.every((e) => e.p === "/tr/doctors/x")).toBe(true);
   });
 
   it("WhatsApp tıklaması: Ref kodu mesaja eklenir, hedefte sorgu dizesi gönderilmez", async () => {

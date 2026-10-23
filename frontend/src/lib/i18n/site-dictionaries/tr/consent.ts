@@ -15,9 +15,10 @@ export const consentStrings: ConsentStrings = {
   alwaysOn: "Her zaman açık",
   analyticsTitle: "Analitik",
   analyticsText:
-    "Siteyi iyileştirmek için ziyaret, sayfa ve tıklamaların anonim ölçümü. IP adresleri maskelenir. Hesap, ödeme ve görüşme sayfalarında asla kullanılmaz.",
+    "Siteyi iyileştirmek için ziyaret, sayfa ve tıklamaların takma adlı ölçümü (tarayıcınızda saklanan rastgele bir ziyaretçi kimliğiyle). IP adresleri maskelenir; veriler 180 gün saklanır. Hesap, ödeme ve görüşme sayfalarında asla kullanılmaz.",
   marketingTitle: "Pazarlama",
-  marketingText: "Bize hangi reklamdan geldiğinizin ölçülmesi (ör. Google Ads tıklama kimliği). Yalnızca analitikle birlikte saklanır.",
+  marketingText:
+    "Bize hangi reklamdan geldiğinizin ölçülmesi (ör. Google Ads tıklama kimliği, 90 gün saklanır). Dönüşümler Google'a (ABD) bildirilebilir. Yalnızca analitikle birlikte saklanır.",
   save: "Seçimleri kaydet",
   close: "Kapat",
   footerLink: "Çerez tercihleri",

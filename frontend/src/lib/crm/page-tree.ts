@@ -45,3 +45,33 @@ export function buildPageTree(rows: CrmPageRow[]): PageTreeNode {
   sort(root);
   return root;
 }
+
+export interface PageTreeRow {
+  node: PageTreeNode;
+  depth: number;
+  hasChildren: boolean;
+  open: boolean;
+}
+
+/**
+ * Görünür satırlar (tablo için): önce kökün kendi satırı (varsayılan dilin öneksiz ana sayfası `/`), sonra
+ * açık düğümlerin çocukları derinlik sırasıyla. Kökün kendisi bir klasör satırı olarak çizilmez.
+ */
+export function flattenPageTree(root: PageTreeNode, isOpen: (path: string, depth: number) => boolean): PageTreeRow[] {
+  const rows: PageTreeRow[] = [];
+  if (root.own) {
+    rows.push({
+      node: { ...root, total: { pageviews: root.own.pageviews, visitors: root.own.visitors, entries: root.own.entries, contacts: root.own.contacts }, children: [] },
+      depth: 0,
+      hasChildren: false,
+      open: false,
+    });
+  }
+  const walk = (node: PageTreeNode, depth: number) => {
+    const open = node.children.length > 0 && isOpen(node.path, depth);
+    rows.push({ node, depth, hasChildren: node.children.length > 0, open });
+    if (open) for (const child of node.children) walk(child, depth + 1);
+  };
+  for (const child of root.children) walk(child, 0);
+  return rows;
+}

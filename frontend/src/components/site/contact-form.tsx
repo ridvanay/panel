@@ -170,7 +170,8 @@ export function ContactFormClient({ form }: { form: PublicContactForm }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate className="mx-auto max-w-xl space-y-5">
+    // Paket N — iletişim formu CRM takibine yazılmaz (talep zaten form kaydından alınır).
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="mx-auto max-w-xl space-y-5" data-crm-ignore="">
       {form.fields.map((field) => (
         <FormField key={field.key} field={field} register={register} error={errors[field.key]?.message as string | undefined} />
       ))}

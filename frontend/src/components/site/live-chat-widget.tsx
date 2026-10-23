@@ -608,6 +608,7 @@ function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireNam
 
   return (
     <div
+      data-crm-ignore=""
       data-live-chat-position={side}
       className={cn("fixed z-50 flex flex-col transition-[bottom] duration-300", side === "left" ? "items-start" : "items-end")}
       style={{ bottom: FLOATING_BOTTOM, [side]: "1.5rem" }}

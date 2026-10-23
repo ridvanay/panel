@@ -36,7 +36,7 @@ function networkError(): ApiClientError {
 let refreshPromise: Promise<string | null> | null = null;
 
 /** Paralel isteklerin aynı anda 401 alması durumunda tek bir refresh çağrısını paylaşır. */
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {

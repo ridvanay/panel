@@ -16,9 +16,10 @@ export const consentStrings: ConsentStrings = {
   alwaysOn: "Immer aktiv",
   analyticsTitle: "Analyse",
   analyticsText:
-    "Anonyme Messung von Besuchen, Seiten und Klicks zur Verbesserung der Website. IP-Adressen werden maskiert. Nie auf Konto-, Zahlungs- oder Konsultationsseiten.",
+    "Pseudonymisierte Messung (mit einer zufälligen, in Ihrem Browser gespeicherten Besucher-ID) von Besuchen, Seiten und Klicks zur Verbesserung der Website. IP-Adressen werden maskiert; Daten werden 180 Tage gespeichert. Nie auf Konto-, Zahlungs- oder Konsultationsseiten.",
   marketingTitle: "Marketing",
-  marketingText: "Messung, welche Anzeige Sie zu uns geführt hat (z. B. die Google-Ads-Klick-ID). Wird nur zusammen mit der Analyse gespeichert.",
+  marketingText:
+    "Messung, welche Anzeige Sie zu uns geführt hat (z. B. die Google-Ads-Klick-ID, 90 Tage gespeichert). Conversions können an Google (USA) übermittelt werden. Wird nur zusammen mit der Analyse gespeichert.",
   save: "Auswahl speichern",
   close: "Schließen",
   footerLink: "Cookie-Einstellungen",

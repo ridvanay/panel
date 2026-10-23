@@ -18,9 +18,10 @@ export const consentStrings = {
   alwaysOn: "Always on",
   analyticsTitle: "Analytics",
   analyticsText:
-    "Anonymous measurement of visits, pages and clicks so we can improve the site. IP addresses are masked. Never used on account, payment or consultation pages.",
+    "Pseudonymous measurement (with a random visitor ID stored in your browser) of visits, pages and clicks so we can improve the site. IP addresses are masked; data is kept for 180 days. Never used on account, payment or consultation pages.",
   marketingTitle: "Marketing",
-  marketingText: "Measuring which ads brought you to us (for example the Google Ads click ID). Only stored together with analytics.",
+  marketingText:
+    "Measuring which ads brought you to us (for example the Google Ads click ID, kept for 90 days). Conversions may be reported to Google (USA). Only stored together with analytics.",
   save: "Save choices",
   close: "Close",
   footerLink: "Cookie preferences",

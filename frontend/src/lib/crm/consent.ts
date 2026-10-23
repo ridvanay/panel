@@ -10,6 +10,8 @@ import { API_BASE_URL } from "@/lib/env";
  */
 export const CONSENT_VERSION = "2026-10-23";
 export const CONSENT_STORAGE_KEY = "wm-consent";
+/** Onay 12 ay geçerlidir; sonra bant yeniden gösterilir. */
+export const CONSENT_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 const LEGACY_STORAGE_KEY = "cookie-consent-accepted";
 
 /** Onay değişince (kaydet/geri al) yayılır — takip yükleyicisi dinler. */
@@ -18,7 +20,7 @@ export const CONSENT_CHANGED_EVENT = "wm-consent:changed";
 export const OPEN_CONSENT_PREFERENCES_EVENT = "wm-consent:open";
 
 /** Takip modülünün tarayıcı anahtarları — analitik onayı geri alınınca silinir. */
-export const TRACKER_STORAGE_KEYS = ["wmcrm_vid", "wmcrm_sid", "wmcrm_ref"] as const;
+export const TRACKER_STORAGE_KEYS = ["wmcrm_vid", "wmcrm_vid_at", "wmcrm_sid", "wmcrm_ref"] as const;
 export const OPTOUT_STORAGE_KEY = "wmcrm_optout";
 export const STAFF_STORAGE_KEY = "wmcrm_staff";
 
@@ -71,6 +73,7 @@ export function readConsent(): ConsentState | null {
   try {
     const parsed = JSON.parse(raw) as Partial<ConsentState>;
     if (parsed.v !== CONSENT_VERSION || typeof parsed.id !== "string") return null;
+    if (typeof parsed.ts !== "number" || Date.now() - parsed.ts > CONSENT_MAX_AGE_MS) return null;
     return {
       v: parsed.v,
       id: parsed.id,

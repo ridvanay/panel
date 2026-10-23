@@ -18,7 +18,7 @@ export default function CrmLivePage() {
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="admin-h2">Şu an sitede: {live.data?.length ?? "…"}</h2>
-        <span className="text-xs text-foreground/60" aria-live="polite">
+        <span className="text-xs text-foreground/60">
           20 saniyede bir yenilenir{live.dataUpdatedAt ? ` · son: ${new Date(live.dataUpdatedAt).toLocaleTimeString("tr-TR")}` : ""}
         </span>
       </div>

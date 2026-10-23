@@ -23,14 +23,18 @@ export function CrmTrackerLoader({ config }: { config: CrmPublicConfig | null })
     applyOptOutFromUrl(window.location.search);
     if (!config?.trackingEnabled) return;
     let cancelled = false;
+    let started = false;
 
     const evaluate = () => {
       const consent = readConsent();
       const allowed = Boolean(consent?.analytics) && !isOptedOut() && (config.trackStaff || !isStaffDevice());
       if (!allowed) {
-        void import("@/lib/crm/tracker").then((m) => m.stopTracker()).catch(() => {});
+        // Modül bu sayfada hiç başlatılmadıysa durdurmak için de İNDİRİLMEZ (Reddet → hiçbir dosya inmez).
+        if (started) void import("@/lib/crm/tracker").then((m) => m.stopTracker()).catch(() => {});
+        started = false;
         return;
       }
+      started = true;
       void import("@/lib/crm/tracker")
         .then((m) => {
           if (cancelled) return;

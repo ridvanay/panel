@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchWithMeta } from "@/lib/api/client";
+import { apiFetch, apiFetchWithMeta, refreshAccessToken } from "@/lib/api/client";
 import { ApiClientError } from "@/lib/api/error";
 import { getAccessToken } from "@/lib/api/token-store";
 import { API_BASE_URL } from "@/lib/env";
@@ -235,15 +235,21 @@ export const deleteCrmLead = (id: string) => apiFetch<void>(`/admin/crm/leads/${
 /** JSON olmayan CRM indirmeleri (CSV) — `reports.ts::downloadExportJob` deseni. */
 export async function downloadCrmFile(path: string, query: Record<string, string | undefined>, filename: string): Promise<void> {
   const requestId = crypto.randomUUID();
-  const token = getAccessToken();
   const url = new URL(`${API_BASE_URL}${path}`);
   for (const [key, value] of Object.entries(query)) if (value) url.searchParams.set(key, value);
-  let res: Response;
-  try {
-    res = await fetch(url.toString(), {
+  const send = (token: string | null) =>
+    fetch(url.toString(), {
       headers: { "x-request-id": requestId, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       credentials: "include",
     });
+  let res: Response;
+  try {
+    res = await send(getAccessToken());
+    // `apiFetch` ile aynı davranış: erişim belirteci süresi dolmuşsa bir kez yenilenip tekrar denenir.
+    if (res.status === 401) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) res = await send(refreshed);
+    }
   } catch {
     throw new ApiClientError(0, { code: "NETWORK_ERROR", message: "Sunucuya ulaşılamadı." }, requestId);
   }

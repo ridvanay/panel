@@ -37,7 +37,8 @@ import CrmLivePage from "@/app/admin/crm/live/page";
 import CrmVisitorsPage from "@/app/admin/crm/visitors/page";
 import CrmVisitorDetailPage from "@/app/admin/crm/visitors/[id]/page";
 import CrmHeatmapPage from "@/app/admin/crm/heatmap/page";
-import { buildPageTree } from "@/lib/crm/page-tree";
+import { buildPageTree, flattenPageTree } from "@/lib/crm/page-tree";
+import { isSafePreviewPath } from "@/lib/crm/safe-path";
 
 const XSS = `<img src=x onerror="alert(1)">`;
 
@@ -189,6 +190,20 @@ describe("sayfa ağacı", () => {
     const doctors = en.children[0]!;
     expect(doctors.own).toBeNull();
     expect(doctors.children.map((c) => c.segment)).toEqual(["b", "a"]);
+  });
+
+  it("öneksiz ana sayfa (/) ilk satırda; kapalı düğümün çocukları görünmez", () => {
+    const row = (path: string, pageviews: number) => ({ path, pageviews, visitors: pageviews, entries: 1, contacts: 0, clicks: 0, avgEngagedSeconds: 30, avgScrollPct: 50 });
+    const tree = buildPageTree([row("/", 40), row("/doctors/a", 5), row("/en", 10)]);
+    const rows = flattenPageTree(tree, (_path, depth) => depth < 1);
+    expect(rows.map((r) => r.node.path)).toEqual(["/", "/en", "/doctors", "/doctors/a"]);
+    expect(rows[0]!.node.total.pageviews).toBe(40);
+    expect(flattenPageTree(tree, () => false).map((r) => r.node.path)).toEqual(["/", "/en", "/doctors"]);
+  });
+
+  it("ısı haritası önizleme yolu yalnızca site-içi pathname", () => {
+    expect(isSafePreviewPath("/de/doctors/a")).toBe(true);
+    for (const p of ["//evil.com", "/\\evil.com", "javascript:alert(1)", "https://evil.com", "/a b"]) expect(isSafePreviewPath(p), p).toBe(false);
   });
 });
 

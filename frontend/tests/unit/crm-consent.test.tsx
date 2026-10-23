@@ -98,6 +98,8 @@ describe("onay bandı", () => {
     expect(url).toMatch(/\/crm\/consent$/);
     expect(JSON.parse(String(init.body))).toMatchObject({ a: false, m: false, act: "REJECT_ALL", l: "tr" });
     expect(startTracker).not.toHaveBeenCalled();
+    // Hiç başlatılmamış modül "durdurmak" için de yüklenmez.
+    expect(stopTracker).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Tümünü reddet" })).not.toBeInTheDocument();
   });
 
@@ -160,7 +162,7 @@ describe("onay bandı", () => {
 
 describe("takip yükleyicisi", () => {
   function consent(analytics: boolean, marketing = false) {
-    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify({ v: CONSENT_VERSION, id: "cccccccccccccccccccccc", analytics, marketing, ts: 1 }));
+    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify({ v: CONSENT_VERSION, id: "cccccccccccccccccccccc", analytics, marketing, ts: Date.now() }));
   }
 
   it("takip kapalıysa, onay eski sürümse ya da cihaz hariç tutulduysa başlamaz", async () => {
@@ -172,10 +174,14 @@ describe("takip yükleyicisi", () => {
     await flushPromises();
     expect(startTracker).not.toHaveBeenCalled();
 
-    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify({ v: "2020-01-01", id: "cccccccccccccccccccccc", analytics: true, marketing: true, ts: 1 }));
+    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify({ v: "2020-01-01", id: "cccccccccccccccccccccc", analytics: true, marketing: true, ts: Date.now() }));
     render(<CrmTrackerLoader config={CONFIG} />);
     await flushPromises();
     expect(startTracker).not.toHaveBeenCalled();
+
+    // 12 aydan eski onay geçersizdir (bant yeniden sorar).
+    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify({ v: CONSENT_VERSION, id: "cccccccccccccccccccccc", analytics: true, marketing: true, ts: Date.now() - 400 * 86_400_000 }));
+    expect(readConsent()).toBeNull();
   });
 
   it("?crm_optout=1 cihazı kalıcı olarak hariç tutar; personel cihazı ayar kapalıyken takip edilmez", async () => {

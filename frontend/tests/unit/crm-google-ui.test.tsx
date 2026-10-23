@@ -75,8 +75,8 @@ describe("Anahtar Kelimeler", () => {
     vi.mocked(crmApi.syncSearchConsole).mockResolvedValue({ ok: true, from: "a", to: "b", rows: 10, error: null });
     wrap(<CrmKeywordsPage />);
     expect(await screen.findByText("obezite ameliyatı")).toBeInTheDocument();
-    expect(screen.getByLabelText("1.5 sıra yükseldi")).toBeInTheDocument();
-    expect(screen.getByLabelText("3 sıra düştü")).toBeInTheDocument();
+    expect(screen.getByText("1.5 sıra yükseldi")).toBeInTheDocument();
+    expect(screen.getByText("3 sıra düştü")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "11–20 (1)" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "1–3 (1)" }));
     await waitFor(() => expect(crmApi.getCrmKeywords).toHaveBeenLastCalledWith(expect.objectContaining({ group: "1-3" })));

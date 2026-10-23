@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CrmDateRange, DataTable, KpiCard, defaultRange, type DateRangeValue } from "@/components/admin/crm/crm-ui";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { isSafePreviewPath } from "@/lib/crm/safe-path";
 
 const FRAME_WIDTH = { desktop: 1280, mobile: 390 } as const;
 
@@ -234,12 +235,19 @@ function HeatmapFrame({ path, device, view, data }: { path: string; device: "des
   }, [points, view, width, height, data.scrollReach, loaded]);
 
   return (
-    <div ref={containerRef} className="w-full overflow-auto bg-muted/30" style={{ maxHeight: "80vh" }}>
+    <div
+      ref={containerRef}
+      tabIndex={0}
+      role="region"
+      aria-label={`Isı haritası: ${path}`}
+      className="w-full overflow-auto bg-muted/30 focus-visible:outline-2 focus-visible:outline-primary"
+      style={{ maxHeight: "80vh" }}
+    >
       <div className="relative mx-auto origin-top-left" style={{ width, height, transform: `scale(${scale})`, marginBottom: height * (scale - 1) }}>
         <iframe
           ref={iframeRef}
           title={`Isı haritası önizlemesi: ${path}`}
-          src={path}
+          src={isSafePreviewPath(path) ? path : "about:blank"}
           sandbox="allow-same-origin"
           referrerPolicy="no-referrer"
           loading="lazy"

@@ -58,6 +58,13 @@ export default function CrmLeadsPage() {
     pageSize: 25,
   };
   const leads = useQuery({ queryKey: ["crm-leads", query], queryFn: () => crmApi.listCrmLeads(query), placeholderData: (previous) => previous });
+  // Görünmeyen kayıtlara toplu işlem uygulanmasın: filtre/sayfa değişince seçim sıfırlanır.
+  const queryKey = JSON.stringify(query);
+  const [selectionKey, setSelectionKey] = useState(queryKey);
+  if (selectionKey !== queryKey) {
+    setSelectionKey(queryKey);
+    setSelected(new Set());
+  }
   const today = useQuery({ queryKey: ["crm-leads-today"], queryFn: crmApi.listTodayCrmLeads });
 
   const refresh = () => {
