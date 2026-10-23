@@ -14,6 +14,7 @@ const NAV_LABEL_KEYS: { href: string; labelKey: string }[] = [
   { href: "/admin/pages", labelKey: "nav.pages" },
   { href: "/admin/blog", labelKey: "nav.blog" },
   { href: "/admin/stats", labelKey: "nav.stats" },
+  { href: "/admin/crm", labelKey: "nav.crm" },
   { href: "/admin/media", labelKey: "nav.media" },
   { href: "/admin/navigation", labelKey: "nav.navigation" },
   { href: "/admin/import", labelKey: "nav.import" },
@@ -23,6 +24,8 @@ const NAV_LABEL_KEYS: { href: string; labelKey: string }[] = [
   { href: "/admin/settings/security", labelKey: "nav.security" },
   { href: "/admin/settings", labelKey: "nav.settings" },
 ];
+
+const CRM_SECTIONS = new Set(["live","leads","funnel","visitors","pages","sources","clicks","heatmap","keywords","settings","utm","audience"]);
 
 /**
  * Bilinen sabit alt-segment adları (`new`, `categories` vb.) için sözlük anahtarı.
@@ -34,6 +37,8 @@ function subSegmentLabelKey(segment: string, parentHref: string): string {
   if (segment === "new") return "breadcrumb.new";
   if (segment === "categories") return "breadcrumb.categories";
   if (parentHref === "/admin/import") return "breadcrumb.jobDetail";
+  // Paket N — CRM alt ekranları (`/admin/crm/<ekran>`); ziyaretçi/talep detayı gibi dinamik id'ler "Düzenle".
+  if (parentHref === "/admin/crm" && CRM_SECTIONS.has(segment)) return `breadcrumb.crm.${segment}`;
   return "breadcrumb.edit";
 }
 

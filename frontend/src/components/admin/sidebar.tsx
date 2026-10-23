@@ -31,6 +31,7 @@ import {
   Tag,
   CalendarClock,
   CreditCard,
+  Radar,
 } from "lucide-react";
 import {
   Sidebar,
@@ -154,6 +155,8 @@ export const navItems: NavItem[] = [
     roles: ["ADMIN", "MANAGER"],
   },
   { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+  // Paket N — CRM yalnızca ADMIN (sunucu ayrıca 2FA şartı koyar; 2FA'sız ADMIN CRM içinde uyarı görür).
+  { href: "/admin/crm", labelKey: "nav.crm", icon: Radar, roles: ["ADMIN"] },
   // `/admin/reports/exports/*` backend'de SiteRole=ADMIN VEYA MANAGER (§5.3 satır 16).
   { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/media", labelKey: "nav.media", icon: ImageIcon },
