@@ -107,7 +107,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
     // Yalnızca YAYINDAKİ kaydı döner; yoksa/hata olursa `null` → sözlük metinleri.
     fetchPageBySlugServer(ABOUT_PAGE_SLUG),
     // `telehealth` modülü kapalıysa/backend erişilemezse `[]` döner → doktor bölümü gizlenir.
-    fetchDoctorsServer({}),
+    fetchDoctorsServer({ locale: lang }),
     // Aynı şekilde `[]` döner → "Tedavi alanları" kutuları hiçbirinde bağlantı olmaz, sade kutu kalır.
     fetchSpecialtiesServer(),
   ]);

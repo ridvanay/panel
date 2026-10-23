@@ -2253,6 +2253,11 @@ model DoctorProfile {
   /// desen: ayrı bir ilişkisel tablo/Prisma enum DEĞİL (JSON içinde enum yaşamaz, platform
   /// string olarak saklanır). Kök `SocialLink` modeliyle (site-wide footer/header) İLİŞKİSİZ.
   socialLinks       Json     @default("[]")
+  /// Paket L (2026-10-23) — içerik çevirileri, `Page.translations` İLE AYNI desen: BCP-47 anahtarlı
+  /// (`{ "tr": { title, bio, aboutHtml, subSpecialty }, "es": {...} }`). Kanonik (varsayılan dil)
+  /// değerler kendi kolonlarında kalır; çeviri yoksa kanonik değere düşülür. `cvEntries`/
+  /// `publications` çevrilmez. `aboutHtml` çevirisi yazma anında sanitize edilir.
+  translations      Json     @default("{}")
   /// ISO 639-1 kodları ("tr", "en", "de") — en fazla 6, Zod ile zorlanır.
   languages         String[]
   /// IANA saat dilimi ("Europe/Istanbul"). Müsaitlik kuralları BU dilimin DUVAR SAATİNDE

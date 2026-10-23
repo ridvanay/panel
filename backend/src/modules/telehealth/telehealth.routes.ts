@@ -5,7 +5,9 @@ import { z } from "zod";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema } from "../../schemas/common";
+import { ApiSuccessSchema, LocaleQuerySchema } from "../../schemas/common";
+import { getLocaleSet, resolveEffectiveLocaleCode } from "../../lib/localization";
+import { localizeDoctor } from "./lib/doctor-localization";
 import {
   AppointmentBookingSchema,
   AppointmentDocumentSchema,
@@ -174,7 +176,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { specialtySlug, language, search, cursor, limit } = request.query;
+      const { specialtySlug, language, search, cursor, limit, locale } = request.query;
       const cursorSeq = parseCursor(cursor);
 
       const specialty = specialtySlug ? await app.prisma.specialty.findUnique({ where: { slug: specialtySlug } }) : null;
@@ -216,20 +218,24 @@ export async function telehealthRoutes(app: FastifyInstance) {
         include: WITH_DOCTOR_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toDoctorProfileDto), buildPageMeta(rows, limit)));
+      // Paket L — `?locale=` ile title/bio/aboutHtml/subSpecialty çevirisi (yoksa kanonik).
+      const effectiveLocale = locale ? resolveEffectiveLocaleCode(await getLocaleSet(app), locale) : undefined;
+      return reply.send(ok(rows.map((row) => toDoctorProfileDto(localizeDoctor(row, effectiveLocale))), buildPageMeta(rows, limit)));
     }
   );
 
   server.get(
     "/doctors/:slug",
-    { schema: { params: DoctorSlugParamSchema, response: { 200: ApiSuccessSchema(DoctorProfileSchema) } } },
+    { schema: { params: DoctorSlugParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(DoctorProfileSchema) } } },
     async (request, reply) => {
       const doctor = await app.prisma.doctorProfile.findFirst({
         where: { slug: request.params.slug, ...PUBLIC_DOCTOR_WHERE },
         include: WITH_DOCTOR_RELATIONS,
       });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
-      return reply.send(ok(toDoctorProfileDto(doctor)));
+      const { locale } = request.query;
+      const effectiveLocale = locale ? resolveEffectiveLocaleCode(await getLocaleSet(app), locale) : undefined;
+      return reply.send(ok(toDoctorProfileDto(localizeDoctor(doctor, effectiveLocale))));
     }
   );
 

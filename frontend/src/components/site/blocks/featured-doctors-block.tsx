@@ -81,7 +81,7 @@ export async function FeaturedDoctorsBlockView({
 }) {
   const { data } = block;
   if (data.source !== "all" && (data.doctorIds ?? []).length === 0) return null;
-  const doctors = resolveFeaturedDoctors(await fetchAllDoctorsServer(), data);
+  const doctors = resolveFeaturedDoctors(await fetchAllDoctorsServer(10, siteContext?.lang), data);
   if (doctors.length === 0) return null;
 
   const { title, subtitle, buttonLabel } = resolveFeaturedDoctorsContent(block, siteContext);

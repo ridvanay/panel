@@ -7351,6 +7351,9 @@ paths:
           description: "ISO 639-1 kod (\"tr\")."
           schema: { type: string }
         - $ref: "#/components/parameters/SearchQuery"
+        # Paket L (2026-10-23) — title/bio/aboutHtml/subSpecialty `DoctorProfile.translations[locale]`'dan;
+        # çeviri yoksa/dil kapalıysa/varsayılan dilse kanonik değer (hata yok).
+        - $ref: "#/components/parameters/LocaleQuery"
       responses:
         "200":
           description: OK
@@ -7368,6 +7371,8 @@ paths:
   /doctors/{slug}:
     parameters:
       - $ref: "#/components/parameters/DoctorSlug"
+      # Paket L — aynı çeviri/fallback kuralı (bkz. `/doctors`).
+      - $ref: "#/components/parameters/LocaleQuery"
     get:
       tags: [TeleHealth]
       security: []

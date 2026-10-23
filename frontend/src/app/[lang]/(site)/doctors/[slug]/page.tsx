@@ -74,7 +74,7 @@ function buildSelfLanguageAlternates(locales: Locale[], defaultLocaleCode: strin
 export async function generateMetadata({ params }: DoctorDetailPageProps): Promise<Metadata> {
   const { lang, slug } = await params;
   const [doctor, locales, settings] = await Promise.all([
-    fetchDoctorBySlugServer(slug),
+    fetchDoctorBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
   ]);
@@ -128,7 +128,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const { from, to } = defaultSlotRange();
 
   const [doctor, locales, pages, slots, dict, telehealthSettings] = await Promise.all([
-    fetchDoctorBySlugServer(slug),
+    fetchDoctorBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchPublishedPagesServer(lang),
     fetchDoctorSlotsServer(slug, from, to),

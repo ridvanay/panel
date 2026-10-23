@@ -34,7 +34,7 @@ export async function generateMetadata({ params, searchParams }: DoctorsPageProp
     searchParams,
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
-    fetchDoctorsServer({}),
+    fetchDoctorsServer({ locale: lang }),
     getSiteDictionary(lang),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
@@ -76,10 +76,10 @@ export default async function DoctorsIndexPage({ params, searchParams }: Doctors
   const { specialty, language, q } = await searchParams;
 
   const [doctors, unfilteredDoctors, locales, dict] = await Promise.all([
-    fetchDoctorsServer({ specialtySlug: specialty, language, search: q }),
+    fetchDoctorsServer({ specialtySlug: specialty, language, search: q, locale: lang }),
     // Filtre seçeneklerini (uzmanlık listesi) oluşturmak için — public bir `/specialties` ucu
     // YOKTUR (§3.2 — tek FK, ayrı bir uç açılmadı), bu yüzden mevcut doktorlardan türetilir.
-    fetchDoctorsServer({}),
+    fetchDoctorsServer({ locale: lang }),
     fetchLocalesServer(),
     getSiteDictionary(lang),
   ]);

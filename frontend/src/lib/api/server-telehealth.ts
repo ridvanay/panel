@@ -13,6 +13,8 @@ export interface ListDoctorsServerFilters {
   specialtySlug?: string;
   language?: string;
   search?: string;
+  /** Paket L — aktif içerik dili; doktor title/bio/aboutHtml/subSpecialty çevirisi (yoksa kanonik). */
+  locale?: string;
 }
 
 export async function fetchDoctorsServer(filters: ListDoctorsServerFilters = {}): Promise<DoctorProfile[]> {
@@ -20,6 +22,7 @@ export async function fetchDoctorsServer(filters: ListDoctorsServerFilters = {})
   if (filters.specialtySlug) query.set("specialtySlug", filters.specialtySlug);
   if (filters.language) query.set("language", filters.language);
   if (filters.search) query.set("search", filters.search);
+  if (filters.locale) query.set("locale", filters.locale);
   const json = await fetchServerJson<{ data: DoctorProfile[] }>(`/doctors?${query.toString()}`, {
     tags: [CACHE_TAGS.doctors],
     transformText: toInternalMediaUrl,
@@ -32,12 +35,13 @@ export async function fetchDoctorsServer(filters: ListDoctorsServerFilters = {})
  * döndürür; 100'den fazla aktif doktorda öne çıkan doktorlar bloğu seçili doktoru kaçırmasın diye.
  * Sonsuz döngüye karşı en fazla `maxPages` sayfa.
  */
-export async function fetchAllDoctorsServer(maxPages = 10): Promise<DoctorProfile[]> {
+export async function fetchAllDoctorsServer(maxPages = 10, locale?: string): Promise<DoctorProfile[]> {
   const doctors: DoctorProfile[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < maxPages; page++) {
     const query = new URLSearchParams({ limit: "100" });
     if (cursor) query.set("cursor", cursor);
+    if (locale) query.set("locale", locale);
     const json: { data: DoctorProfile[]; meta?: { nextCursor?: string | null } } | null = await fetchServerJson(`/doctors?${query.toString()}`, {
       tags: [CACHE_TAGS.doctors],
       transformText: toInternalMediaUrl,
@@ -49,8 +53,9 @@ export async function fetchAllDoctorsServer(maxPages = 10): Promise<DoctorProfil
   return doctors;
 }
 
-export async function fetchDoctorBySlugServer(slug: string): Promise<DoctorProfile | null> {
-  const json = await fetchServerJson<{ data: DoctorProfile }>(`/doctors/${encodeURIComponent(slug)}`, {
+export async function fetchDoctorBySlugServer(slug: string, locale?: string): Promise<DoctorProfile | null> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: DoctorProfile }>(`/doctors/${encodeURIComponent(slug)}${query}`, {
     tags: [CACHE_TAGS.doctors],
     transformText: toInternalMediaUrl,
   });

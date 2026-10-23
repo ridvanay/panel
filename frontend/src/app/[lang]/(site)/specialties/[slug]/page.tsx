@@ -102,7 +102,7 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
 
   const [specialty, doctors, locales, dict] = await Promise.all([
     fetchSpecialtyBySlugServer(slug),
-    fetchDoctorsServer({ specialtySlug: slug }),
+    fetchDoctorsServer({ specialtySlug: slug, locale: lang }),
     fetchLocalesServer(),
     getSiteDictionary(lang),
   ]);
