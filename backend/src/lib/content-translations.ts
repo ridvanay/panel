@@ -190,11 +190,26 @@ export function compareBlockStructure(canonical: unknown, translated: unknown, w
       return compareBlockStructure(c, t, `${where}.${key}`);
     });
   }
-  if (typeof canonical === "string") return typeof translated === "string" ? [] : [`${where}: metin bekleniyordu`];
+  if (typeof canonical === "string") {
+    if (typeof translated !== "string") return [`${where}: metin bekleniyordu`];
+    // Zengin metin: HTML içindeki bağlantı/kaynak hedefleri (href/src) aynı sırayla korunmalı.
+    return sameHtmlTargets(canonical, translated) ? [] : [`${where}: HTML içindeki bağlantı/kaynak hedefleri değiştirilmiş`];
+  }
   return canonical === translated ? [] : [`${where}: değer değiştirilmiş`];
 }
 
 const HTML_TAG = /<[a-z!/][^>]*>/i;
+const HTML_TARGET_ATTR = /\b(?:href|src|srcset|action|formaction|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+
+/** HTML'deki href/src/... hedeflerinin sıralı listesi (metin olmayan string'lerde boş). */
+export function htmlTargets(html: string): string[] {
+  if (!html.includes("<")) return [];
+  return [...html.matchAll(HTML_TARGET_ATTR)].map((m) => (m[1] ?? m[2] ?? m[3] ?? "").trim());
+}
+
+export function sameHtmlTargets(canonical: string, translated: string): boolean {
+  return htmlTargets(canonical).join("\u0000") === htmlTargets(translated).join("\u0000");
+}
 
 function plainText(value: unknown, field: string, max: number, required: boolean): string | null {
   if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) {
@@ -227,7 +242,7 @@ export interface ImportPlan {
   doctors: PreparedDoctor[];
   skipped: { type: string; ref: string; locale?: string; reason: string }[];
   /** Plan anındaki `translations` damgaları — yazma sırasında eşzamanlı değişiklik kontrolü. */
-  stamps: { pages: Record<string, string>; doctors: Record<string, string> };
+  stamps: { pages: Record<string, string>; doctors: Record<string, string>; updatedAt: Record<string, string> };
 }
 
 export async function readTranslationFile(file: string): Promise<TranslationExport> {
@@ -246,7 +261,7 @@ export async function readTranslationFile(file: string): Promise<TranslationExpo
 }
 
 export async function buildImportPlan(db: Db, data: TranslationExport): Promise<ImportPlan> {
-  const plan: ImportPlan = { pages: [], doctors: [], skipped: [], stamps: { pages: {}, doctors: {} } };
+  const plan: ImportPlan = { pages: [], doctors: [], skipped: [], stamps: { pages: {}, doctors: {}, updatedAt: {} } };
 
   for (const item of data.items) {
     const filled = TARGET_LOCALES.filter((l) => item.translations?.[l]);
@@ -271,6 +286,7 @@ export async function buildImportPlan(db: Db, data: TranslationExport): Promise<
         continue;
       }
       plan.stamps.pages[page.id] = JSON.stringify(page.translations ?? {});
+      plan.stamps.updatedAt[page.id] = page.updatedAt.toISOString();
       for (const locale of filled) {
         try {
           plan.pages.push({ id: page.id, ref: item.ref, locale, value: preparePageTranslation(page.blocks, item.translations[locale]!) });
@@ -291,9 +307,10 @@ export async function buildImportPlan(db: Db, data: TranslationExport): Promise<
       continue;
     }
     plan.stamps.doctors[doctor.id] = JSON.stringify(doctor.translations ?? {});
+    plan.stamps.updatedAt[doctor.id] = doctor.updatedAt.toISOString();
     for (const locale of filled) {
       try {
-        plan.doctors.push({ id: doctor.id, ref: item.ref, locale, value: prepareDoctorTranslation(item.translations[locale]!) });
+        plan.doctors.push({ id: doctor.id, ref: item.ref, locale, value: prepareDoctorTranslation(item.translations[locale]!, doctor.aboutHtml) });
       } catch (err) {
         plan.skipped.push({ type: "doctor", ref: item.ref, locale, reason: (err as Error).message });
       }
@@ -316,7 +333,7 @@ export function preparePageTranslation(canonicalBlocks: unknown, input: Record<s
   return value;
 }
 
-export function prepareDoctorTranslation(input: Record<string, unknown>): PreparedDoctor["value"] {
+export function prepareDoctorTranslation(input: Record<string, unknown>, canonicalAboutHtml?: string | null): PreparedDoctor["value"] {
   const value: PreparedDoctor["value"] = {
     title: plainText(input.title, "title", 40, true)!,
     bio: plainText(input.bio, "bio", 5000, true)!,
@@ -325,6 +342,9 @@ export function prepareDoctorTranslation(input: Record<string, unknown>): Prepar
   if (sub) value.subSpecialty = sub;
   if (typeof input.aboutHtml === "string" && input.aboutHtml.trim()) {
     if (input.aboutHtml.length > 20000) throw new TranslationImportError("aboutHtml en fazla 20000 karakter.");
+    if (canonicalAboutHtml !== undefined && !sameHtmlTargets(canonicalAboutHtml ?? "", input.aboutHtml)) {
+      throw new TranslationImportError("aboutHtml içindeki bağlantı/kaynak hedefleri kanonikle aynı olmalı.");
+    }
     const clean = sanitizeRichHtml(input.aboutHtml);
     if (clean) value.aboutHtml = clean;
   }
@@ -361,7 +381,11 @@ export interface TranslationsBackup {
 }
 
 function assertOperator(info: OperatorInfo) {
-  if (!info.operator || info.operator.trim().length < 3) throw new TranslationImportError("--operator zorunlu (en az 3 karakter).");
+  const op = info.operator?.trim() ?? "";
+  // eslint-disable-next-line no-control-regex
+  if (op.length < 3 || op.length > 100 || /[\u0000-\u001f\u007f]/.test(op)) {
+    throw new TranslationImportError("--operator zorunlu (3–100 karakter, kontrol karakteri yok).");
+  }
 }
 
 async function writeBackup(db: Db, backupDir: string, pageIds: string[], doctorIds: string[], now: Date): Promise<string> {
@@ -415,7 +439,8 @@ export async function applyImportPlan(
   await db.$transaction(async (tx) => {
     for (const id of pageIds) {
       const current = await tx.page.findUniqueOrThrow({ where: { id } });
-      if (JSON.stringify(current.translations ?? {}) !== plan.stamps.pages[id]) {
+      // Kanonik bloklar veya çeviriler plan sonrası değiştiyse (yapı doğrulaması eski bloklara göre yapıldı) yazılmaz.
+      if (current.updatedAt.toISOString() !== plan.stamps.updatedAt[id] || JSON.stringify(current.translations ?? {}) !== plan.stamps.pages[id]) {
         throw new TranslationImportError(`Sayfa "${current.slug}" çevirileri plan sonrası değişmiş; işlem geri alındı.`);
       }
       const translations = mergeTargetLocales(
@@ -428,7 +453,7 @@ export async function applyImportPlan(
     }
     for (const id of doctorIds) {
       const current = await tx.doctorProfile.findUniqueOrThrow({ where: { id } });
-      if (JSON.stringify(current.translations ?? {}) !== plan.stamps.doctors[id]) {
+      if (current.updatedAt.toISOString() !== plan.stamps.updatedAt[id] || JSON.stringify(current.translations ?? {}) !== plan.stamps.doctors[id]) {
         throw new TranslationImportError(`Doktor "${current.slug}" çevirileri plan sonrası değişmiş; işlem geri alındı.`);
       }
       const translations = mergeTargetLocales(
@@ -491,24 +516,43 @@ export async function restoreTranslations(
   const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date());
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
-  const restoreTargets = (current: unknown, saved: unknown) => {
+  /** Yalnızca hedef diller; her girdi beklenen alanlara indirgenir ve doğrulanır (yedek operatör girdisidir). */
+  const restoreTargets = (current: unknown, saved: unknown, clean: (entry: Record<string, unknown>) => Record<string, unknown>) => {
     const next = { ...((current ?? {}) as Record<string, unknown>) };
     const old = (saved ?? {}) as Record<string, unknown>;
     for (const locale of TARGET_LOCALES) {
-      if (old[locale] !== undefined) next[locale] = old[locale];
+      const entry = old[locale];
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) next[locale] = clean(entry as Record<string, unknown>);
       else delete next[locale];
     }
     return next;
   };
+  const cleanPage = (entry: Record<string, unknown>) => {
+    const out: Record<string, unknown> = { title: plainText(entry.title, "title", 200, true) };
+    for (const field of ["seoTitle", "seoDescription", "ogTitle"] as const) {
+      const v = plainText(entry[field], field, field === "seoDescription" ? 500 : 200, false);
+      if (v) out[field] = v;
+    }
+    const slug = plainText(entry.slug, "slug", 200, false);
+    if (slug) out.slug = slug;
+    if (entry.blocks !== undefined) {
+      if (!Array.isArray(entry.blocks) || !PageBlockListSchema.safeParse(entry.blocks).success) {
+        throw new TranslationImportError("Yedekteki sayfa çevirisinin blokları geçersiz.");
+      }
+      out.blocks = sanitizePageBlocks(entry.blocks);
+    }
+    return out;
+  };
+  const cleanDoctor = (entry: Record<string, unknown>) => ({ ...prepareDoctorTranslation(entry) });
 
   await db.$transaction(async (tx) => {
     for (const row of backup.pages) {
       const current = await tx.page.findUnique({ where: { id: row.id } });
       if (!current) throw new TranslationImportError(`Yedekteki sayfa bulunamadı (id=${row.id}).`);
-      const next = restoreTargets(current.translations, row.translations);
-      for (const locale of TARGET_LOCALES) {
-        const entry = next[locale] as Record<string, unknown> | undefined;
-        if (entry && Array.isArray(entry.blocks)) next[locale] = { ...entry, blocks: sanitizePageBlocks(entry.blocks) };
+      const next = restoreTargets(current.translations, row.translations, cleanPage);
+      // Yasal sayfaların yeni dillerde çevirisi olmaz (EN'e düşer) — yedekle de enjekte edilemez.
+      if (current.isLegalDocument && TARGET_LOCALES.some((l) => next[l] !== undefined)) {
+        throw new TranslationImportError(`"${current.slug}" yasal sayfa; hedef dillerde çeviri geri yüklenemez.`);
       }
       const page = await tx.page.update({ where: { id: row.id }, data: { translations: next as Prisma.InputJsonValue } });
       await syncContentSlugs(tx, targetLocaleRows.filter((l) => !l.isDefault), "PAGE", page.id, page.slug, page.translations);
@@ -516,11 +560,7 @@ export async function restoreTranslations(
     for (const row of backup.doctors) {
       const current = await tx.doctorProfile.findUnique({ where: { id: row.id } });
       if (!current) throw new TranslationImportError(`Yedekteki doktor bulunamadı (id=${row.id}).`);
-      const next = restoreTargets(current.translations, row.translations);
-      for (const locale of TARGET_LOCALES) {
-        const entry = next[locale] as Record<string, unknown> | undefined;
-        if (entry && typeof entry.aboutHtml === "string") next[locale] = { ...entry, aboutHtml: sanitizeRichHtml(entry.aboutHtml) };
-      }
+      const next = restoreTargets(current.translations, row.translations, cleanDoctor);
       await tx.doctorProfile.update({ where: { id: row.id }, data: { translations: next as Prisma.InputJsonValue } });
     }
     await tx.auditLog.create({

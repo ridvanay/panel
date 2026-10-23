@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { resolveCvEntryMedia } from "./lib/cv-entry-media";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -312,7 +313,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           bio: body.bio,
           aboutHtml: sanitizeAboutHtml(body.aboutHtml) ?? null,
           practiceStartYear: body.practiceStartYear ?? null,
-          cvEntries: (body.cvEntries ?? []) as Prisma.InputJsonValue,
+          cvEntries: ((await resolveCvEntryMedia(app.prisma, body.cvEntries)) ?? []) as Prisma.InputJsonValue,
           publications: (body.publications ?? []) as Prisma.InputJsonValue,
           socialLinks: (body.socialLinks ?? []) as Prisma.InputJsonValue,
           languages: body.languages,
@@ -429,7 +430,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...(avatarMediaId !== undefined ? { avatarMediaId } : {}),
           ...(aboutHtml !== undefined ? { aboutHtml: sanitizeAboutHtml(aboutHtml) } : {}),
           ...(practiceStartYear !== undefined ? { practiceStartYear } : {}),
-          ...(cvEntries !== undefined ? { cvEntries: cvEntries as Prisma.InputJsonValue } : {}),
+          ...(cvEntries !== undefined ? { cvEntries: (await resolveCvEntryMedia(app.prisma, cvEntries)) as Prisma.InputJsonValue } : {}),
           ...(publications !== undefined ? { publications: publications as Prisma.InputJsonValue } : {}),
           ...(socialLinks !== undefined ? { socialLinks: socialLinks as Prisma.InputJsonValue } : {}),
         },

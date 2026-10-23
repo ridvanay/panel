@@ -86,7 +86,12 @@ function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: Telehea
             <span className="absolute -start-[calc(2rem+1px)] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-foreground/60">
               <KindIcon className="h-4 w-4" aria-hidden="true" />
             </span>
-            {years && <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{years}</p>}
+            {/* Paket L — yıl aralığı RTL sayfada ters dizilmesin diye soldan sağa izole edilir. */}
+            {years && (
+              <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">
+                <bdi dir="ltr">{years}</bdi>
+              </p>
+            )}
             <h3 className="mt-1 text-base font-semibold text-foreground">{entry.title}</h3>
             <p className="text-sm text-foreground/70">
               {entry.organization}
@@ -219,7 +224,12 @@ function ExpertisePanel({ doctor, dict }: { doctor: DoctorProfile; dict: Telehea
                     <p className="text-sm font-semibold text-foreground">{entry.title}</p>
                     <p className="text-xs text-foreground/60">
                       {entry.organization}
-                      {entry.startYear != null ? ` · ${cvYearLabel(entry, dict.cvOngoing)}` : ""}
+                      {entry.startYear != null && (
+                        <>
+                          {" · "}
+                          <bdi dir="ltr">{cvYearLabel(entry, dict.cvOngoing)}</bdi>
+                        </>
+                      )}
                     </p>
                     <CvDocumentLink entry={entry} dict={dict} />
                   </div>

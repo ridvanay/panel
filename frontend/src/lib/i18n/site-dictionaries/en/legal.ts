@@ -12,7 +12,7 @@ export const legalStrings = {
    * Paket L — TR/EN dışındaki dillerde yasal sayfa EN metne düşer; sayfanın başında bu not gösterilir.
    * Çevirileri (es/de/ar/ru) hukuk kontrolünden geçmelidir.
    */
-  bindingVersionsNote: "The binding versions of this text are Turkish and English.",
+  bindingVersionsNote: "This page is shown in English for your convenience. The binding versions of this text are Turkish and English.",
 } as const;
 
 export type LegalStrings = Record<keyof typeof legalStrings, string>;

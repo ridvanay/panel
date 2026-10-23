@@ -133,7 +133,11 @@ export default async function RootPage({ params }: PageProps) {
       ) : (
         <>
           {legalMode === "binding-fallback" && <LegalBindingVersionsNote text={dict.legal.bindingVersionsNote} />}
-          <div className={isHomeTemplatePage(page) ? aboutSerif.variable : undefined}>
+          <div
+            className={isHomeTemplatePage(page) ? aboutSerif.variable : undefined}
+            // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
+            {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
+          >
             <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           </div>
           {/* Sayfa başına TEK `FAQPage`/`Place` script — mimar §7.5 Boşluk 1/3, bkz.

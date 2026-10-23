@@ -17,6 +17,7 @@ import {
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toDoctorPortalProfileDto } from "../../mappers";
 import { NotADoctorError, TwoFactorRequiredError, ValidationError } from "../../lib/errors";
+import { resolveCvEntryMedia } from "./lib/cv-entry-media";
 import { buildPageMeta, buildPageMetaWithCounts, parseCursor } from "../../lib/pagination";
 import { env } from "../../config/env";
 import { logAudit } from "../../lib/audit";
@@ -144,6 +145,8 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
 
       assertPracticeStartYearNotFuture(body.practiceStartYear);
       const sanitizedAboutHtml = sanitizeAboutHtml(body.aboutHtml);
+      // Paket L — CV belge bağlantısı istemciden alınmaz, medya kaydından türetilir.
+      const cvEntries = await resolveCvEntryMedia(app.prisma, body.cvEntries);
 
       const updated = await app.prisma.doctorProfile.update({
         where: { id: doctorProfileId },
@@ -153,7 +156,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           ...(sanitizedAboutHtml !== undefined ? { aboutHtml: sanitizedAboutHtml } : {}),
           ...(body.practiceStartYear !== undefined ? { practiceStartYear: body.practiceStartYear } : {}),
           ...(body.languages !== undefined ? { languages: body.languages } : {}),
-          ...(body.cvEntries !== undefined ? { cvEntries: body.cvEntries as Prisma.InputJsonValue } : {}),
+          ...(cvEntries !== undefined ? { cvEntries: cvEntries as Prisma.InputJsonValue } : {}),
           ...(body.publications !== undefined ? { publications: body.publications as Prisma.InputJsonValue } : {}),
           ...(body.socialLinks !== undefined ? { socialLinks: body.socialLinks as Prisma.InputJsonValue } : {}),
           // backend-agent görev notu (2026-09-15) — doktor kendi `timeZone`'unu (ör. Türkiye'deyse

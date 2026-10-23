@@ -16,3 +16,8 @@ storage/private-uploads/
 # Paket B2 — demo doktor purge yedekleri (PII + şifreli alan içerir, asla repoya girmez).
 storage/purge-backups/
 backups/
+
+# Paket L — doktor profili yedekleri ve çeviri export/yedek dosyaları (sunucuda üretilir, repoya girmez).
+storage/doctor-backups/
+storage/translations/
+storage/translation-backups/

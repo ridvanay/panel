@@ -158,7 +158,11 @@ export default async function DynamicPage({ params }: PageProps) {
       ) : (
         <>
           {legalMode === "binding-fallback" && <LegalBindingVersionsNote text={dict.legal.bindingVersionsNote} />}
-          <div className={isHomeTemplate ? aboutSerif.variable : undefined}>
+          <div
+            className={isHomeTemplate ? aboutSerif.variable : undefined}
+            // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
+            {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
+          >
             <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           </div>
           {/* Şablon sayfası `/` adresindeki görünümüyle aynı kalır — CMS paylaşım satırı eklenmez. */}

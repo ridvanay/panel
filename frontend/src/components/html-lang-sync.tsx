@@ -27,7 +27,12 @@ export function HtmlLangSync() {
   const lang = typeof params?.lang === "string" ? params.lang : undefined;
 
   useEffect(() => {
-    if (!lang) return;
+    if (!lang) {
+      // Paket L — `[lang]` dışı rotalar (admin, login) her zaman soldan sağa; Arapça siteden
+      // client-side geçişte `rtl` bayat kalmasın. `lang` mevcut davranışla aynı şekilde korunur.
+      if (document.documentElement.dir !== "ltr") document.documentElement.dir = "ltr";
+      return;
+    }
     if (document.documentElement.lang !== lang) {
       document.documentElement.lang = lang;
     }

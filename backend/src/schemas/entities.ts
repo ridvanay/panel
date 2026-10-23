@@ -2412,17 +2412,24 @@ export const DoctorCvEntrySchema = z
     // Paket L — ekli belge (ör. sertifika PDF'i). `url` medya kaydının URL'idir: S3'te mutlak
     // `https://`, yerel sürücüde site alan adından servis edilen göreli `/uploads/...`.
     mediaId: z.string().uuid().nullable().optional(),
+    // Yazma yollarında sunucu `Media.url`'den yeniden türetir (`telehealth/lib/cv-entry-media.ts`).
     url: z
       .string()
       .trim()
       .max(500)
-      .refine((value) => value.startsWith("https://") || /^\/uploads\/[\w./-]+$/.test(value), {
+      .refine((value) => !value.includes("..") && (value.startsWith("https://") || /^\/uploads\/[\w./-]+$/.test(value)), {
         message: "Yalnızca https:// veya /uploads/ bağlantılarına izin verilir.",
       })
       .nullable()
       .optional(),
   })
   .superRefine((entry, ctx) => {
+    if (entry.url && !entry.mediaId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Belge bağlantısı yalnızca medya kütüphanesinden (mediaId) verilebilir.", path: ["url"] });
+    }
+    if (entry.mediaId && entry.kind !== "CERTIFICATE" && entry.kind !== "AWARD") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Belge yalnızca sertifika/ödül kalemine eklenebilir.", path: ["mediaId"] });
+    }
     if (entry.startYear == null) {
       if (entry.kind !== "MEMBERSHIP") {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "`startYear` zorunlu.", path: ["startYear"] });

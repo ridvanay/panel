@@ -19,7 +19,7 @@ export const ListPublicDoctorsQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().max(100).default(20),
   // Paket L — içerik dili (`LocaleQuery` sözleşmesi: bilinmeyen/kapalı/varsayılan dil → kanonik, hata yok).
-  locale: z.string().min(1).optional(),
+  locale: z.string().min(1).max(35).optional(),
 });
 export type ListPublicDoctorsQuery = z.infer<typeof ListPublicDoctorsQuerySchema>;
 

@@ -356,9 +356,11 @@ function escapeHtml(value: string): string {
 
 /** Yayımlanmaması gereken kişisel bilgi kalıpları (telefon, e-posta, doğum yılı/yeri). */
 const PRIVATE_PATTERNS: { label: string; pattern: RegExp }[] = [
-  { label: "telefon", pattern: /\+?90[\s-]?\(?5\d{2}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/ },
-  { label: "e-posta", pattern: /[\w.+-]+@[\w-]+\.[\w.]+/ },
-  { label: "doğum bilgisi", pattern: /\bborn\b|\b1989\b|doğ(du|um)/i },
+  // Uluslararası (+ önekli) ve 0 ile başlayan yerel numaralar (cep/sabit). Yayın künyelerindeki
+  // sayfa/cilt/DOI/ISBN dizileri bu kalıplara uymaz (+ ya da baştaki tek 0 + 10 hane yok).
+  { label: "telefon", pattern: /\+\d{1,3}(?:[\s().-]*\d){6,12}|(?<![\w/.-])0\s?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}(?!\d)/ },
+  { label: "e-posta", pattern: /[\w.+-]+@[\w-]+\.[\w.]+|mailto:/i },
+  { label: "doğum bilgisi", pattern: /\bborn\b|\bdate of birth\b|\bDOB\b|\bdoğum (tarihi|yeri|yılı)\b|\bdoğdu\b/i },
 ];
 
 export function findPrivateInfo(values: unknown): string[] {
@@ -377,6 +379,7 @@ const PRIMARY_SPECIALTY_NEEDLE = "Obesity & Metabolic Surgery";
 const SECONDARY_SPECIALTY_NEEDLE = "Surgical Oncology";
 export const CV_FILE = "vahitcv.txt";
 export const CERTIFICATE_FILE = "wiley-reviewer-certificate-2025.pdf";
+const CERTIFICATE_ALT_TEXT = "Wiley Reviewer Certificate — Journal of Obesity";
 
 // WhatsApp YOK (bilerek) — sitenin kendi WhatsApp hattıyla karışmasın (2026-10-02 görev dosyası).
 export const TARGET_SOCIAL_LINKS = [
@@ -456,8 +459,9 @@ export async function buildImportPlan(db: Db, dir: string): Promise<ImportPlan> 
   const secondaryId = await findSpecialty(SECONDARY_SPECIALTY_NEEDLE);
   const finalPrimary = doctor.specialtyId ?? primaryId;
 
+  // Yeniden kullanım: bu aracın yüklediği kayıt (dosya adı + boyut + tür + sabit alt metin).
   const existingMedia = await db.media.findFirst({
-    where: { filename: certificate.filename, sizeBytes: certificate.buffer.byteLength, mimeType: "application/pdf" },
+    where: { filename: certificate.filename, sizeBytes: certificate.buffer.byteLength, mimeType: "application/pdf", altText: CERTIFICATE_ALT_TEXT },
     select: { id: true },
   });
 
@@ -491,6 +495,7 @@ export function formatImportPlan(plan: ImportPlan): string {
     `  aboutHtml uzunluğu: ${current.aboutLength} → ${parsed.aboutHtml.length}`,
     `  socialLinks: ${TARGET_SOCIAL_LINKS.length} bağlantı (WhatsApp yok)`,
     `  birincil uzmanlık: ${plan.willConnectPrimary ? "boş → Obesity & Metabolic Surgery bağlanacak" : "dolu, değişmeyecek"}; ek uzmanlık eklenecek: ${plan.additionalSpecialtyIds.length}`,
+    "  gizli bilgi taraması (telefon, e-posta, doğum bilgisi): temiz",
     `  sertifika: ${plan.certificate.filename} (${plan.certificate.buffer.byteLength} bayt) — ${plan.existingMediaId ? `mevcut medya kullanılacak (${plan.existingMediaId})` : "medya olarak YÜKLENECEK (public)"}`,
   ];
   if (parsed.skipped.length) {
@@ -518,8 +523,10 @@ export interface DoctorBackup {
 }
 
 function assertOperator(info: OperatorInfo) {
-  if (!info.operator || info.operator.trim().length < 3) {
-    throw new DoctorImportError("--operator zorunlu (en az 3 karakter; kim çalıştırıyor?).");
+  const op = info.operator?.trim() ?? "";
+  // eslint-disable-next-line no-control-regex
+  if (op.length < 3 || op.length > 100 || /[\u0000-\u001f\u007f]/.test(op)) {
+    throw new DoctorImportError("--operator zorunlu (3–100 karakter, kontrol karakteri yok; kim çalıştırıyor?).");
   }
 }
 
@@ -587,7 +594,7 @@ export async function applyDoctorCvImport(
             filename: plan.certificate.filename,
             mimeType: "application/pdf",
             sizeBytes: plan.certificate.buffer.byteLength,
-            altText: "Wiley Reviewer Certificate — Journal of Obesity",
+            altText: CERTIFICATE_ALT_TEXT,
           },
         });
     const cvEntries = plan.parsed.cvEntries.map((entry) => (entry.kind === "CERTIFICATE" ? { ...entry, mediaId: media.id, url: media.url } : entry));

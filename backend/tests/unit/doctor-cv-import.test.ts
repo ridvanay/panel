@@ -22,23 +22,23 @@ const SAMPLE = fs.readFileSync(path.resolve(__dirname, "../fixtures/doctor-cv-sa
 
 describe("doctor-cv-import — yardımcılar", () => {
   it("yazarlardaki dipnot rakamlarını temizler, büyük soyadı ve ayraçları düzeltir", () => {
-    expect(cleanAuthors("Vahit MUTLU, Burak Barutcu 2, Samet Şahin 3, Kadir Yılmaz 5")).toBe("Vahit Mutlu, Burak Barutcu, Samet Şahin, Kadir Yılmaz");
-    expect(cleanAuthors("Vahit MUTLU , Karacı R., Yuksek M.A.,Yılmaz K.,")).toBe("Vahit Mutlu, Karacı R., Yuksek M.A., Yılmaz K.");
+    expect(cleanAuthors("Vahit MUTLU, Ali Örnek 2, Ayşe Deneme 3, Mehmet Sınama 5")).toBe("Vahit Mutlu, Ali Örnek, Ayşe Deneme, Mehmet Sınama");
+    expect(cleanAuthors("Vahit MUTLU , Deneme R., Örnek M.A.,Sınama K.,")).toBe("Vahit Mutlu, Deneme R., Örnek M.A., Sınama K.");
     expect(cleanAuthors("GlobalSurg Collaborative/ Vahit MUTLU")).toBe("GlobalSurg Collaborative / Vahit Mutlu");
-    expect(cleanAuthors("Ismail Tarım , Vahit MUTLU,, Fatma Özen")).toBe("Ismail Tarım, Vahit Mutlu, Fatma Özen");
+    expect(cleanAuthors("Ali Örnek , Vahit MUTLU,, Ayşe Deneme")).toBe("Ali Örnek, Vahit Mutlu, Ayşe Deneme");
   });
 
   it("DOI'yi çeşitli yazımlardan çıkarır, sondaki noktayı atar", () => {
-    expect(extractDoi("Acta Parasitol. 2025 Nov 13;70(6):209. doi: 10.1007/s11686-025-01153-5.")).toBe("10.1007/s11686-025-01153-5");
-    expect(extractDoi("BMC Surgery DOI:10.1186/s12893-026-03494-y")).toBe("10.1186/s12893-026-03494-y");
-    expect(extractDoi("https://doi.org/10.1093/bjs/znae129")).toBe("10.1093/bjs/znae129");
+    expect(extractDoi("Acta Parasitol. 2025 Nov 13;70(6):209. doi: 10.1234/s00000-025-00003-5.")).toBe("10.1234/s00000-025-00003-5");
+    expect(extractDoi("BMC Surgery DOI:10.1234/s00000-026-00004-y")).toBe("10.1234/s00000-026-00004-y");
+    expect(extractDoi("https://doi.org/10.1234/ex/abc123")).toBe("10.1234/ex/abc123");
     expect(extractDoi("J Compr Surg. 2024;2(1):6-11.")).toBeNull();
   });
 
   it("yılı DOI/URL içindeki sayılardan değil, metinden bulur", () => {
-    expect(extractYear("Current Problems in Surgery 76 DOI:10.1016/j.cpsurg.2026.101982")).toBeNull();
-    expect(extractYear("https://doi.org/10.4328/ACAM.22885")).toBeNull();
-    expect(extractYear("Obesity Surgery (2025) 35:5471–5479 https://doi.org/10.1007/s11695-025-08381-8")).toBe(2025);
+    expect(extractYear("Current Problems in Surgery 76 DOI:10.1234/j.example.2026.000002")).toBeNull();
+    expect(extractYear("https://doi.org/10.1234/EX.00006")).toBeNull();
+    expect(extractYear("Obesity Surgery (2025) 35:5471–5479 https://doi.org/10.1234/s00000-025-00005-8")).toBe(2025);
     expect(extractYear("3.Karadeniz Kongresi 20-22 Kasım 2020")).toBe(2020);
     expect(extractYear("Sabuncuoglu Serefeddin Health Science ISBN: 2667-6338,2021/ Vol.3:1")).toBe(2021);
   });
@@ -72,10 +72,10 @@ describe("doctor-cv-import — parseCvText", () => {
     expect(parsed.skipped).toContainEqual(expect.objectContaining({ title: "Evaluation of surgical competence outcomes" }));
 
     const first = byKind("INTERNATIONAL_ARTICLE")[0]!;
-    expect(first).toMatchObject({ year: 2026, doi: "10.2147/PPA.S566811", authors: "Vahit Mutlu, Burak Barutcu, Samet Şahin" });
+    expect(first).toMatchObject({ year: 2026, doi: "10.1234/EX.S000001", authors: "Vahit Mutlu, Ali Örnek, Ayşe Deneme" });
     // doi.org bağlantısı `url`'e kopyalanmaz (DOI zaten bağlantı üretir); https olmayan URL hiç alınmaz.
-    expect(byKind("INTERNATIONAL_ARTICLE")[1]).toMatchObject({ year: 2024, doi: "10.1093/bjs/znae129", url: null });
-    expect(byKind("NATIONAL_ARTICLE")[0]!.url).toBe("https://dergipark.org.tr/en/pub/omujecm/issue/68947/931463");
+    expect(byKind("INTERNATIONAL_ARTICLE")[1]).toMatchObject({ year: 2024, doi: "10.1234/ex/abc123", url: null });
+    expect(byKind("NATIONAL_ARTICLE")[0]!.url).toBe("https://example.org/journal/issue/1/2");
 
     const [chapter, editorship, turkish] = byKind("BOOK_CHAPTER");
     expect(chapter).toMatchObject({ title: "Sağlıkta Güvenlik Unsurları: Hasta Güvenliği", year: 2023 });
@@ -108,6 +108,12 @@ describe("doctor-cv-import — parseCvText", () => {
     expect(findPrivateInfo({ bio: "Call +90 530 211 44 32" })).toEqual(["telefon"]);
     expect(findPrivateInfo({ x: "mail dr.someone@gmail.com" })).toEqual(["e-posta"]);
     expect(findPrivateInfo({ x: "He was born in 1989." })).toEqual(["doğum bilgisi"]);
+    // Yerel/uluslararası numara biçimleri ve mailto: da yakalanır.
+    expect(findPrivateInfo({ x: "Tel: 0532 123 45 67" })).toEqual(["telefon"]);
+    expect(findPrivateInfo({ x: "Office +44 20 7946 0958" })).toEqual(["telefon"]);
+    expect(findPrivateInfo({ url: "mailto:someone" })).toEqual(["e-posta"]);
+    // Yanlış alarm yok: künye sayfa/cilt aralıkları, ISBN, "doğum sonrası" başlığı.
+    expect(findPrivateInfo({ x: "Obesity Surgery (2025) 35:5471–5479; ISBN: 978-625-8103-82-3; Doğum sonrası takip" })).toEqual([]);
     expect(() => validateParsed({ ...parsed, bio: "Contact: dr.someone@gmail.com" })).toThrow(DoctorImportError);
   });
 });

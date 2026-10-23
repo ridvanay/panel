@@ -131,7 +131,7 @@ describe("content-translations (Paket L)", () => {
       const bad = esPage();
       (bad.blocks as { data: Record<string, unknown> }[])[0]!.data.href = "https://evil.example";
       d.items.find((i) => i.type === "page")!.translations.de = bad;
-      d.items.find((i) => i.type === "doctor")!.translations.ar = { title: "د.", bio: "جراح عام.", aboutHtml: "<p>سيرة</p><img src=x onerror=alert(1)>" };
+      d.items.find((i) => i.type === "doctor")!.translations.ar = { title: "د.", bio: "جراح عام.", aboutHtml: '<p onclick="alert(1)">سيرة</p>' };
       d.items.find((i) => i.type === "specialty")!.translations.ru = { name: "Хирургическая онкология" };
     });
     const plan = await buildImportPlan(app.prisma, await readTranslationFile(file));
@@ -158,7 +158,7 @@ describe("content-translations (Paket L)", () => {
     expect(doctor.title).toBe("Dr.");
     expect(dt.tr).toEqual({ title: "Doç. Dr.", bio: "Genel cerrah." });
     expect(dt.ar!.title).toBe("د.");
-    expect(dt.ar!.aboutHtml).not.toContain("onerror");
+    expect(dt.ar!.aboutHtml).not.toContain("onclick");
 
     expect(await app.prisma.auditLog.count({ where: { action: IMPORT_AUDIT_ACTION } })).toBe(1);
     expect(JSON.parse(await fs.readFile(backupFile, "utf8")).pages[0].translations).not.toHaveProperty("es");
