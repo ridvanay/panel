@@ -17,6 +17,8 @@ const CONTENT_LOCALE_TO_INTL: Record<string, string> = {
   fr: "fr-FR",
   es: "es-ES",
   ar: "ar-SA",
+  // Paket L
+  ru: "ru-RU",
 };
 
 export function contentLocaleToIntl(code: string): string {

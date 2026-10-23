@@ -13,7 +13,7 @@ import type { PortalStrings } from "./en/portal";
  * (DB locale kümesi, `GET /locales`) İLE KARIŞTIRILMAZ (§14.2 tablo) — bu, repo'daki
  * `site-dictionaries/<code>/` klasörlerinin kapsadığı, yalnızca DEPLOY ile genişleyen kümedir.
  */
-export type SiteUiLocale = "en" | "tr";
+export type SiteUiLocale = "en" | "tr" | "es" | "de" | "ar" | "ru";
 
 export type SiteDictionary = {
   common: CommonStrings;

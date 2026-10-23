@@ -8,6 +8,11 @@ export const legalStrings = {
     "This document is not currently available in your selected language. To avoid the risk of incomplete or inaccurate translation of legal content, this document is published only in its official language.",
   /** Varsayılan dildeki sürüme bağlantı veren buton metni — `{defaultLocaleLabel}` yer tutucusu. */
   viewInDefaultLocale: "View the {defaultLocaleLabel} version",
+  /**
+   * Paket L — TR/EN dışındaki dillerde yasal sayfa EN metne düşer; sayfanın başında bu not gösterilir.
+   * Çevirileri (es/de/ar/ru) hukuk kontrolünden geçmelidir.
+   */
+  bindingVersionsNote: "The binding versions of this text are Turkish and English.",
 } as const;
 
 export type LegalStrings = Record<keyof typeof legalStrings, string>;

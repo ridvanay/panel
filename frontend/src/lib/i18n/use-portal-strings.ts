@@ -7,6 +7,10 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { contentLocaleToIntl } from "./content-locale-to-intl";
 import { portalStrings as enPortalStrings, type PortalStrings } from "./site-dictionaries/en/portal";
 import { portalStrings as trPortalStrings } from "./site-dictionaries/tr/portal";
+import { portalStrings as esPortalStrings } from "./site-dictionaries/es/portal";
+import { portalStrings as dePortalStrings } from "./site-dictionaries/de/portal";
+import { portalStrings as arPortalStrings } from "./site-dictionaries/ar/portal";
+import { portalStrings as ruPortalStrings } from "./site-dictionaries/ru/portal";
 
 /**
  * Paket A2 (2026-10-18) — hasta/doktor portalı, randevu sihirbazı ve başlıktaki kullanıcı menüsü
@@ -17,7 +21,14 @@ import { portalStrings as trPortalStrings } from "./site-dictionaries/tr/portal"
  * Provider'ın OLMADIĞI tek yer admin panelidir (ör. `AppointmentStatusBadge` admin listesinde);
  * `useActiveLocaleCode` orada "tr" döner, admin paneli de bilerek Türkçe kalır.
  */
-const PORTAL_DICTIONARIES: Record<string, PortalStrings> = { en: enPortalStrings, tr: trPortalStrings };
+const PORTAL_DICTIONARIES: Record<string, PortalStrings> = {
+  en: enPortalStrings,
+  tr: trPortalStrings,
+  es: esPortalStrings,
+  de: dePortalStrings,
+  ar: arPortalStrings,
+  ru: ruPortalStrings,
+};
 
 export function usePortalStrings(): { t: PortalStrings; lang: string; intlLocale: string } {
   const lang = useActiveLocaleCode();

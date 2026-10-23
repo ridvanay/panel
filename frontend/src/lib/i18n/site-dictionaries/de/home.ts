@@ -1,0 +1,60 @@
+import type { HomeStrings } from "../en/home";
+
+export const homeStrings: HomeStrings = {
+  heroEyebrow: "Telemedizinische Beratung",
+  heroTitle: "Buchen Sie eine Videosprechstunde bei ausgewiesenen Fachärzten",
+  heroBody: "Mit wenigen Klicks buchen und Ihren Arzt in einer sicheren Videosprechstunde treffen – ganz bequem von zu Hause.",
+  heroPrimaryCta: "Arzt finden",
+  heroSecondaryCta: "So funktioniert es",
+  heroCardTitle: "Sichere Videosprechstunde",
+  heroCardText: "Teilnahme direkt im Browser",
+
+  trust1Title: "Rund um die Uhr erreichbar",
+  trust1Text: "Finden Sie einen verfügbaren Arzt und buchen Sie einen Termin zu einer passenden Zeit.",
+  trust2Title: "Verschlüsselte Sprechstunden",
+  trust2Text: "Videosprechstunden finden über eine verschlüsselte Verbindung statt.",
+  trust3Title: "Geprüfte Profile",
+  trust3Text: "Veröffentlichte Arztprofile durchlaufen eine Identitäts- und Approbationsprüfung.",
+
+  specialtiesEyebrow: "Fachgebiete",
+  specialtiesTitle: "Behandlung nach Fachgebiet finden",
+  specialtiesViewAll: "Alle Fachgebiete ansehen",
+
+  howEyebrow: "So funktioniert es",
+  howTitle: "In drei Schritten zur Sprechstunde",
+  step1Title: "Arzt auswählen",
+  step1Text: "Filtern Sie nach Fachgebiet und Sprache und sehen Sie sich die Arztprofile an.",
+  step2Title: "Termin buchen",
+  step2Text: "Wählen Sie einen freien Termin und schließen Sie Ihre Buchung online ab.",
+  step3Title: "Am Videoanruf teilnehmen",
+  step3Text: "Treten Sie zu Ihrem Termin der Sprechstunde direkt im Browser bei.",
+  stepLabel: "Schritt {number}",
+
+  journeyEyebrow: "Internationale Patientenreise",
+  journeyTitle: "Aus aller Welt nach Istanbul",
+  journeyBody:
+    "WM Health koordiniert jede Etappe Ihrer Reise nach Istanbul – mit einer Behandlungsplanung, die sich an Ihren medizinischen Bedürfnissen orientiert.",
+  journeyStep1Title: "Planung vor der Reise",
+  journeyStep1Text: "Teilen Sie uns Ihre Krankengeschichte und Ihre Behandlungsziele mit, damit wir vor Ihrer Reise einen auf Sie abgestimmten Plan erstellen können.",
+  journeyStep2Title: "Ankunft in Istanbul",
+  journeyStep2Text: "Unser Team empfängt Sie, organisiert Ihre Unterkunft und bestätigt Ihre Termine.",
+  journeyStep3Title: "Untersuchung und Behandlung",
+  journeyStep3Text: "Ihr behandelnder Arzt führt die notwendigen Untersuchungen durch und setzt Ihren Behandlungsplan um.",
+  journeyStep4Title: "Nachsorge nach Ihrer Rückkehr",
+  journeyStep4Text: "Auch nach Ihrer Heimkehr bleiben wir mit Ihnen in Kontakt, um Ihre Genesung zu begleiten und Ihre Fragen zu beantworten.",
+  journeyCountry1: "Vereinigtes Königreich",
+  journeyCountry2: "Deutschland",
+  journeyCountry3: "Russland",
+  journeyCountry4: "Kasachstan",
+  journeyCountry5: "Saudi-Arabien",
+  journeyCountry6: "Vereinigte Staaten",
+  journeyIstanbulLabel: "Istanbul",
+
+  doctorsEyebrow: "Unser Ärzteteam",
+  doctorsTitle: "Unsere Ärzte kennenlernen",
+  doctorsCta: "Alle Ärzte ansehen",
+
+  closingTitle: "Beginnen Sie mit einer Beratung",
+  closingPrimaryCta: "Arzt finden",
+  closingSecondaryCta: "Kontakt aufnehmen",
+};

@@ -1,0 +1,60 @@
+import type { HomeStrings } from "../en/home";
+
+export const homeStrings: HomeStrings = {
+  heroEyebrow: "Consulta de telemedicina",
+  heroTitle: "Reserve una videoconsulta con especialistas de referencia",
+  heroBody: "Reserve en pocos clics y reúnase con su médico en una videoconsulta segura, sin salir de casa.",
+  heroPrimaryCta: "Buscar un médico",
+  heroSecondaryCta: "Cómo funciona",
+  heroCardTitle: "Videoconsulta segura",
+  heroCardText: "Conéctese desde su navegador",
+
+  trust1Title: "Acceso 24/7",
+  trust1Text: "Encuentre un médico disponible y reserve una cita a la hora que le convenga.",
+  trust2Title: "Consultas cifradas",
+  trust2Text: "Las videoconsultas se realizan a través de una conexión cifrada.",
+  trust3Title: "Perfiles verificados",
+  trust3Text: "Los perfiles de médicos publicados pasan por una verificación de identidad y de título.",
+
+  specialtiesEyebrow: "Especialidades",
+  specialtiesTitle: "Encuentre atención por especialidad",
+  specialtiesViewAll: "Ver todas las especialidades",
+
+  howEyebrow: "Cómo funciona",
+  howTitle: "Tres pasos hasta su consulta",
+  step1Title: "Elija un médico",
+  step1Text: "Filtre por especialidad e idioma y consulte los perfiles de los médicos.",
+  step2Title: "Reserve una hora",
+  step2Text: "Elija un horario disponible y complete su reserva en línea.",
+  step3Title: "Únase a la videollamada",
+  step3Text: "A la hora de su cita, únase a la consulta desde su navegador.",
+  stepLabel: "Paso {number}",
+
+  journeyEyebrow: "Recorrido internacional del paciente",
+  journeyTitle: "De todo el mundo a Estambul",
+  journeyBody:
+    "WM Health coordina cada etapa de su viaje a Estambul, con una planificación del tratamiento guiada por sus necesidades médicas.",
+  journeyStep1Title: "Planificación antes del viaje",
+  journeyStep1Text: "Comparta su historial médico y sus objetivos de tratamiento para que podamos preparar un plan adaptado a usted antes de viajar.",
+  journeyStep2Title: "Llegada a Estambul",
+  journeyStep2Text: "Nuestro equipo le recibe, organiza su alojamiento y confirma el calendario de sus citas.",
+  journeyStep3Title: "Exploración y tratamiento",
+  journeyStep3Text: "Su médico responsable realiza las exploraciones necesarias y lleva a cabo su plan de tratamiento.",
+  journeyStep4Title: "Seguimiento tras su regreso",
+  journeyStep4Text: "Seguimos en contacto cuando vuelve a casa para apoyar su recuperación y responder a sus preguntas.",
+  journeyCountry1: "Reino Unido",
+  journeyCountry2: "Alemania",
+  journeyCountry3: "Rusia",
+  journeyCountry4: "Kazajistán",
+  journeyCountry5: "Arabia Saudí",
+  journeyCountry6: "Estados Unidos",
+  journeyIstanbulLabel: "Estambul",
+
+  doctorsEyebrow: "Nuestro equipo médico",
+  doctorsTitle: "Conozca a nuestros médicos",
+  doctorsCta: "Ver todos los médicos",
+
+  closingTitle: "Empiece con una consulta",
+  closingPrimaryCta: "Buscar un médico",
+  closingSecondaryCta: "Contáctenos",
+};
