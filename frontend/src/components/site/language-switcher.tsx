@@ -32,6 +32,11 @@ interface LanguageSwitcherProps {
   onNavigate?: () => void;
   /** Tetik düğmesinin erişilebilir adı (ör. sözlükten "Language"); aktif dil adı sonuna eklenir. */
   label?: string;
+  /**
+   * Paket O — dar masaüstü genişliğinde (lg, xl altı) tetikte yalnızca bayrak: dil adı `xl` ve üstünde
+   * görünür; dar ekranda ad `title` (tooltip) ve `aria-label` olarak kalır.
+   */
+  compactBelowXl?: boolean;
 }
 
 /**
@@ -62,7 +67,15 @@ const ACTIVE_ROW_CLASS = "font-semibold text-[var(--site-accent,#2951A0)]";
  * Klavye: tetik Enter/Space ile açılır, ok tuşlarıyla gezinilir, Enter seçer, Esc kapatır
  * (base-ui `Menu` — `menu`/`menuitem` rolleri, `aria-expanded` tetikte).
  */
-export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = "dropdown", heading, onNavigate, label = "Dil seç" }: LanguageSwitcherProps) {
+export function LanguageSwitcher({
+  locales: allLocales,
+  activeLocale,
+  variant = "dropdown",
+  heading,
+  onNavigate,
+  label = "Dil seç",
+  compactBelowXl = false,
+}: LanguageSwitcherProps) {
   const alternates = useLocaleAlternates();
   // Paket L — kapalı (`enabled: false`) diller hiçbir koşulda listelenmez (public `/locales` zaten
   // yalnızca açık dilleri döner; bu, önbellekte kalmış eski bir listeye karşı savunmadır).
@@ -119,10 +132,19 @@ export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button type="button" variant="ghost" size="sm" className="group gap-2" aria-label={`${label}: ${activeLocale.nativeLabel}`} />}
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn("group gap-2", compactBelowXl && "gap-1 px-2 xl:gap-2")}
+            aria-label={`${label}: ${activeLocale.nativeLabel}`}
+            title={compactBelowXl ? activeLocale.nativeLabel : undefined}
+          />
+        }
       >
         <LocaleFlag code={activeLocale.code} />
-        <span lang={activeLocale.code} dir={localeDirection(activeLocale.code)}>
+        <span lang={activeLocale.code} dir={localeDirection(activeLocale.code)} className={compactBelowXl ? "hidden xl:inline" : undefined}>
           {activeLocale.nativeLabel}
         </span>
         <ChevronDown

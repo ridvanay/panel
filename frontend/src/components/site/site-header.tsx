@@ -214,6 +214,47 @@ const NAV_LINK_TEXT_CLASSES =
   "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)] focus-visible:text-[var(--site-header-link-hover)]";
 const NAV_LINK_ACTIVE_TEXT_CLASS = "text-[var(--site-header-link-active)]";
 
+/**
+ * Paket O — masaüstü satırının (menü + CTA + dil + giriş) logonun yanına sığıp sığmadığını ölçer.
+ * `lg` altında her zaman `false` (mobil düzen zaten CSS ile seçilir). Ölçüm, satırın doğal
+ * genişliğine (`scrollWidth`, `whitespace-nowrap`) göre yapılır; gizliyken de ölçülebilir.
+ */
+function useDesktopOverflow(
+  navRef: React.RefObject<HTMLElement | null>,
+  logoRef: React.RefObject<HTMLElement | null>,
+  desktopRef: React.RefObject<HTMLElement | null>
+): boolean {
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const measure = () => {
+      const nav = navRef.current;
+      const logo = logoRef.current;
+      const desktop = desktopRef.current;
+      // Yerleşimi olmayan ortamda (görünmez ağaç, jsdom) genişlik 0'dır — karar verilmez.
+      if (!nav || !logo || !desktop || nav.clientWidth === 0) return;
+      if (window.innerWidth < 1024) {
+        setOverflow(false);
+        return;
+      }
+      const style = window.getComputedStyle(nav);
+      const padding = parseFloat(style.paddingLeft || "0") + parseFloat(style.paddingRight || "0");
+      const gap = parseFloat(style.columnGap || "0") || 16;
+      const available = nav.clientWidth - padding - logo.offsetWidth - gap;
+      setOverflow(desktop.scrollWidth > available + 1);
+    };
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (navRef.current) observer?.observe(navRef.current);
+    if (desktopRef.current) observer?.observe(desktopRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [navRef, logoRef, desktopRef]);
+  return overflow;
+}
+
 /** Hesap/favori/sepet ikonlarının paylaştığı metin/ikon rengi sınıfları — `headerLinkActiveColor` BURAYA UYGULANMAZ. */
 const ICON_LINK_TEXT_CLASSES = "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)]";
 
@@ -318,6 +359,15 @@ export function SiteHeader({
     setMobileMenuOpen(false);
   }
   const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  // Paket O — masaüstünde (lg+) başlık TEK SATIR. Ölçüm: menü + düğmeler logonun yanına sığmıyorsa
+  // (uzun RU/DE etiketleri, çok sayıda menü öğesi) masaüstü satırı gizlenir ve mevcut mobil menü
+  // (hamburger) kullanılır. Masaüstü satırı gizliyken de DOM'da kalır (ölçüm için, erişilebilirlik
+  // ağacından çıkarılır).
+  const navRef = useRef<HTMLElement>(null);
+  const logoRef = useRef<HTMLAnchorElement>(null);
+  const desktopRef = useRef<HTMLDivElement>(null);
+  const desktopOverflow = useDesktopOverflow(navRef, logoRef, desktopRef);
   const ctaClassName = cn(
     "rounded-[var(--site-radius)] font-medium transition-all duration-300 hover:opacity-85",
     SITE_BUTTON_STYLE_CLASSES[buttonStyle]
@@ -336,10 +386,12 @@ export function SiteHeader({
       )}
     >
       <nav
-        className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:flex-wrap lg:gap-4 lg:py-4"
+        ref={navRef}
+        className="relative mx-auto flex max-w-5xl flex-nowrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:gap-4 lg:py-4"
         aria-label={dict.siteNavigationAriaLabel}
+        data-desktop-overflow={desktopOverflow ? "true" : undefined}
       >
-        <Link href={localize("/")} className="flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground">
+        <Link ref={logoRef} href={localize("/")} className="flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground lg:shrink-0">
           {settings.logoUrl ? (
             // Sabit KARE kutu modeli TERK EDİLDİ: logo artık kendi doğal en-boy oranını korur.
             // Render yüksekliği `headerLogoHeight` (varsayılan `DEFAULT_HEADER_LOGO_HEIGHT`) ile
@@ -367,8 +419,18 @@ export function SiteHeader({
           )}
         </Link>
 
-        {/* Masaüstü (lg ve üstü) — görünüm DEĞİŞMEDİ (yalnızca alt menü genişliği içeriğe göre). */}
-        <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 text-sm lg:flex">
+        {/* Masaüstü (lg ve üstü) — TEK SATIR (Paket O). Dar masaüstünde (lg, xl altı) aralıklar küçülür,
+            dil seçicide yalnızca bayrak, girişte yalnızca ikon kalır; yine sığmazsa mobil menüye geçilir. */}
+        <div
+          ref={desktopRef}
+          data-testid="site-header-desktop"
+          aria-hidden={desktopOverflow || undefined}
+          inert={desktopOverflow || undefined}
+          className={cn(
+            "hidden flex-nowrap items-center gap-x-3 whitespace-nowrap text-sm lg:flex xl:gap-x-5",
+            desktopOverflow && "lg:pointer-events-none lg:invisible lg:absolute lg:end-4 lg:top-0"
+          )}
+        >
           {navTree.map((link) => {
             if (link.children.length > 0) {
               const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
@@ -409,7 +471,7 @@ export function SiteHeader({
               {ctaLabel}
             </Link>
           )}
-          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} />}
+          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compactBelowXl />}
 
           {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık. `/hesabim/siparislerim` bağlantısı
               `products` modülü açıkken gösterilir (SUNUM kararı, yetki kararı DEĞİL —
@@ -431,7 +493,7 @@ export function SiteHeader({
                 }
               >
                 <UserIcon className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden max-w-[8rem] truncate sm:inline">{user.name}</span>
+                <span className="hidden max-w-[8rem] truncate xl:inline">{user.name}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {/* §K6 — KESİN sıra: Doktor Paneli → Randevularım → Hesabım → Siparişlerim → Çıkış Yap. */}
@@ -476,7 +538,7 @@ export function SiteHeader({
               className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
             >
               <UserIcon className="h-4.5 w-4.5" aria-hidden="true" />
-              <span className="hidden sm:inline">{dict.login}</span>
+              <span className="hidden xl:inline">{dict.login}</span>
             </Link>
           )}
 
@@ -519,7 +581,7 @@ export function SiteHeader({
 
         {/* Mobil/tablet (lg altı) — yalnızca logo + CTA + hamburger. CTA gizlenmez; dar ekranda
             küçültülür (`text-xs`, dar padding; `sm` ve üstünde normal boyut). */}
-        <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
+        <div className={cn("flex shrink-0 items-center gap-1.5", desktopOverflow ? "lg:flex" : "lg:hidden")}>
           {showCta && (
             <Link
               href={localize(ctaHref as string)}
