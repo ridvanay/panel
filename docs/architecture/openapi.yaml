@@ -13258,6 +13258,87 @@ paths:
       responses:
         "200": { description: OK }
         "404": { $ref: "#/components/responses/NotFound" }
+  # --- CRM N4: Google entegrasyonları (ADMIN + 2FA) -----------------------------------------
+  /admin/crm/search-console/connect:
+    post:
+      tags: [CRM]
+      summary: Search Console bağla (servis hesabı JSON'u şifreli saklanır)
+      description: >
+        Servis hesabı JSON'u `ENCRYPTION_KEY` ile AES-256-GCM şifreli saklanır ve hiçbir yanıtta geri dönmez
+        (yalnızca maskeli servis hesabı e-postası). Denetim kaydı `crm.search_console.connect`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [propertyUrl, credentialsJson]
+              properties:
+                propertyUrl: { type: string, description: "sc-domain:alanadi.com ya da https://alanadi.com/" }
+                credentialsJson: { type: string, description: "Google Cloud servis hesabı anahtarı (JSON metni)" }
+      responses:
+        "200": { description: "OK — CrmSettings" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [CRM]
+      summary: Search Console bağlantısını kaldır (kimlik silinir)
+      responses:
+        "200": { description: "OK — CrmSettings" }
+  /admin/crm/search-console/sync:
+    post:
+      tags: [CRM]
+      summary: Search Console şimdi senkronize et (ilk seferde 90 gün, sonra son 3 gün)
+      responses:
+        "200": { description: "OK — { ok, from, to, rows, error }" }
+        "409": { description: Bağlı değil }
+  /admin/crm/keywords:
+    get:
+      tags: [CRM]
+      summary: Anahtar kelimeler (sıra, değişim, gösterim, tıklama, TO, en iyi sayfa; 1–3/4–10/11–20/21+)
+      description: Değişim önceki eşit uzunluktaki döneme göre (pozitif = sıralama yükseldi). Bağlantı durumu `connection` alanında.
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+        - { name: group, in: query, schema: { type: string, enum: [all, "1-3", "4-10", "11-20", "21+"], default: all } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/ads/conversions:
+    get:
+      tags: [CRM]
+      summary: Google Ads çevrimdışı dönüşüm CSV'si (ödenen randevular + "Tedavi Oldu" talepleri)
+      description: >
+        İlk satır `Parameters:TimeZone=Europe/Istanbul`, başlık `Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency`.
+        Yalnızca pazarlama onayıyla saklanmış geçerli gclid'ler; gbraid/wbraid satırları bu şablonla yüklenemediği için alınmaz
+        (`x-crm-skipped-braid` başlığında sayısı). Denetim kaydı `crm.export`.
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv: { schema: { type: string } }
+  /admin/crm/ads/import-leads:
+    post:
+      tags: [CRM]
+      summary: Google Ads potansiyel müşteri formu CSV'sini talep olarak içe aktar
+      description: Başlıklar esnek eşlenir (Lead ID, Full Name, User Email, Phone Number, Campaign Name, Submission Time, GCL_ID…). Aynı Lead ID tekrar içe aktarılmaz. En fazla 5000 satır / 2 MB. Denetim kaydı `crm.lead.import`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [csv]
+              properties:
+                csv: { type: string, maxLength: 2000000 }
+      responses:
+        "200": { description: "OK — { created, skipped, errors }" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
 components:
   securitySchemes:
@@ -13928,6 +14009,7 @@ components:
       schema: { type: integer, example: 42 }
 
   schemas:
+
 
     CrmLeadStatus:
       type: string

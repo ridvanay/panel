@@ -3546,3 +3546,21 @@ model CrmLeadNote {
   @@index([leadId, createdAt])
   @@map("crm_lead_notes")
 }
+
+/// Paket N4 — Google Search Console arama analitiği (gün × sorgu × sayfa). Kişisel veri İÇERMEZ (Google'ın
+/// toplu verisi). `rowKey` = md5(sorgu|sayfa) — uzun sorgu/URL'lerin tekil indeks sınırını aşmaması için.
+model CrmSearchConsoleRow {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  rowKey      String
+  query       String
+  page        String
+  clicks      Int      @default(0)
+  impressions Int      @default(0)
+  ctr         Float    @default(0)
+  position    Float    @default(0)
+
+  @@unique([date, rowKey])
+  @@index([date])
+  @@map("crm_search_console_rows")
+}

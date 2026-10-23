@@ -3,6 +3,7 @@ import { env } from "../../config/env";
 import { CRM_HEARTBEAT_SECONDS } from "./crm.collect";
 import { readCrmSettings } from "./crm.settings";
 import { anonymizeExpiredLeads, CRM_LEAD_INGEST_INTERVAL_MS, runLeadIngest } from "./crm.leads";
+import { pruneSearchConsoleRows, syncSearchConsole } from "./crm.google";
 
 /**
  * Paket N1 — günlük özet (`crm_daily_rollups`) ve saklama süresi temizliği.
@@ -218,6 +219,7 @@ export function registerCrmSchedulers(app: FastifyInstance): void {
     (async () => {
       await runCrmRetentionSweep(app);
       await anonymizeExpiredLeads(app);
+      await pruneSearchConsoleRows(app);
       for (const step of extraRetentionSteps) await step(app, new Date());
     })().catch((err) => app.log.error({ err }, "CRM saklama süresi temizliği başarısız oldu"));
   };
@@ -226,19 +228,33 @@ export function registerCrmSchedulers(app: FastifyInstance): void {
     runLeadIngest(app).catch((err) => app.log.error({ err }, "CRM talep içe alma başarısız oldu"));
   };
 
+  // Search Console: bağlıysa ve son senkron 20 saatten eskiyse (6 saatte bir kontrol) — günde bir senkron.
+  const searchConsole = () => {
+    (async () => {
+      const sc = (await readCrmSettings(app.prisma)).searchConsole;
+      if (!sc.credentialsCiphertext) return;
+      if (sc.lastSyncAt && Date.now() - Date.parse(sc.lastSyncAt) < 20 * 3_600_000) return;
+      await syncSearchConsole(app);
+    })().catch((err) => app.log.error({ err }, "Search Console zamanlanmış senkronu başarısız oldu"));
+  };
+
   rollup(3);
   retention();
   leadIngest();
+  searchConsole();
   const rollupTimer = setInterval(() => rollup(2), CRM_ROLLUP_INTERVAL_MS);
   const retentionTimer = setInterval(retention, CRM_RETENTION_INTERVAL_MS);
   const leadTimer = setInterval(leadIngest, CRM_LEAD_INGEST_INTERVAL_MS);
   leadTimer.unref();
+  const searchConsoleTimer = setInterval(searchConsole, 6 * 3_600_000);
+  searchConsoleTimer.unref();
   rollupTimer.unref();
   retentionTimer.unref();
   app.addHook("onClose", () => {
     clearInterval(rollupTimer);
     clearInterval(retentionTimer);
     clearInterval(leadTimer);
+    clearInterval(searchConsoleTimer);
   });
 }
 
