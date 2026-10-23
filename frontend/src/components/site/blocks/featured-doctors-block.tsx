@@ -29,14 +29,12 @@ const SHAPE_CLASS: Record<FeaturedDoctorsImageShape, string> = {
   square: "aspect-square rounded-[var(--site-radius)]",
 };
 
-const DEFAULT_BUTTON_LABEL: Record<string, string> = { tr: "Tüm Doktorlar", en: "All Doctors" };
-
 const EMPTY_CONTENT: FeaturedDoctorsLocaleContent = { title: "", subtitle: "", buttonLabel: "" };
 
-/** Dil kopyası yoksa varsayılan dilin metni; o da yoksa boş. */
+/** Dil kopyası yoksa EN (kanonik dil), o da yoksa varsayılan dilin metni; o da yoksa boş (Paket O). */
 export function resolveFeaturedDoctorsContent(block: FeaturedDoctorsBlock, siteContext?: BlockSiteContext): FeaturedDoctorsLocaleContent {
   const content = block.data.content ?? {};
-  if (siteContext) return content[siteContext.lang] ?? content[siteContext.defaultLocaleCode] ?? EMPTY_CONTENT;
+  if (siteContext) return content[siteContext.lang] ?? content.en ?? content[siteContext.defaultLocaleCode] ?? EMPTY_CONTENT;
   return Object.values(content)[0] ?? EMPTY_CONTENT;
 }
 
@@ -86,8 +84,9 @@ export async function FeaturedDoctorsBlockView({
 
   const { title, subtitle, buttonLabel } = resolveFeaturedDoctorsContent(block, siteContext);
   const localizedHref = (path: string) => (siteContext ? withLocalePrefix(path, siteContext.lang, siteContext.defaultLocaleCode) : path);
-  const allButtonLabel = buttonLabel || DEFAULT_BUTTON_LABEL[siteContext?.lang ?? "tr"] || DEFAULT_BUTTON_LABEL.tr;
   const dict = await getSiteDictionary(siteContext?.lang ?? "tr");
+  // Paket O — boş bırakılan düğme metni sabit TR/EN yerine site sözlüğünden (6 dil).
+  const allButtonLabel = buttonLabel || dict.about.viewAllDoctorsCta;
   const shape = data.imageShape ?? "oval";
   const renderCard = (doctor: DoctorProfile) => <FeaturedDoctorCard doctor={doctor} href={localizedHref(`/doctors/${doctor.slug}`)} shape={shape} />;
 

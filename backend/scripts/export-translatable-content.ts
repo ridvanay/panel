@@ -6,11 +6,12 @@
  *
  * ÇALIŞTIRMA (backend/ dizininden):
  *   npx tsx scripts/export-translatable-content.ts [--out=storage/translations/export.json]
+ *   npx tsx scripts/export-translatable-content.ts --only=page:home[,doctor:vahit-mutlu]   # Paket O: yalnızca seçilen kalemler (tip:ref ya da tip:id)
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
-import { buildTranslationExport, summarizeExport } from "../src/lib/content-translations";
+import { TranslationImportError, buildTranslationExport, summarizeExport } from "../src/lib/content-translations";
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -20,12 +21,20 @@ function arg(name: string): string | undefined {
 async function main() {
   const prisma = new PrismaClient();
   try {
-    const data = await buildTranslationExport(prisma);
+    const only = arg("only")?.split(",").filter(Boolean);
+    const data = await buildTranslationExport(prisma, new Date(), { only });
     const out = path.resolve(arg("out") ?? `storage/translations/export-${data.exportedAt.replace(/[:.]/g, "-")}.json`);
     await fs.mkdir(path.dirname(out), { recursive: true });
     await fs.writeFile(out, JSON.stringify(data, null, 2), "utf8");
     console.log(`Kanonik dil: ${data.canonicalLocale} — kalemler:\n${summarizeExport(data)}`);
     console.log(`\nYazıldı: ${out}`);
+  } catch (err) {
+    if (err instanceof TranslationImportError) {
+      console.error(`HATA: ${err.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
   } finally {
     await prisma.$disconnect();
   }

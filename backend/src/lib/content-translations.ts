@@ -6,8 +6,8 @@
  * Akış: export (EN kanonik metin) → ayrı oturumda çeviri (`translations.<dil>` doldurulur) → import.
  *
  * İçe aktarma KURALLARI:
- *  - Yalnızca `translations.es|de|ar|ru` yazılır. Kanonik kolonlara ve `translations.tr`/`en`'e
- *    ASLA dokunulmaz; dosyada başka bir dil anahtarı varsa işlem reddedilir.
+ *  - Yalnızca `translations.es|de|ar|ru` (ve koşullu `tr`, bkz. Paket O) yazılır. Kanonik kolonlara ve
+ *    `translations.en`'e ASLA dokunulmaz; dosyada başka bir dil anahtarı varsa işlem reddedilir.
  *  - Yalnızca `translations` kolonu olan içerik yazılabilir: sayfa (`Page`) ve doktor profili.
  *    Uzmanlık, menü, footer ve site ayarları export'ta "importable: false" olarak listelenir
  *    (bu modellerde çeviri kolonu yok; ayrı bir migration gerektirir).
@@ -16,6 +16,12 @@
  *    URL'ler, renkler ve sayılar kanonikle birebir aynı olmalıdır. HTML sanitize edilir.
  *  - Kanonik metin export'tan sonra değiştiyse o kalem atlanır (çeviri bayat olabilir).
  *  - Varsayılan kuru çalışma; `--confirm` ile yedek → tek transaction → audit → önbellek yenileme.
+ *
+ * Paket O (2026-10-23):
+ *  - `translations.tr` de içe aktarılabilir (varsayılan dil TR'nin kendi çevirisi; kanonik EN). TR
+ *    YALNIZCA hedefte TR çevirisi yoksa ya da `overwriteLocales` içinde "tr" varsa
+ *    (`--overwrite-locale=tr`) yazılır. `en` anahtarı her zaman reddedilir — kanonik metne dokunulmaz.
+ *  - Export `only` seçicileriyle (`--only=page:home,doctor:vahit-mutlu`) yalnızca seçilen kalemleri yazar.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -28,7 +34,11 @@ import { sanitizePageBlocks } from "../modules/pages/lib/sanitize-blocks";
 import { PageBlockListSchema } from "../modules/pages/pages.schemas";
 
 export const TARGET_LOCALES = ["es", "de", "ar", "ru"] as const;
-export type TargetLocale = (typeof TARGET_LOCALES)[number];
+/** İçe aktarılabilen tüm diller: hedef diller + varsayılan dil TR (koşullu; bkz. dosya başı). */
+export const IMPORT_LOCALES = ["tr", ...TARGET_LOCALES] as const;
+export type TargetLocale = (typeof IMPORT_LOCALES)[number];
+/** Mevcut çeviri varken yalnızca açık izinle (`--overwrite-locale=tr`) yazılan diller. */
+const GUARDED_LOCALES: readonly string[] = ["tr"];
 export const EXPORT_KIND = "translatable-content-export";
 export const EXPORT_VERSION = 1;
 export const IMPORT_CONFIRM_KEY = "import-translations";
@@ -51,6 +61,8 @@ export interface ExportItem {
   updatedAt: string | null;
   fields: Record<string, unknown>;
   translations: Partial<Record<TargetLocale, Record<string, unknown> | null>>;
+  /** Paket O — kayıtta zaten dolu olan çeviri dilleri (bilgi; `tr` doluysa üzerine yazılmaz). */
+  existingLocales?: string[];
 }
 
 export interface TranslationExport {
@@ -71,17 +83,47 @@ type Db = Pick<
 const NO_COLUMN_NOTE = "Bu modelde çeviri kolonu yok; içe aktarılmaz (ayrı bir migration gerektirir).";
 
 const INSTRUCTIONS =
-  "Her kalemde `fields` kanonik (EN) metindir. Çeviriyi aynı alan adlarıyla `translations.<es|de|ar|ru>` içine yazın. " +
+  "Her kalemde `fields` kanonik (EN) metindir. Çeviriyi aynı alan adlarıyla `translations.<tr|es|de|ar|ru>` içine yazın. " +
+  "`translations.tr` yalnızca hedefte TR çevirisi yoksa (ya da --overwrite-locale=tr ile) yazılır; `existingLocales` mevcut çevirileri gösterir. " +
   "Sayfa `blocks` ağacında YALNIZCA görünen metinleri çevirin: yapı, id/type, bağlantı (href/url), görsel, renk ve sayı değerleri aynen kalmalıdır. " +
   "`importable: false` kalemler bilgi amaçlıdır, içe aktarılmaz. Boş bırakılan (null) dil yazılmaz.";
 
-const emptyTranslations = (): ExportItem["translations"] => Object.fromEntries(TARGET_LOCALES.map((l) => [l, null]));
+const emptyTranslations = (): ExportItem["translations"] => Object.fromEntries(IMPORT_LOCALES.map((l) => [l, null]));
+
+/** Kayıttaki `translations` JSON'unda dolu olan diller (export'ta çevirmene bilgi). */
+function filledLocales(translations: unknown): string[] {
+  if (!translations || typeof translations !== "object" || Array.isArray(translations)) return [];
+  return Object.entries(translations as Record<string, unknown>)
+    .filter(([, v]) => v && typeof v === "object" && Object.keys(v as object).length > 0)
+    .map(([k]) => k)
+    .sort();
+}
+
+/**
+ * `--only` seçicileri: `tip:ref` ya da `tip:id` (örn. `page:home`, `doctor:vahit-mutlu`). Virgülle
+ * çoklu. Eşleşmeyen seçiciler `unmatched` içinde döner (script hata verir).
+ */
+export function filterExportItems(items: ExportItem[], selectors: string[]): { items: ExportItem[]; unmatched: string[] } {
+  const parsed = selectors
+    .map((raw) => raw.trim())
+    .filter(Boolean)
+    .map((raw) => {
+      const idx = raw.indexOf(":");
+      if (idx <= 0 || idx === raw.length - 1) throw new TranslationImportError(`Geçersiz --only seçicisi "${raw}" (beklenen tip:ref, örn. page:home).`);
+      return { raw, type: raw.slice(0, idx), key: raw.slice(idx + 1) };
+    });
+  const matches = (item: ExportItem, sel: { type: string; key: string }) => item.type === sel.type && (item.ref === sel.key || item.id === sel.key);
+  return {
+    items: items.filter((item) => parsed.some((sel) => matches(item, sel))),
+    unmatched: parsed.filter((sel) => !items.some((item) => matches(item, sel))).map((sel) => sel.raw),
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Export (salt okuma)                                                 */
 /* ------------------------------------------------------------------ */
 
-export async function buildTranslationExport(db: Db, now = new Date()): Promise<TranslationExport> {
+export async function buildTranslationExport(db: Db, now = new Date(), options: { only?: string[] } = {}): Promise<TranslationExport> {
   const defaultLocale = (await db.locale.findFirst({ where: { isDefault: true } }))?.code ?? "en";
   const items: ExportItem[] = [];
 
@@ -98,6 +140,7 @@ export async function buildTranslationExport(db: Db, now = new Date()): Promise<
       updatedAt: p.updatedAt.toISOString(),
       fields: { title: p.title, seoTitle: p.seoTitle, seoDescription: p.seoDescription, ogTitle: p.ogTitle, blocks: p.blocks },
       translations: emptyTranslations(),
+      existingLocales: filledLocales(p.translations),
     });
   }
 
@@ -112,6 +155,7 @@ export async function buildTranslationExport(db: Db, now = new Date()): Promise<
       updatedAt: d.updatedAt.toISOString(),
       fields: { title: d.title, bio: d.bio, aboutHtml: d.aboutHtml, subSpecialty: d.subSpecialty },
       translations: emptyTranslations(),
+      existingLocales: filledLocales(d.translations),
     });
   }
 
@@ -141,14 +185,21 @@ export async function buildTranslationExport(db: Db, now = new Date()): Promise<
     });
   }
 
+  let selected = items;
+  if (options.only?.length) {
+    const filtered = filterExportItems(items, options.only);
+    if (filtered.unmatched.length) throw new TranslationImportError(`--only eşleşmeyen kalem: ${filtered.unmatched.join(", ")}`);
+    selected = filtered.items;
+  }
+
   return {
     kind: EXPORT_KIND,
     version: EXPORT_VERSION,
     exportedAt: now.toISOString(),
     canonicalLocale: defaultLocale,
-    targetLocales: TARGET_LOCALES,
+    targetLocales: IMPORT_LOCALES,
     instructions: INSTRUCTIONS,
-    items,
+    items: selected,
   };
 }
 
@@ -252,19 +303,43 @@ export async function readTranslationFile(file: string): Promise<TranslationExpo
   }
   for (const item of parsed.items) {
     for (const key of Object.keys(item.translations ?? {})) {
-      if (!(TARGET_LOCALES as readonly string[]).includes(key)) {
-        throw new TranslationImportError(`"${item.type}:${item.ref}" kaleminde izin verilmeyen dil anahtarı "${key}" var (yalnızca ${TARGET_LOCALES.join(", ")}).`);
+      if (!(IMPORT_LOCALES as readonly string[]).includes(key)) {
+        throw new TranslationImportError(`"${item.type}:${item.ref}" kaleminde izin verilmeyen dil anahtarı "${key}" var (yalnızca ${IMPORT_LOCALES.join(", ")}).`);
       }
     }
   }
   return parsed;
 }
 
-export async function buildImportPlan(db: Db, data: TranslationExport): Promise<ImportPlan> {
+export interface ImportPlanOptions {
+  /** `--overwrite-locale=tr` — mevcut TR çevirisinin üzerine yazılmasına izin verir. */
+  overwriteLocales?: string[];
+}
+
+/**
+ * Korunan dil (TR) hedefte zaten doluysa ve açık izin yoksa yazılmaz: atlananlara eklenir.
+ * Dönen liste yazılabilecek dillerdir.
+ */
+function guardLocales(
+  plan: ImportPlan,
+  item: { type: string; ref: string },
+  filled: TargetLocale[],
+  current: unknown,
+  options: ImportPlanOptions
+): TargetLocale[] {
+  const existing = filledLocales(current);
+  return filled.filter((locale) => {
+    if (!GUARDED_LOCALES.includes(locale) || !existing.includes(locale) || options.overwriteLocales?.includes(locale)) return true;
+    plan.skipped.push({ type: item.type, ref: item.ref, locale, reason: `Hedefte ${locale.toUpperCase()} çevirisi zaten var; üzerine yazmak için --overwrite-locale=${locale}.` });
+    return false;
+  });
+}
+
+export async function buildImportPlan(db: Db, data: TranslationExport, options: ImportPlanOptions = {}): Promise<ImportPlan> {
   const plan: ImportPlan = { pages: [], doctors: [], skipped: [], stamps: { pages: {}, doctors: {}, updatedAt: {} } };
 
   for (const item of data.items) {
-    const filled = TARGET_LOCALES.filter((l) => item.translations?.[l]);
+    const filled = IMPORT_LOCALES.filter((l) => item.translations?.[l]);
     if (filled.length === 0) continue;
     if (item.type !== "page" && item.type !== "doctor") {
       plan.skipped.push({ type: item.type, ref: item.ref, reason: NO_COLUMN_NOTE });
@@ -287,7 +362,7 @@ export async function buildImportPlan(db: Db, data: TranslationExport): Promise<
       }
       plan.stamps.pages[page.id] = JSON.stringify(page.translations ?? {});
       plan.stamps.updatedAt[page.id] = page.updatedAt.toISOString();
-      for (const locale of filled) {
+      for (const locale of guardLocales(plan, item, filled, page.translations, options)) {
         try {
           plan.pages.push({ id: page.id, ref: item.ref, locale, value: preparePageTranslation(page.blocks, item.translations[locale]!) });
         } catch (err) {
@@ -308,7 +383,7 @@ export async function buildImportPlan(db: Db, data: TranslationExport): Promise<
     }
     plan.stamps.doctors[doctor.id] = JSON.stringify(doctor.translations ?? {});
     plan.stamps.updatedAt[doctor.id] = doctor.updatedAt.toISOString();
-    for (const locale of filled) {
+    for (const locale of guardLocales(plan, item, filled, doctor.translations, options)) {
       try {
         plan.doctors.push({ id: doctor.id, ref: item.ref, locale, value: prepareDoctorTranslation(item.translations[locale]!, doctor.aboutHtml) });
       } catch (err) {
@@ -353,13 +428,13 @@ export function prepareDoctorTranslation(input: Record<string, unknown>, canonic
 
 export function formatImportPlan(plan: ImportPlan): string {
   const count = (list: { locale: string }[]) =>
-    TARGET_LOCALES.map((l) => `${l}=${list.filter((x) => x.locale === l).length}`).join(" ");
+    IMPORT_LOCALES.map((l) => `${l}=${list.filter((x) => x.locale === l).length}`).join(" ");
   const lines = [`Sayfa çevirileri: ${plan.pages.length} (${count(plan.pages)})`, `Doktor çevirileri: ${plan.doctors.length} (${count(plan.doctors)})`];
   if (plan.skipped.length) {
     lines.push(`Atlanan (${plan.skipped.length}):`);
     for (const s of plan.skipped) lines.push(`  - [${s.type}${s.locale ? `/${s.locale}` : ""}] ${s.ref}: ${s.reason}`);
   }
-  lines.push("Kanonik alanlara ve translations.tr/en'e dokunulmaz.");
+  lines.push("Kanonik (EN) alanlara ve translations.en'e dokunulmaz; translations.tr yalnızca boşsa ya da --overwrite-locale=tr ile yazılır.");
   return lines.join("\n");
 }
 
@@ -376,6 +451,8 @@ export interface OperatorInfo {
 export interface TranslationsBackup {
   kind: "content-translations-backup";
   createdAt: string;
+  /** Paket O — bu yedeğin ait olduğu import'un yazdığı diller; geri dönüş yalnızca bunlara dokunur. Eski yedeklerde yok → hedef diller. */
+  locales?: string[];
   pages: { id: string; translations: unknown }[];
   doctors: { id: string; translations: unknown }[];
 }
@@ -388,10 +465,10 @@ function assertOperator(info: OperatorInfo) {
   }
 }
 
-async function writeBackup(db: Db, backupDir: string, pageIds: string[], doctorIds: string[], now: Date): Promise<string> {
+async function writeBackup(db: Db, backupDir: string, pageIds: string[], doctorIds: string[], now: Date, locales: string[]): Promise<string> {
   const pages = await db.page.findMany({ where: { id: { in: pageIds } }, select: { id: true, translations: true } });
   const doctors = await db.doctorProfile.findMany({ where: { id: { in: doctorIds } }, select: { id: true, translations: true } });
-  const backup: TranslationsBackup = { kind: "content-translations-backup", createdAt: now.toISOString(), pages, doctors };
+  const backup: TranslationsBackup = { kind: "content-translations-backup", createdAt: now.toISOString(), locales, pages, doctors };
   await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
   const file = path.join(backupDir, `translations-${now.toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.writeFile(file, JSON.stringify(backup, null, 2), { encoding: "utf8", mode: 0o600 });
@@ -407,7 +484,7 @@ function appLike(db: Db): FastifyInstance {
 function mergeTargetLocales(current: unknown, updates: { locale: TargetLocale; value: Record<string, unknown> }[]): Record<string, unknown> {
   const next = { ...((current ?? {}) as Record<string, unknown>) };
   for (const u of updates) {
-    if (!(TARGET_LOCALES as readonly string[]).includes(u.locale)) throw new TranslationImportError(`Hedef dışı dil: ${u.locale}`);
+    if (!(IMPORT_LOCALES as readonly string[]).includes(u.locale)) throw new TranslationImportError(`Hedef dışı dil: ${u.locale}`);
     next[u.locale] = { ...((next[u.locale] as Record<string, unknown>) ?? {}), ...u.value };
   }
   return next;
@@ -433,7 +510,10 @@ export async function applyImportPlan(
   const doctorIds = [...new Set(plan.doctors.map((d) => d.id))];
   if (pageIds.length + doctorIds.length === 0) throw new TranslationImportError("Yazılacak çeviri yok.");
   const now = options.now ?? new Date();
-  const backupFile = await writeBackup(db, options.backupDir, pageIds, doctorIds, now);
+  const writtenLocales = IMPORT_LOCALES.filter((l) => [...plan.pages, ...plan.doctors].some((x) => x.locale === l));
+  // Yedek her zaman hedef dilleri kapsar (eski davranış); TR yalnızca bu import TR yazdıysa.
+  const backupLocales = [...new Set<string>([...TARGET_LOCALES, ...writtenLocales])];
+  const backupFile = await writeBackup(db, options.backupDir, pageIds, doctorIds, now, backupLocales);
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
   await db.$transaction(async (tx) => {
@@ -491,6 +571,9 @@ export async function readTranslationsBackup(file: string): Promise<Translations
   if (parsed?.kind !== "content-translations-backup" || !Array.isArray(parsed.pages) || !Array.isArray(parsed.doctors)) {
     throw new TranslationImportError("Geçerli bir çeviri yedeği değil.");
   }
+  if (parsed.locales !== undefined && (!Array.isArray(parsed.locales) || parsed.locales.some((l) => !(IMPORT_LOCALES as readonly string[]).includes(l)))) {
+    throw new TranslationImportError("Yedekteki dil listesi geçersiz.");
+  }
   const isMap = (v: unknown) => v !== null && typeof v === "object" && !Array.isArray(v);
   for (const row of [...parsed.pages, ...parsed.doctors]) {
     if (typeof row?.id !== "string" || !isMap(row.translations)) throw new TranslationImportError("Yedekte geçersiz kayıt var.");
@@ -499,9 +582,9 @@ export async function readTranslationsBackup(file: string): Promise<Translations
 }
 
 /**
- * Yedekteki `translations` değerlerini geri yazar — YALNIZCA hedef dil anahtarları (es/de/ar/ru)
- * yedekteki hâline döner; tr/en ve diğer anahtarlar mevcut hâliyle korunur (yedek dosyası elle
- * değiştirilmiş olsa bile kanonik/TR içeriğe dokunulamaz). Sayfa çevirisi HTML'i sanitize edilir.
+ * Yedekteki `translations` değerlerini geri yazar — YALNIZCA yedeğin `locales` listesindeki diller
+ * (eski yedekte hedef diller es/de/ar/ru; TR yalnızca o import TR yazdıysa) yedekteki hâline döner;
+ * en ve diğer anahtarlar mevcut hâliyle korunur. Sayfa çevirisi HTML'i sanitize edilir.
  */
 export async function restoreTranslations(
   db: Db,
@@ -513,14 +596,16 @@ export async function restoreTranslations(
   const backup = await readTranslationsBackup(backupFile);
   const pageIds = backup.pages.map((p) => p.id);
   const doctorIds = backup.doctors.map((d) => d.id);
-  const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date());
+  // Geri dönülecek diller: yedeğin kaydettiği import dilleri (eski yedek → yalnızca hedef diller). `en` asla.
+  const restoreLocales = (backup.locales ?? [...TARGET_LOCALES]).filter((l): l is TargetLocale => (IMPORT_LOCALES as readonly string[]).includes(l));
+  const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date(), restoreLocales);
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
   /** Yalnızca hedef diller; her girdi beklenen alanlara indirgenir ve doğrulanır (yedek operatör girdisidir). */
   const restoreTargets = (current: unknown, saved: unknown, clean: (entry: Record<string, unknown>) => Record<string, unknown>) => {
     const next = { ...((current ?? {}) as Record<string, unknown>) };
     const old = (saved ?? {}) as Record<string, unknown>;
-    for (const locale of TARGET_LOCALES) {
+    for (const locale of restoreLocales) {
       const entry = old[locale];
       if (entry && typeof entry === "object" && !Array.isArray(entry)) next[locale] = clean(entry as Record<string, unknown>);
       else delete next[locale];
@@ -551,7 +636,7 @@ export async function restoreTranslations(
       if (!current) throw new TranslationImportError(`Yedekteki sayfa bulunamadı (id=${row.id}).`);
       const next = restoreTargets(current.translations, row.translations, cleanPage);
       // Yasal sayfaların yeni dillerde çevirisi olmaz (EN'e düşer) — yedekle de enjekte edilemez.
-      if (current.isLegalDocument && TARGET_LOCALES.some((l) => next[l] !== undefined)) {
+      if (current.isLegalDocument && TARGET_LOCALES.some((l) => restoreLocales.includes(l) && next[l] !== undefined)) {
         throw new TranslationImportError(`"${current.slug}" yasal sayfa; hedef dillerde çeviri geri yüklenemez.`);
       }
       const page = await tx.page.update({ where: { id: row.id }, data: { translations: next as Prisma.InputJsonValue } });

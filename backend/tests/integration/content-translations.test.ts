@@ -13,6 +13,7 @@ import {
   applyImportPlan,
   buildImportPlan,
   buildTranslationExport,
+  filterExportItems,
   readTranslationFile,
   restoreTranslations,
   type TranslationExport,
@@ -118,11 +119,57 @@ describe("content-translations (Paket L)", () => {
     expect(await app.prisma.page.findMany({ orderBy: { slug: "asc" } })).toEqual(before);
   });
 
-  it("dosyada tr/en anahtarı varsa reddedilir", async () => {
+  it("dosyada en (kanonik) anahtarı varsa reddedilir", async () => {
     const file = await translatedFile((d) => {
-      (d.items[0]!.translations as Record<string, unknown>).tr = { title: "Ezme denemesi" };
+      (d.items[0]!.translations as Record<string, unknown>).en = { title: "Ezme denemesi" };
     });
     await expect(readTranslationFile(file)).rejects.toThrow(TranslationImportError);
+  });
+
+  it("Paket O — export --only yalnızca seçilen kalemleri yazar; eşleşmeyen seçici hata verir", async () => {
+    const data = await buildTranslationExport(app.prisma, new Date(), { only: ["page:about", `doctor:${doctorId}`] });
+    expect(data.items.map((i) => `${i.type}:${i.ref}`)).toEqual(["page:about", "doctor:vahit-mutlu"]);
+    expect(data.targetLocales).toContain("tr");
+    expect(data.items[0]!.existingLocales).toEqual(["tr"]);
+    await expect(buildTranslationExport(app.prisma, new Date(), { only: ["page:yok"] })).rejects.toThrow(/eşleşmeyen/);
+    expect(() => filterExportItems(data.items, ["page"])).toThrow(TranslationImportError);
+  });
+
+  it("Paket O — TR yalnızca hedef boşsa ya da --overwrite-locale=tr ile yazılır; EN kanonik değişmez", async () => {
+    await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { translations: {} } });
+    const trPage = { title: "Hakkımızda (yeni)", blocks: [
+      { id: "h1", type: "heading", data: { text: "Kliniğimiz", level: 2, href: "/about" } },
+      { id: "t1", type: "text", data: { html: "<p>Size bakıyoruz.</p>" } },
+    ] };
+    const file = await translatedFile((d) => {
+      d.items.find((i) => i.type === "page")!.translations.tr = trPage;
+      d.items.find((i) => i.type === "doctor")!.translations.tr = { title: "Doç. Dr.", bio: "Genel cerrah." };
+    });
+    const parsed = await readTranslationFile(file);
+
+    // Sayfada TR dolu → atlanır; doktorda TR boş → yazılır.
+    const plan = await buildImportPlan(app.prisma, parsed);
+    expect(plan.pages).toEqual([]);
+    expect(plan.skipped).toEqual([expect.objectContaining({ type: "page", locale: "tr", reason: expect.stringMatching(/--overwrite-locale=tr/) })]);
+    expect(plan.doctors.map((d) => d.locale)).toEqual(["tr"]);
+
+    const forced = await buildImportPlan(app.prisma, parsed, { overwriteLocales: ["tr"] });
+    expect(forced.pages.map((p) => p.locale)).toEqual(["tr"]);
+    const { backupFile } = await applyImportPlan(app.prisma, forced, { ...OP, confirm: IMPORT_CONFIRM_KEY, backupDir: dir, sourceFile: file });
+
+    const page = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+    expect(page.title).toBe("About");
+    expect(page.blocks).toEqual(BLOCKS);
+    expect((page.translations as Record<string, { title: string }>).tr!.title).toBe("Hakkımızda (yeni)");
+    const doctor = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } });
+    expect(doctor.bio).toBe("General surgeon.");
+    expect((doctor.translations as Record<string, { bio: string }>).tr!.bio).toBe("Genel cerrah.");
+
+    // Geri dönüş TR'yi de import öncesine döndürür (yedek TR yazıldığını kaydetti).
+    expect(JSON.parse(await fs.readFile(backupFile, "utf8")).locales).toContain("tr");
+    await restoreTranslations(app.prisma, backupFile, { ...OP, confirm: RESTORE_CONFIRM_KEY, backupDir: dir });
+    expect(((await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } })).translations as Record<string, { title: string }>).tr!.title).toBe("Hakkımızda");
+    expect((await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } })).translations).toEqual({});
   });
 
   it("import yalnızca hedef dilleri yazar; kanonik ve tr değişmez; bağlantı değiştiren çeviri atlanır", async () => {

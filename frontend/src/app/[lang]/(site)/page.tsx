@@ -37,8 +37,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!homePage) return {};
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
-  const localized =
-    lang === defaultLocaleCode ? homePage : await resolveLocalizedHome(homePage.slug, lang, homePage);
+  // Paket O — varsayılan dil (TR) dahil HER dilde aktif dilin kaydı istenir: kanonik içerik EN'dir,
+  // TR çevirisi `translations.tr` altında; yoksa backend kanonik (EN) metne düşer.
+  const localized = await resolveLocalizedHome(homePage.slug, lang, homePage);
 
   return buildContentMetadata(
     {
@@ -101,7 +102,8 @@ export default async function RootPage({ params }: PageProps) {
   }
 
   const defaultLocale = locales.find((l) => l.isDefault);
-  const page = lang === defaultLocale?.code ? homePage : await resolveLocalizedHome(homePage.slug, lang, homePage);
+  // Paket O — bkz. `generateMetadata`: varsayılan dil dahil her dilde aktif dilin kaydı.
+  const page = await resolveLocalizedHome(homePage.slug, lang, homePage);
 
   const activeLocalization = page.localizations.find((l) => l.locale === lang);
   // Paket L — bkz. `[slug]/page.tsx` (aynı kural, `lib/legal-locale.ts`).

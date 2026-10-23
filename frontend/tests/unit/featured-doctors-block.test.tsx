@@ -13,7 +13,7 @@ vi.mock("@/lib/api/server-telehealth", () => ({ fetchAllDoctorsServer: () => fet
 const listAdminDoctors = vi.fn();
 vi.mock("@/lib/api/telehealth", () => ({ listAdminDoctors: (...args: unknown[]) => listAdminDoctors(...args) }));
 
-import { FeaturedDoctorsBlockView, pickFeaturedDoctors, resolveFeaturedDoctors } from "@/components/site/blocks/featured-doctors-block";
+import { FeaturedDoctorsBlockView, pickFeaturedDoctors, resolveFeaturedDoctors, resolveFeaturedDoctorsContent } from "@/components/site/blocks/featured-doctors-block";
 import { FEATURED_DOCTORS_AUTOPLAY_MS, FeaturedDoctorsCarousel } from "@/components/site/blocks/featured-doctors-carousel";
 import { FeaturedDoctorsBlockEditor } from "@/components/admin/page-builder/blocks/featured-doctors-block";
 import { TextBlockView } from "@/components/site/blocks/text-block";
@@ -374,5 +374,22 @@ describe("Paket D — editör", () => {
     render(<FeaturedDoctorsBlockEditor block={block({ doctorIds: ten, layout: "carousel" })} onChange={onChange} />);
     await user.click(screen.getByRole("button", { name: "Izgara" }));
     expect(onChange.mock.calls.at(-1)![0].data).toMatchObject({ layout: "grid", doctorIds: ten.slice(0, 8) });
+  });
+});
+
+describe("Paket O — blok metni aktif dilde, yoksa EN", () => {
+  const ctx = (lang: string) => ({ lang, defaultLocaleCode: "tr" }) as Parameters<typeof resolveFeaturedDoctorsContent>[1];
+  it("aktif dil → EN (kanonik) → varsayılan dil sırasıyla düşer; TR de EN'e düşer", () => {
+    const b = block({
+      content: {
+        en: { title: "Our Doctors", subtitle: "", buttonLabel: "" },
+        ru: { title: "Наши врачи", subtitle: "", buttonLabel: "" },
+      },
+    });
+    expect(resolveFeaturedDoctorsContent(b, ctx("ru")).title).toBe("Наши врачи");
+    expect(resolveFeaturedDoctorsContent(b, ctx("ar")).title).toBe("Our Doctors");
+    expect(resolveFeaturedDoctorsContent(b, ctx("tr")).title).toBe("Our Doctors");
+    const trOnly = block({ content: { tr: { title: "Doktorlarımız", subtitle: "", buttonLabel: "" } } });
+    expect(resolveFeaturedDoctorsContent(trOnly, ctx("de")).title).toBe("Doktorlarımız");
   });
 });

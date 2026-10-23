@@ -29,7 +29,8 @@ function iconGlyph(name: string, className: string) {
 /** Dil kopyası yoksa varsayılan dilin başlığı; o da yoksa başlıksız. */
 function resolveContent(block: SpecialtyCardsBlock, siteContext?: BlockSiteContext) {
   const content = block.data.content ?? {};
-  if (siteContext) return content[siteContext.lang] ?? content[siteContext.defaultLocaleCode] ?? { title: "", subtitle: "" };
+  // Paket O — dil kopyası yoksa EN (kanonik dil), sonra varsayılan dil.
+  if (siteContext) return content[siteContext.lang] ?? content.en ?? content[siteContext.defaultLocaleCode] ?? { title: "", subtitle: "" };
   return Object.values(content)[0] ?? { title: "", subtitle: "" };
 }
 

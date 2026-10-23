@@ -456,6 +456,49 @@ describe("localization (§10.5)", () => {
       expect(enGet.json().data.title).toBe("Normal Sayfa");
     });
 
+    // Paket O (İş 3) — kanonik içerik EN yazılır; varsayılan dil (TR) açıkça istendiğinde
+    // `translations.tr` VARSA uygulanır, YOKSA kanonik (EN) döner. Yasal sayfa TR'de boşaltılmaz.
+    it("default locale (tr) requested explicitly applies translations.tr, falls back to canonical EN, never blanks a legal page", async () => {
+      const enBlocks = [{ type: "text", data: { html: "<p>Welcome</p>" } }];
+      const trBlocks = [{ type: "text", data: { html: "<p>Hoş geldiniz</p>" } }];
+      const translatedPage = (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/admin/pages",
+          headers: adminHeader(),
+          payload: { title: "Home EN", status: "PUBLISHED", blocks: enBlocks, translations: { tr: { title: "Ana Sayfa", blocks: trBlocks } } },
+        })
+      ).json().data;
+      const untranslatedPage = (
+        await app.inject({ method: "POST", url: "/api/v1/admin/pages", headers: adminHeader(), payload: { title: "Only EN", status: "PUBLISHED", blocks: enBlocks } })
+      ).json().data;
+      const legalPage = (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/admin/pages",
+          headers: adminHeader(),
+          payload: { title: "Legal EN", status: "PUBLISHED", blocks: enBlocks, isLegalDocument: true },
+        })
+      ).json().data;
+
+      const trGet = await app.inject({ method: "GET", url: `/api/v1/pages/${translatedPage.slug}?locale=tr` });
+      expect(trGet.json().data.title).toBe("Ana Sayfa");
+      expect(trGet.json().data.blocks[0].data.html).toContain("Hoş geldiniz");
+      // locale verilmezse eski davranış: kanonik.
+      expect((await app.inject({ method: "GET", url: `/api/v1/pages/${translatedPage.slug}` })).json().data.title).toBe("Home EN");
+
+      const fallback = await app.inject({ method: "GET", url: `/api/v1/pages/${untranslatedPage.slug}?locale=tr` });
+      expect(fallback.json().data.title).toBe("Only EN");
+      expect(fallback.json().data.blocks.length).toBe(1);
+
+      const legal = await app.inject({ method: "GET", url: `/api/v1/pages/${legalPage.slug}?locale=tr` });
+      expect(legal.statusCode).toBe(200);
+      expect(legal.json().data.blocks.length).toBe(1);
+
+      const list = await app.inject({ method: "GET", url: "/api/v1/pages?locale=tr" });
+      expect(list.json().data.find((p: { id: string }) => p.id === translatedPage.id).title).toBe("Ana Sayfa");
+    });
+
     // security-agent bulgusu (bkz. .claude/security-review-i18n.md, ORTA-YÜKSEK) — revizyon
     // geri yükleme yolu, ADMIN-only `isLegalDocument` kuralını ve `content.legal_flag_change`
     // audit'ini ATLAYABİLİYORDU. Regresyon: MANAGER (§6 Katman 2'ye erişebilen ama Katman 1'de

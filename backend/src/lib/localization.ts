@@ -72,6 +72,18 @@ export function resolveEffectiveLocaleCode(localeSet: LocaleSet, requestedRaw?: 
 }
 
 /**
+ * Paket O (2026-10-23) — VARSAYILAN dil açıkça istendiğinde (`?locale=tr`) onun kodu; aksi halde
+ * `undefined`. Kanonik içerik İngilizce yazıldığı için varsayılan dilin (TR) kendi çevirisi
+ * `translations.<varsayılan>` altında tutulur; VARSA uygulanır, YOKSA kanonik (EN) metin döner. Diğer
+ * dillerin davranışı (`resolveEffectiveLocaleCode`) DEĞİŞMEZ.
+ */
+export function resolveDefaultLocaleOverride(localeSet: LocaleSet, requestedRaw?: string): string | undefined {
+  if (!requestedRaw) return undefined;
+  const normalized = requestedRaw.trim().toLowerCase();
+  return localeSet.default.code === normalized ? normalized : undefined;
+}
+
+/**
  * `translations` JSON'undan `locale` için override kaydını döner. §2.4 geçiş toleransı:
  * önce küçük harf anahtar denenir, bulunamazsa BÜYÜK harf (eski veri) denenir. Yazma yolu
  * YALNIZCA küçük harf üretir — bu tolerans geçicidir (`chore/i18n-drop-uppercase-fallback`).

@@ -1,6 +1,7 @@
 /**
- * Paket L (2026-10-23) — çevrilmiş export dosyasını içe aktarır. YALNIZCA `translations.es|de|ar|ru`
- * yazılır; kanonik (EN) alanlara ve `translations.tr`'ye asla dokunulmaz. Mantık:
+ * Paket L (2026-10-23) — çevrilmiş export dosyasını içe aktarır. `translations.es|de|ar|ru` yazılır;
+ * Paket O: `translations.tr` YALNIZCA hedefte TR yoksa ya da `--overwrite-locale=tr` verilmişse yazılır.
+ * Kanonik (EN) alanlara ve `translations.en`'e asla dokunulmaz. Mantık:
  * `src/lib/content-translations.ts`.
  *
  * Varsayılan KURU ÇALIŞMA — dil başına yazılacak kalem sayılarını ve atlananları listeler.
@@ -12,6 +13,7 @@
  * Seçenekler:
  *   --backup-dir=<yol>  yedek klasörü (varsayılan storage/translation-backups)
  *   --no-revalidate     yazma sonrası önbellek yenilemesini atla
+ *   --overwrite-locale=tr  mevcut TR çevirisinin üzerine yaz (varsayılan: dolu TR atlanır)
  */
 import os from "node:os";
 import path from "node:path";
@@ -48,7 +50,8 @@ async function main() {
 
     const file = arg("file");
     if (!file) throw new TranslationImportError("--file=<çevrilmiş export dosyası> gerekli.");
-    const plan = await buildImportPlan(prisma, await readTranslationFile(path.resolve(file)));
+    const overwriteLocales = arg("overwrite-locale")?.split(",").filter(Boolean);
+    const plan = await buildImportPlan(prisma, await readTranslationFile(path.resolve(file)), { overwriteLocales });
     console.log(formatImportPlan(plan));
 
     const confirm = arg("confirm");

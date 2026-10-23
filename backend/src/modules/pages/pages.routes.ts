@@ -46,6 +46,7 @@ import {
   getLocaleSet,
   mergeTranslations,
   resolveEffectiveLocaleCode,
+  resolveDefaultLocaleOverride,
   resolveEntityIdBySlug,
   syncContentSlugs,
 } from "../../lib/localization";
@@ -104,7 +105,10 @@ const PAGE_ARRAY_FIELDS = ["blocks"] as const;
  */
 export const LEGAL_BINDING_LOCALES: readonly string[] = ["tr", "en"];
 
-function applyPageLocale<T extends Page>(page: T, effectiveLocale: string | undefined, translatedInLocale: boolean): T {
+function applyPageLocale<T extends Page>(page: T, effectiveLocale: string | undefined, translatedInLocale: boolean, defaultOverride?: string): T {
+  // Paket O — varsayılan dil (TR) için yalnızca `translations.<varsayılan>` varsa uygulanır; yasal
+  // fail-safe UYGULANMAZ (varsayılan dilde kanonik metin her zaman gösterilir).
+  if (defaultOverride) return applyFieldLocalization(page, defaultOverride, PAGE_STRING_FIELDS, PAGE_ARRAY_FIELDS);
   if (!effectiveLocale) return page;
 
   if (page.isLegalDocument && !translatedInLocale && LEGAL_BINDING_LOCALES.includes(effectiveLocale)) {
@@ -1007,12 +1011,13 @@ export async function publicPagesRoutes(app: FastifyInstance) {
 
       const localeSet = await getLocaleSet(app);
       const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const defaultOverride = resolveDefaultLocaleOverride(localeSet, request.query.locale);
       const localizationsByEntity = await attachLocalizations(app, "PAGE", rows);
 
       const dtos = rows.map((row) => {
         const localizations = localizationsByEntity.get(row.id) ?? [];
         const translated = effectiveLocale ? localizations.find((l) => l.locale === effectiveLocale)?.translated ?? false : false;
-        return toPageDto(applyPageLocale(row, effectiveLocale, translated), localizations);
+        return toPageDto(applyPageLocale(row, effectiveLocale, translated, defaultOverride), localizations);
       });
 
       return reply.send(ok(dtos));
@@ -1027,6 +1032,7 @@ export async function publicPagesRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const localeSet = await getLocaleSet(app);
       const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const defaultOverride = resolveDefaultLocaleOverride(localeSet, request.query.locale);
 
       // §4/§12.2 — slug çözümleme: (1) ContentSlug(locale, slug) tam eşleşme, (2) varsayılan
       // dildeki kanonik `slug` kolonu. İkisi de tutmazsa 404.
@@ -1048,7 +1054,7 @@ export async function publicPagesRoutes(app: FastifyInstance) {
       const localizations = await attachLocalizationsOne(app, "PAGE", resolvedPage);
       const translated = effectiveLocale ? localizations.find((l) => l.locale === effectiveLocale)?.translated ?? false : false;
 
-      return reply.send(ok(toPageDto(applyPageLocale(resolvedPage, effectiveLocale, translated), localizations)));
+      return reply.send(ok(toPageDto(applyPageLocale(resolvedPage, effectiveLocale, translated, defaultOverride), localizations)));
     }
   );
 
