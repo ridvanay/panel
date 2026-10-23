@@ -22,10 +22,12 @@ describe("başlık tek satır", () => {
   it("masaüstü satırı flex-nowrap + whitespace-nowrap; nav satır kaydırmaz; logo shrink-0; sığmazsa mobil menü", () => {
     const src = readFileSync(resolve(__dirname, "../../src/components/site/site-header.tsx"), "utf8");
     expect(src).not.toContain("lg:flex-wrap");
-    expect(src).toContain('"hidden flex-nowrap items-center gap-x-3 whitespace-nowrap text-sm lg:flex xl:gap-x-5"');
+    expect(src).toContain('"hidden flex-nowrap items-center whitespace-nowrap text-sm lg:flex"');
     expect(src).toContain("lg:shrink-0");
     expect(src).toContain('desktopOverflow ? "lg:flex" : "lg:hidden"');
-    expect(src).toContain('<span className="hidden xl:inline">{dict.login}</span>');
+    // Ölçüme dayalı üç düzey: tam → dar (bayrak + ikon) → mobil menü.
+    expect(src).toContain('type HeaderFit = "full" | "compact" | "mobile";');
+    expect(src).toContain("<span className={fullOnlyClass}>{dict.login}</span>");
   });
 
   it("dar masaüstünde dil seçicide yalnızca bayrak: ad xl'de görünür, tooltip ve aria-label'da kalır", () => {
@@ -33,5 +35,13 @@ describe("başlık tek satır", () => {
     const trigger = screen.getByRole("button", { name: "Язык: Русский" });
     expect(trigger).toHaveAttribute("title", "Русский");
     expect(trigger.querySelector("span[lang='ru']")?.className).toContain("hidden xl:inline");
+  });
+
+  it("ölçüm kararı: compact → yalnızca bayrak; compact=false → ad görünür (kırılımdan bağımsız)", () => {
+    const { unmount } = render(<LanguageSwitcher locales={LOCALES} activeLocale={LOCALES[1]!} label="Язык" compactBelowXl compact />);
+    expect(screen.getByRole("button", { name: "Язык: Русский" }).querySelector("span[lang='ru']")?.className).toBe("hidden");
+    unmount();
+    render(<LanguageSwitcher locales={LOCALES} activeLocale={LOCALES[1]!} label="Язык" compactBelowXl compact={false} />);
+    expect(screen.getByRole("button", { name: "Язык: Русский" }).querySelector("span[lang='ru']")?.className ?? "").not.toContain("hidden");
   });
 });

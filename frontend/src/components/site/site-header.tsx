@@ -215,16 +215,23 @@ const NAV_LINK_TEXT_CLASSES =
 const NAV_LINK_ACTIVE_TEXT_CLASS = "text-[var(--site-header-link-active)]";
 
 /**
- * Paket O — masaüstü satırının (menü + CTA + dil + giriş) logonun yanına sığıp sığmadığını ölçer.
- * `lg` altında her zaman `false` (mobil düzen zaten CSS ile seçilir). Ölçüm, satırın doğal
- * genişliğine (`scrollWidth`, `whitespace-nowrap`) göre yapılır; gizliyken de ölçülebilir.
+ * Paket O — masaüstü satırı (menü + CTA + dil + giriş) logonun yanına hangi düzende sığıyor:
+ *   "full"    → geniş aralık, dil seçicide bayrak + ad, girişte metin
+ *   "compact" → dar aralık, yalnızca bayrak (ad tooltip/aria-label), giriş yalnızca ikon
+ *   "mobile"  → hiçbiri sığmıyor: masaüstü satırı gizlenir, mevcut mobil menü (hamburger)
+ * Her düzenin doğal genişliği (`scrollWidth`, `whitespace-nowrap`) bir kez ölçülüp önbelleğe alınır
+ * (etiketler değişince — dil değişimi — önbellek sıfırlanır); sonra kullanılabilir genişliğe göre seçilir.
+ * `null` = henüz ölçülmedi (sunucu render'ı / jsdom): kırılım (`xl`) sınıfları geçerlidir.
  */
-function useDesktopOverflow(
+type HeaderFit = "full" | "compact" | "mobile";
+
+function useHeaderFit(
   navRef: React.RefObject<HTMLElement | null>,
   logoRef: React.RefObject<HTMLElement | null>,
   desktopRef: React.RefObject<HTMLElement | null>
-): boolean {
-  const [overflow, setOverflow] = useState(false);
+): HeaderFit | null {
+  const [fit, setFit] = useState<HeaderFit | null>(null);
+  const widths = useRef<{ key: string; full?: number; compact?: number }>({ key: "" });
   // İnceleme bulgusu — ölçüm boyamadan önce: geniş satır bir kare bile taşmasın.
   useLayoutEffect(() => {
     const measure = () => {
@@ -234,14 +241,22 @@ function useDesktopOverflow(
       // Yerleşimi olmayan ortamda (görünmez ağaç, jsdom) genişlik 0'dır — karar verilmez.
       if (!nav || !logo || !desktop || nav.clientWidth === 0) return;
       if (window.innerWidth < 1024) {
-        setOverflow(false);
+        setFit("full");
         return;
       }
+      const key = desktop.textContent ?? "";
+      if (widths.current.key !== key) widths.current = { key };
+      const rendered = desktop.dataset.fit as "full" | "compact" | undefined;
+      if (rendered) widths.current[rendered] = desktop.scrollWidth;
+
       const style = window.getComputedStyle(nav);
       const padding = parseFloat(style.paddingLeft || "0") + parseFloat(style.paddingRight || "0");
       const gap = parseFloat(style.columnGap || "0") || 16;
-      const available = nav.clientWidth - padding - logo.offsetWidth - gap;
-      setOverflow(desktop.scrollWidth > available + 1);
+      const available = nav.clientWidth - padding - logo.offsetWidth - gap + 1;
+      const { full, compact } = widths.current;
+      setFit(
+        full === undefined ? "full" : full <= available ? "full" : compact === undefined ? "compact" : compact <= available ? "compact" : "mobile"
+      );
     };
     measure();
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
@@ -252,8 +267,8 @@ function useDesktopOverflow(
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [navRef, logoRef, desktopRef]);
-  return overflow;
+  }, [navRef, logoRef, desktopRef, fit]);
+  return fit;
 }
 
 /** Hesap/favori/sepet ikonlarının paylaştığı metin/ikon rengi sınıfları — `headerLinkActiveColor` BURAYA UYGULANMAZ. */
@@ -368,7 +383,12 @@ export function SiteHeader({
   const navRef = useRef<HTMLElement>(null);
   const logoRef = useRef<HTMLAnchorElement>(null);
   const desktopRef = useRef<HTMLDivElement>(null);
-  const desktopOverflow = useDesktopOverflow(navRef, logoRef, desktopRef);
+  const headerFit = useHeaderFit(navRef, logoRef, desktopRef);
+  const desktopOverflow = headerFit === "mobile";
+  // Gizli (mobile) durumda satır dar düzende tutulur ki dar genişliği ölçülmeye devam etsin.
+  const desktopLayout: "full" | "compact" | null = headerFit === "mobile" ? "compact" : headerFit;
+  /** Ölçülmemişken kırılım sınıfı (xl'de göster), ölçülünce kesin karar. */
+  const fullOnlyClass = desktopLayout === null ? "hidden xl:inline" : desktopLayout === "full" ? "inline" : "hidden";
   const ctaClassName = cn(
     "rounded-[var(--site-radius)] font-medium transition-all duration-300 hover:opacity-85",
     SITE_BUTTON_STYLE_CLASSES[buttonStyle]
@@ -425,10 +445,12 @@ export function SiteHeader({
         <div
           ref={desktopRef}
           data-testid="site-header-desktop"
+          data-fit={desktopLayout ?? undefined}
           aria-hidden={desktopOverflow || undefined}
           inert={desktopOverflow || undefined}
           className={cn(
-            "hidden flex-nowrap items-center gap-x-3 whitespace-nowrap text-sm lg:flex xl:gap-x-5",
+            "hidden flex-nowrap items-center whitespace-nowrap text-sm lg:flex",
+            desktopLayout === null ? "gap-x-3 xl:gap-x-5" : desktopLayout === "full" ? "gap-x-5" : "gap-x-3",
             desktopOverflow && "lg:pointer-events-none lg:invisible lg:absolute lg:end-4 lg:top-0"
           )}
         >
@@ -472,7 +494,7 @@ export function SiteHeader({
               {ctaLabel}
             </Link>
           )}
-          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compactBelowXl />}
+          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compactBelowXl compact={desktopLayout === null ? undefined : desktopLayout === "compact"} />}
 
           {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık. `/hesabim/siparislerim` bağlantısı
               `products` modülü açıkken gösterilir (SUNUM kararı, yetki kararı DEĞİL —
@@ -494,7 +516,7 @@ export function SiteHeader({
                 }
               >
                 <UserIcon className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden max-w-[8rem] truncate xl:inline">{user.name}</span>
+                <span className={cn("max-w-[8rem] truncate", fullOnlyClass)}>{user.name}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {/* §K6 — KESİN sıra: Doktor Paneli → Randevularım → Hesabım → Siparişlerim → Çıkış Yap. */}
@@ -539,7 +561,7 @@ export function SiteHeader({
               className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
             >
               <UserIcon className="h-4.5 w-4.5" aria-hidden="true" />
-              <span className="hidden xl:inline">{dict.login}</span>
+              <span className={fullOnlyClass}>{dict.login}</span>
             </Link>
           )}
 

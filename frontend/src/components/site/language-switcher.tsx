@@ -37,6 +37,11 @@ interface LanguageSwitcherProps {
    * görünür; dar ekranda ad `title` (tooltip) ve `aria-label` olarak kalır.
    */
   compactBelowXl?: boolean;
+  /**
+   * Ölçüme dayalı kesin karar (başlık `useHeaderFit`): `true` → yalnızca bayrak, `false` → bayrak + ad.
+   * Verilmezse (`undefined`, ör. ilk sunucu render'ı) `compactBelowXl` kırılım davranışı geçerlidir.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -75,6 +80,7 @@ export function LanguageSwitcher({
   onNavigate,
   label = "Dil seç",
   compactBelowXl = false,
+  compact,
 }: LanguageSwitcherProps) {
   const alternates = useLocaleAlternates();
   // Paket L — kapalı (`enabled: false`) diller hiçbir koşulda listelenmez (public `/locales` zaten
@@ -137,14 +143,17 @@ export function LanguageSwitcher({
             type="button"
             variant="ghost"
             size="sm"
-            className={cn("group gap-2", compactBelowXl && "gap-1 px-2 xl:gap-2")}
+            className={cn(
+              "group gap-2",
+              compact === undefined ? compactBelowXl && "gap-1 px-2 xl:gap-2" : compact && "gap-1 px-2"
+            )}
             aria-label={`${label}: ${activeLocale.nativeLabel}`}
-            title={compactBelowXl ? activeLocale.nativeLabel : undefined}
+            title={compactBelowXl || compact ? activeLocale.nativeLabel : undefined}
           />
         }
       >
         <LocaleFlag code={activeLocale.code} />
-        <span lang={activeLocale.code} dir={localeDirection(activeLocale.code)} className={compactBelowXl ? "hidden xl:inline" : undefined}>
+        <span lang={activeLocale.code} dir={localeDirection(activeLocale.code)} className={compact === undefined ? (compactBelowXl ? "hidden xl:inline" : undefined) : compact ? "hidden" : undefined}>
           {activeLocale.nativeLabel}
         </span>
         <ChevronDown
