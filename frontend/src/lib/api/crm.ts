@@ -279,3 +279,220 @@ export type CrmFunnelGroupBy = "none" | "source" | "campaign" | "country" | "lan
 
 export const getCrmFunnel = (query: { from: string; to: string; model: "first" | "last"; groupBy: CrmFunnelGroupBy }) =>
   apiFetch<{ rows: CrmFunnelRow[]; total: CrmFunnelRow }>("/admin/crm/funnel", { query: { ...query } });
+
+// ---------------------------------------------------------------------------------------------
+// N3 — analitik ekranları
+// ---------------------------------------------------------------------------------------------
+
+export interface CrmRange {
+  from: string;
+  to: string;
+}
+
+export interface CrmPageRow {
+  path: string;
+  pageviews: number;
+  visitors: number;
+  entries: number;
+  contacts: number;
+  clicks: number;
+  avgEngagedSeconds: number;
+  avgScrollPct: number | null;
+}
+
+export interface CrmSourceRow {
+  source: string;
+  medium: string;
+  campaign: string | null;
+  sessions: number;
+  visitors: number;
+  pageviews?: number;
+  entries?: number;
+  contacts: number;
+  bookingsStarted: number;
+}
+
+export interface CrmClickRow {
+  path: string;
+  selector: string | null;
+  text: string | null;
+  target: string | null;
+  clicks: number;
+  contacts: number;
+  visitors: number;
+  whatsappClicks?: number;
+  phoneClicks?: number;
+  emailClicks?: number;
+}
+
+export interface CrmVisitorRow {
+  id: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  country: string | null;
+  language: string | null;
+  deviceType: string;
+  sessionCount: number;
+  pageviewCount: number;
+  engagedSeconds: number;
+  contactClicks: number;
+  reachedBooking: boolean;
+  score: number;
+  refCode: string | null;
+  firstSource: string | null;
+  firstMedium: string | null;
+  firstCampaign: string | null;
+}
+
+export interface CrmOverview {
+  kpis: {
+    liveNow: number;
+    visitors: number;
+    pageviews: number;
+    whatsappClicks: number;
+    phoneClicks: number;
+    emailClicks: number;
+    leads: number;
+    conversionRate: number;
+  };
+  series: { date: string; visitors: number; pageviews: number; contacts: number }[];
+  sources: CrmSourceRow[];
+  contactPages: CrmPageRow[];
+  entryPages: CrmPageRow[];
+  prePages: { path: string; sessions: number; visitors: number }[];
+  topClicks: CrmClickRow[];
+  recentLeads: { id: string; seq: number; name: string | null; channel: CrmLeadChannel; status: CrmLeadStatus; createdAt: string }[];
+  hotVisitors: CrmVisitorRow[];
+  hotThreshold: number;
+}
+
+export interface CrmLiveSession {
+  visitorId: string;
+  currentPath: string;
+  landingPath: string;
+  country: string | null;
+  city: string | null;
+  deviceType: string;
+  browser: string | null;
+  os: string | null;
+  source: string;
+  medium: string;
+  campaign: string | null;
+  pageCount: number;
+  durationSeconds: number;
+  startedAt: string;
+  lastSeenAt: string;
+  score: number;
+  returning: boolean;
+  refCode: string | null;
+}
+
+export interface CrmVisitorEvent {
+  id: string;
+  sessionId: string;
+  type: string;
+  occurredAt: string;
+  path: string;
+  title: string | null;
+  text: string | null;
+  target: string | null;
+  name: string | null;
+  scrollPct: number | null;
+  step: number | null;
+  isRage: boolean;
+  isDead: boolean;
+}
+
+export interface CrmVisitorDetail extends CrmVisitorRow {
+  timezone: string | null;
+  firstReferrerHost: string | null;
+  firstLandingPath: string | null;
+  sessions: {
+    id: string;
+    startedAt: string;
+    lastSeenAt: string;
+    source: string;
+    medium: string;
+    campaign: string | null;
+    referrerHost: string | null;
+    landingPath: string;
+    exitPath: string | null;
+    pageCount: number;
+    durationSeconds: number;
+    country: string | null;
+    city: string | null;
+    ip: string | null;
+    deviceType: string;
+    browser: string | null;
+    os: string | null;
+    hasAdClickId: boolean;
+    bookingStarted: boolean;
+  }[];
+  events: CrmVisitorEvent[];
+  leads: { id: string; seq: number; name: string | null; status: CrmLeadStatus; channel: CrmLeadChannel }[];
+}
+
+export interface CrmAudienceRow {
+  key: string;
+  label: string;
+  visitors: number;
+  sessions: number;
+  pageviews: number;
+  contacts: number;
+  bookingsStarted: number;
+}
+
+export interface CrmAudience {
+  countries: CrmAudienceRow[];
+  languages: CrmAudienceRow[];
+  timezones: CrmAudienceRow[];
+  devices: CrmAudienceRow[];
+  doctors: CrmAudienceRow[];
+  specialties: CrmAudienceRow[];
+}
+
+export interface CrmHeatmap {
+  pageviews: number;
+  clickCount: number;
+  rageClicks: number;
+  deadClicks: number;
+  medianDocHeight: number | null;
+  points: { x: number; y: number; ex: number | null; ey: number | null; sel: string | null; rage: boolean; dead: boolean }[];
+  scrollReach: { depth: number; pct: number }[];
+  scrollSamples: number;
+  likelyClickable: { selector: string; count: number; text: string | null }[];
+  rageTargets: { selector: string; count: number; text: string | null }[];
+}
+
+export const getCrmOverview = (range: CrmRange) => apiFetch<CrmOverview>("/admin/crm/analytics/overview", { query: { ...range } });
+export const getCrmLive = () => apiFetch<CrmLiveSession[]>("/admin/crm/analytics/live");
+export const getCrmPages = (range: CrmRange) => apiFetch<CrmPageRow[]>("/admin/crm/analytics/pages", { query: { ...range } });
+export const getCrmSources = (range: CrmRange) => apiFetch<CrmSourceRow[]>("/admin/crm/analytics/sources", { query: { ...range } });
+export const getCrmAudience = (range: CrmRange) => apiFetch<CrmAudience>("/admin/crm/analytics/audience", { query: { ...range } });
+export const getCrmClicks = (range: CrmRange & { path?: string }) => apiFetch<CrmClickRow[]>("/admin/crm/analytics/clicks", { query: { ...range } });
+export const getCrmHeatmapPages = (range: CrmRange) =>
+  apiFetch<{ path: string; pageviews: number; clicks: number }[]>("/admin/crm/analytics/heatmap/pages", { query: { ...range } });
+export const getCrmHeatmap = (query: CrmRange & { path: string; device: "mobile" | "desktop" }) =>
+  apiFetch<CrmHeatmap>("/admin/crm/analytics/heatmap", { query: { ...query } });
+
+export async function listCrmVisitors(query: { q?: string; hot?: "true" | "false"; page?: number; pageSize?: number }) {
+  const { data, meta } = await apiFetchWithMeta<CrmVisitorRow[]>("/admin/crm/visitors", { query: { ...query } });
+  return { items: data, meta: meta as unknown as { total: number; page: number; pageSize: number; hotThreshold: number } };
+}
+
+export const getCrmVisitor = (id: string) => apiFetch<CrmVisitorDetail>(`/admin/crm/visitors/${encodeURIComponent(id)}`);
+
+export const CRM_EVENT_LABELS: Record<string, string> = {
+  PAGEVIEW: "Sayfa",
+  CLICK: "Tıklama",
+  SCROLL: "Kaydırma",
+  WHATSAPP_CLICK: "WhatsApp",
+  PHONE_CLICK: "Telefon",
+  EMAIL_CLICK: "E-posta",
+  FORM_SUBMIT: "Form gönderimi",
+  BOOKING_STEP: "Randevu adımı",
+  BOOKING_COMPLETED: "Randevu oluştu",
+  CUSTOM: "Özel olay",
+};
+
+export const CRM_DEVICE_LABELS: Record<string, string> = { DESKTOP: "Masaüstü", MOBILE: "Mobil", TABLET: "Tablet", UNKNOWN: "Bilinmiyor" };
