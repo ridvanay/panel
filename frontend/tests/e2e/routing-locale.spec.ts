@@ -37,8 +37,8 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
     await page.goto(`/${trSlug}`);
     await expect(page.locator("body")).toContainText("Bu Turkce icerik.");
 
-    // Dil değiştirici — design-notes-i18n.md §1.1 (`Dil seç` aria-label, Globe ikonlu buton).
-    await page.getByRole("button", { name: "Dil seç" }).click();
+    // Dil değiştirici — Paket M: bayraklı tetik, erişilebilir ad "{Dil}: {aktif dil}" (ör. "Dil: Türkçe").
+    await page.getByRole("button", { name: /^(Dil|Language): / }).click();
     await page.getByRole("menuitem", { name: "English" }).click();
 
     await page.waitForURL(new RegExp(`/en/${enSlug}$`));
@@ -63,7 +63,7 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
     createdPageIds.push(created.id as string);
 
     await page.goto(`/${created.slug}`);
-    await page.getByRole("button", { name: "Dil seç" }).click();
+    await page.getByRole("button", { name: /^(Dil|Language): / }).click();
     await page.getByRole("menuitem", { name: "English" }).click();
     await page.waitForURL(/\/en\//);
 

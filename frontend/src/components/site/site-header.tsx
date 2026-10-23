@@ -409,7 +409,7 @@ export function SiteHeader({
               {ctaLabel}
             </Link>
           )}
-          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} />}
+          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} />}
 
           {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık. `/hesabim/siparislerim` bağlantısı
               `products` modülü açıkken gösterilir (SUNUM kararı, yetki kararı DEĞİL —

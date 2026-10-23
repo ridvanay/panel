@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Globe } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { useLocaleAlternates, contentKindBasePath } from "@/context/locale-alternates-context";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { localeDirection } from "@/lib/i18n/locale-direction";
+import { LocaleFlag } from "@/components/site/locale-flag";
+import { cn } from "@/lib/utils";
 import type { Locale } from "@/lib/api/types";
 
 interface LanguageSwitcherProps {
@@ -27,14 +30,39 @@ interface LanguageSwitcherProps {
   heading?: string;
   /** Yalnızca `list` — bir dil linkine tıklanınca (ör. paneli kapatmak için). */
   onNavigate?: () => void;
+  /** Tetik düğmesinin erişilebilir adı (ör. sözlükten "Language"); aktif dil adı sonuna eklenir. */
+  label?: string;
 }
 
 /**
- * design-notes-i18n.md §1.1 — site header ziyaretçi dil değiştirici. `Globe` ikonu + tam
- * `nativeLabel`, bayrak YOK (§4). Aynı içeriğin o dildeki karşılığına gider (`localizations`'tan,
- * `context/locale-alternates-context.tsx` köprüsüyle); yoksa o dilin ana sayfasına düşer.
+ * Paket M — dil satırı: solda 4:3 bayrak, yanında dilin kendi adı (`nativeLabel`), seçiliyse sağda ✓.
+ * Satır kendi dilinde ve yönünde işaretlenir (`lang`/`dir`; ör. العربية sağdan sola). Seçili satır kalın
+ * ve marka renginde.
  */
-export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = "dropdown", heading, onNavigate }: LanguageSwitcherProps) {
+function LocaleRowContent({ locale, active }: { locale: Locale; active: boolean }) {
+  return (
+    <>
+      <LocaleFlag code={locale.code} />
+      <span lang={locale.code} dir={localeDirection(locale.code)} className="min-w-0 flex-1 truncate text-start">
+        {locale.nativeLabel}
+      </span>
+      {active && <Check className="h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />}
+    </>
+  );
+}
+
+const ROW_CLASS = "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors";
+const ACTIVE_ROW_CLASS = "font-semibold text-[var(--site-primary)]";
+
+/**
+ * design-notes-i18n.md §1.1 — site header ziyaretçi dil değiştirici. Paket M (2026-10-23): bayraklı
+ * görünüm (tetikte aktif dilin bayrağı + adı + açılınca dönen ok; listede bayrak + ad + seçili ✓).
+ * Davranış DEĞİŞMEDİ: aynı içeriğin o dildeki karşılığına gider (`localizations`'tan,
+ * `context/locale-alternates-context.tsx` köprüsüyle); yoksa o dilin ana sayfasına düşer.
+ * Klavye: tetik Enter/Space ile açılır, ok tuşlarıyla gezinilir, Enter seçer, Esc kapatır
+ * (base-ui `Menu` — `menu`/`menuitem` rolleri, `aria-expanded` tetikte).
+ */
+export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = "dropdown", heading, onNavigate, label = "Dil seç" }: LanguageSwitcherProps) {
   const alternates = useLocaleAlternates();
   // Paket L — kapalı (`enabled: false`) diller hiçbir koşulda listelenmez (public `/locales` zaten
   // yalnızca açık dilleri döner; bu, önbellekte kalmış eski bir listeye karşı savunmadır).
@@ -65,7 +93,7 @@ export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = 
     return (
       <div>
         {heading && <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground/50">{heading}</p>}
-        <ul>
+        <ul className="space-y-0.5">
           {locales.map((l) => {
             const active = l.code === activeLocale.code;
             return (
@@ -76,11 +104,9 @@ export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = 
                   hrefLang={l.hreflang ?? l.code}
                   aria-current={active ? "true" : undefined}
                   onClick={onNavigate}
-                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-foreground hover:bg-surface-muted"
+                  className={cn(ROW_CLASS, "hover:bg-surface-muted", active && ACTIVE_ROW_CLASS)}
                 >
-                  <Globe className="h-4 w-4 text-foreground/50" aria-hidden="true" />
-                  {l.nativeLabel}
-                  {active && <Check className="ms-auto h-4 w-4" aria-hidden="true" />}
+                  <LocaleRowContent locale={l} active={active} />
                 </Link>
               </li>
             );
@@ -92,17 +118,31 @@ export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = 
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="sm" aria-label="Dil seç" />}>
-        <Globe className="h-3.5 w-3.5" aria-hidden="true" />
-        {activeLocale.nativeLabel}
+      <DropdownMenuTrigger
+        render={<Button type="button" variant="ghost" size="sm" className="group gap-2" aria-label={`${label}: ${activeLocale.nativeLabel}`} />}
+      >
+        <LocaleFlag code={activeLocale.code} />
+        <span lang={activeLocale.code} dir={localeDirection(activeLocale.code)}>
+          {activeLocale.nativeLabel}
+        </span>
+        <ChevronDown
+          className="h-3.5 w-3.5 transition-transform duration-150 group-data-[popup-open]:rotate-180 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
-        {locales.map((l) => (
-          <DropdownMenuItem key={l.code} render={<Link href={hrefFor(l)} />}>
-            {l.nativeLabel}
-            {l.code === activeLocale.code && <Check className="ms-auto h-4 w-4" />}
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent align="end" className="max-h-80 min-w-56 overflow-y-auto rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-black/5 dark:bg-popover">
+        {locales.map((l) => {
+          const active = l.code === activeLocale.code;
+          return (
+            <DropdownMenuItem
+              key={l.code}
+              className={cn(ROW_CLASS, "focus:bg-surface-muted data-highlighted:bg-surface-muted", active && ACTIVE_ROW_CLASS)}
+              render={<Link href={hrefFor(l)} lang={l.code} hrefLang={l.hreflang ?? l.code} aria-current={active ? "true" : undefined} />}
+            >
+              <LocaleRowContent locale={l} active={active} />
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
