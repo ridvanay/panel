@@ -8,3 +8,6 @@ node_modules/
 # birleştirileceğini belirler, repoya GİRMEMELİDİR (aksi halde repoyu klonlayan herkese sessizce
 # demo ödeme modu yayılır — bkz. docker-compose.dev.yml'in dosya başı yorumu).
 .env
+
+# Paket L — kişisel veri içeren kaynak dosyalar (CV, sertifika); repoya girmez.
+imports/
