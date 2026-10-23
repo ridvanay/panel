@@ -68,6 +68,10 @@ describe("LanguageSwitcher (dropdown)", () => {
     const [tr, en, ar, pt] = items as [HTMLElement, HTMLElement, HTMLElement, HTMLElement];
     expect(tr).toHaveAttribute("aria-current", "true");
     expect(tr.querySelector("svg")).not.toBeNull(); // ✓
+    // Kontrast: seçili satır ve ✓ koyu marka renginde (accent, varsayılan #2951A0) — açık birincil değil.
+    expect(tr.className).toContain("text-[var(--site-accent,#2951A0)]");
+    expect(tr.querySelector("svg")!.getAttribute("class")).toContain("text-[var(--site-accent,#2951A0)]");
+    expect(tr.className).not.toContain("--site-primary");
     expect(en).not.toHaveAttribute("aria-current");
     expect(en.querySelector("svg")).toBeNull();
 

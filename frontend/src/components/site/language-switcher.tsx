@@ -37,7 +37,7 @@ interface LanguageSwitcherProps {
 /**
  * Paket M — dil satırı: solda 4:3 bayrak, yanında dilin kendi adı (`nativeLabel`), seçiliyse sağda ✓.
  * Satır kendi dilinde ve yönünde işaretlenir (`lang`/`dir`; ör. العربية sağdan sola). Seçili satır kalın
- * ve marka renginde.
+ * ve koyu marka renginde (`--site-accent`, yoksa #2951A0 — açık birincil renk beyaz zeminde AA geçmez).
  */
 function LocaleRowContent({ locale, active }: { locale: Locale; active: boolean }) {
   return (
@@ -46,13 +46,13 @@ function LocaleRowContent({ locale, active }: { locale: Locale; active: boolean 
       <span lang={locale.code} dir={localeDirection(locale.code)} className="min-w-0 flex-1 truncate text-start">
         {locale.nativeLabel}
       </span>
-      {active && <Check className="h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />}
+      {active && <Check className="h-4 w-4 shrink-0 text-[var(--site-accent,#2951A0)]" aria-hidden="true" />}
     </>
   );
 }
 
 const ROW_CLASS = "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors";
-const ACTIVE_ROW_CLASS = "font-semibold text-[var(--site-primary)]";
+const ACTIVE_ROW_CLASS = "font-semibold text-[var(--site-accent,#2951A0)]";
 
 /**
  * design-notes-i18n.md §1.1 — site header ziyaretçi dil değiştirici. Paket M (2026-10-23): bayraklı
