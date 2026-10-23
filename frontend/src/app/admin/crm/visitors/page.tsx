@@ -22,6 +22,7 @@ export default function CrmVisitorsPage() {
   const visitors = useQuery({
     queryKey: ["crm-visitors", search, hot, page],
     queryFn: () => crmApi.listCrmVisitors({ q: search || undefined, hot: hot ? "true" : undefined, page, pageSize: 25 }),
+    placeholderData: (previous) => previous,
   });
   const total = visitors.data?.meta.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / 25));

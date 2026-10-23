@@ -496,3 +496,44 @@ export const CRM_EVENT_LABELS: Record<string, string> = {
 };
 
 export const CRM_DEVICE_LABELS: Record<string, string> = { DESKTOP: "Masaüstü", MOBILE: "Mobil", TABLET: "Tablet", UNKNOWN: "Bilinmiyor" };
+
+// ---------------------------------------------------------------------------------------------
+// N4 — Google entegrasyonları
+// ---------------------------------------------------------------------------------------------
+
+export type KeywordGroup = "1-3" | "4-10" | "11-20" | "21+";
+
+export interface CrmKeywordRow {
+  query: string;
+  position: number;
+  /** Önceki eşit uzunluktaki döneme göre; pozitif = sıralama yükseldi. */
+  change: number | null;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  bestPage: string | null;
+  group: KeywordGroup;
+}
+
+export interface CrmKeywordsReport {
+  connection: { connected: boolean; propertyUrl: string | null; lastSyncAt: string | null; lastSyncError: string | null };
+  rows: CrmKeywordRow[];
+  groups: Record<KeywordGroup, number>;
+  total: number;
+  previousRange: { from: string; to: string };
+}
+
+export const getCrmKeywords = (query: { from: string; to: string; group?: "all" | KeywordGroup; q?: string }) =>
+  apiFetch<CrmKeywordsReport>("/admin/crm/keywords", { query: { ...query } });
+
+export const connectSearchConsole = (input: { propertyUrl: string; credentialsJson: string }) =>
+  apiFetch<CrmSettings>("/admin/crm/search-console/connect", { method: "POST", body: input });
+export const disconnectSearchConsole = () => apiFetch<CrmSettings>("/admin/crm/search-console/connect", { method: "DELETE" });
+export const syncSearchConsole = () =>
+  apiFetch<{ ok: boolean; from: string | null; to: string | null; rows: number; error: string | null }>("/admin/crm/search-console/sync", { method: "POST" });
+
+export const importAdsLeads = (csv: string) =>
+  apiFetch<{ created: number; skipped: number; errors: string[] }>("/admin/crm/ads/import-leads", { method: "POST", body: { csv } });
+
+export const downloadAdsConversions = (range: CrmRange) =>
+  downloadCrmFile("/admin/crm/ads/conversions", { from: range.from, to: range.to }, `google-ads-donusumler-${range.from}_${range.to}.csv`);

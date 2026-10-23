@@ -15,6 +15,7 @@ import { Field } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { SITE_URL } from "@/lib/env";
+import { SearchConsoleCard } from "@/components/admin/crm/search-console-card";
 
 interface FormState {
   trackingEnabled: boolean;
@@ -252,6 +253,8 @@ export default function CrmSettingsPage() {
           {saving ? "Kaydediliyor…" : "Kaydet"}
         </Button>
       </div>
+
+      {settings.data && <SearchConsoleCard settings={settings.data} />}
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 export default function CrmClicksPage() {
   const [range, setRange] = useState<DateRangeValue>(defaultRange("30"));
   const [path, setPath] = useState("");
-  const clicks = useQuery({ queryKey: ["crm-clicks", range.from, range.to, path], queryFn: () => crmApi.getCrmClicks({ ...range, path: path || undefined }) });
+  const clicks = useQuery({ queryKey: ["crm-clicks", range.from, range.to, path], queryFn: () => crmApi.getCrmClicks({ ...range, path: path || undefined }), placeholderData: (previous) => previous });
 
   return (
     <div className="space-y-4">

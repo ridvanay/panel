@@ -119,7 +119,7 @@ describe("talep listesi", () => {
   it("CSV indirme filtrelerle çağrılır", async () => {
     vi.mocked(crmApi.listCrmLeads).mockResolvedValue({ items: [], meta: { total: 0, page: 1, pageSize: 25, statusCounts: {} as never } });
     wrap(<CrmLeadsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: /CSV/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "CSV / Excel" }));
     await waitFor(() => expect(crmApi.downloadCrmFile).toHaveBeenCalledWith("/admin/crm/leads/export", expect.objectContaining({ candidate: "all" }), expect.stringMatching(/\.csv$/)));
   });
 });

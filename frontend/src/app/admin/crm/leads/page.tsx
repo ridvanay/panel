@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateLeadDialog } from "@/components/admin/crm/create-lead-dialog";
+import { AdsTools } from "@/components/admin/crm/ads-tools";
 import { LeadStatusBadge, SlaBadge, formatDateTime } from "@/components/admin/crm/crm-ui";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
@@ -56,7 +57,7 @@ export default function CrmLeadsPage() {
     page,
     pageSize: 25,
   };
-  const leads = useQuery({ queryKey: ["crm-leads", query], queryFn: () => crmApi.listCrmLeads(query) });
+  const leads = useQuery({ queryKey: ["crm-leads", query], queryFn: () => crmApi.listCrmLeads(query), placeholderData: (previous) => previous });
   const today = useQuery({ queryKey: ["crm-leads-today"], queryFn: crmApi.listTodayCrmLeads });
 
   const refresh = () => {
@@ -154,6 +155,7 @@ export default function CrmLeadsPage() {
           <Button type="button" variant="outline" onClick={() => void exportCsv()}>
             <Download className="h-4 w-4" aria-hidden="true" /> CSV / Excel
           </Button>
+          <AdsTools onImported={refresh} />
         </div>
 
         <div role="group" aria-label="Durum filtresi" className="flex flex-wrap gap-1.5">
