@@ -375,8 +375,25 @@ export function findPrivateInfo(values: unknown): string[] {
 export const DOCTOR_SLUG = "vahit-mutlu";
 const DOCTOR_NAME_NEEDLE = "Vahit Mutlu";
 export const TARGET_TITLE = "Assoc. Prof. Dr.";
-const PRIMARY_SPECIALTY_NEEDLE = "Obesity & Metabolic Surgery";
-const SECONDARY_SPECIALTY_NEEDLE = "Surgical Oncology";
+/**
+ * Uzmanlıklar önce slug ile, bulunamazsa adla (büyük/küçük harf ve "&"/"and" farkı yok sayılarak)
+ * aranır. Canlıda ad "Obesity and Metabolic Surgery" (2026-10-23 deneme çalışması). Bulunamazsa
+ * uzmanlık adımı uyarıyla ATLANIR, CV aktarımı sürer; script uzmanlık OLUŞTURMAZ.
+ */
+export const PRIMARY_SPECIALTY = { slug: "obesity-and-metabolic-surgery", name: "Obesity & Metabolic Surgery" } as const;
+export const SECONDARY_SPECIALTY = { slug: "surgical-oncology", name: "Surgical Oncology" } as const;
+
+export function normalizeSpecialtyName(value: string): string {
+  return value.toLocaleLowerCase("en").replace(/&/g, " and ").replace(/\s+/g, " ").trim();
+}
+
+async function findSpecialty(db: Db, target: { slug: string; name: string }): Promise<{ id: string; name: string } | null> {
+  const bySlug = await db.specialty.findUnique({ where: { slug: target.slug }, select: { id: true, name: true } });
+  if (bySlug) return bySlug;
+  const wanted = normalizeSpecialtyName(target.name);
+  const all = await db.specialty.findMany({ select: { id: true, name: true } });
+  return all.find((s) => normalizeSpecialtyName(s.name) === wanted) ?? null;
+}
 export const CV_FILE = "vahitcv.txt";
 export const CERTIFICATE_FILE = "wiley-reviewer-certificate-2025.pdf";
 const CERTIFICATE_ALT_TEXT = "Wiley Reviewer Certificate — Journal of Obesity";
@@ -408,9 +425,12 @@ export interface ImportPlan {
   current: { cvEntries: number; publications: number; bioLength: number; aboutLength: number; title: string };
   certificate: CertificateFile;
   existingMediaId: string | null;
-  primarySpecialtyId: string;
+  primarySpecialtyId: string | null;
+  primarySpecialtyName: string | null;
   additionalSpecialtyIds: string[];
   willConnectPrimary: boolean;
+  /** Bulunamayan uzmanlıklar — adım atlanır, aktarım sürer. */
+  specialtyWarnings: string[];
 }
 
 export async function loadSources(dir: string): Promise<{ text: string; certificate: CertificateFile }> {
@@ -450,14 +470,17 @@ export async function buildImportPlan(db: Db, dir: string): Promise<ImportPlan> 
       `Doktor profili bulunamadı (slug="${DOCTOR_SLUG}" ya da adında "${DOCTOR_NAME_NEEDLE}"). Bu script doktor OLUŞTURMAZ.`
     );
   }
-  const findSpecialty = async (needle: string) => {
-    const specialty = await db.specialty.findFirst({ where: { name: { contains: needle, mode: "insensitive" } }, select: { id: true } });
-    if (!specialty) throw new DoctorImportError(`Uzmanlık bulunamadı: "${needle}". Bu script uzmanlık OLUŞTURMAZ.`);
-    return specialty.id;
-  };
-  const primaryId = await findSpecialty(PRIMARY_SPECIALTY_NEEDLE);
-  const secondaryId = await findSpecialty(SECONDARY_SPECIALTY_NEEDLE);
-  const finalPrimary = doctor.specialtyId ?? primaryId;
+  const specialtyWarnings: string[] = [];
+  const primary = await findSpecialty(db, PRIMARY_SPECIALTY);
+  const secondary = await findSpecialty(db, SECONDARY_SPECIALTY);
+  for (const [target, found] of [[PRIMARY_SPECIALTY, primary], [SECONDARY_SPECIALTY, secondary]] as const) {
+    if (!found) {
+      specialtyWarnings.push(
+        `Uzmanlık bulunamadı (slug="${target.slug}", ad≈"${target.name}"); bu uzmanlık adımı atlandı, script uzmanlık OLUŞTURMAZ.`
+      );
+    }
+  }
+  const finalPrimary = doctor.specialtyId ?? primary?.id ?? null;
 
   // Yeniden kullanım: bu aracın yüklediği kayıt (dosya adı + boyut + tür + sabit alt metin).
   const existingMedia = await db.media.findFirst({
@@ -477,9 +500,12 @@ export async function buildImportPlan(db: Db, dir: string): Promise<ImportPlan> 
     },
     certificate,
     existingMediaId: existingMedia?.id ?? null,
-    primarySpecialtyId: primaryId,
-    additionalSpecialtyIds: [primaryId, secondaryId].filter((id) => id !== finalPrimary),
-    willConnectPrimary: doctor.specialtyId === null,
+    primarySpecialtyId: primary?.id ?? null,
+    primarySpecialtyName: primary?.name ?? null,
+    additionalSpecialtyIds: [primary?.id, secondary?.id].filter((id): id is string => Boolean(id) && id !== finalPrimary),
+    // `specialtyId` doluysa EZİLMEZ; boşsa yalnızca birincil uzmanlık bulunduysa bağlanır.
+    willConnectPrimary: doctor.specialtyId === null && primary !== null,
+    specialtyWarnings,
   };
 }
 
@@ -494,7 +520,8 @@ export function formatImportPlan(plan: ImportPlan): string {
     `  bio uzunluğu: ${current.bioLength} → ${parsed.bio.length}`,
     `  aboutHtml uzunluğu: ${current.aboutLength} → ${parsed.aboutHtml.length}`,
     `  socialLinks: ${TARGET_SOCIAL_LINKS.length} bağlantı (WhatsApp yok)`,
-    `  birincil uzmanlık: ${plan.willConnectPrimary ? "boş → Obesity & Metabolic Surgery bağlanacak" : "dolu, değişmeyecek"}; ek uzmanlık eklenecek: ${plan.additionalSpecialtyIds.length}`,
+    `  birincil uzmanlık: ${plan.willConnectPrimary ? `boş → ${plan.primarySpecialtyName} bağlanacak` : "değişmeyecek"}; ek uzmanlık (upsert, silme yok): ${plan.additionalSpecialtyIds.length}`,
+    ...plan.specialtyWarnings.map((w) => `  UYARI: ${w}`),
     "  gizli bilgi taraması (telefon, e-posta, doğum bilgisi): temiz",
     `  sertifika: ${plan.certificate.filename} (${plan.certificate.buffer.byteLength} bayt) — ${plan.existingMediaId ? `mevcut medya kullanılacak (${plan.existingMediaId})` : "medya olarak YÜKLENECEK (public)"}`,
   ];
@@ -610,7 +637,7 @@ export async function applyDoctorCvImport(
         cvEntries: cvEntries as Prisma.InputJsonValue,
         publications: plan.parsed.publications as Prisma.InputJsonValue,
         socialLinks: TARGET_SOCIAL_LINKS as Prisma.InputJsonValue,
-        ...(plan.willConnectPrimary ? { specialty: { connect: { id: plan.primarySpecialtyId } } } : {}),
+        ...(plan.willConnectPrimary && plan.primarySpecialtyId ? { specialty: { connect: { id: plan.primarySpecialtyId } } } : {}),
       },
     });
     for (const specialtyId of plan.additionalSpecialtyIds) {

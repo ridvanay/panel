@@ -182,6 +182,49 @@ describe("doctor-cv-import (Paket L)", () => {
     await expect(fs.stat(preRestoreBackup)).resolves.toBeTruthy();
   });
 
+  it("uzmanlık canlıdaki slug ile bulunur ('and' yazımı); doluysa birincil ezilmez, mevcut ek uzmanlık tekrarlanmaz", async () => {
+    // Canlıdaki durum: ad "and" ile, slug'lar sabit; doktorun birincil ve ek uzmanlığı zaten bağlı.
+    const obesity = await app.prisma.specialty.update({
+      where: { slug: "obesity" },
+      data: { name: "Obesity and Metabolic Surgery", slug: "obesity-and-metabolic-surgery" },
+    });
+    const oncology = await app.prisma.specialty.findUniqueOrThrow({ where: { slug: "surgical-oncology" } });
+    await app.prisma.doctorAdditionalSpecialty.create({ data: { doctorId, specialtyId: oncology.id } });
+
+    const plan = await buildImportPlan(app.prisma, sourceDir);
+    expect(plan.specialtyWarnings).toEqual([]);
+    expect(plan.willConnectPrimary).toBe(false);
+    expect(plan.additionalSpecialtyIds).toEqual([oncology.id]);
+
+    await applyDoctorCvImport(app.prisma, plan, { ...OP, confirm: IMPORT_CONFIRM_KEY, backupDir, storage: fakeStorage, revalidate: false });
+    expect((await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } })).specialtyId).toBe(obesity.id);
+    expect(await app.prisma.doctorAdditionalSpecialty.findMany({ where: { doctorId }, select: { specialtyId: true } })).toEqual([{ specialtyId: oncology.id }]);
+  });
+
+  it("slug farklıysa adla bulunur (büyük/küçük harf ve '&'/'and' farkı yok sayılır)", async () => {
+    await app.prisma.specialty.update({ where: { slug: "obesity" }, data: { name: "OBESITY AND METABOLIC  SURGERY", slug: "bariatric" } });
+    await app.prisma.specialty.update({ where: { slug: "surgical-oncology" }, data: { name: "surgical oncology", slug: "onco" } });
+    const plan = await buildImportPlan(app.prisma, sourceDir);
+    expect(plan.specialtyWarnings).toEqual([]);
+    expect(plan.additionalSpecialtyIds).toHaveLength(1);
+  });
+
+  it("uzmanlık bulunamazsa uyarı verir, uzmanlık adımını atlar ve CV aktarımına devam eder; uzmanlık oluşturmaz", async () => {
+    await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { specialtyId: null } });
+    await app.prisma.specialty.deleteMany({});
+    const plan = await buildImportPlan(app.prisma, sourceDir);
+    expect(plan.specialtyWarnings).toHaveLength(2);
+    expect(plan.willConnectPrimary).toBe(false);
+    expect(plan.additionalSpecialtyIds).toEqual([]);
+
+    await applyDoctorCvImport(app.prisma, plan, { ...OP, confirm: IMPORT_CONFIRM_KEY, backupDir, storage: fakeStorage, revalidate: false });
+    const after = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } });
+    expect((after.cvEntries as unknown[]).length).toBe(5);
+    expect(after.specialtyId).toBeNull();
+    expect(await app.prisma.specialty.count()).toBe(0);
+    expect(await app.prisma.doctorAdditionalSpecialty.count({ where: { doctorId } })).toBe(0);
+  });
+
   it("başka bir doktora ait ya da bozuk yedek reddedilir", async () => {
     const forged = path.join(backupDir, "forged.json");
     await fs.writeFile(forged, JSON.stringify({ kind: "doctor-profile-backup", doctorId, slug: "baska-doktor", fields: { title: "x", bio: "y" } }));

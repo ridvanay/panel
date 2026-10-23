@@ -7,6 +7,7 @@ import {
   extractDoi,
   extractYear,
   findPrivateInfo,
+  normalizeSpecialtyName,
   parseCvText,
   parseMembership,
   validateParsed,
@@ -51,6 +52,14 @@ describe("doctor-cv-import — yardımcılar", () => {
     expect(DoctorCvEntrySchema.safeParse(plain).success).toBe(true);
     // Yılsız kalem yalnızca MEMBERSHIP'te serbest.
     expect(DoctorCvEntrySchema.safeParse({ ...plain, kind: "EDUCATION" }).success).toBe(false);
+  });
+});
+
+describe("doctor-cv-import — uzmanlık adı eşleştirme", () => {
+  it("büyük/küçük harf, '&'/'and' ve fazla boşluk farkını yok sayar", () => {
+    expect(normalizeSpecialtyName("Obesity & Metabolic Surgery")).toBe(normalizeSpecialtyName("Obesity and Metabolic Surgery"));
+    expect(normalizeSpecialtyName("  OBESITY  AND metabolic SURGERY ")).toBe("obesity and metabolic surgery");
+    expect(normalizeSpecialtyName("Surgical Oncology")).not.toBe(normalizeSpecialtyName("Obesity and Metabolic Surgery"));
   });
 });
 
