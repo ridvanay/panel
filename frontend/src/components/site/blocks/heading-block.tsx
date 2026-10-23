@@ -14,9 +14,9 @@ const SIZE_CLASS: Record<HeadingBlock["data"]["level"], string> = {
 };
 
 const ALIGN_CLASS: Record<HeadingBlock["data"]["align"], string> = {
-  left: "text-left",
+  left: "text-start",
   center: "text-center",
-  right: "text-right",
+  right: "text-end",
 };
 
 export function HeadingBlockView({ block, chrome }: { block: HeadingBlock; chrome: BlockChrome }) {

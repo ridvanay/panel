@@ -198,7 +198,7 @@ export default async function ContactPage({ params }: PageProps) {
                     {hours.map((row, index) => (
                       <div key={`${row.label}-${index}`} className="flex items-baseline justify-between gap-4 py-2.5 text-base">
                         <dt className="text-[var(--about-body-text)]">{row.label}</dt>
-                        <dd className="text-right font-medium text-foreground">{row.value}</dd>
+                        <dd className="text-end font-medium text-foreground">{row.value}</dd>
                       </div>
                     ))}
                   </dl>

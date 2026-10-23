@@ -77,13 +77,13 @@ function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: Telehea
   if (entries.length === 0) return <EmptyTabState dict={dict} tab="cv" />;
 
   return (
-    <ol className="relative space-y-8 border-l border-border pl-8">
+    <ol className="relative space-y-8 border-s border-border ps-8">
       {entries.map((entry, idx) => {
         const KindIcon = CV_KIND_ICON[entry.kind];
         const years = cvYearLabel(entry, dict.cvOngoing);
         return (
           <li key={idx} className="relative">
-            <span className="absolute -left-[calc(2rem+1px)] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-foreground/60">
+            <span className="absolute -start-[calc(2rem+1px)] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-foreground/60">
               <KindIcon className="h-4 w-4" aria-hidden="true" />
             </span>
             {years && <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{years}</p>}
@@ -277,7 +277,7 @@ export function DoctorProfileTabs({ doctor, dict }: { doctor: DoctorProfile; dic
             // design-notes §1.4.1'in "kurulu değilse" alternatifi izlenir: manuel seçicilerle düz
             // metin ritmi (İKİNCİ bir link/başlık rengi İCAT EDİLMEZ, `text-primary`/`text-foreground` kullanılır).
             <div
-              className="max-w-prose space-y-3 text-sm leading-7 text-foreground/80 [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-semibold [&_strong]:text-foreground [&_ul]:list-disc [&_ul]:pl-5"
+              className="max-w-prose space-y-3 text-sm leading-7 text-foreground/80 [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_ol]:list-decimal [&_ol]:ps-5 [&_strong]:font-semibold [&_strong]:text-foreground [&_ul]:list-disc [&_ul]:ps-5"
               dangerouslySetInnerHTML={{ __html: doctor.aboutHtml }}
             />
           )}

@@ -161,14 +161,14 @@ export function PatientPaymentsPanel() {
           {/* Masaüstü tablo (md: ve üzeri) */}
           <table className="hidden w-full text-sm md:table">
             <thead>
-              <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-                <th className="py-2 pr-4">{t.patientPayments.columnDate}</th>
-                <th className="py-2 pr-4">{t.patientPayments.columnBookingNumber}</th>
-                <th className="py-2 pr-4">{t.patientPayments.columnDoctor}</th>
-                <th className="py-2 pr-4">{t.patientPayments.columnDuration}</th>
-                <th className="py-2 pr-4">{t.patientPayments.columnAmount}</th>
-                <th className="py-2 pr-4">{t.patientPayments.columnStatus}</th>
-                <th className="py-2 pr-4 text-right">{t.patientPayments.columnAction}</th>
+              <tr className="border-b border-border text-start text-xs font-semibold uppercase tracking-wider text-foreground/50">
+                <th className="py-2 pe-4">{t.patientPayments.columnDate}</th>
+                <th className="py-2 pe-4">{t.patientPayments.columnBookingNumber}</th>
+                <th className="py-2 pe-4">{t.patientPayments.columnDoctor}</th>
+                <th className="py-2 pe-4">{t.patientPayments.columnDuration}</th>
+                <th className="py-2 pe-4">{t.patientPayments.columnAmount}</th>
+                <th className="py-2 pe-4">{t.patientPayments.columnStatus}</th>
+                <th className="py-2 pe-4 text-end">{t.patientPayments.columnAction}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
@@ -177,23 +177,23 @@ export function PatientPaymentsPanel() {
                 const dateIso = booking.paidAt ?? booking.createdAt;
                 return (
                   <tr key={booking.id}>
-                    <td className="py-3 pr-4 text-foreground/70">
+                    <td className="py-3 pe-4 text-foreground/70">
                       {formatDayLabel(dateIso, timeZone, intlLocale)} · {formatTime(dateIso, timeZone, intlLocale)}
                     </td>
-                    <td className="py-3 pr-4 font-medium text-foreground">{booking.bookingNumber}</td>
-                    <td className="py-3 pr-4 text-foreground">
+                    <td className="py-3 pe-4 font-medium text-foreground">{booking.bookingNumber}</td>
+                    <td className="py-3 pe-4 text-foreground">
                       {booking.doctor.title} {booking.doctor.fullName}
                     </td>
-                    <td className="py-3 pr-4 text-foreground/70">
+                    <td className="py-3 pe-4 text-foreground/70">
                       {fmt(t.patientPayments.slotSummary, { count: booking.slotCount, minutes: block.totalMinutes })}
                     </td>
-                    <td className="py-3 pr-4 font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</td>
-                    <td className="py-3 pr-4">
+                    <td className="py-3 pe-4 font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</td>
+                    <td className="py-3 pe-4">
                       <Badge tone="success" size="sm">
                         {t.paymentStatus.PAID}
                       </Badge>
                     </td>
-                    <td className="py-3 pr-4 text-right">
+                    <td className="py-3 pe-4 text-end">
                       <Button
                         type="button"
                         variant="outline"

@@ -113,11 +113,11 @@ export function ProductPurchasePanel({
   }, [product.coverMedia, product.images]);
 
   const galleryBadge = isSoldOut ? (
-    <span className="absolute left-4 top-4 z-10 rounded-full bg-danger px-3 py-1 text-sm font-medium text-danger-foreground">
+    <span className="absolute start-4 top-4 z-10 rounded-full bg-danger px-3 py-1 text-sm font-medium text-danger-foreground">
       Tükendi
     </span>
   ) : discountPriceCents !== null ? (
-    <span className="absolute left-4 top-4 z-10">
+    <span className="absolute start-4 top-4 z-10">
       <Badge tone="danger" solid size="lg">
         %{computeDiscountPercent(priceCents, discountPriceCents)}
       </Badge>
@@ -156,7 +156,7 @@ export function ProductPurchasePanel({
           <div className="text-2xl font-semibold text-foreground">
             {discountPriceCents !== null ? (
               <>
-                <span className="mr-3 text-base font-normal text-foreground/40 line-through">
+                <span className="me-3 text-base font-normal text-foreground/40 line-through">
                   {formatPriceFromCents(priceCents, product.currency, intlLocale)}
                 </span>
                 {formatPriceFromCents(discountPriceCents, product.currency, intlLocale)}

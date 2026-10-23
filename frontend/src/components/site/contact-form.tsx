@@ -176,7 +176,7 @@ export function ContactFormClient({ form }: { form: PublicContactForm }) {
       ))}
 
       {/* Honeypot — CSS ile gizli, tabindex=-1, autocomplete=off (§10.16.9). */}
-      <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
+      <div className="absolute -start-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
         <label htmlFor="website">Web siteniz</label>
         <input id="website" type="text" tabIndex={-1} autoComplete="off" {...register("website")} />
       </div>

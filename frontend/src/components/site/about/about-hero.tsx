@@ -71,7 +71,7 @@ export function AboutHero({ hero, homeLabel, breadcrumbCurrent, homeHref, primar
               )}
             </div>
 
-            <div className="absolute bottom-4 left-4 right-4 flex max-w-xs items-center gap-3 rounded-2xl bg-card p-4 shadow-lg shadow-foreground/10 sm:bottom-6 sm:left-6 sm:right-auto">
+            <div className="absolute bottom-4 start-4 end-4 flex max-w-xs items-center gap-3 rounded-2xl bg-card p-4 shadow-lg shadow-foreground/10 sm:bottom-6 sm:start-6 sm:end-auto">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--about-accent-tint)] text-primary">
                 <MapPin className="size-5" aria-hidden="true" />
               </span>

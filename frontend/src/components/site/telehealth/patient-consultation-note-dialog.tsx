@@ -68,7 +68,7 @@ export function PatientConsultationNoteDialog({
             <p className="text-base font-semibold text-foreground">
               {booking.doctor.title} {booking.doctor.fullName}
             </p>
-            <div className="text-right">
+            <div className="text-end">
               <p className="text-xs text-foreground/50">{t.consultationNote.patient}</p>
               <p className="text-sm font-medium text-foreground">{booking.patientName}</p>
             </div>

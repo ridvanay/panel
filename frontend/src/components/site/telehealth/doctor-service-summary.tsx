@@ -163,7 +163,7 @@ export function DoctorServiceSummaryPanel({
                 {selectedSlots.map((slot) => (
                   <span
                     key={slot.startsAt}
-                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium tabular-nums text-primary"
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-1 ps-2.5 pe-1.5 text-xs font-medium tabular-nums text-primary"
                   >
                     {formatTime(slot.startsAt, displayTimeZone, intlLocale)}
                     {!locked && (

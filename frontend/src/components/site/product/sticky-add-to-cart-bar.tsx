@@ -97,7 +97,7 @@ export function StickyAddToCartBar({
         <div className="min-w-0 text-base font-semibold text-foreground">
           {discountPriceCents !== null ? (
             <>
-              <span className="mr-1.5 text-xs font-normal text-foreground/40 line-through">
+              <span className="me-1.5 text-xs font-normal text-foreground/40 line-through">
                 {formatPriceFromCents(priceCents, currency, intlLocale)}
               </span>
               {formatPriceFromCents(discountPriceCents, currency, intlLocale)}

@@ -60,7 +60,7 @@ export function LegalConsentSection({ distanceSalesPage, onOpenPreliminaryModal 
           </span>
         </label>
         {errors.distanceSalesApproved && (
-          <p role="alert" className="pl-6 text-xs text-danger">
+          <p role="alert" className="ps-6 text-xs text-danger">
             {errors.distanceSalesApproved.message}
           </p>
         )}
@@ -89,7 +89,7 @@ export function LegalConsentSection({ distanceSalesPage, onOpenPreliminaryModal 
           </span>
         </label>
         {errors.preliminaryInfoApproved && (
-          <p role="alert" className="pl-6 text-xs text-danger">
+          <p role="alert" className="ps-6 text-xs text-danger">
             {errors.preliminaryInfoApproved.message}
           </p>
         )}

@@ -28,7 +28,7 @@ function DoctorAvatar({ doctor, size, verifiedSrLabel }: { doctor: DoctorProfile
     <div className="relative shrink-0">
       <DoctorAvatarMedia doctor={doctor} sizeClassName={sizeClassName} textClassName={textClassName} sizes={size === "sm" ? "64px" : "96px"} />
       {doctor.isVerified && (
-        <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-surface">
+        <span className="absolute -bottom-0.5 -end-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-surface">
           <BadgeCheck className="h-3 w-3" aria-hidden="true" />
           <span className="sr-only">{verifiedSrLabel}</span>
         </span>

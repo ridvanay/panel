@@ -56,7 +56,7 @@ export function PreliminaryInfoModal({ open, onOpenChange, cart, preliminaryInfo
           </div>
           <div className="flex justify-between border-b border-border/60 py-1.5">
             <span className="text-foreground/60">Teslimat Adresi</span>
-            <span className="text-right text-foreground">{addressOneLine}</span>
+            <span className="text-end text-foreground">{addressOneLine}</span>
           </div>
           <div className="flex justify-between border-b border-border/60 py-1.5">
             <span className="text-foreground/60">Fatura Tipi</span>

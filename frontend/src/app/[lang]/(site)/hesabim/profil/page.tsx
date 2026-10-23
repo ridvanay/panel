@@ -379,7 +379,7 @@ export default function AccountProfilePage() {
             <div>
               <span className="mb-1.5 block text-sm font-medium text-foreground">Rol</span>
               <Badge tone={roleBadge.tone} solid={roleBadge.solid}>
-                <roleBadge.icon className="mr-1 h-3 w-3" />
+                <roleBadge.icon className="me-1 h-3 w-3" />
                 {roleBadge.label}
               </Badge>
             </div>

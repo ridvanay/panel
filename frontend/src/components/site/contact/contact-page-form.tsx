@@ -360,7 +360,7 @@ export function ContactPageForm({
       )}
 
       {/* Honeypot — insanlar görmez/doldurmaz; ekran okuyucudan ve sekme sırasından gizli. */}
-      <div aria-hidden="true" className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden">
+      <div aria-hidden="true" className="absolute -start-[10000px] top-auto h-px w-px overflow-hidden">
         <label htmlFor={id("website")}>Website</label>
         <input id={id("website")} name="website" type="text" tabIndex={-1} autoComplete="off" value={values.website} onChange={(e) => update("website", e.target.value)} />
       </div>
@@ -436,7 +436,7 @@ export function ContactPageForm({
               aria-describedby={describedBy("phoneCountry")}
               value={values.phoneCountry}
               onChange={(e) => update("phoneCountry", e.target.value)}
-              className={cn(INPUT_CLASS, "h-12 pr-8")}
+              className={cn(INPUT_CLASS, "h-12 pe-8")}
             >
               <option value="">{dict.phoneCountryLabel}</option>
               {countries.map((country) => (
@@ -487,7 +487,7 @@ export function ContactPageForm({
           aria-describedby={describedBy("country")}
           value={values.country}
           onChange={(e) => update("country", e.target.value)}
-          className={cn(INPUT_CLASS, "mt-2 h-12 pr-8")}
+          className={cn(INPUT_CLASS, "mt-2 h-12 pe-8")}
         >
           <option value="">{dict.countryPlaceholder}</option>
           {countries.map((country) => (
@@ -514,7 +514,7 @@ export function ContactPageForm({
             aria-describedby={describedBy("treatment", id("treatment-help"))}
             value={values.treatment}
             onChange={(e) => update("treatment", e.target.value)}
-            className={cn(INPUT_CLASS, "mt-2 h-12 pr-8")}
+            className={cn(INPUT_CLASS, "mt-2 h-12 pe-8")}
           >
             <option value="">{dict.treatmentPlaceholder}</option>
             {treatments.map((treatment) => (

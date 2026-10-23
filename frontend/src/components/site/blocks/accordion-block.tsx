@@ -83,7 +83,7 @@ function SpotlightAccordion({ block }: { block: AccordionBlock; items: Accordion
             <AccordionPrimitive.Header>
               <AccordionPrimitive.Trigger
                 className={cn(
-                  "group flex w-full items-center justify-between gap-4 px-5 py-4 text-left outline-none transition-colors duration-300",
+                  "group flex w-full items-center justify-between gap-4 px-5 py-4 text-start outline-none transition-colors duration-300",
                   "focus-visible:ring-2 focus-visible:ring-ring/50",
                   "data-[panel-open]:bg-gradient-to-br data-[panel-open]:from-[color-mix(in_oklch,var(--site-accent)_16%,white)] data-[panel-open]:to-card data-[panel-open]:ring-1 data-[panel-open]:ring-[var(--site-accent)]/50"
                 )}

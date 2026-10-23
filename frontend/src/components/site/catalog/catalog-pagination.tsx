@@ -57,7 +57,7 @@ export function CatalogPagination({ filters, pagination }: CatalogPaginationProp
           pagination.page <= 1 && "pointer-events-none opacity-50"
         )}
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-4 w-4 rtl:-scale-x-100" />
       </Link>
       {pageItems.map((item, index) =>
         item === "ellipsis" ? (
@@ -89,7 +89,7 @@ export function CatalogPagination({ filters, pagination }: CatalogPaginationProp
           pagination.page >= pagination.totalPages && "pointer-events-none opacity-50"
         )}
       >
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-4 w-4 rtl:-scale-x-100" />
       </Link>
     </nav>
   );

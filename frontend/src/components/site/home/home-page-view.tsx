@@ -156,7 +156,7 @@ function ViewAllLink({ href, label, className }: { href: string; label: string; 
       className={cn("inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-primary underline-offset-4 hover:underline", className)}
     >
       {label}
-      <ArrowRight className="size-4" aria-hidden="true" />
+      <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
     </Link>
   );
 }
@@ -190,7 +190,7 @@ function HomeHero({
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:mt-10 lg:gap-4">
             <Link href={primaryHref} className={cn(homeButton.primary, "w-full sm:w-auto")}>
               {hero.primaryCta.label}
-              <ArrowRight className="size-4" aria-hidden="true" />
+              <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
             </Link>
             {secondaryHref && (
               <Link href={secondaryHref} className={cn(homeButton.secondary, "w-full sm:w-auto")}>
@@ -220,7 +220,7 @@ function HomeHero({
           </div>
           {(hero.cardTitle || hero.cardText) && (
             // Masaüstünde kart görselin sol kenarından TAŞAR (tasarım); mobilde görselin içinde.
-            <div className="absolute right-3.5 bottom-3.5 left-3.5 flex items-center gap-3 rounded-2xl bg-surface p-4 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.22)] lg:right-auto lg:bottom-10 lg:-left-8 lg:w-auto lg:min-w-[278px] lg:max-w-[360px] lg:px-5">
+            <div className="absolute end-3.5 bottom-3.5 start-3.5 flex items-center gap-3 rounded-2xl bg-surface p-4 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.22)] lg:end-auto lg:bottom-10 lg:-start-8 lg:w-auto lg:min-w-[278px] lg:max-w-[360px] lg:px-5">
               <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl text-primary", ACCENT_TINT)}>
                 <Lock className="size-5" aria-hidden="true" />
               </span>
@@ -284,7 +284,7 @@ function HowItWorks({ how, stepLabel }: { how: HomePageContent["how"]; stepLabel
                 "relative flex items-start gap-4 lg:flex-col lg:items-center lg:gap-0 lg:text-center",
                 // Masaüstünde daireler arası kesikli bağlantı çizgisi (son adım hariç) — dekoratif.
                 index < how.steps.length - 1 &&
-                  "lg:after:pointer-events-none lg:after:absolute lg:after:top-8 lg:after:left-[calc(50%+2.5rem)] lg:after:w-[calc(100%-5rem+2rem)] lg:after:border-t-2 lg:after:border-dashed lg:after:border-border lg:after:content-['']"
+                  "lg:after:pointer-events-none lg:after:absolute lg:after:top-8 lg:after:start-[calc(50%+2.5rem)] lg:after:w-[calc(100%-5rem+2rem)] lg:after:border-t-2 lg:after:border-dashed lg:after:border-border lg:after:content-['']"
               )}
             >
               <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground lg:size-16">

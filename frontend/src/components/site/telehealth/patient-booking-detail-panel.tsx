@@ -398,7 +398,7 @@ export function PatientBookingDetailPanel({
                   {booking.doctor.title} {booking.doctor.fullName}
                 </p>
               </div>
-              <div className="text-right">
+              <div className="text-end">
                 <p className="text-xs text-foreground/50">{t.bookingDetail.patient}</p>
                 <p className="text-sm font-medium text-foreground">{booking.patientName}</p>
               </div>

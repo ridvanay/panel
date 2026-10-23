@@ -130,7 +130,7 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
             <p>İade ve garanti koşulları hakkında detaylı bilgi için:</p>
             {legalPage && legalHref ? (
               <Link href={legalHref} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "mt-3 rounded-[var(--site-radius)]")}>
-                {legalPage.title} <ArrowRight className="h-3.5 w-3.5" />
+                {legalPage.title} <ArrowRight className="h-3.5 w-3.5 rtl:-scale-x-100" />
               </Link>
             ) : (
               <p className="mt-2 text-foreground/50">Şu anda yayınlanmış bir iade/garanti sayfası bulunmuyor.</p>

@@ -197,13 +197,13 @@ export function NavDropdown({
                     className="inline-flex min-h-11 items-center gap-2 rounded-lg text-[15px] font-semibold text-[var(--site-primary)] outline-none hover:underline data-[highlighted]:underline"
                   >
                     {viewAllLabel}
-                    <ArrowRight className="size-4" aria-hidden="true" />
+                    <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
                   </Menu.Item>
                 )}
                 {showFindDoctor && (
                   <Menu.Item
                     render={<Link href={localize("/doctors")} />}
-                    className="ml-auto inline-flex min-h-11 items-center rounded-full bg-[color-mix(in_oklch,var(--site-primary)_7%,var(--site-surface))] px-5 text-sm font-semibold text-[var(--site-primary)] outline-none hover:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))]"
+                    className="ms-auto inline-flex min-h-11 items-center rounded-full bg-[color-mix(in_oklch,var(--site-primary)_7%,var(--site-surface))] px-5 text-sm font-semibold text-[var(--site-primary)] outline-none hover:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))]"
                   >
                     {findDoctorLabel}
                   </Menu.Item>

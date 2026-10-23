@@ -136,7 +136,7 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
         </div>
 
         {/* Orta bölge: hasta künyesi */}
-        <div className="flex min-w-0 flex-1 items-start gap-3 border-t border-border/60 pt-3 sm:border-t-0 sm:border-l sm:border-border/60 sm:items-center sm:pt-0 sm:pl-4">
+        <div className="flex min-w-0 flex-1 items-start gap-3 border-t border-border/60 pt-3 sm:border-t-0 sm:border-s sm:border-border/60 sm:items-center sm:pt-0 sm:ps-4">
           <Avatar name={booking.patientName} size={40} />
           <div className="min-w-0 space-y-1.5">
             <div className="flex items-baseline gap-1.5">
@@ -162,7 +162,7 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
         </div>
 
         {/* Sağ bölge: hiyerarşik aksiyonlar — birincil (Katıl) üstte/öne çıkan, ikincil (Not Ekle) altında */}
-        <div className="flex shrink-0 flex-col items-stretch gap-2 border-t border-border/60 pt-3 sm:w-auto sm:items-end sm:border-t-0 sm:border-l sm:border-border/60 sm:pt-0 sm:pl-4">
+        <div className="flex shrink-0 flex-col items-stretch gap-2 border-t border-border/60 pt-3 sm:w-auto sm:items-end sm:border-t-0 sm:border-s sm:border-border/60 sm:pt-0 sm:ps-4">
           <JoinMeetingButton
             booking={booking}
             size="sm"

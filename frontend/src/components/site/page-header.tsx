@@ -85,7 +85,7 @@ export function PageHeader({
             (çağıran sayfaya göre max-w-3xl/4xl/5xl değişir) — LEFT_OVERLAY her zaman `max-w-xl`
             editoryal "hero" ölçeğinde sabit kalır. `mx-auto`/`w-full` BİLİNÇLİ olarak YOK — flex
             ebeveynin `justify-start`'ı ile sola yaslı kalması gerekir, ortalanırsa "sola yaslı" kırılır. */}
-        <div className="relative max-w-xl px-4 text-left sm:px-6">
+        <div className="relative max-w-xl px-4 text-start sm:px-6">
           <ReadabilityPill>
             <h1 className="text-3xl font-bold text-white drop-shadow-md sm:text-5xl">{title}</h1>
           </ReadabilityPill>
@@ -121,7 +121,7 @@ export function PageHeader({
           </div>
         )}
         <div className="flex flex-col justify-center bg-surface px-6 py-10 sm:px-12 sm:py-16">
-          <h1 className="text-left text-3xl font-bold text-foreground sm:text-4xl">{title}</h1>
+          <h1 className="text-start text-3xl font-bold text-foreground sm:text-4xl">{title}</h1>
         </div>
       </div>
     );

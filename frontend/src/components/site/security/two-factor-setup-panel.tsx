@@ -104,7 +104,7 @@ export function TwoFactorSetupPanel({ onCompleted }: TwoFactorSetupPanelProps) {
 
   if (backupCodes) {
     return (
-      <div className="w-full space-y-4 text-left">
+      <div className="w-full space-y-4 text-start">
         <BackupCodesList codes={backupCodes} />
         <Button type="button" className="w-full rounded-[var(--site-radius)]" onClick={onCompleted}>
           Portala Gir
@@ -138,7 +138,7 @@ export function TwoFactorSetupPanel({ onCompleted }: TwoFactorSetupPanelProps) {
   }
 
   return (
-    <div className="w-full space-y-4 text-left">
+    <div className="w-full space-y-4 text-start">
       <p className="text-center text-xs text-foreground/60">
         Kimlik doğrulama uygulamanızla (Google Authenticator, 1Password vb.) QR kodu tarayın.
       </p>

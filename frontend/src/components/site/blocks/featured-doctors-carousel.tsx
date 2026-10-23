@@ -149,6 +149,9 @@ export function FeaturedDoctorsCarousel({
     <div
       role="region"
       aria-roledescription="carousel"
+      // Paket L — kaydırma hesabı (`scrollLeft`/`offsetLeft`) soldan sağa varsayar; RTL sayfada da
+      // carousel bu yönde kalır (kart içindeki Arapça metin yine doğru akar).
+      dir="ltr"
       aria-label={labels.region}
       className="featured-doctors-carousel relative"
       // Yalnızca gerçek fare hover'ı duraklatır (dokunmatikte emüle edilen enter/leave takılı kalmasın);

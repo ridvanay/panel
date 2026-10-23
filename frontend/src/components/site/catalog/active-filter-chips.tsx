@@ -86,7 +86,7 @@ export function ActiveFilterChips({ filters, facets }: ActiveFilterChipsProps) {
       {chips.map((chip) => (
         <span
           key={chip.key}
-          className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-3 pr-1.5 text-xs font-medium text-primary"
+          className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-1 ps-3 pe-1.5 text-xs font-medium text-primary"
         >
           {chip.label}
           <button
@@ -102,7 +102,7 @@ export function ActiveFilterChips({ filters, facets }: ActiveFilterChipsProps) {
       <button
         type="button"
         onClick={() => router.replace(buildClearAllHref(pathname, filters), { scroll: false })}
-        className="ml-auto text-xs font-medium text-foreground/60 hover:text-foreground hover:underline"
+        className="ms-auto text-xs font-medium text-foreground/60 hover:text-foreground hover:underline"
       >
         Filtreleri Temizle
       </button>

@@ -251,7 +251,7 @@ export default function MyAddressesPage() {
                 </div>
                 {address.isDefault && (
                   <Badge tone="primary">
-                    <CheckCircle2 className="mr-1 h-3 w-3" />
+                    <CheckCircle2 className="me-1 h-3 w-3" />
                     Varsayılan
                   </Badge>
                 )}
@@ -283,7 +283,7 @@ export default function MyAddressesPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="ml-auto"
+                    className="ms-auto"
                     loading={settingDefaultId === address.id}
                     onClick={() => void handleSetDefault(address)}
                   >

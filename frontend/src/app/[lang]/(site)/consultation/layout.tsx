@@ -36,7 +36,11 @@ export default async function ConsultationLayout({
         showDetailsLabel={notice.showDetailsLabel}
         hideDetailsLabel={notice.hideDetailsLabel}
       />
-      {children}
+      {/* Paket L — görüşme odası (`consultation-room.tsx`, değiştirilmez) RTL dillerde de soldan sağa
+          düzende kalır; şerit ise dilin kendi yönünde. `contents` düzeni değiştirmez. */}
+      <div dir="ltr" className="contents">
+        {children}
+      </div>
     </>
   );
 }

@@ -5,9 +5,9 @@ import type { BlockChrome, CtaBlock, CtaStyle, TextAlign } from "@/lib/page-buil
 /** Faz "Pazarlama & Sosyal Kanıt" — 4 hazır ton, `ui-designer` kararınca ham CSS/renk DEĞİL
  *  sabit bir sınıf tablosu (bkz. `types.ts::CtaStyle` yorumu). */
 const ITEMS_ALIGN_CLASS: Record<TextAlign, string> = {
-  left: "items-start text-left",
+  left: "items-start text-start",
   center: "items-center text-center",
-  right: "items-end text-right",
+  right: "items-end text-end",
 };
 
 const WRAPPER_STYLE_CLASS: Record<CtaStyle, string> = {

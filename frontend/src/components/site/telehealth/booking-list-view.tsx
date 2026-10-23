@@ -308,12 +308,12 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
       {/* §12.5.2 — masaüstü tablo (md: ve üzeri) */}
       <table className="hidden w-full text-sm md:table">
         <thead>
-          <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-            <th className="py-2 pr-4">{perspective === "doctor" ? t.bookingList.columnPatient : t.bookingList.columnDoctor}</th>
-            <th className="py-2 pr-4">{t.bookingList.columnSlots}</th>
-            <th className="py-2 pr-4">{t.bookingList.columnPayment}</th>
-            <th className="py-2 pr-4">{t.bookingList.columnDocuments}</th>
-            <th className="py-2 pr-4 text-right">{t.bookingList.columnAction}</th>
+          <tr className="border-b border-border text-start text-xs font-semibold uppercase tracking-wider text-foreground/50">
+            <th className="py-2 pe-4">{perspective === "doctor" ? t.bookingList.columnPatient : t.bookingList.columnDoctor}</th>
+            <th className="py-2 pe-4">{t.bookingList.columnSlots}</th>
+            <th className="py-2 pe-4">{t.bookingList.columnPayment}</th>
+            <th className="py-2 pe-4">{t.bookingList.columnDocuments}</th>
+            <th className="py-2 pe-4 text-end">{t.bookingList.columnAction}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border/60">
@@ -321,8 +321,8 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
             const counterpartName = perspective === "doctor" ? booking.patientName : `${booking.doctor.title} ${booking.doctor.fullName}`;
             return (
               <tr key={booking.id}>
-                <td className="py-3 pr-4 font-medium text-foreground">{counterpartName}</td>
-                <td className="py-3 pr-4">
+                <td className="py-3 pe-4 font-medium text-foreground">{counterpartName}</td>
+                <td className="py-3 pe-4">
                   <div className="flex flex-wrap gap-1.5">
                     {booking.appointments.map((appointment) => (
                       <span
@@ -334,13 +334,13 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                     ))}
                   </div>
                 </td>
-                <td className="py-3 pr-4">
+                <td className="py-3 pe-4">
                   <PaymentStatusBadge status={booking.paymentStatus} />
                 </td>
-                <td className="py-3 pr-4">
+                <td className="py-3 pe-4">
                   <BookingDocumentsIndicator booking={booking} perspective={perspective} onOpen={() => setDocumentsBookingId(booking.id)} />
                 </td>
-                <td className="py-3 pr-4 text-right">
+                <td className="py-3 pe-4 text-end">
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <BookingActions
                       booking={booking}

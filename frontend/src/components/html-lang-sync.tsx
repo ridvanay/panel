@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useParams } from "next/navigation";
+import { localeDirection } from "@/lib/i18n/locale-direction";
 
 /**
  * `<html lang>` tam sayfa yüklemesinde `app/layout.tsx`'in okuduğu `x-active-locale` request
@@ -29,6 +30,11 @@ export function HtmlLangSync() {
     if (!lang) return;
     if (document.documentElement.lang !== lang) {
       document.documentElement.lang = lang;
+    }
+    // Paket L — yazı yönü de dil ile birlikte senkron tutulur (ör. ar → rtl, dil değiştiricide ltr'ye dönüş).
+    const dir = localeDirection(lang);
+    if (document.documentElement.dir !== dir) {
+      document.documentElement.dir = dir;
     }
   }, [lang]);
 

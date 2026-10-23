@@ -32,9 +32,9 @@ export function PortfolioCard({ item, activeLocaleCode, defaultLocaleCode }: Por
         )}
         <span
           aria-hidden="true"
-          className="absolute right-4 top-4 flex size-10 items-center justify-center rounded-full bg-[var(--site-surface)]/90 text-[var(--site-text)]"
+          className="absolute end-4 top-4 flex size-10 items-center justify-center rounded-full bg-[var(--site-surface)]/90 text-[var(--site-text)]"
         >
-          <ArrowUpRight className="size-5" />
+          <ArrowUpRight className="size-5 rtl:-scale-x-100" />
         </span>
       </div>
       <div className="p-4">

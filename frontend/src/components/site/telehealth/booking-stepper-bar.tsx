@@ -73,8 +73,8 @@ export function BookingStepperBar({ steps }: { steps: BookingStepperStep[] }) {
                   korunur; daireler + ilerleme çubuğu taşma yaratmadan dar ekranlara sığar. */}
               <span
                 className={cn(
-                  "sr-only text-[11px] font-medium leading-tight sm:not-sr-only sm:mt-1.5 sm:block sm:max-w-[104px] sm:text-left",
-                  isLast && "sm:text-left",
+                  "sr-only text-[11px] font-medium leading-tight sm:not-sr-only sm:mt-1.5 sm:block sm:max-w-[104px] sm:text-start",
+                  isLast && "sm:text-start",
                   step.status === "completed" && "sm:text-foreground/70",
                   step.status === "current" && "sm:font-semibold sm:text-foreground",
                   step.status === "upcoming" && "sm:text-foreground/40"

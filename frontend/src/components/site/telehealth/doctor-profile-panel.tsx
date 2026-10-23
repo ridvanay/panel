@@ -188,7 +188,7 @@ export function DoctorProfilePanel() {
           <Alert variant="error">
             <p>{submitError}</p>
             {submitErrorDetails.length > 0 && (
-              <ul className="mt-1.5 list-disc space-y-0.5 pl-4">
+              <ul className="mt-1.5 list-disc space-y-0.5 ps-4">
                 {submitErrorDetails.map((detail) => (
                   <li key={detail}>{detail}</li>
                 ))}

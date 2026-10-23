@@ -49,7 +49,7 @@ function WishlistProductCard({
             <img src={product.coverImageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
           )}
           {soldOut && (
-            <span className="absolute right-2 top-2 rounded-full bg-danger px-2 py-0.5 text-xs font-medium text-danger-foreground">
+            <span className="absolute end-2 top-2 rounded-full bg-danger px-2 py-0.5 text-xs font-medium text-danger-foreground">
               Tükendi
             </span>
           )}
@@ -59,7 +59,7 @@ function WishlistProductCard({
           <p className="mt-2 text-base font-semibold text-foreground">
             {product.discountPriceCents !== null ? (
               <>
-                <span className="mr-2 text-sm font-normal text-foreground/40 line-through">
+                <span className="me-2 text-sm font-normal text-foreground/40 line-through">
                   {formatPriceFromCents(product.priceCents, product.currency, intlLocale)}
                 </span>
                 {formatPriceFromCents(product.discountPriceCents, product.currency, intlLocale)}

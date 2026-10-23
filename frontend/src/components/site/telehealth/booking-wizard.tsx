@@ -420,7 +420,7 @@ export function BookingWizard({
                   onClick={() => setCurrentStep(2)}
                   className="mb-3 inline-flex items-center gap-1 rounded-[var(--site-radius)] text-sm font-medium text-foreground/60 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
-                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  <ChevronLeft className="h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />
                   {t.wizard.backToDateTime}
                 </button>
                 <BookingIdentityStep

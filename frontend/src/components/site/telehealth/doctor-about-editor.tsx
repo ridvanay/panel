@@ -133,7 +133,7 @@ export function DoctorAboutEditor({ content, onChange }: { content: string; onCh
           </ToolbarButton>
         </div>
         <EditorContent editor={editor} className="px-3 py-2" />
-        <div className="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground">
+        <div className="border-t border-input px-3 py-1 text-end text-xs text-muted-foreground">
           {fmt(t.richEditor.charactersWithLimit, { count: editor?.storage.characterCount.characters() ?? 0, limit: MAX_ABOUT_HTML_LENGTH })}
         </div>
       </div>

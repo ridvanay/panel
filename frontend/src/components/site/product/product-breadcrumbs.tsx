@@ -29,19 +29,19 @@ export async function ProductBreadcrumbs({ activeLocaleCode, defaultLocaleCode, 
       <Link href={homeHref} className="hover:text-foreground hover:underline">
         {dict.common.home}
       </Link>
-      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30" aria-hidden="true" />
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30 rtl:-scale-x-100" aria-hidden="true" />
       <Link href={productsHref} className="hover:text-foreground hover:underline">
         Ürünler
       </Link>
       {category && categoryHref && (
         <>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30" aria-hidden="true" />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30 rtl:-scale-x-100" aria-hidden="true" />
           <Link href={categoryHref} className="truncate hover:text-foreground hover:underline">
             {category.name}
           </Link>
         </>
       )}
-      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30" aria-hidden="true" />
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30 rtl:-scale-x-100" aria-hidden="true" />
       <span className="truncate font-medium text-foreground" aria-current="page">
         {productTitle}
       </span>

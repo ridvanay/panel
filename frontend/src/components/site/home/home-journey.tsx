@@ -261,7 +261,7 @@ function StepFlow({ steps, stepLabel, inView, reduceMotion }: StepFlowProps) {
               {nextInRow && (
                 <motion.span
                   aria-hidden="true"
-                  className="ml-auto hidden h-px w-5 shrink-0 bg-white/15 sm:block"
+                  className="ms-auto hidden h-px w-5 shrink-0 bg-white/15 sm:block"
                   initial={false}
                   animate={{ backgroundColor: active ? "var(--site-primary)" : "rgba(255,255,255,0.15)" }}
                   transition={{ duration: 0.4 }}

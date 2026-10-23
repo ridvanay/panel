@@ -76,7 +76,7 @@ export function CategoryFilterTree({ filters, categories }: CategoryFilterTreePr
                   aria-expanded={expanded}
                   className="grid h-6 w-6 shrink-0 place-items-center text-foreground/40 hover:text-foreground"
                 >
-                  <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")} />
+                  <ChevronRight className={cn("h-3.5 w-3.5 transition-transform rtl:-scale-x-100", expanded && "rotate-90")} />
                 </button>
               )}
               <Link
@@ -85,18 +85,18 @@ export function CategoryFilterTree({ filters, categories }: CategoryFilterTreePr
                 scroll={false}
                 className={cn(
                   "flex flex-1 items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors",
-                  !hasChildren && "ml-6",
+                  !hasChildren && "ms-6",
                   selected ? "bg-primary/10 font-medium text-primary" : "text-foreground hover:bg-surface-muted"
                 )}
               >
                 <span className="truncate">{root.name}</span>
-                <span className="ml-2 shrink-0 rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/60 tabular-nums">
+                <span className="ms-2 shrink-0 rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/60 tabular-nums">
                   {root.productCount}
                 </span>
               </Link>
             </div>
             {expanded && hasChildren && (
-              <ul className="ml-3 space-y-0.5 border-l border-border/60 pl-3">
+              <ul className="ms-3 space-y-0.5 border-s border-border/60 ps-3">
                 {root.children.map((child) => {
                   const childSelected = selectedSlug === child.slug;
                   return (
@@ -111,7 +111,7 @@ export function CategoryFilterTree({ filters, categories }: CategoryFilterTreePr
                         )}
                       >
                         <span className="truncate">{child.name}</span>
-                        <span className="ml-2 shrink-0 rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/60 tabular-nums">
+                        <span className="ms-2 shrink-0 rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/60 tabular-nums">
                           {child.productCount}
                         </span>
                       </Link>

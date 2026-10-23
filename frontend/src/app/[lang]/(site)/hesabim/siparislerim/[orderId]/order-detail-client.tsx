@@ -67,7 +67,7 @@ export function OrderDetailClient({ orderId }: OrderDetailClientProps) {
         href={localize("/hesabim/siparislerim")}
         className="inline-flex items-center gap-1 text-sm text-foreground/60 transition-colors hover:text-foreground"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-4 w-4 rtl:-scale-x-100" />
         Siparişlerim
       </Link>
 
@@ -145,9 +145,9 @@ export function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                 <TableRow>
                   <TableHead>Ürün</TableHead>
                   <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">Birim Fiyat</TableHead>
-                  <TableHead className="text-right">Adet</TableHead>
-                  <TableHead className="text-right">Toplam</TableHead>
+                  <TableHead className="text-end">Birim Fiyat</TableHead>
+                  <TableHead className="text-end">Adet</TableHead>
+                  <TableHead className="text-end">Toplam</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -155,16 +155,16 @@ export function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                   <TableRow key={item.id}>
                     <TableCell className="font-medium text-foreground">{item.productTitle}</TableCell>
                     <TableCell className="text-foreground/60">{item.productSku ?? "—"}</TableCell>
-                    <TableCell className="text-right">{formatPriceFromCents(item.unitPriceCents, order.currency, intlLocale)}</TableCell>
-                    <TableCell className="text-right">{item.quantity}</TableCell>
-                    <TableCell className="text-right">{formatPriceFromCents(item.lineTotalCents, order.currency, intlLocale)}</TableCell>
+                    <TableCell className="text-end">{formatPriceFromCents(item.unitPriceCents, order.currency, intlLocale)}</TableCell>
+                    <TableCell className="text-end">{item.quantity}</TableCell>
+                    <TableCell className="text-end">{formatPriceFromCents(item.lineTotalCents, order.currency, intlLocale)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </Card>
 
-          <Card className="ml-auto max-w-xs space-y-2">
+          <Card className="ms-auto max-w-xs space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="text-foreground/60">Ara Toplam</span>
               <span className="text-foreground">{formatPriceFromCents(order.subtotalCents, order.currency, intlLocale)}</span>

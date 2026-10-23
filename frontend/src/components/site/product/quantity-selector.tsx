@@ -24,7 +24,7 @@ export function QuantitySelector({ value, onChange, max, min = 1, disabled }: Qu
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="h-9 w-9 rounded-none rounded-l-[var(--site-radius)]"
+        className="h-9 w-9 rounded-none rounded-s-[var(--site-radius)]"
         disabled={disabled || value <= min}
         aria-label="Azalt"
         onClick={() => onChange(Math.max(min, value - 1))}
@@ -38,7 +38,7 @@ export function QuantitySelector({ value, onChange, max, min = 1, disabled }: Qu
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="h-9 w-9 rounded-none rounded-r-[var(--site-radius)]"
+        className="h-9 w-9 rounded-none rounded-e-[var(--site-radius)]"
         disabled={disabled || value >= max}
         aria-label="Artır"
         onClick={() => onChange(Math.min(max, value + 1))}

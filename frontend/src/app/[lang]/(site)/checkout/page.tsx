@@ -150,7 +150,7 @@ export default function CheckoutPage() {
           <Accordion>
             <AccordionItem>
               <AccordionTrigger>
-                <span className="flex flex-1 items-center justify-between pr-2">
+                <span className="flex flex-1 items-center justify-between pe-2">
                   <span>Sipariş Özeti ({itemCount} ürün)</span>
                   <span className="font-semibold text-foreground">{formatPriceFromCents(cart.totalCents, currency, intlLocale)}</span>
                 </span>

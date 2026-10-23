@@ -161,7 +161,7 @@ export default function CartPage() {
                 </Button>
               </div>
 
-              <div className="w-24 shrink-0 text-right text-sm font-semibold text-foreground">
+              <div className="w-24 shrink-0 text-end text-sm font-semibold text-foreground">
                 {formatPriceFromCents(item.lineTotalCents, cart.currency ?? "TRY", intlLocale)}
               </div>
 

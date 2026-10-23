@@ -16,7 +16,7 @@ interface ProductGalleryProps {
   images: ProductGalleryImage[];
   /** Seçili varyasyonun görseli (varsa) — ana önizlemeyi bu görsele geçirir. */
   highlightUrl?: string | null;
-  /** İndirim/Tükendi rozeti (design-notes §3: `left-4 top-4`, `size="lg"`). */
+  /** İndirim/Tükendi rozeti (design-notes §3: `start-4 top-4`, `size="lg"`). */
   badge?: ReactNode;
 }
 

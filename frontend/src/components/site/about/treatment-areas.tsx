@@ -29,7 +29,7 @@ const iconGlyphClass = "size-5 transition-transform duration-300 group-hover:rot
 const titleClass =
   "relative z-10 text-sm font-semibold leading-snug text-foreground transition-colors duration-300 group-hover:text-white group-focus-visible:text-white sm:text-base";
 const arrowClass =
-  "absolute right-3 bottom-3 z-10 size-4 translate-x-1 translate-y-1 text-white opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:translate-y-0 group-focus-visible:opacity-100";
+  "absolute end-3 bottom-3 z-10 size-4 translate-x-1 translate-y-1 text-white opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:translate-y-0 group-focus-visible:opacity-100";
 
 /**
  * "Our treatment areas" kutuları — scroll'da sırayla (~stagger) aşağıdan yukarı belirir

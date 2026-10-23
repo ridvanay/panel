@@ -67,7 +67,7 @@ export function ProductCard({ product, activeLocaleCode, defaultLocaleCode, size
 
   // §3.2 rozet istif sırası (bağlayıcı): Tükendi TEK BAŞINA > İndirim > Çok Satan > Yeni, en fazla 2.
   const badges = (
-    <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1">
+    <div className="absolute end-2 top-2 z-10 flex flex-col items-end gap-1">
       {soldOut ? (
         <Badge tone="danger" solid>
           Tükendi
@@ -90,7 +90,7 @@ export function ProductCard({ product, activeLocaleCode, defaultLocaleCode, size
     <p className="mt-2 text-base font-semibold text-foreground">
       {hasDiscount && product.discountPriceCents !== null ? (
         <>
-          <span className="mr-2 text-sm font-normal text-foreground/40 line-through">
+          <span className="me-2 text-sm font-normal text-foreground/40 line-through">
             {formatPriceFromCents(product.priceCents, product.currency, intlLocale)}
           </span>
           {formatPriceFromCents(product.discountPriceCents, product.currency, intlLocale)}
@@ -156,7 +156,7 @@ export function ProductCard({ product, activeLocaleCode, defaultLocaleCode, size
               <div className="w-40 shrink-0">
                 {hasVariants ? (
                   <Link href={href} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full rounded-[var(--site-radius)]")}>
-                    Seçenekleri Gör <ArrowRight className="h-3.5 w-3.5" />
+                    Seçenekleri Gör <ArrowRight className="h-3.5 w-3.5 rtl:-scale-x-100" />
                   </Link>
                 ) : (
                   <AddToCartButton productId={product.id} stockQuantity={product.stockQuantity} size="sm" className="w-full rounded-[var(--site-radius)]" />

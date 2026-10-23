@@ -28,6 +28,7 @@ import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/co
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { NavDropdown, type NavSpecialty } from "@/components/site/nav-dropdown";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { localeDirection } from "@/lib/i18n/locale-direction";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { NavStrings } from "@/lib/i18n/site-dictionaries";
 import { navStrings as legacyFallbackNavStrings } from "@/lib/i18n/site-dictionaries/tr/nav";
@@ -354,7 +355,7 @@ export function SiteHeader({
               <img
                 src={settings.logoUrl}
                 alt={settings.siteName?.trim() || "Site"}
-                className="block w-auto object-contain object-left"
+                className="block w-auto object-contain object-left rtl:object-right"
                 style={{
                   height: `${settings.headerLogoHeight ?? DEFAULT_HEADER_LOGO_HEIGHT}px`,
                   maxWidth: settings.headerLogoMaxWidth ? `min(${settings.headerLogoMaxWidth}px, 100%)` : "100%",
@@ -507,7 +508,7 @@ export function SiteHeader({
               {itemCount > 0 && (
                 <span
                   aria-hidden="true"
-                  className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
+                  className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
                 >
                   {itemCount > 99 ? "99+" : itemCount}
                 </span>
@@ -548,11 +549,12 @@ export function SiteHeader({
             </SheetTrigger>
             <SheetContent
               id={MOBILE_MENU_ID}
-              side="right"
+              // Paket L — RTL dillerde mobil menü satır sonu tarafından (soldan) açılır.
+              side={localeDirection(activeLocale?.code) === "rtl" ? "left" : "right"}
               showCloseButton={false}
-              className="w-[min(20rem,88vw)] gap-0 overflow-y-auto p-0 data-[side=right]:w-[min(20rem,88vw)]"
+              className="w-[min(20rem,88vw)] gap-0 overflow-y-auto p-0 data-[side=right]:w-[min(20rem,88vw)] data-[side=left]:w-[min(20rem,88vw)]"
             >
-              <div className="flex items-center justify-between border-b border-border py-1.5 pl-4 pr-2">
+              <div className="flex items-center justify-between border-b border-border py-1.5 ps-4 pe-2">
                 <SheetTitle className="text-base font-semibold text-foreground">{dict.menuTitle}</SheetTitle>
                 <SheetClose
                   render={
@@ -580,7 +582,7 @@ export function SiteHeader({
                                 <span className="flex-1">{link.label}</span>
                               </AccordionTrigger>
                               <AccordionPanel>
-                                <ul className="flex flex-col gap-0.5 pb-1 pl-3">
+                                <ul className="flex flex-col gap-0.5 pb-1 ps-3">
                                   {link.children.map((child) => {
                                     const href = localize(child.href);
                                     const active = isNavLinkActive(pathname, href);

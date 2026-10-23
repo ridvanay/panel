@@ -78,7 +78,7 @@ export function CartDrawer() {
       <DialogPrimitive.Portal container={portalContainer}>
         <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity duration-150 data-closed:opacity-0 data-open:opacity-100" />
         <DialogPrimitive.Popup
-          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-surface shadow-xl outline-none transition-transform duration-300 ease-out data-closed:translate-x-full data-open:translate-x-0 sm:max-w-[420px]"
+          className="fixed inset-y-0 end-0 z-50 flex w-full flex-col bg-surface shadow-xl outline-none transition-transform duration-300 ease-out data-closed:translate-x-full data-open:translate-x-0 rtl:data-closed:-translate-x-full sm:max-w-[420px]"
           aria-label="Sepetiniz"
         >
           <DialogPrimitive.Title className="sr-only">{`Sepetiniz (${itemCount})`}</DialogPrimitive.Title>

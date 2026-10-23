@@ -116,7 +116,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
             <p className="text-xs text-foreground/50">{t.invoice.bookingNumber}</p>
             <p className="text-sm font-medium text-foreground">{invoice.bookingNumber}</p>
           </div>
-          <div className="text-right">
+          <div className="text-end">
             <p className="text-xs text-foreground/50">{t.invoice.issuedAt}</p>
             <p className="text-sm font-medium text-foreground">{new Intl.DateTimeFormat(intlLocale, { dateStyle: "long" }).format(new Date(invoice.issuedAt))}</p>
           </div>
@@ -136,10 +136,10 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
 
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
+            <tr className="border-b border-border text-start text-xs font-semibold uppercase tracking-wider text-foreground/50">
               <th className="py-2">{t.invoice.description}</th>
               <th className="py-2">{t.invoice.date}</th>
-              <th className="py-2 text-right">{t.invoice.amount}</th>
+              <th className="py-2 text-end">{t.invoice.amount}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
@@ -149,7 +149,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
                 <td className="py-2 text-foreground/70">
                   {formatDayLabel(line.startsAt, timeZone, intlLocale)} · {formatTime(line.startsAt, timeZone, intlLocale)}
                 </td>
-                <td className="py-2 text-right text-foreground">{formatPriceFromCents(line.unitPriceCents, invoice.currency, intlLocale)}</td>
+                <td className="py-2 text-end text-foreground">{formatPriceFromCents(line.unitPriceCents, invoice.currency, intlLocale)}</td>
               </tr>
             ))}
           </tbody>

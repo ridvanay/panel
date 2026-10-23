@@ -152,7 +152,7 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone, explicitCons
           <span>{t.intake.consentCheckbox}</span>
         </label>
         {consentTouched && !consent && (
-          <p role="alert" className="mt-1 pl-6 text-xs text-danger">
+          <p role="alert" className="mt-1 ps-6 text-xs text-danger">
             {t.intake.consentRequired}
           </p>
         )}

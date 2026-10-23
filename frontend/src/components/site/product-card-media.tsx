@@ -137,7 +137,7 @@ export function ProductCardMedia({
         {showFavoriteOverlay && (
           <FavoriteButton
             productId={productId}
-            className="absolute left-2 top-2 z-10 bg-surface/90 shadow-sm backdrop-blur-sm hover:bg-surface"
+            className="absolute start-2 top-2 z-10 bg-surface/90 shadow-sm backdrop-blur-sm hover:bg-surface"
           />
         )}
 
@@ -150,7 +150,7 @@ export function ProductCardMedia({
           >
             {hasVariants ? (
               <Link href={href} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full rounded-[var(--site-radius)]")}>
-                Seçenekleri Gör <ArrowRight className="h-3.5 w-3.5" />
+                Seçenekleri Gör <ArrowRight className="h-3.5 w-3.5 rtl:-scale-x-100" />
               </Link>
             ) : (
               <AddToCartButton productId={productId} stockQuantity={stockQuantity} size="sm" className="w-full rounded-[var(--site-radius)]" />

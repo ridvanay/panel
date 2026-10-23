@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
 import { HtmlLangSync } from "@/components/html-lang-sync";
+import { localeDirection } from "@/lib/i18n/locale-direction";
 import { SITE_URL } from "@/lib/env";
 import { DEFAULT_FAVICON_PATH } from "@/lib/site-settings/site-icons";
 import "./globals.css";
@@ -45,6 +46,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang={activeLocale}
+      // Paket L — Arapça gibi sağdan sola dillerde `rtl`; admin/auth rotalarında header yok → "tr" → `ltr`.
+      dir={localeDirection(activeLocale)}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       // next-themes <html> üzerinde class="dark"/style="color-scheme" ekleyip kaldırdığı için
       // sunucu/istemci ilk render'ında kaçınılmaz bir farklılık oluşur; bu satır o beklenen

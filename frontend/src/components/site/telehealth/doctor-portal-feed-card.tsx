@@ -33,7 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  *
  * ui-designer inceltme turu (2026-09-14) — sidebar'ın ana alanın (`shadow-sm`'li KPI/randevu
  * kartları) ÖNÜNE GEÇMEMESİ için BİLİNÇLİ olarak gölgesiz/düz bırakıldı (görsel ağırlık hiyerarşisi).
- * Duyuru satırları artık önem seviyesine göre renkli sol-kenar vurgusu (`border-l-2`) taşıyor —
+ * Duyuru satırları artık önem seviyesine göre renkli sol-kenar vurgusu (`border-s-2`) taşıyor —
  * kutu-içinde-kutu gürültüsünü azaltırken önem rozetiyle AYNI ton eşlemesini (INFO→primary,
  * IMPORTANT→warning, SYSTEM→danger) tekrarlıyor. Bildirim satırları tam kutu yerine ince bir
  * `divide-y` liste desenine çevrildi — duyurulardan daha düşük görsel öncelik.
@@ -46,9 +46,9 @@ const SEVERITY_BADGE_TONE: Record<DoctorPortalAnnouncementSeverity, "primary" | 
 };
 
 const SEVERITY_ACCENT_BORDER: Record<DoctorPortalAnnouncementSeverity, string> = {
-  INFO: "border-l-primary",
-  IMPORTANT: "border-l-warning",
-  SYSTEM: "border-l-danger",
+  INFO: "border-s-primary",
+  IMPORTANT: "border-s-warning",
+  SYSTEM: "border-s-danger",
 };
 
 type DoctorFeedStrings = PortalStrings["doctorFeed"];
@@ -86,7 +86,7 @@ function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPorta
     <div
       data-testid="doctor-portal-feed-announcement"
       data-severity={announcement.severity}
-      className={`rounded-[var(--site-radius)] border border-border border-l-2 bg-surface p-2.5 ${SEVERITY_ACCENT_BORDER[announcement.severity]}`}
+      className={`rounded-[var(--site-radius)] border border-border border-s-2 bg-surface p-2.5 ${SEVERITY_ACCENT_BORDER[announcement.severity]}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-1.5">
         <p className="text-sm font-medium text-foreground">{announcement.title}</p>

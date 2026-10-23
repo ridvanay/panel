@@ -88,7 +88,7 @@ function LightboxTrigger({ block }: { block: VideoBlock }) {
             <DialogPrimitive.Title className="sr-only">Video</DialogPrimitive.Title>
             <DialogPrimitive.Close
               aria-label="Kapat"
-              className={cn(CONTROL_BUTTON_CLASS, "absolute right-3 top-3 z-10 sm:right-6 sm:top-6")}
+              className={cn(CONTROL_BUTTON_CLASS, "absolute end-3 top-3 z-10 sm:end-6 sm:top-6")}
             >
               <X className="h-5 w-5" />
             </DialogPrimitive.Close>

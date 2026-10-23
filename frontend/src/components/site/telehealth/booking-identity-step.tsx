@@ -243,13 +243,13 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
                   value={tcNumber}
                   onChange={(e) => setTcNumber(e.target.value.replace(/[^\d]/g, "").slice(0, 11))}
                   className={cn(
-                    "pr-28",
+                    "pe-28",
                     tcStatus === "valid" && "border-success focus-visible:ring-success/30",
                     tcStatus === "invalid" && "border-danger focus-visible:ring-danger/30"
                   )}
                 />
                 {tcStatus !== "idle" && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <span className="absolute end-2 top-1/2 -translate-y-1/2">
                     {tcStatus === "valid" ? (
                       <Badge tone="success" solid size="sm" className="gap-1">
                         <CircleCheck className="h-3 w-3" aria-hidden="true" />
@@ -295,13 +295,13 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
                   value={passportNumber}
                   onChange={(e) => setPassportNumber(e.target.value.toUpperCase())}
                   className={cn(
-                    "pr-28",
+                    "pe-28",
                     passportStatus === "valid" && "border-success focus-visible:ring-success/30",
                     passportStatus === "invalid" && "border-danger focus-visible:ring-danger/30"
                   )}
                 />
                 {passportStatus !== "idle" && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <span className="absolute end-2 top-1/2 -translate-y-1/2">
                     {passportStatus === "valid" ? (
                       <Badge tone="success" solid size="sm" className="gap-1">
                         <CircleCheck className="h-3 w-3" aria-hidden="true" />

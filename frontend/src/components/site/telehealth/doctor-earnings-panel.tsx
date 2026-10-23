@@ -183,26 +183,26 @@ export function DoctorEarningsPanel() {
               {/* masaüstü tablo (md: ve üzeri) */}
               <table className="hidden w-full text-sm md:table">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-                    <th className="py-2 pr-4">{t.doctorEarnings.columnPatient}</th>
-                    <th className="py-2 pr-4">{t.doctorEarnings.columnDate}</th>
-                    <th className="py-2 pr-4 text-right">{t.doctorEarnings.columnGross}</th>
-                    <th className="py-2 pr-4 text-right">{t.doctorEarnings.columnCommission}</th>
-                    <th className="py-2 text-right">{t.doctorEarnings.columnNet}</th>
+                  <tr className="border-b border-border text-start text-xs font-semibold uppercase tracking-wider text-foreground/50">
+                    <th className="py-2 pe-4">{t.doctorEarnings.columnPatient}</th>
+                    <th className="py-2 pe-4">{t.doctorEarnings.columnDate}</th>
+                    <th className="py-2 pe-4 text-end">{t.doctorEarnings.columnGross}</th>
+                    <th className="py-2 pe-4 text-end">{t.doctorEarnings.columnCommission}</th>
+                    <th className="py-2 text-end">{t.doctorEarnings.columnNet}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {sessions.map((session) => (
                     <tr key={session.appointmentId}>
-                      <td className="py-3 pr-4 font-medium text-foreground">{session.patientName}</td>
-                      <td className="py-3 pr-4 text-foreground/70">
+                      <td className="py-3 pe-4 font-medium text-foreground">{session.patientName}</td>
+                      <td className="py-3 pe-4 text-foreground/70">
                         {formatDayLabel(session.startsAt, timeZone, intlLocale)} · {formatTime(session.startsAt, timeZone, intlLocale)}
                       </td>
-                      <td className="py-3 pr-4 text-right tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency, intlLocale)}</td>
-                      <td className="py-3 pr-4 text-right tabular-nums text-foreground">
+                      <td className="py-3 pe-4 text-end tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency, intlLocale)}</td>
+                      <td className="py-3 pe-4 text-end tabular-nums text-foreground">
                         {formatPriceFromCents(session.commissionCents, session.currency, intlLocale)}
                       </td>
-                      <td className="py-3 text-right tabular-nums font-medium text-foreground">
+                      <td className="py-3 text-end tabular-nums font-medium text-foreground">
                         {formatPriceFromCents(session.netCents, session.currency, intlLocale)}
                       </td>
                     </tr>

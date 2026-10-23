@@ -41,7 +41,7 @@ export function EmergencyNoticeStrip({
     <div role="note" className={`w-full border-b ${NOTICE_BORDER} ${NOTICE_SURFACE}`}>
       <div className="mx-auto flex max-w-7xl items-start gap-2 px-3 sm:px-6">
         <p id={textId} className="min-w-0 flex-1 py-[11px] text-[13px] leading-[1.45] xl:text-sm">
-          <AlertTriangle className="mr-1.5 inline-block h-4 w-4 -translate-y-px align-middle text-warning" aria-hidden="true" />
+          <AlertTriangle className="me-1.5 inline-block h-4 w-4 -translate-y-px align-middle text-warning" aria-hidden="true" />
           {expanded ? full : summary}
         </p>
         <button

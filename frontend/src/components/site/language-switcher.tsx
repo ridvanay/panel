@@ -77,7 +77,7 @@ export function LanguageSwitcher({ locales, activeLocale, variant = "dropdown", 
                 >
                   <Globe className="h-4 w-4 text-foreground/50" aria-hidden="true" />
                   {l.nativeLabel}
-                  {active && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
+                  {active && <Check className="ms-auto h-4 w-4" aria-hidden="true" />}
                 </Link>
               </li>
             );
@@ -97,7 +97,7 @@ export function LanguageSwitcher({ locales, activeLocale, variant = "dropdown", 
         {locales.map((l) => (
           <DropdownMenuItem key={l.code} render={<Link href={hrefFor(l)} />}>
             {l.nativeLabel}
-            {l.code === activeLocale.code && <Check className="ml-auto h-4 w-4" />}
+            {l.code === activeLocale.code && <Check className="ms-auto h-4 w-4" />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

@@ -235,7 +235,7 @@ export function ConsultationNoteEditor({
           </ToolbarButton>
         </div>
         <EditorContent editor={editor} className="px-3 py-2" />
-        <div className="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground">
+        <div className="border-t border-input px-3 py-1 text-end text-xs text-muted-foreground">
           {fmt(t.richEditor.characters, { count: editor?.storage.characterCount.characters() ?? 0 })}
         </div>
       </div>
