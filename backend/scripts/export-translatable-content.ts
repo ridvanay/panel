@@ -1,0 +1,34 @@
+/**
+ * Paket L (2026-10-23) — çevrilecek tüm içeriğin EN kanonik metnini TEK bir JSON dosyasına yazar.
+ * SALT OKUMA: veritabanına hiçbir şey yazmaz. Kapsam: yayındaki sayfalar ve blok metinleri (SSS dahil),
+ * doktor profilleri; bilgi amaçlı (içe aktarılmaz): uzmanlıklar, menü, footer, site ayarları.
+ * Yasal sayfalar (`isLegalDocument`) HARİÇ. Mantık: `src/lib/content-translations.ts`.
+ *
+ * ÇALIŞTIRMA (backend/ dizininden):
+ *   npx tsx scripts/export-translatable-content.ts [--out=storage/translations/export.json]
+ */
+import fs from "node:fs/promises";
+import path from "node:path";
+import { PrismaClient } from "@prisma/client";
+import { buildTranslationExport, summarizeExport } from "../src/lib/content-translations";
+
+function arg(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  return process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length);
+}
+
+async function main() {
+  const prisma = new PrismaClient();
+  try {
+    const data = await buildTranslationExport(prisma);
+    const out = path.resolve(arg("out") ?? `storage/translations/export-${data.exportedAt.replace(/[:.]/g, "-")}.json`);
+    await fs.mkdir(path.dirname(out), { recursive: true });
+    await fs.writeFile(out, JSON.stringify(data, null, 2), "utf8");
+    console.log(`Kanonik dil: ${data.canonicalLocale} — kalemler:\n${summarizeExport(data)}`);
+    console.log(`\nYazıldı: ${out}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+void main();
