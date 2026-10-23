@@ -7,6 +7,7 @@ import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { ValidationError } from "../../lib/errors";
 import { requireCrmAccess } from "./crm.access";
 import { registerCrmLeadRoutes } from "./crm.leads.routes";
+import { registerCrmAnalyticsRoutes } from "./crm.analytics.routes";
 import {
   applyCrmSettingsPatch,
   readCrmSettings,
@@ -25,6 +26,7 @@ export async function crmAdminRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireCrmAccess());
 
   await registerCrmLeadRoutes(app);
+  await registerCrmAnalyticsRoutes(app);
 
   app.get("/settings", async (_request, reply) => {
     const settings = await readCrmSettings(app.prisma);

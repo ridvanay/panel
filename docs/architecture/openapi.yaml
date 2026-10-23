@@ -13161,6 +13161,103 @@ paths:
                       rows: { type: array, items: { $ref: "#/components/schemas/CrmFunnelRow" } }
                       total: { $ref: "#/components/schemas/CrmFunnelRow" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  # --- CRM N3: analitik ekranları (ADMIN + 2FA) ---------------------------------------------
+  /admin/crm/analytics/overview:
+    get:
+      tags: [CRM]
+      summary: Genel bakış (KPI, günlük eğri, kaynaklar, temas/giriş/temas-öncesi sayfalar, son talepler, sıcak ziyaretçiler, en çok tıklananlar)
+      description: Tablolar günlük özetten (`crm_daily_rollups`), tekil ziyaretçi ve "şu an sitede" ham oturumlardan. Dönüşüm = talep / ziyaretçi.
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+      responses:
+        "200": { description: OK }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/analytics/live:
+    get:
+      tags: [CRM]
+      summary: Şu an sitede (son 75 sn içinde sinyal gönderen oturumlar)
+      responses:
+        "200": { description: OK }
+  /admin/crm/analytics/pages:
+    get:
+      tags: [CRM]
+      summary: Sayfa haritası (görüntüleme, kişi, ortalama okuma süresi, kaydırma derinliği, giriş, temas)
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+      responses:
+        "200": { description: OK }
+  /admin/crm/analytics/sources:
+    get:
+      tags: [CRM]
+      summary: Kaynaklar ve kampanyalar
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+      responses:
+        "200": { description: OK }
+  /admin/crm/analytics/audience:
+    get:
+      tags: [CRM]
+      summary: Ülke, dil, saat dilimi, cihaz kırılımı; doktor ve uzmanlık ilgisi
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+      responses:
+        "200": { description: OK }
+  /admin/crm/analytics/clicks:
+    get:
+      tags: [CRM]
+      summary: Tıklanan öğeler (öğe metni, seçici, hedef)
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+        - { name: path, in: query, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+  /admin/crm/analytics/heatmap/pages:
+    get:
+      tags: [CRM]
+      summary: Isı haritası için sayfa listesi
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+      responses:
+        "200": { description: OK }
+  /admin/crm/analytics/heatmap:
+    get:
+      tags: [CRM]
+      summary: Isı haritası (tıklama noktaları, kaydırma derinliği, öfkeli/ölü tıklama, tıklanabilir sanılan öğeler)
+      description: Ham olaylardan; mobil (MOBILE+TABLET) ve masaüstü ayrı. En fazla 5000 nokta. Admin önizlemesi script'siz sandbox iframe'de açılır (takip edilmez).
+      parameters:
+        - { $ref: "#/components/parameters/CrmFrom" }
+        - { $ref: "#/components/parameters/CrmTo" }
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: device, in: query, schema: { type: string, enum: [desktop, mobile], default: desktop } }
+      responses:
+        "200": { description: OK }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/visitors:
+    get:
+      tags: [CRM]
+      summary: Ziyaretçiler (sıcaklık puanı; Ref kodu ya da kimlik ile arama; sıcak filtresi)
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: 'Ref kodu (ör. "Ref: AB12CD") ya da kimlik öneki' }
+        - { name: hot, in: query, schema: { type: string, enum: ["true", "false"] } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: pageSize, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        "200": { description: "OK — meta: { total, page, pageSize, hotThreshold }" }
+  /admin/crm/visitors/{id}:
+    get:
+      tags: [CRM]
+      summary: Ziyaretçi detayı (oturumlar + olay zaman çizelgesi) — denetim kaydı `crm.visitor.viewed`
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
 
 components:
   securitySchemes:
@@ -13181,6 +13278,18 @@ components:
         ayrımını YAPMAZ (numaralandırma koruması).
 
   parameters:
+    CrmFrom:
+      name: from
+      in: query
+      required: true
+      description: "Başlangıç günü (Europe/Istanbul takvim günü)"
+      schema: { type: string, format: date }
+    CrmTo:
+      name: to
+      in: query
+      required: true
+      description: "Bitiş günü (dahil, Europe/Istanbul)"
+      schema: { type: string, format: date }
     OrgId:
       name: orgId
       in: path
@@ -13819,6 +13928,7 @@ components:
       schema: { type: integer, example: 42 }
 
   schemas:
+
     CrmLeadStatus:
       type: string
       enum: [NEW, CALLED, UNREACHABLE, APPOINTMENT_GIVEN, CONSULTED, TREATMENT_PLANNED, TREATED, NEGATIVE, SPAM]
