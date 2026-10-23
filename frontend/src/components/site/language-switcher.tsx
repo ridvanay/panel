@@ -34,8 +34,11 @@ interface LanguageSwitcherProps {
  * `nativeLabel`, bayrak YOK (§4). Aynı içeriğin o dildeki karşılığına gider (`localizations`'tan,
  * `context/locale-alternates-context.tsx` köprüsüyle); yoksa o dilin ana sayfasına düşer.
  */
-export function LanguageSwitcher({ locales, activeLocale, variant = "dropdown", heading, onNavigate }: LanguageSwitcherProps) {
+export function LanguageSwitcher({ locales: allLocales, activeLocale, variant = "dropdown", heading, onNavigate }: LanguageSwitcherProps) {
   const alternates = useLocaleAlternates();
+  // Paket L — kapalı (`enabled: false`) diller hiçbir koşulda listelenmez (public `/locales` zaten
+  // yalnızca açık dilleri döner; bu, önbellekte kalmış eski bir listeye karşı savunmadır).
+  const locales = allLocales.filter((l) => l.enabled);
 
   if (locales.length <= 1) return null;
 

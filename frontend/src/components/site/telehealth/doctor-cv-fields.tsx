@@ -18,7 +18,7 @@ type DoctorCvStrings = PortalStrings["doctorCv"];
  * dizi editörleri RHF dışında `useState` ile yönetildiğinden (proje deseni) bileşenler kontrollüdür.
  */
 
-export const DOCTOR_LANGUAGE_OPTIONS = ["tr", "en", "de", "fr", "es", "ar"] as const;
+export const DOCTOR_LANGUAGE_OPTIONS = ["tr", "en", "de", "fr", "es", "ar", "ru"] as const;
 
 export interface DoctorCvFormValue {
   subSpecialty: string;
