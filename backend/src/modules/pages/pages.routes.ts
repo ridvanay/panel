@@ -96,10 +96,18 @@ const PAGE_ARRAY_FIELDS = ["blocks"] as const;
  * (KVKK m.10 / GDPR m.12, bkz. §5.1). SEO alanları normal fallback'e tabidir; yalnızca
  * `title` ve `blocks` bilinçli olarak istisna dışı/içi tutulur.
  */
+/**
+ * Paket L (2026-10-23) — yasal metinlerin bağlayıcı sürümleri Türkçe ve İngilizcedir. §5.1 fail-safe
+ * (gövde boş + bildirim) YALNIZCA bu dillerde uygulanır; diğer dillerde (es/de/ar/ru…) çeviri yoksa
+ * kanonik metne düşülür ve frontend başta "bağlayıcı sürümler TR ve EN" notunu gösterir
+ * (`frontend/src/lib/legal-locale.ts` — AYNI küme).
+ */
+export const LEGAL_BINDING_LOCALES: readonly string[] = ["tr", "en"];
+
 function applyPageLocale<T extends Page>(page: T, effectiveLocale: string | undefined, translatedInLocale: boolean): T {
   if (!effectiveLocale) return page;
 
-  if (page.isLegalDocument && !translatedInLocale) {
+  if (page.isLegalDocument && !translatedInLocale && LEGAL_BINDING_LOCALES.includes(effectiveLocale)) {
     const seoLocalized = applyFieldLocalization(
       page,
       effectiveLocale,

@@ -9,7 +9,8 @@ import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { BlockRenderer } from "@/components/site/blocks";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
-import { LegalDocumentNotice } from "@/components/site/legal-document-notice";
+import { LegalBindingVersionsNote, LegalDocumentNotice } from "@/components/site/legal-document-notice";
+import { legalDisplayMode } from "@/lib/legal-locale";
 import { FallbackHome } from "@/components/marketing/fallback-home";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
@@ -103,11 +104,17 @@ export default async function RootPage({ params }: PageProps) {
   const page = lang === defaultLocale?.code ? homePage : await resolveLocalizedHome(homePage.slug, lang, homePage);
 
   const activeLocalization = page.localizations.find((l) => l.locale === lang);
-  const showLegalNotice =
-    page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
+  // Paket L — bkz. `[slug]/page.tsx` (aynı kural, `lib/legal-locale.ts`).
+  const legalMode = legalDisplayMode({
+    isLegalDocument: page.isLegalDocument,
+    lang,
+    defaultLocaleCode: defaultLocale?.code,
+    translated: activeLocalization?.translated,
+  });
+  const showLegalNotice = legalMode === "notice";
   // `generateMetadata`teki `noIndex` hesabıyla tutarlı (`page.noIndex` TEK kaynak) — mimar §7.5
   // Boşluk 2: `noIndex`teki sayfada yapılandırılmış veri BASILMAZ.
-  const noIndexEffective = page.noIndex || showLegalNotice;
+  const noIndexEffective = page.noIndex || legalMode !== "content";
   const normalizedNodes = normalizePageNodes(page.blocks);
 
   return (
@@ -125,6 +132,7 @@ export default async function RootPage({ params }: PageProps) {
         />
       ) : (
         <>
+          {legalMode === "binding-fallback" && <LegalBindingVersionsNote text={dict.legal.bindingVersionsNote} />}
           <div className={isHomeTemplatePage(page) ? aboutSerif.variable : undefined}>
             <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           </div>

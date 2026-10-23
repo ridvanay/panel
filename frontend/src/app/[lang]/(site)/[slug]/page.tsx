@@ -7,7 +7,8 @@ import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { BlockRenderer } from "@/components/site/blocks";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
-import { LegalDocumentNotice } from "@/components/site/legal-document-notice";
+import { LegalBindingVersionsNote, LegalDocumentNotice } from "@/components/site/legal-document-notice";
+import { legalDisplayMode } from "@/lib/legal-locale";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
@@ -41,8 +42,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   // §5.1 — hukuki belgenin çevrilmemiş dildeki bildirim sayfası içeriksizdir, indekslenmemeli.
   const activeLocalization = page.localizations.find((l) => l.locale === lang);
+  // Paket L — bildirim (TR/EN) de, kanonik metne düşen yeni dil sayfası da (yinelenen içerik) indekslenmez.
   const isUntranslatedLegalNotice =
-    page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
+    legalDisplayMode({
+      isLegalDocument: page.isLegalDocument,
+      lang,
+      defaultLocaleCode: defaultLocale?.code,
+      translated: activeLocalization?.translated,
+    }) !== "content";
 
   return buildContentMetadata(
     {
@@ -108,11 +115,17 @@ export default async function DynamicPage({ params }: PageProps) {
   // fail-safe); istemci burada YALNIZCA durumu tespit edip bildirim gösterir (bkz.
   // `.claude/architect-scope-i18n.md` §5.1 — "İstemci bu durumu isLegalDocument &&
   // !localizations[locale].translated ile türetir").
-  const showLegalNotice =
-    page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
+  // Paket L — bağlayıcı dillerde (TR/EN) bildirim; diğer dillerde kanonik metin + "bağlayıcı sürümler" notu.
+  const legalMode = legalDisplayMode({
+    isLegalDocument: page.isLegalDocument,
+    lang,
+    defaultLocaleCode: defaultLocale?.code,
+    translated: activeLocalization?.translated,
+  });
+  const showLegalNotice = legalMode === "notice";
   // `generateMetadata`teki `noIndex` hesabıyla BİREBİR aynı (`isUntranslatedLegalNotice` ===
-  // `showLegalNotice`) — yapılandırılmış veri bastırma kararı (Boşluk 2) bu TEK değeri kullanır.
-  const noIndexEffective = page.noIndex || showLegalNotice;
+  // `legalMode !== "content"`) — yapılandırılmış veri bastırma kararı (Boşluk 2) bu TEK değeri kullanır.
+  const noIndexEffective = page.noIndex || legalMode !== "content";
   const normalizedNodes = normalizePageNodes(page.blocks);
 
   const canonicalUrl = `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
@@ -144,6 +157,7 @@ export default async function DynamicPage({ params }: PageProps) {
         />
       ) : (
         <>
+          {legalMode === "binding-fallback" && <LegalBindingVersionsNote text={dict.legal.bindingVersionsNote} />}
           <div className={isHomeTemplate ? aboutSerif.variable : undefined}>
             <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           </div>

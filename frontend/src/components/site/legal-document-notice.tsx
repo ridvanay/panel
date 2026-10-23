@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileWarning } from "lucide-react";
+import { FileWarning, Scale } from "lucide-react";
 
 /**
  * §5.1 hukuki belge istisnası (bağlayıcı, KVKK m.10 / GDPR m.12) — `isLegalDocument: true`
@@ -36,6 +36,25 @@ export function LegalDocumentNotice({
       >
         {viewInDefaultLocaleLabel}
       </Link>
+    </div>
+  );
+}
+
+/**
+ * Paket L (2026-10-23) — TR/EN dışındaki dillerde çevrilmemiş yasal sayfa kanonik metne düşer; sayfanın
+ * başında bağlayıcı sürümlerin Türkçe ve İngilizce olduğu, ziyaretçinin dilinde belirtilir
+ * (`dict.legal.bindingVersionsNote`).
+ */
+export function LegalBindingVersionsNote({ text }: { text: string }) {
+  return (
+    <div className="mx-auto max-w-3xl px-4 pt-8 sm:px-6">
+      <p
+        role="note"
+        className="flex items-start gap-2 rounded-[var(--site-radius)] border border-[var(--site-primary)]/25 bg-[var(--site-primary)]/5 px-4 py-3 text-sm text-foreground/80"
+      >
+        <Scale className="mt-0.5 h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
+        {text}
+      </p>
     </div>
   );
 }
