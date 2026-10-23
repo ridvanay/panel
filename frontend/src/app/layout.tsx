@@ -5,7 +5,8 @@ import { Providers } from "./providers";
 import { HtmlLangSync } from "@/components/html-lang-sync";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import { SITE_URL } from "@/lib/env";
-import { DEFAULT_FAVICON_PATH } from "@/lib/site-settings/site-icons";
+import { buildSiteIconsMetadata } from "@/lib/site-settings/site-icons";
+import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,18 +19,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  // Relative OG image/canonical URL'lerinin doğru mutlak URL'e çözümlenmesi için gerekli.
-  metadataBase: new URL(SITE_URL),
-  title: {
-    default: "WM Health Istanbul",
-    template: "%s · WM Health Istanbul",
-  },
-  description: "Uzman doktorlarla güvenli online görüşme ve randevu platformu.",
-  // Varsayılan simge (`public/favicon.ico`) — admin/panel yüzeyleri için. Site ve doktor portalı
-  // layout'ları bunu admin'de seçilen simgeyle (`SiteSettings.faviconUrl`) geçersiz kılar.
-  icons: { icon: [{ url: DEFAULT_FAVICON_PATH, sizes: "any" }] },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  // Paket O — site simgesi TEK yerden: admin'de seçilen simge (`SiteSettings.faviconUrl` /
+  // `appleTouchIconUrl`), yoksa repodaki WM simgesi. Alt layout'lar `icons` TANIMLAMAZ; admin,
+  // giriş, site ve doktor portalı aynı simgeyi gösterir.
+  const settings = await fetchSiteSettingsServer();
+  return {
+    // Relative OG image/canonical URL'lerinin doğru mutlak URL'e çözümlenmesi için gerekli.
+    metadataBase: new URL(SITE_URL),
+    title: {
+      default: "WM Health Istanbul",
+      template: "%s · WM Health Istanbul",
+    },
+    description: "Uzman doktorlarla güvenli online görüşme ve randevu platformu.",
+    icons: buildSiteIconsMetadata(settings),
+  };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // `.claude/architect-scope-i18n.md` §6.3 — `<html lang>` aktif locale'den türetilir. Kök layout

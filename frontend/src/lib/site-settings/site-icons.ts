@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import type { SiteSettings } from "@/lib/api/types";
 
-/** Ayar boşken kullanılan varsayılan simge — `public/favicon.ico` (tüm yüzeyler, admin dahil). */
+/**
+ * Ayar boşken kullanılan varsayılan simgeler — `public/favicon.ico` + `public/apple-touch-icon.png`
+ * (Paket O: Next.js'in varsayılan siyah üçgeni yerine WM monogramı, `public/icon.svg`'den üretildi).
+ */
 export const DEFAULT_FAVICON_PATH = "/favicon.ico";
+export const DEFAULT_APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
 
 /**
  * Tarayıcılar favicon'u çok agresif önbelleğe alır. URL'e, adresin KENDİSİNDEN türetilen kısa bir
@@ -22,15 +26,15 @@ export function withIconVersion(url: string): string {
 
 /**
  * `SiteSettings.faviconUrl` / `appleTouchIconUrl` → Next.js `metadata.icons`. Ayar boşsa varsayılan
- * simge. Apple touch icon ayrıca seçilmemişse favicon (ikisi de PNG) kullanılır; ikisi de yoksa
- * `apple-touch-icon` etiketi hiç üretilmez (iOS kendi ekran görüntüsünü kullanır — bugünkü davranış).
+ * simge. Apple touch icon ayrıca seçilmemişse favicon (ikisi de PNG), o da yoksa varsayılan
+ * `apple-touch-icon.png` kullanılır. Paket O: TEK kaynak kök layout'tur (admin, giriş, site, doktor portalı aynı).
  */
 export function buildSiteIconsMetadata(settings: Pick<SiteSettings, "faviconUrl" | "appleTouchIconUrl">): NonNullable<Metadata["icons"]> {
   const favicon = settings.faviconUrl?.trim() || null;
   const appleTouchIcon = settings.appleTouchIconUrl?.trim() || favicon;
 
   return {
-    icon: favicon ? [{ url: withIconVersion(favicon), type: "image/png" }] : [{ url: DEFAULT_FAVICON_PATH, sizes: "any" }],
-    ...(appleTouchIcon ? { apple: [{ url: withIconVersion(appleTouchIcon), type: "image/png" }] } : {}),
+    icon: favicon ? [{ url: withIconVersion(favicon), type: "image/png" }] : [{ url: withIconVersion(DEFAULT_FAVICON_PATH), sizes: "any" }],
+    apple: [{ url: withIconVersion(appleTouchIcon ?? DEFAULT_APPLE_TOUCH_ICON_PATH), type: "image/png" }],
   };
 }

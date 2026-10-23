@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="WM Health Istanbul">
+  <!-- Paket O (2026-10-23) — varsayılan site simgesi (WM monogramı, marka renkleri). Projede üretildi.
+       Admin → Navigasyon'da site simgesi seçilmişse o kullanılır; bu dosya yalnızca yedektir. -->
+  <defs>
+    <linearGradient id="wm-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2951A0"/>
+      <stop offset="1" stop-color="#4ab9e1"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#wm-bg)"/>
+  <path d="M10 18 L17 46 L24 26 L31 46 L38 18" fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M34 46 L38 20 L45.5 38 L53 20 L56 46" fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+</svg>

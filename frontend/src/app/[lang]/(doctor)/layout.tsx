@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
-import { buildSiteIconsMetadata } from "@/lib/site-settings/site-icons";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
@@ -38,7 +37,7 @@ import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   const [settings, dict] = await Promise.all([fetchSiteSettingsServer(), getSiteDictionary(lang)]);
-  return { title: { absolute: `${dict.portal.doctorPortal.metaTitle} | ${settings.siteName}` }, icons: buildSiteIconsMetadata(settings) };
+  return { title: { absolute: `${dict.portal.doctorPortal.metaTitle} | ${settings.siteName}` } };
 }
 
 export default async function DoctorScopeLayout({
