@@ -8907,6 +8907,34 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /admin/telehealth/settings/doctor-hero:
+    patch:
+      tags: [TeleHealth]
+      summary: Doktor profil başlığı arka plan görseli ve koyu katman opaklığı (ADMIN/MANAGER)
+      description: >
+        Paket M (2026-10-23). Görsel YALNIZCA medya kütüphanesinden (`imageMediaId`) seçilir; dış URL
+        kabul edilmez. `imageMediaId: null` varsayılan görsele döner. Tema renkleri ve acil durum
+        uyarısı KORUNUR. Denetim kaydı `telehealth.doctor_hero.update`; ardından tema önbelleği yenilenir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDoctorHeroRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TelehealthSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   # ==========================================================================
   # TeleHealth — §9.7 TADİLAT TURU 2: çoklu slot rezervasyonu (booking), ödeme,
   # sağlık verisi (intake + belge), doktor/hasta portalı.
@@ -20622,13 +20650,32 @@ components:
 
     TelehealthSettings:
       type: object
-      required: [primaryColor, secondaryColor, accentColor, calendarActiveBg, emergencyNotice]
+      required: [primaryColor, secondaryColor, accentColor, calendarActiveBg, emergencyNotice, doctorHero]
       properties:
         primaryColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
         secondaryColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
         accentColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
         calendarActiveBg: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
         emergencyNotice: { $ref: "#/components/schemas/EmergencyNoticeSettings" }
+        doctorHero: { $ref: "#/components/schemas/DoctorHeroSettings" }
+    DoctorHeroSettings:
+      type: object
+      description: >
+        Paket M (2026-10-23) — doktor profil başlığı (`/doctors/{slug}` hero) arka planı.
+        `SiteModule(key="telehealth").settings.doctorHero` JSON'unda tutulur (migration yok).
+      required: [imageMediaId, imageUrl, overlayOpacity]
+      properties:
+        imageMediaId: { type: string, format: uuid, nullable: true, description: "Medya kütüphanesindeki görsel; `null` = varsayılan görsel." }
+        imageUrl: { type: string, nullable: true, description: "Sunucuda `Media.url`'den çözülür (salt okunur). Medya silinmiş/görsel değilse `null`." }
+        overlayOpacity: { type: integer, minimum: 0, maximum: 80, description: "Koyu katman opaklığı (%), varsayılan 55." }
+    UpdateDoctorHeroRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Bilinmeyen alan (ör. dış URL) 422. Görsel yalnızca `imageMediaId` ile; görsel olmayan medya 422, olmayan medya 404.
+      properties:
+        imageMediaId: { type: string, format: uuid, nullable: true }
+        overlayOpacity: { type: integer, minimum: 0, maximum: 80 }
     UpdateTelehealthThemeSettingsRequest:
       type: object
       properties:
