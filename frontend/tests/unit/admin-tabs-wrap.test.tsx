@@ -35,7 +35,7 @@ describe("admin sekmeleri satır kaydırır", () => {
         ]}
         value="tr"
         onValueChange={() => {}}
-        statusFor={() => "missing"}
+        statusFor={() => "untranslated"}
       />
     );
     assertWraps(screen.getByRole("tablist"));
