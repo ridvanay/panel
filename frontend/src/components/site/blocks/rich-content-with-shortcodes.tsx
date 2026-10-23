@@ -16,15 +16,16 @@ import { AdvancedSlider } from "@/components/site/advanced-slider/advanced-slide
  * `TextBlockView`/`CustomHtmlBlockView` de senkron kalır ve mevcut `BlockRenderer` sözleşmesi
  * bozulmaz. `"use client"` YOKTUR — sunucu bileşenidir.
  */
-async function ShortcodeSliderView({ sliderId }: { sliderId: string }) {
-  const slider = await fetchSliderServer(sliderId);
+async function ShortcodeSliderView({ sliderId, locale }: { sliderId: string; locale?: string }) {
+  // Paket O — aktif dilin slayt görselleri (tanımlıysa).
+  const slider = await fetchSliderServer(sliderId, locale);
   // §6.2 ile BİREBİR AYNI davranış: yok/çöpte/slaytsız → SESSİZCE null, hata YOK.
   if (!slider || slider.slides.length === 0) return null;
   // Kısa kod her zaman bir metin akışının İÇİNDEDİR → ev sahibi kap gutter'ı zaten var.
   return <AdvancedSlider slider={slider} chrome="bare" />;
 }
 
-export function RichContentWithShortcodes({ html, className }: { html: string; className?: string }) {
+export function RichContentWithShortcodes({ html, className, locale }: { html: string; className?: string; locale?: string }) {
   const segments = splitSliderShortcodes(html);
 
   // HIZLI YOL (bağlayıcı): kısa kod YOKSA bugünkü DOM'un BİREBİR aynısı üretilir — tek bir div +
@@ -39,7 +40,7 @@ export function RichContentWithShortcodes({ html, className }: { html: string; c
         seg.kind === "html" ? (
           <div key={i} dangerouslySetInnerHTML={{ __html: seg.html }} />
         ) : (
-          <ShortcodeSliderView key={i} sliderId={seg.sliderId} />
+          <ShortcodeSliderView key={i} sliderId={seg.sliderId} locale={locale} />
         )
       )}
     </div>

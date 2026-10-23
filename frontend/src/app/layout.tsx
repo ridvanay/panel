@@ -23,7 +23,8 @@ export async function generateMetadata(): Promise<Metadata> {
   // Paket O — site simgesi TEK yerden: admin'de seçilen simge (`SiteSettings.faviconUrl` /
   // `appleTouchIconUrl`), yoksa repodaki WM simgesi. Alt layout'lar `icons` TANIMLAMAZ; admin,
   // giriş, site ve doktor portalı aynı simgeyi gösterir.
-  const settings = await fetchSiteSettingsServer();
+  // İnceleme bulgusu — backend hatası (429/5xx) admin/giriş dahil TÜM rotaları düşürmesin: varsayılan WM simgesi.
+  const settings = await fetchSiteSettingsServer().catch(() => ({ faviconUrl: null, appleTouchIconUrl: null }));
   return {
     // Relative OG image/canonical URL'lerinin doğru mutlak URL'e çözümlenmesi için gerekli.
     metadataBase: new URL(SITE_URL),
@@ -46,7 +47,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // header YOKTUR → "tr" varsayılanı (admin panelinin dili zaten URL/html lang'e değil
   // `localStorage`'a bağlıdır, §7.4).
   const headersList = await headers();
-  const activeLocale = headersList.get("x-active-locale") || "tr";
+  // Paket O (güvenlik incelemesi) — proxy'nin yazmadığı yollarda istemci kendi başlığını gönderebilir;
+  // yalnızca dil kodu biçimindeki değer kabul edilir.
+  const rawLocale = headersList.get("x-active-locale") ?? "";
+  const activeLocale = /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(rawLocale) ? rawLocale : "tr";
 
   return (
     <html

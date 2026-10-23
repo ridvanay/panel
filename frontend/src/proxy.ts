@@ -203,7 +203,12 @@ function resolveRequestAuthLocale(request: NextRequest, locales: Locale[], defau
  */
 function withLocaleCookie(request: NextRequest, response: NextResponse, code: string): NextResponse {
   if (request.cookies.get(SITE_LOCALE_COOKIE)?.value !== code) {
-    response.cookies.set(SITE_LOCALE_COOKIE, code, { path: "/", maxAge: SITE_LOCALE_COOKIE_MAX_AGE, sameSite: "lax" });
+    response.cookies.set(SITE_LOCALE_COOKIE, code, {
+      path: "/",
+      maxAge: SITE_LOCALE_COOKIE_MAX_AGE,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
   }
   return response;
 }
@@ -290,7 +295,10 @@ function handleDoctorHost(request: NextRequest, pathname: string, defaultLocale:
     // varyant GEREKMEZ. `/verify-email` (`.claude/architect-scope-guest-account-otp.md` §8.1)
     // AYNI gerekçeyle buraya eklendi — doktorlar kendi kendine kayıt olmasa da (§4) `login()`'ün
     // `requiresEmailVerification` dalı teorik olarak bu ekrana yönlendirebilir (§2.3).
-    return NextResponse.next();
+    // Paket O — dil, `/login` ile aynı kuralla seçilir.
+    const headers = new Headers(request.headers);
+    headers.set("x-active-locale", resolveRequestAuthLocale(request, locales, defaultLocale));
+    return NextResponse.next({ request: { headers } });
   }
   if (pathname === "/register") {
     // Hekimler kendi kendine kayıt olmaz (§4) — ana host'a devir.

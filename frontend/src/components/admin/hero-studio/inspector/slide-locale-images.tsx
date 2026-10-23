@@ -5,7 +5,7 @@ import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
-import { useTranslationLocales } from "@/components/admin/translation-locale-tabs";
+import { isCanonicalLocale, useTranslationLocales } from "@/components/admin/translation-locale-tabs";
 import type { Media } from "@/lib/api/types";
 import type { Slide, SlideLocaleMedia } from "@/lib/sliders/types";
 
@@ -20,7 +20,8 @@ export function SlideLocaleImages({ slide, onUpdate }: { slide: Slide; onUpdate:
   const locales = useTranslationLocales();
   const [selected, setSelected] = useState("");
   const translations = slide.translations ?? {};
-  const locale = selected || locales[0]?.code || "";
+  // Varsayılan seçim ilk EN-dışı dil (EN görseli genelde varsayılan görselin kendisidir; yine de seçilebilir).
+  const locale = selected || locales.find((l) => !isCanonicalLocale(l.code))?.code || locales[0]?.code || "";
   const entry = translations[locale];
 
   function updateEntry(patch: { bgMedia?: Media | null; bgTabletMedia?: Media | null; bgMobileMedia?: Media | null }) {

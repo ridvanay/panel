@@ -65,7 +65,7 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: Block
     case "hero":
       return <HeroBlockView block={node} chrome={chrome} />;
     case "text":
-      return <TextBlockView block={node} chrome={chrome} />;
+      return <TextBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "image":
       return <ImageBlockView block={node} chrome={chrome} />;
     case "gallery":
@@ -101,7 +101,7 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: Block
     case "contact-form":
       return <ContactFormBlockView block={node} chrome={chrome} />;
     case "custom-html":
-      return <CustomHtmlBlockView block={node} chrome={chrome} />;
+      return <CustomHtmlBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "before-after-slider":
       return <BeforeAfterSliderBlockView block={node} chrome={chrome} />;
     case "logo-marquee":

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -225,7 +225,8 @@ function useDesktopOverflow(
   desktopRef: React.RefObject<HTMLElement | null>
 ): boolean {
   const [overflow, setOverflow] = useState(false);
-  useEffect(() => {
+  // İnceleme bulgusu — ölçüm boyamadan önce: geniş satır bir kare bile taşmasın.
+  useLayoutEffect(() => {
     const measure = () => {
       const nav = navRef.current;
       const logo = logoRef.current;

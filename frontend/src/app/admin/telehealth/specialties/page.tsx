@@ -298,7 +298,7 @@ export default function AdminTelehealthSpecialtiesPage() {
             </Button>
           </div>
 
-          <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmit)} noValidate>
+          <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmit, () => setContentLocale(CANONICAL_LOCALE_CODE))} noValidate>
             <div className="sm:col-span-2">
               <TranslationLocaleTabs
                 locales={translationLocales}

@@ -61,6 +61,6 @@ export function localizeDestination(path: string, lang: string, defaultCode: str
   if (!isSafeInternalPath(path) || lang === defaultCode) return path;
   if (/^\/(admin|doctor|dashboard|api)(\/|$|\?)/.test(path)) return path;
   // Zaten iki harfli bir dil önekiyle başlıyorsa (`/ru/...`) olduğu gibi kalır.
-  if (/^\/[a-z]{2}(\/|$|\?)/.test(path)) return path;
+  if (/^\/[a-z]{2}(\/|$|\?|#)/.test(path)) return path;
   return path === "/" ? `/${lang}` : `/${lang}${path}`;
 }

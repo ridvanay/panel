@@ -52,6 +52,7 @@ describe("giriş sonrası hedef dil önekini korur", () => {
     expect(localizeDestination("/patient/appointments", "ru", "tr")).toBe("/ru/patient/appointments");
     expect(localizeDestination("/", "ar", "tr")).toBe("/ar");
     expect(localizeDestination("/ru/doctors/x", "ru", "tr")).toBe("/ru/doctors/x");
+    expect(localizeDestination("/ru#faq", "ru", "tr")).toBe("/ru#faq");
     expect(localizeDestination("/admin", "ru", "tr")).toBe("/admin");
     expect(localizeDestination("/doctor/profile", "ru", "tr")).toBe("/doctor/profile");
     expect(localizeDestination("/dashboard", "ru", "tr")).toBe("/dashboard");
