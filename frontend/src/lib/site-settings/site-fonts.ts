@@ -2,6 +2,7 @@ import {
   Inter,
   Lora,
   Montserrat,
+  Noto_Sans_Arabic,
   Open_Sans,
   Outfit,
   Playfair_Display,
@@ -89,3 +90,76 @@ export const SITE_FONT_FAMILY: Record<SiteFont, string> = {
   PLUS_JAKARTA_SANS: "var(--font-site-plus-jakarta-sans)",
   OUTFIT: "var(--font-site-outfit)",
 };
+
+/**
+ * Paket L (2026-10-23) — Rusça (Kiril) ve Arapça yazı desteği.
+ *
+ * Her yüz YALNIZCA ilgili alt kümeyle (unicode-range) tanımlanır, `preload: false` ve
+ * `adjustFontFallback: false`: font ailesi yığınında ana fontun ÖNÜNE konur, böylece Latin
+ * karakterler ana fonttan, Kiril/Arapça karakterler bu yüzden gelir. Tarayıcı dosyayı yalnızca
+ * sayfada o karakterler varsa indirir; değişken sınıfları da yalnızca `ru`/`ar` sayfalarında
+ * uygulanır (`siteScriptFontClass`), diğer dillerde hiçbir şey indirilmez.
+ *
+ * Kiril alt kümesi olmayan fontlar için uyumlu yedek: Poppins/Outfit → Montserrat (geometrik),
+ * Plus Jakarta Sans (yalnızca cyrillic-ext) → Inter. `SYSTEM` sistem fontlarıyla zaten çalışır.
+ */
+export const siteInterCyrillic = Inter({ subsets: ["cyrillic"], variable: "--font-site-inter-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const siteRobotoCyrillic = Roboto({ subsets: ["cyrillic"], weight: ["400", "500", "700"], variable: "--font-site-roboto-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const siteOpenSansCyrillic = Open_Sans({ subsets: ["cyrillic"], variable: "--font-site-open-sans-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const siteMontserratCyrillic = Montserrat({ subsets: ["cyrillic"], variable: "--font-site-montserrat-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const siteLoraCyrillic = Lora({ subsets: ["cyrillic"], variable: "--font-site-lora-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const sitePlayfairDisplayCyrillic = Playfair_Display({ subsets: ["cyrillic"], variable: "--font-site-playfair-display-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const siteSourceSerif4Cyrillic = Source_Serif_4({ subsets: ["cyrillic"], variable: "--font-site-source-serif-4-cyr", display: "swap", preload: false, adjustFontFallback: false });
+export const siteArabic = Noto_Sans_Arabic({ subsets: ["arabic"], variable: "--font-site-arabic", display: "swap", preload: false, adjustFontFallback: false });
+
+const CYRILLIC_FONT_VARIABLES = [
+  siteInterCyrillic.variable,
+  siteRobotoCyrillic.variable,
+  siteOpenSansCyrillic.variable,
+  siteMontserratCyrillic.variable,
+  siteLoraCyrillic.variable,
+  sitePlayfairDisplayCyrillic.variable,
+  siteSourceSerif4Cyrillic.variable,
+].join(" ");
+
+/** Seçili site fontuna karşılık gelen Kiril yüzü (yoksa uyumlu yedek). `SYSTEM` → yok. */
+const CYRILLIC_FONT_FAMILY: Record<SiteFont, string | null> = {
+  SYSTEM: null,
+  INTER: "var(--font-site-inter-cyr)",
+  ROBOTO: "var(--font-site-roboto-cyr)",
+  OPEN_SANS: "var(--font-site-open-sans-cyr)",
+  MONTSERRAT: "var(--font-site-montserrat-cyr)",
+  POPPINS: "var(--font-site-montserrat-cyr)",
+  LORA: "var(--font-site-lora-cyr)",
+  PLAYFAIR_DISPLAY: "var(--font-site-playfair-display-cyr)",
+  SOURCE_SERIF_4: "var(--font-site-source-serif-4-cyr)",
+  PLUS_JAKARTA_SANS: "var(--font-site-inter-cyr)",
+  OUTFIT: "var(--font-site-montserrat-cyr)",
+};
+
+function scriptOf(lang: string | undefined): "cyrillic" | "arabic" | null {
+  const base = (lang ?? "").toLowerCase().split("-")[0];
+  if (base === "ru") return "cyrillic";
+  if (base === "ar") return "arabic";
+  return null;
+}
+
+/** Dile göre font yığını: Kiril/Arapça yüz ana fontun önüne eklenir; diğer dillerde değişmez. */
+export function siteFontFamilyFor(font: SiteFont, lang?: string): string {
+  const base = SITE_FONT_FAMILY[font];
+  const script = scriptOf(lang);
+  if (script === "arabic") return `var(--font-site-arabic), ${base}`;
+  if (script === "cyrillic") {
+    const cyr = CYRILLIC_FONT_FAMILY[font];
+    return cyr ? `${cyr}, ${base}` : base;
+  }
+  return base;
+}
+
+/** Yalnızca `ru`/`ar` sayfalarında uygulanan font değişken sınıfları (diğer dillerde boş). */
+export function siteScriptFontClass(lang?: string): string {
+  const script = scriptOf(lang);
+  if (script === "arabic") return siteArabic.variable;
+  if (script === "cyrillic") return CYRILLIC_FONT_VARIABLES;
+  return "";
+}

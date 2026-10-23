@@ -29,6 +29,8 @@ vi.mock("next/font/google", () => {
     Source_Serif_4: mockFont,
     Plus_Jakarta_Sans: mockFont,
     Outfit: mockFont,
+    // Paket L — Arapça yazı yüzü (site-fonts.ts).
+    Noto_Sans_Arabic: mockFont,
   };
 });
 

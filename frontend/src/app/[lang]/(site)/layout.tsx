@@ -72,7 +72,7 @@ export default async function SiteLayout({
           gidebilmesi için alt sayfaların `localizations`'ı header'a bu Provider üzerinden akar
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
-        <SiteScope appearance={appearance}>
+        <SiteScope appearance={appearance} lang={lang}>
           {/* §9 frontend-agent — doktor hesabı guard'ı (bkz. bileşenin başlığı); `LocaleAlternatesProvider`
               İÇİNDE mount edilir ki `useLocalizePath()` çalışsın. Görsel çıktısı YOKTUR (`null` döner). */}
           <DoctorPortalRouteGuard />

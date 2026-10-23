@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { PublicSiteAppearance } from "@/lib/api/types";
-import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
+import { SITE_FONT_VARIABLES, siteFontFamilyFor, siteScriptFontClass } from "@/lib/site-settings/site-fonts";
 import { SITE_BORDER_RADIUS_PX } from "@/lib/site-settings/site-radius";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * yalnızca bu sarmalayıcıya satır-içi `style` ile yazılır; admin panelinin `--primary`/`--ring`
  * gibi token'ları (`.admin-shell` altında) buradan ASLA etkilenmez.
  */
-export function buildSiteScopeStyle(appearance: PublicSiteAppearance): CSSProperties {
+export function buildSiteScopeStyle(appearance: PublicSiteAppearance, lang?: string): CSSProperties {
   return {
     "--site-primary": appearance.primaryColor,
     "--site-secondary": appearance.secondaryColor,
@@ -30,25 +30,39 @@ export function buildSiteScopeStyle(appearance: PublicSiteAppearance): CSSProper
     "--site-header-link-hover": appearance.headerLinkHoverColor,
     "--site-header-link-active": appearance.headerLinkActiveColor,
     "--site-radius": SITE_BORDER_RADIUS_PX[appearance.borderRadius],
-    "--site-heading-font": SITE_FONT_FAMILY[appearance.headingFont],
-    "--site-body-font": SITE_FONT_FAMILY[appearance.bodyFont],
+    // Paket L — ru/ar sayfalarında Kiril/Arapça yüz ana fontun önüne eklenir (bkz. site-fonts.ts).
+    "--site-heading-font": siteFontFamilyFor(appearance.headingFont, lang),
+    "--site-body-font": siteFontFamilyFor(appearance.bodyFont, lang),
     "--site-base-font-size": `${appearance.baseFontSize}px`,
     // `CSSProperties` (csstype) tanınan CSS özellikleri için index imzası TAŞIMAZ — `--site-*`
     // özel özellikleri (custom properties) için `unknown` üzerinden güvenli bir tip dönüşümü.
   } as unknown as CSSProperties;
 }
 
+/**
+ * Paket L — RTL sayfada telefon, e-posta ve URL alanları ile `tel:` bağlantıları soldan sağa kalır
+ * (rakam/işaret sırası karışmasın). Kapsam yalnızca `.site-scope`; global CSS'e kural eklenmez.
+ */
+const BIDI_ISOLATION_CLASS =
+  "[&_input[type=tel]]:[direction:ltr] [&_input[type=email]]:[direction:ltr] [&_input[type=url]]:[direction:ltr] [&_a[href^='tel:']]:[direction:ltr] [&_a[href^='tel:']]:[unicode-bidi:isolate]";
+
 export function SiteScope({
   appearance,
+  lang,
   className,
   children,
 }: {
   appearance: PublicSiteAppearance;
+  /** Paket L — aktif içerik dili (Kiril/Arapça font yüzleri için). */
+  lang?: string;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <div className={cn("site-scope flex min-h-screen flex-col", SITE_FONT_VARIABLES, className)} style={buildSiteScopeStyle(appearance)}>
+    <div
+      className={cn("site-scope flex min-h-screen flex-col", SITE_FONT_VARIABLES, siteScriptFontClass(lang), BIDI_ISOLATION_CLASS, className)}
+      style={buildSiteScopeStyle(appearance, lang)}
+    >
       {children}
     </div>
   );

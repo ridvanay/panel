@@ -69,7 +69,7 @@ export default async function DoctorScopeLayout({
       }}
     >
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
-        <SiteScope appearance={appearance}>
+        <SiteScope appearance={appearance} lang={lang}>
           <DoctorPortalProvider>
             <DoctorTopBar siteName={settings.siteName} logoUrl={settings.logoUrl} logoHeight={settings.headerLogoHeight} />
             <main className="flex-1">{children}</main>
