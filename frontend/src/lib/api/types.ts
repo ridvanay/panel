@@ -4555,6 +4555,25 @@ export interface TelehealthThemeSettings {
   calendarActiveBg: string;
   /** Acil durum uyarısı — backend `modules/telehealth/lib/emergency-notice.ts`. */
   emergencyNotice?: EmergencyNoticeSettings;
+  /** Paket M — doktor profil başlığı arka planı (backend `modules/telehealth/lib/doctor-hero.ts`). */
+  doctorHero?: DoctorHeroSettings;
+}
+
+/**
+ * Paket M (2026-10-23) — doktor profil başlığı arka planı. Görsel YALNIZCA medya kütüphanesinden
+ * (`imageMediaId`); `imageUrl` sunucuda `Media.url`'den çözülür (salt okunur). `null` = varsayılan SVG.
+ */
+export interface DoctorHeroSettings {
+  imageMediaId: string | null;
+  imageUrl: string | null;
+  /** Koyu katman opaklığı (%), 0–80, varsayılan 55. */
+  overlayOpacity: number;
+}
+
+/** `PATCH /admin/telehealth/settings/doctor-hero` — kısmi; dış URL alanı YOK (sunucu 422 döner). */
+export interface UpdateDoctorHeroRequest {
+  imageMediaId?: string | null;
+  overlayOpacity?: number;
 }
 
 /**
@@ -4575,7 +4594,7 @@ export interface UpdateEmergencyNoticeRequest {
 }
 
 /** `PATCH /admin/telehealth/settings` gövdesi — KISMİ, hepsi opsiyonel (0-4 renk alanı). */
-export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeSettings, "emergencyNotice">>;
+export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeSettings, "emergencyNotice" | "doctorHero">>;
 
 // ---------------------------------------------------------------------------
 // İletişim sayfası (`/contact`) — backend `modules/contact/contact-page.ts`.

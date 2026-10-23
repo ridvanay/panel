@@ -6,6 +6,7 @@ import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { resolveExplicitConsentPage, resolveKvkkConsentPage } from "@/lib/legal-pages";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
+import { DoctorHeroBackground } from "@/components/site/telehealth/doctor-hero-background";
 import { DoctorProfileTabs } from "@/components/site/telehealth/doctor-profile-tabs";
 import { DoctorQuickBookingCard } from "@/components/site/telehealth/doctor-quick-booking-card";
 import { BookingSelectionProvider } from "@/components/site/telehealth/booking-selection-context";
@@ -159,11 +160,13 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
           edge-to-edge tam genişlik (`.site-scope` konteynerinin DIŞINA taşar), içerik AYNI
           `max-w-7xl` konteyner genişliği (Grid görevi 2026-09-14 — `max-w-5xl`'den genişletildi,
           `BookingWizard`'ın 12 kolonluk gridine daha ferah bir alan sağlamak için). */}
-      <div className="w-full bg-[var(--site-secondary)]">
+      {/* Paket M — düz renk yerine admin'den seçilen görsel (yoksa varsayılan SVG) + koyu katman;
+          yükseklik/yerleşim değişmedi (aynı padding ve konteyner). */}
+      <DoctorHeroBackground hero={telehealthSettings.doctorHero}>
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
           <DoctorProfileHero doctor={doctor} dict={dict.telehealth} lang={lang} />
         </div>
-      </div>
+      </DoctorHeroBackground>
 
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         {/* Grid görevi (2026-09-14) Görev 1 — eski iki-sütun (takvim solda/hizmet özeti sağda,

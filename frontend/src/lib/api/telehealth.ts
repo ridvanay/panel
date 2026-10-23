@@ -51,6 +51,7 @@ import type {
   UpdateDoctorSelfProfileRequest,
   UpdateSpecialtyRequest,
   UpdateEmergencyNoticeRequest,
+  UpdateDoctorHeroRequest,
   UpdateTelehealthThemeSettingsRequest,
   UpsertIntakeRequest,
 } from "./types";
@@ -687,6 +688,11 @@ export function updateTelehealthThemeSettings(input: UpdateTelehealthThemeSettin
 /** `PATCH /admin/telehealth/settings/emergency-notice` — acil durum uyarısı; YALNIZCA ADMIN (diğerleri 403). */
 export function updateEmergencyNoticeSettings(input: UpdateEmergencyNoticeRequest): Promise<TelehealthThemeSettings> {
   return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings/emergency-notice", { method: "PATCH", body: input });
+}
+
+/** Paket M — `PATCH /admin/telehealth/settings/doctor-hero`; ADMIN/MANAGER. Görsel yalnızca `imageMediaId`. */
+export function updateDoctorHeroSettings(input: UpdateDoctorHeroRequest): Promise<TelehealthThemeSettings> {
+  return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings/doctor-hero", { method: "PATCH", body: input });
 }
 
 /**

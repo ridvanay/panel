@@ -77,6 +77,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionPanel } from "@/co
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { ColorField, ContrastBadge } from "@/components/admin/appearance/color-field";
+import { DoctorHeroSettingsCard } from "@/components/admin/appearance/doctor-hero-settings-card";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -1239,6 +1240,8 @@ export default function AdminAppearancePage() {
                 saving={sectionSaving === "pageHeader"}
                 onClick={() => void handleSaveSection("pageHeader")}
               />
+              {/* Paket M — doktor profil başlığı (telehealth ayarı; kendi kaydı, modül kapalıysa gizli). */}
+              <DoctorHeroSettingsCard />
             </TabsContent>
 
             {/* --- 4) Stil / Renk --- */}
