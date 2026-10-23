@@ -20,6 +20,8 @@ const DEFAULTS = {
 
 /** Yanıta eklenen acil durum uyarısı ayarlarının varsayılanı (şerit AÇIK, admin metni yok). */
 const DEFAULT_EMERGENCY_NOTICE = { enabled: true, summary: {}, full: {} };
+// Paket M — doktor profil başlığı varsayılanı (görsel yok, opaklık 55).
+const DEFAULT_DOCTOR_HERO = { imageMediaId: null, imageUrl: null, overlayOpacity: 55 };
 
 function authHeader(token: string) {
   return { authorization: `Bearer ${token}` };
@@ -82,11 +84,11 @@ describe("telehealth theme settings — GET/PATCH /admin/telehealth/settings + G
   it("SiteModule.settings satırı hiç yokken GET varsayılanları döner (bozuk/eksik JSON'a sessizce düşer)", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings", headers: authHeader(adminToken) });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE });
+    expect(res.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE, doctorHero: DEFAULT_DOCTOR_HERO });
 
     const publicRes = await app.inject({ method: "GET", url: "/api/v1/telehealth/theme" });
     expect(publicRes.statusCode).toBe(200);
-    expect(publicRes.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE });
+    expect(publicRes.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE, doctorHero: DEFAULT_DOCTOR_HERO });
   });
 
   it("RBAC — GET: ADMIN/MANAGER/EDITOR 200, CUSTOMER 401/403; PATCH: ADMIN/MANAGER 200, EDITOR/CUSTOMER 403", async () => {
@@ -130,6 +132,7 @@ describe("telehealth theme settings — GET/PATCH /admin/telehealth/settings + G
       accentColor: "#abcdef",
       calendarActiveBg: DEFAULTS.calendarActiveBg,
       emergencyNotice: DEFAULT_EMERGENCY_NOTICE,
+      doctorHero: DEFAULT_DOCTOR_HERO,
     });
 
     const getRes = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings", headers: authHeader(adminToken) });

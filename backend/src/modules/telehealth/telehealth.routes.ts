@@ -55,6 +55,7 @@ import { detectUploadMimeType } from "../../lib/mime-detect";
 import { telehealthDocumentStorage } from "../../lib/telehealth-document-storage";
 import { logAudit } from "../../lib/audit";
 import { TelehealthSettingsResponseSchema, toTelehealthSettingsDto } from "./lib/emergency-notice";
+import { resolveDoctorHero } from "./lib/doctor-hero";
 import { BOOKING_CREATE_RATE_LIMIT, BOOKING_DOCUMENT_UPLOAD_RATE_LIMIT } from "../../lib/rate-limit";
 import { MAX_UPLOAD_BYTES } from "../../plugins/uploads";
 import { env } from "../../config/env";
@@ -340,7 +341,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
     { schema: { response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) } } },
     async (_request, reply) => {
       const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
-      return reply.send(ok(toTelehealthSettingsDto(row?.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row?.settings, await resolveDoctorHero(app.prisma, row?.settings))));
     }
   );
 

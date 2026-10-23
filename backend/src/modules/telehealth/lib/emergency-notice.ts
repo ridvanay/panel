@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { LOCALE_CODE_PATTERN } from "../../../lib/localization";
 import { TelehealthThemeSettingsSchema } from "../../../schemas/entities";
 import { parseTelehealthTheme } from "./theme-settings";
+import { DoctorHeroSettingsSchema, type DoctorHeroSettings } from "./doctor-hero";
 
 /**
  * Acil durum uyarısı ayarları — `SiteModule(key="telehealth").settings` JSON'unun `emergencyNotice`
@@ -146,11 +147,13 @@ export function mergeTelehealthSettings(rawSettings: unknown, patch: Record<stri
   return { ...asRecord(rawSettings), ...patch } as Prisma.InputJsonObject;
 }
 
-/** Admin/public `telehealth` ayar yanıtı — tema renkleri + acil durum uyarısı. */
+/** Admin/public `telehealth` ayar yanıtı — tema renkleri + acil durum uyarısı + doktor profil başlığı (Paket M). */
 export const TelehealthSettingsResponseSchema = TelehealthThemeSettingsSchema.extend({
   emergencyNotice: EmergencyNoticeSettingsSchema,
+  doctorHero: DoctorHeroSettingsSchema,
 });
 
-export function toTelehealthSettingsDto(rawSettings: unknown): z.infer<typeof TelehealthSettingsResponseSchema> {
-  return { ...parseTelehealthTheme(rawSettings), emergencyNotice: parseEmergencyNotice(rawSettings) };
+/** `doctorHero` görsel bağlantısı medya kaydından çözüldüğü için çağıran `resolveDoctorHero` ile verir. */
+export function toTelehealthSettingsDto(rawSettings: unknown, doctorHero: DoctorHeroSettings): z.infer<typeof TelehealthSettingsResponseSchema> {
+  return { ...parseTelehealthTheme(rawSettings), emergencyNotice: parseEmergencyNotice(rawSettings), doctorHero };
 }

@@ -51,6 +51,7 @@ import {
   parseEmergencyNotice,
   toTelehealthSettingsDto,
 } from "./lib/emergency-notice";
+import { UpdateDoctorHeroRequestSchema, applyDoctorHeroUpdate, parseDoctorHero, resolveDoctorHero } from "./lib/doctor-hero";
 import { wallTimeToUtc } from "./lib/timezone";
 import {
   NOT_ARCHIVED_APPOINTMENT_WHERE,
@@ -1096,7 +1097,7 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
     },
     async (_request, reply) => {
       const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
-      return reply.send(ok(toTelehealthSettingsDto(row?.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row?.settings, await resolveDoctorHero(app.prisma, row?.settings))));
     }
   );
 
@@ -1140,7 +1141,7 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
       // ÇELİŞİYORDU). Yalnızca `telehealth-theme` etiketi yenilenir (tüm site DEĞİL).
       await triggerTagRevalidation(app, [CACHE_TAGS.telehealthTheme]);
 
-      return reply.send(ok(toTelehealthSettingsDto(row.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row.settings, await resolveDoctorHero(app.prisma, row.settings))));
     }
   );
 
@@ -1187,7 +1188,49 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
 
       await triggerTagRevalidation(app, [CACHE_TAGS.telehealthTheme]);
 
-      return reply.send(ok(toTelehealthSettingsDto(row.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row.settings, await resolveDoctorHero(app.prisma, row.settings))));
+    }
+  );
+
+  /**
+   * Paket M (2026-10-23) — doktor profil başlığı arka plan görseli ve koyu katman opaklığı. Tema
+   * renkleriyle aynı yetki (ADMIN/MANAGER). Görsel yalnızca medya kütüphanesinden (`imageMediaId`);
+   * dış URL alanı yoktur. `imageMediaId: null` varsayılan görsele döner.
+   */
+  server.patch(
+    "/doctor-hero",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: {
+        body: UpdateDoctorHeroRequestSchema,
+        response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
+      const before = parseDoctorHero(existing?.settings);
+      const after = await applyDoctorHeroUpdate(app.prisma, existing?.settings, request.body);
+      const merged = mergeTelehealthSettings(existing?.settings, { doctorHero: after });
+
+      const row = await app.prisma.siteModule.upsert({
+        where: { key: "telehealth" },
+        create: { key: "telehealth", settings: merged, updatedById: request.user!.id },
+        update: { settings: merged, updatedById: request.user!.id },
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.doctor_hero.update",
+        targetType: "SiteModule",
+        targetId: "telehealth",
+        metadata: { before, after },
+        ipAddress: request.ip,
+      });
+
+      await triggerTagRevalidation(app, [CACHE_TAGS.telehealthTheme]);
+
+      return reply.send(ok(toTelehealthSettingsDto(row.settings, await resolveDoctorHero(app.prisma, row.settings))));
     }
   );
 }
