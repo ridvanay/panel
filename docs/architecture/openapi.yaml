@@ -19863,7 +19863,7 @@ components:
 
         **Hiçbir alan HTML KABUL ETMEZ** — düz metindir. Zengin metin yalnızca
         `aboutHtml`'de yaşar; ikinci bir sanitizasyon yolu AÇILMAZ.
-      required: [kind, title, organization, startYear]
+      required: [kind, title, organization]
       properties:
         kind:
           type: string
@@ -19872,13 +19872,23 @@ components:
         title: { type: string, minLength: 1, maxLength: 160, description: "\"Tıp Doktoru\", \"Uzmanlık Eğitimi\", \"Başhekim Yardımcısı\"." }
         organization: { type: string, minLength: 1, maxLength: 160, description: "Kurum/üniversite/hastane adı." }
         location: { type: string, nullable: true, maxLength: 120 }
-        startYear: { type: integer, minimum: 1950 }
+        startYear:
+          type: integer
+          nullable: true
+          minimum: 1950
+          description: "Paket L (2026-10-23) — `MEMBERSHIP` dışındaki türlerde ZORUNLU (yoksa 422). Yalnızca üyelikte boş/`null` olabilir (yılı bilinmeyen üyelik; yıl uydurulmaz)."
         endYear:
           type: integer
           nullable: true
           minimum: 1950
           description: "`null` = **hâlen devam ediyor** (UI \"… – Devam ediyor\"). `startYear`'dan küçük olamaz → 422."
         description: { type: string, nullable: true, maxLength: 500, description: "DÜZ METİN. HTML gönderilirse 422 (kaçırılmaz, sessizce temizlenmez)." }
+        mediaId: { type: string, format: uuid, nullable: true, description: "Paket L — ekli belgenin `Media` kaydı (ör. sertifika PDF'i)." }
+        url:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: "Paket L — ekli belgenin bağlantısı: `https://…` ya da site alan adından servis edilen göreli `/uploads/…` (başka şema → 422). Profil sayfası \"Sertifikayı görüntüle\" bağlantısını yeni sekmede açar."
 
     DoctorPublication:
       type: object

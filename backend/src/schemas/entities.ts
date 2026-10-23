@@ -2403,12 +2403,32 @@ export const DoctorCvEntrySchema = z
     title: plainTextField(z.string().trim().min(1).max(160)),
     organization: plainTextField(z.string().trim().min(1).max(160)),
     location: plainTextField(z.string().trim().max(120)).nullable().optional(),
-    startYear: z.number().int().min(1950),
+    // Paket L — yalnızca `MEMBERSHIP` için boş bırakılabilir (CV'de yılı olmayan üyelikler; yıl
+    // uydurulmaz). Diğer türlerde zorunlu (aşağıdaki superRefine).
+    startYear: z.number().int().min(1950).nullable().optional(),
     // `null` = hâlen devam ediyor.
     endYear: z.number().int().min(1950).nullable().optional(),
     description: plainTextField(z.string().trim().max(500)).nullable().optional(),
+    // Paket L — ekli belge (ör. sertifika PDF'i). `url` medya kaydının URL'idir: S3'te mutlak
+    // `https://`, yerel sürücüde site alan adından servis edilen göreli `/uploads/...`.
+    mediaId: z.string().uuid().nullable().optional(),
+    url: z
+      .string()
+      .trim()
+      .max(500)
+      .refine((value) => value.startsWith("https://") || /^\/uploads\/[\w./-]+$/.test(value), {
+        message: "Yalnızca https:// veya /uploads/ bağlantılarına izin verilir.",
+      })
+      .nullable()
+      .optional(),
   })
   .superRefine((entry, ctx) => {
+    if (entry.startYear == null) {
+      if (entry.kind !== "MEMBERSHIP") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "`startYear` zorunlu.", path: ["startYear"] });
+      }
+      return;
+    }
     if (entry.endYear != null && entry.endYear < entry.startYear) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "`endYear`, `startYear`'dan küçük olamaz.", path: ["endYear"] });
     }

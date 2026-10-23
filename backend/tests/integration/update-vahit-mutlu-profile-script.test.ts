@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -13,6 +15,9 @@ import { resetDatabase } from "../helpers/reset-db";
  * modül importunda `main()`'i HEMEN çalıştırdığı için `env-demo-payments-boot-guard.test.ts`
  * İLE AYNI desen kullanılır: script AYRI bir alt process'te (`tsx` ile) çalıştırılır, test
  * yalnızca exit code + DB'deki SONUCU doğrular.
+ *
+ * Paket L (2026-10-23): script artık varsayılan olarak KURU çalışır; yazmak için
+ * `--confirm=update-vahit --operator=...` gerekir. Kaynak CV olarak sahte fixture (`--dir`) kullanılır.
  */
 
 const SCRIPT_PATH = path.resolve(__dirname, "../../scripts/update-vahit-mutlu-profile.ts");
@@ -21,8 +26,14 @@ const SCRIPT_PATH = path.resolve(__dirname, "../../scripts/update-vahit-mutlu-pr
 // tests/unit/env-demo-payments-boot-guard.test.ts İLE AYNI gerekçe).
 const TSX_CLI = path.resolve(__dirname, "../../node_modules/tsx/dist/cli.mjs");
 
-function runScript(args: string[] = []) {
-  return spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH, ...args], {
+const SOURCE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "vahit-smoke-src-"));
+fs.copyFileSync(path.resolve(__dirname, "../fixtures/doctor-cv-sample.txt"), path.join(SOURCE_DIR, "vahitcv.txt"));
+fs.writeFileSync(path.join(SOURCE_DIR, "wiley-reviewer-certificate-2025.pdf"), "%PDF-1.4\n% smoke test\n");
+const BACKUP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "vahit-smoke-backup-"));
+const WRITE_ARGS = ["--confirm=update-vahit", "--operator=Smoke Test"];
+
+function runScript(args: string[] = WRITE_ARGS) {
+  return spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH, `--dir=${SOURCE_DIR}`, `--backup-dir=${BACKUP_DIR}`, "--no-revalidate", ...args], {
     cwd: path.resolve(__dirname, "../.."),
     env: { ...process.env },
     encoding: "utf8",
@@ -76,14 +87,14 @@ describe("scripts/update-vahit-mutlu-profile.ts — script-smoke-test (izole tes
     return { obesity, oncology };
   }
 
-  it("`--dry-run` hiçbir şey YAZMAZ; DB'de değişiklik OLMAZ", async () => {
+  it("varsayılan kuru çalışma hiçbir şey YAZMAZ; DB'de değişiklik OLMAZ", async () => {
     const { obesity } = await seedSpecialties();
     await seedDoctor();
 
-    const result = runScript(["--dry-run"]);
+    const result = runScript([]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("[dry-run]");
-    expect(result.stdout).toContain("[ÖNCESİ]");
+    expect(result.stdout).toContain("KURU ÇALIŞMA");
+    expect(result.stdout).toContain("cvEntries: 0 → 5");
 
     const doctorAfter = await prisma.doctorProfile.findUniqueOrThrow({ where: { slug: "vahit-mutlu" } });
     expect(doctorAfter.specialtyId).toBeNull();
@@ -99,14 +110,16 @@ describe("scripts/update-vahit-mutlu-profile.ts — script-smoke-test (izole tes
 
     const result = runScript();
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("[fix]");
+    expect(result.stdout).toContain("Yazıldı.");
 
     const updated = await prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctor.id } });
     expect(updated.specialtyId).toBe(obesity.id);
     expect(updated.title).toBe("Assoc. Prof. Dr.");
     // `subSpecialty`'ye ARTIK DOKUNULMAZ (düzeltme-1 madde 2) — mevcut değer KORUNUR.
     expect(updated.subSpecialty).toBe("Mevcut alt uzmanlık metni");
-    expect(updated.aboutHtml).toContain("Erzincan");
+    // Doğum yılı/yeri cümlesi profile girmez (Paket L).
+    expect(updated.aboutHtml).not.toMatch(/born|1989/);
+    expect((updated.cvEntries as unknown[]).length).toBe(5);
     expect((updated.socialLinks as unknown[]).length).toBe(4);
 
     const additional = await prisma.doctorAdditionalSpecialty.findMany({ where: { doctorId: doctor.id } });
@@ -133,7 +146,7 @@ describe("scripts/update-vahit-mutlu-profile.ts — script-smoke-test (izole tes
     expect(additionalIds).toEqual([obesity.id, oncology.id].sort());
   });
 
-  it("idempotent — script İKİ KEZ art arda çalıştırılınca aynı hedef duruma gelir, hata VERMEZ, ek uzmanlık SATIRI TEKRARLAMAZ", async () => {
+  it("onaysız (--confirm yok) çalıştırma yazmaz; idempotent — İKİ KEZ art arda çalıştırılınca aynı hedef duruma gelir, ek uzmanlık SATIRI TEKRARLAMAZ", async () => {
     await seedSpecialties();
     const doctor = await seedDoctor();
 
@@ -152,7 +165,7 @@ describe("scripts/update-vahit-mutlu-profile.ts — script-smoke-test (izole tes
   it("hedef doktor bulunamazsa script HATA ile çıkar (exit code != 0), sessiz no-op YAPMAZ", async () => {
     await seedSpecialties();
     // Doktor OLUŞTURULMADI.
-    const result = runScript(["--dry-run"]);
+    const result = runScript([]);
     expect(result.status).not.toBe(0);
   });
 });

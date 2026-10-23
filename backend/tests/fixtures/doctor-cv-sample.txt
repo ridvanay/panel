@@ -1,0 +1,92 @@
++--------------------------------------------------------------------------------+----+
+| ÖRNEK DOKTOR, MD                                                               | [] |
+|                                                                                |    |
+| Istanbul, Türkiye | +90 530 000 00 00 | ornek.doktor@example.com                |    |
++--------------------------------------------------------------------------------+----+
+
+PROFESSIONAL PROFILE
+
+General surgeon with a clinical focus on bariatric surgery. He trained at Example University and now works in Istanbul. He has participated in more than 1,000 bariatric procedures, as stated in his professional biography.
+
+EDUCATION & SPECIALTY TRAINING
+
++-----------+-----------------------------------------------------------------------------+
+| 2015–2020 | Specialty Training in General Surgery                                       |
+|           |                                                                             |
+|           | Example University Faculty of Medicine                                      |
++===========+=============================================================================+
+| 2002–2006 | Secondary Education                                                         |
+|           |                                                                             |
+|           | Example High School                                                         |
++-----------+-----------------------------------------------------------------------------+
+
+PROFESSIONAL EXPERIENCE
+
++--------------+-----------------------------------------------------------------------------+
+| 2023–Present | General Surgery Specialist                                                  |
+|              |                                                                             |
+|              | Example Hospital, Istanbul                                                  |
++--------------+-----------------------------------------------------------------------------+
+
+PROFESSIONAL MEMBERSHIPS & SCIENTIFIC ROLES
+
+• Turkish Surgical Association
+
+• SSAT – Türkiye Council Member
+
+SELECTED INTERNATIONAL PEER-REVIEWED PUBLICATIONS
+
+Vahit MUTLU, Burak Barutcu 2, Samet Şahin 3
+Effect of Laparoscopic Sleeve Gastrectomy on Female Sexual Function Index (FSFI) and Menstrual Function
+Patient Preference and Adherence February 2026. 20 DOI: 10.2147/PPA.S566811
+
+Mizan S.R., Tarım I., Vahit MUTLU
+Evaluation of surgical competence outcomes
+Current Problems in Surgery 76 DOI:10.1016/j.cpsurg.2026.101982
+
+GlobalSurg Collaborative/ Vahit MUTLU
+Development and external validation of the GloSSI predictive model
+BJS, Volume 111, Issue 6, June 2024, znae129, https://doi.org/10.1093/bjs/znae129
+
+NATIONAL PEER-REVIEWED PUBLICATIONS
+
+Tarım I, Vahit MUTLU, Derebey M.
+Bascom Cleft Lift Technique in Sacrococcygeal Pilonidal Disease.
+Journal of Experimental and Clinical Medicine 2022;39 (2): 424-428. https://dergipark.org.tr/en/pub/omujecm/issue/68947/931463
+
+BOOK EDITORSHIP & BOOK CHAPTERS
+
+Vahit MUTLU, Ahmet Topçu
+Cerrahi Tıp Bilimleri Multidisipliner Yaklaşım
+Sağlıkta Güvenlik Unsurları: Hasta Güvenliği
+Publisher • İstanbul Tıp Kitabevi
+First Published • 2023, İstanbul
+ISBN: 978-625-8103-82-3
+
+Vahit MUTLU
+General Surgery Emergencies
+EDİTÖR
+Publisher • Livre de Lyon
+First Published • May 2024, Lyon
+ISBN: 978-2-38236-676-9
+
+Kenan Erzurumlu, Vahit Mutlu.
+Pankreas Fistülleri. Gastrointestinal Fistüller
+Yayınevi: Türkiye Klinikleri Yayınevi, ISBN: 978-605-7597-13-7, Basım Yılı: 2018
+
+ORAL & POSTER PRESENTATIONS
+
+Vahit Mutlu
+Multivariate Analysis of Baseline Body Mass Index (BMI), Gender, and Age on Weight Loss in
+Patients with Hyperlipidemia (HL) Undergoing Bariatric Surgery
+International Balikesir Academic Research Congress October 10-12, 2025 Balikesir, Turkiye
+
+Salih Raşit Mizan, Vahit Mutlu
+Zorlu Safra Kesesi Vakasında İatrojenik Safra Yolu Yaralanması
+Karadeniz Cerrahi Günleri 26 Kasım 2022 6. Karadeniz Cerrahi Günleri
+Mesleki Özgeçmiş
+
+PROFESSIONAL BIOGRAPHY
+
+Örnek Doktor was born in Erzincan in 1989 and completed his education there. He studied medicine at Example University.
+From 2020 to 2023, he worked as a General Surgery Specialist. His professional biography reports experience in more than 1,000 bariatric procedures.
