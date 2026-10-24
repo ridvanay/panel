@@ -13,6 +13,7 @@ import {
   applyImportPlan,
   buildImportPlan,
   buildTranslationExport,
+  canonicalHash,
   filterExportItems,
   readTranslationFile,
   restoreTranslations,
@@ -220,6 +221,59 @@ describe("content-translations (Paket L)", () => {
     const plan = await buildImportPlan(app.prisma, await readTranslationFile(file));
     expect(plan.pages).toEqual([]);
     expect(plan.skipped[0]!.reason).toMatch(/değişmiş/);
+  });
+
+  // 2026-10-24 — canlıda anasayfa her ziyarette "bayat" sayılıyordu: `POST /pages/:slug/view`
+  // (`viewCount` artışı) `Page.updatedAt`'i değiştiriyor. Bayatlık artık kanonik alanların özetiyle.
+  it("görüntüleme sayacı updatedAt'i değiştirir ama kalem bayat sayılmaz; anahtar sırası önemsiz", async () => {
+    const file = await translatedFile((d) => {
+      const page = d.items.find((i) => i.type === "page")!;
+      page.translations.es = esPage();
+      // Kanonik alanların anahtar sırası farklı (ör. elle düzenlenmiş/yeniden yazılmış dosya).
+      const { blocks, ...rest } = page.fields;
+      page.fields = { blocks: (blocks as Record<string, unknown>[]).map((b) => Object.fromEntries(Object.entries(b).reverse())), ...rest };
+      d.items.find((i) => i.type === "doctor")!.translations.ar = { title: "د.", bio: "جراح عام." };
+    });
+    const before = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+    const view = await app.inject({ method: "POST", url: "/api/v1/pages/about/view" });
+    expect(view.statusCode).toBe(204);
+    const after = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+    expect(after.viewCount).toBe(before.viewCount + 1);
+    expect(after.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime()); // kök neden: sayaç updatedAt'i oynatıyor
+    // Doktorda içerik dışı bir alan değişimi de updatedAt'i oynatır.
+    await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { sessionDurationMin: 45 } });
+
+    const plan = await buildImportPlan(app.prisma, await readTranslationFile(file));
+    expect(plan.skipped).toEqual([]);
+    expect(plan.pages.map((p) => p.locale)).toEqual(["es"]);
+    expect(plan.doctors.map((p) => p.locale)).toEqual(["ar"]);
+
+    // Plan ile yazma arasında bir ziyaret daha: yine yazılır.
+    await app.inject({ method: "POST", url: "/api/v1/pages/about/view" });
+    await applyImportPlan(app.prisma, plan, { ...OP, confirm: IMPORT_CONFIRM_KEY, backupDir: dir, sourceFile: file });
+    expect((await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } })).translations).toHaveProperty("es");
+  });
+
+  it("gerçek içerik değişikliği (doktor bio) bayat sayılır; plan sonrası kanonik değişiklik yazmayı geri alır", async () => {
+    const file = await translatedFile((d) => {
+      d.items.find((i) => i.type === "page")!.translations.es = esPage();
+      d.items.find((i) => i.type === "doctor")!.translations.ar = { title: "د.", bio: "جراح عام." };
+    });
+    await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { bio: "General and bariatric surgeon." } });
+    const plan = await buildImportPlan(app.prisma, await readTranslationFile(file));
+    expect(plan.skipped).toEqual([expect.objectContaining({ type: "doctor", reason: expect.stringMatching(/değişmiş/) })]);
+    expect(plan.pages).toHaveLength(1);
+
+    await app.prisma.page.update({ where: { id: pageId }, data: { title: "About us" } });
+    await expect(applyImportPlan(app.prisma, plan, { ...OP, confirm: IMPORT_CONFIRM_KEY, backupDir: dir, sourceFile: file })).rejects.toThrow(/plan sonrası/);
+    expect((await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } })).translations).not.toHaveProperty("es");
+  });
+
+  it("canonicalHash anahtar sırasından bağımsız, değer değişimine duyarlı; eksik alan = null", () => {
+    expect(canonicalHash({ a: 1, b: { x: [1, { p: 1, q: 2 }] } })).toBe(canonicalHash({ b: { x: [1, { q: 2, p: 1 }] }, a: 1 }));
+    expect(canonicalHash({ a: 1 })).not.toBe(canonicalHash({ a: 2 }));
+    expect(canonicalHash({ a: null })).toBe(canonicalHash({ a: undefined }));
+    expect(canonicalHash({ a: [1, 2] })).not.toBe(canonicalHash({ a: [2, 1] }));
   });
 
   it("geri dönüş yalnızca hedef dilleri yedekteki hâline döndürür; tr korunur (yedek elle değiştirilse bile)", async () => {

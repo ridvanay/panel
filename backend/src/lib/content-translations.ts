@@ -23,9 +23,14 @@
  *    (`--overwrite-locale=tr`) yazılır. `en` anahtarı her zaman reddedilir — kanonik metne dokunulmaz.
  *  - Export `only` seçicileriyle (`--only=page:home,doctor:vahit-mutlu`) yalnızca seçilen kalemleri yazar.
  *  - Uzmanlık (`name`, `description`), menü öğesi (`label`), footer sütunu (`title`) ve bağlantısı
- *    (`label`) içe aktarılabilir. Menü/footer'da `updatedAt` yok: bayatlık, export'taki kanonik
- *    metnin şimdiki metinle birebir aynı olmasıyla kontrol edilir.
+ *    (`label`) içe aktarılabilir.
+ *
+ * Bayatlık (2026-10-24): `updatedAt` KULLANILMAZ — sayfa görüntüleme sayacı (`POST /pages/:slug/view`
+ * → `viewCount` artışı) `Page.updatedAt`'i her ziyarette değiştirir. Bunun yerine export'taki
+ * kanonik alanlar (`fields`) ile kaydın şimdiki kanonik alanları, anahtar sırasından bağımsız
+ * deterministik bir özetle (`canonicalHash`) karşılaştırılır; tüm türlerde aynı kural.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -60,7 +65,7 @@ export interface ExportItem {
   ref: string;
   importable: boolean;
   note?: string;
-  /** Kanonik metnin export anındaki son değişikliği — import'ta bayatlık kontrolü. */
+  /** Kaydın export anındaki `updatedAt`'i — yalnızca bilgi (bayatlık `canonicalHash` ile kontrol edilir). */
   updatedAt: string | null;
   fields: Record<string, unknown>;
   translations: Partial<Record<TargetLocale, Record<string, unknown> | null>>;
@@ -113,6 +118,33 @@ interface EntityRow {
   translations: unknown;
   updatedAt?: Date;
   [field: string]: unknown;
+}
+
+/** Export'a giren (çevrilecek) kanonik alanlar — export ve bayatlık kontrolü AYNI listeyi kullanır. */
+const PAGE_CANONICAL_FIELDS = ["title", "seoTitle", "seoDescription", "ogTitle", "blocks"] as const;
+const DOCTOR_CANONICAL_FIELDS = ["title", "bio", "aboutHtml", "subSpecialty"] as const;
+
+function canonicalFieldsOf(type: "page" | "doctor" | EntityType, row: Record<string, unknown>): Record<string, unknown> {
+  const fields: readonly string[] = type === "page" ? PAGE_CANONICAL_FIELDS : type === "doctor" ? DOCTOR_CANONICAL_FIELDS : Object.keys(ENTITY_FIELDS[type]);
+  return Object.fromEntries(fields.map((field) => [field, row[field] ?? null]));
+}
+
+/** Anahtar sırasından bağımsız JSON (nesne anahtarları sıralı; `undefined` → yok sayılır). */
+export function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v === undefined ? null : v)).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** Kanonik alanların deterministik özeti (sha256). Eksik alan `null` sayılır. */
+export function canonicalHash(fields: Record<string, unknown> | undefined): string {
+  const normalized = Object.fromEntries(Object.entries(fields ?? {}).map(([k, v]) => [k, v ?? null]));
+  return createHash("sha256").update(stableStringify(normalized)).digest("hex");
 }
 
 async function findEntity(db: Db, type: EntityType, id: string): Promise<EntityRow | null> {
@@ -200,7 +232,7 @@ export async function buildTranslationExport(db: Db, now = new Date(), options: 
       ref: p.slug,
       importable: true,
       updatedAt: p.updatedAt.toISOString(),
-      fields: { title: p.title, seoTitle: p.seoTitle, seoDescription: p.seoDescription, ogTitle: p.ogTitle, blocks: p.blocks },
+      fields: canonicalFieldsOf("page", p),
       translations: emptyTranslations(),
       existingLocales: filledLocales(p.translations),
     });
@@ -215,7 +247,7 @@ export async function buildTranslationExport(db: Db, now = new Date(), options: 
       importable: true,
       note: "cvEntries ve publications çevrilmez.",
       updatedAt: d.updatedAt.toISOString(),
-      fields: { title: d.title, bio: d.bio, aboutHtml: d.aboutHtml, subSpecialty: d.subSpecialty },
+      fields: canonicalFieldsOf("doctor", d),
       translations: emptyTranslations(),
       existingLocales: filledLocales(d.translations),
     });
@@ -373,7 +405,11 @@ export interface ImportPlan {
   entities: PreparedEntity[];
   skipped: { type: string; ref: string; locale?: string; reason: string }[];
   /** Plan anındaki `translations` damgaları — yazma sırasında eşzamanlı değişiklik kontrolü. */
-  stamps: { pages: Record<string, string>; doctors: Record<string, string>; updatedAt: Record<string, string>; entities: Record<string, string> };
+  /**
+   * Plan anındaki damgalar — yazma sırasında eşzamanlı değişiklik kontrolü: `translations` (çeviriler
+   * değişmiş mi) ve `canonical` (kanonik metin değişmiş mi; `updatedAt` DEĞİL — sayaç onu da değiştirir).
+   */
+  stamps: { pages: Record<string, string>; doctors: Record<string, string>; canonical: Record<string, string>; entities: Record<string, string> };
 }
 
 export function prepareEntityTranslation(type: EntityType, input: Record<string, unknown>): Record<string, string> {
@@ -388,10 +424,12 @@ export function prepareEntityTranslation(type: EntityType, input: Record<string,
   return value;
 }
 
-/** Export'taki kanonik metin şimdikiyle aynı mı (menü/footer'da `updatedAt` yok). */
-function sameCanonicalFields(type: EntityType, row: EntityRow, fields: Record<string, unknown>): boolean {
-  return Object.keys(ENTITY_FIELDS[type]).every((field) => (row[field] ?? null) === (fields?.[field] ?? null));
+/** Export'taki kanonik metin şimdikiyle aynı mı (tüm türlerde aynı kural; `updatedAt`'e bakılmaz). */
+function isCanonicalStale(type: "page" | "doctor" | EntityType, row: Record<string, unknown>, exported: Record<string, unknown>): boolean {
+  return canonicalHash(canonicalFieldsOf(type, row)) !== canonicalHash(exported);
 }
+
+const STALE_REASON = "Kanonik metin export'tan sonra değişmiş; yeniden export/çeviri gerekir.";
 
 export async function readTranslationFile(file: string): Promise<TranslationExport> {
   const parsed = JSON.parse(await fs.readFile(file, "utf8")) as TranslationExport;
@@ -433,7 +471,7 @@ function guardLocales(
 }
 
 export async function buildImportPlan(db: Db, data: TranslationExport, options: ImportPlanOptions = {}): Promise<ImportPlan> {
-  const plan: ImportPlan = { pages: [], doctors: [], entities: [], skipped: [], stamps: { pages: {}, doctors: {}, updatedAt: {}, entities: {} } };
+  const plan: ImportPlan = { pages: [], doctors: [], entities: [], skipped: [], stamps: { pages: {}, doctors: {}, canonical: {}, entities: {} } };
 
   for (const item of data.items) {
     const filled = IMPORT_LOCALES.filter((l) => item.translations?.[l]);
@@ -445,12 +483,12 @@ export async function buildImportPlan(db: Db, data: TranslationExport, options: 
         plan.skipped.push({ type, ref: item.ref, reason: "Kayıt bulunamadı (menü/footer yeniden kaydedildiyse yeniden export alın)." });
         continue;
       }
-      const stale = row.updatedAt ? item.updatedAt !== null && row.updatedAt.toISOString() !== item.updatedAt : !sameCanonicalFields(type, row, item.fields);
-      if (stale) {
-        plan.skipped.push({ type, ref: item.ref, reason: "Kanonik metin export'tan sonra değişmiş; yeniden export/çeviri gerekir." });
+      if (isCanonicalStale(type, row, item.fields)) {
+        plan.skipped.push({ type, ref: item.ref, reason: STALE_REASON });
         continue;
       }
-      plan.stamps.entities[entityKey(type, row.id)] = JSON.stringify(row.translations ?? {});
+      plan.stamps.entities[entityKey(type, row.id)] = stableStringify(row.translations ?? {});
+      plan.stamps.canonical[entityKey(type, row.id)] = canonicalHash(canonicalFieldsOf(type, row));
       for (const locale of guardLocales(plan, item, filled, row.translations, options)) {
         try {
           plan.entities.push({ type, id: row.id, ref: item.ref, locale, value: prepareEntityTranslation(type, item.translations[locale]!) });
@@ -475,12 +513,12 @@ export async function buildImportPlan(db: Db, data: TranslationExport, options: 
         plan.skipped.push({ type: "page", ref: item.ref, reason: "Yasal sayfa — çevrilmez (yeni dillerde EN'e düşer)." });
         continue;
       }
-      if (item.updatedAt && page.updatedAt.toISOString() !== item.updatedAt) {
-        plan.skipped.push({ type: "page", ref: item.ref, reason: "Kanonik metin export'tan sonra değişmiş; yeniden export/çeviri gerekir." });
+      if (isCanonicalStale("page", page, item.fields)) {
+        plan.skipped.push({ type: "page", ref: item.ref, reason: STALE_REASON });
         continue;
       }
-      plan.stamps.pages[page.id] = JSON.stringify(page.translations ?? {});
-      plan.stamps.updatedAt[page.id] = page.updatedAt.toISOString();
+      plan.stamps.pages[page.id] = stableStringify(page.translations ?? {});
+      plan.stamps.canonical[entityKey("page", page.id)] = canonicalHash(canonicalFieldsOf("page", page));
       for (const locale of guardLocales(plan, item, filled, page.translations, options)) {
         try {
           plan.pages.push({ id: page.id, ref: item.ref, locale, value: preparePageTranslation(page.blocks, item.translations[locale]!) });
@@ -496,12 +534,12 @@ export async function buildImportPlan(db: Db, data: TranslationExport, options: 
       plan.skipped.push({ type: "doctor", ref: item.ref, reason: "Doktor bulunamadı." });
       continue;
     }
-    if (item.updatedAt && doctor.updatedAt.toISOString() !== item.updatedAt) {
-      plan.skipped.push({ type: "doctor", ref: item.ref, reason: "Kanonik metin export'tan sonra değişmiş; yeniden export/çeviri gerekir." });
+    if (isCanonicalStale("doctor", doctor, item.fields)) {
+      plan.skipped.push({ type: "doctor", ref: item.ref, reason: STALE_REASON });
       continue;
     }
-    plan.stamps.doctors[doctor.id] = JSON.stringify(doctor.translations ?? {});
-    plan.stamps.updatedAt[doctor.id] = doctor.updatedAt.toISOString();
+    plan.stamps.doctors[doctor.id] = stableStringify(doctor.translations ?? {});
+    plan.stamps.canonical[entityKey("doctor", doctor.id)] = canonicalHash(canonicalFieldsOf("doctor", doctor));
     for (const locale of guardLocales(plan, item, filled, doctor.translations, options)) {
       try {
         plan.doctors.push({ id: doctor.id, ref: item.ref, locale, value: prepareDoctorTranslation(item.translations[locale]!, doctor.aboutHtml) });
@@ -663,7 +701,10 @@ export async function applyImportPlan(
     for (const id of pageIds) {
       const current = await tx.page.findUniqueOrThrow({ where: { id } });
       // Kanonik bloklar veya çeviriler plan sonrası değiştiyse (yapı doğrulaması eski bloklara göre yapıldı) yazılmaz.
-      if (current.updatedAt.toISOString() !== plan.stamps.updatedAt[id] || JSON.stringify(current.translations ?? {}) !== plan.stamps.pages[id]) {
+      if (
+        canonicalHash(canonicalFieldsOf("page", current)) !== plan.stamps.canonical[entityKey("page", id)] ||
+        stableStringify(current.translations ?? {}) !== plan.stamps.pages[id]
+      ) {
         throw new TranslationImportError(`Sayfa "${current.slug}" çevirileri plan sonrası değişmiş; işlem geri alındı.`);
       }
       const translations = mergeTargetLocales(
@@ -676,7 +717,10 @@ export async function applyImportPlan(
     }
     for (const id of doctorIds) {
       const current = await tx.doctorProfile.findUniqueOrThrow({ where: { id } });
-      if (current.updatedAt.toISOString() !== plan.stamps.updatedAt[id] || JSON.stringify(current.translations ?? {}) !== plan.stamps.doctors[id]) {
+      if (
+        canonicalHash(canonicalFieldsOf("doctor", current)) !== plan.stamps.canonical[entityKey("doctor", id)] ||
+        stableStringify(current.translations ?? {}) !== plan.stamps.doctors[id]
+      ) {
         throw new TranslationImportError(`Doktor "${current.slug}" çevirileri plan sonrası değişmiş; işlem geri alındı.`);
       }
       const translations = mergeTargetLocales(
@@ -687,7 +731,11 @@ export async function applyImportPlan(
     }
     for (const ref of entityRefs) {
       const current = await findEntity(tx as unknown as Db, ref.type, ref.id);
-      if (!current || JSON.stringify(current.translations ?? {}) !== plan.stamps.entities[entityKey(ref.type, ref.id)]) {
+      if (
+        !current ||
+        stableStringify(current.translations ?? {}) !== plan.stamps.entities[entityKey(ref.type, ref.id)] ||
+        canonicalHash(canonicalFieldsOf(ref.type, current)) !== plan.stamps.canonical[entityKey(ref.type, ref.id)]
+      ) {
         throw new TranslationImportError(`${ref.type} "${ref.id}" çevirileri plan sonrası değişmiş; işlem geri alındı.`);
       }
       const translations = mergeTargetLocales(
