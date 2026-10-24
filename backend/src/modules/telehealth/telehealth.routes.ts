@@ -6,7 +6,7 @@ import { requireModuleEnabled } from "../../middleware/module-guard";
 import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, LocaleQuerySchema } from "../../schemas/common";
-import { getLocaleSet, resolveEffectiveLocaleCode } from "../../lib/localization";
+import { getLocaleSet } from "../../lib/localization";
 import { localizeDoctor, localizeDoctorSpecialties, localizeSpecialty } from "./lib/doctor-localization";
 import { resolveContentLocaleCode } from "../../lib/entity-translations";
 import {
@@ -221,13 +221,12 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
 
       // Paket L — `?locale=` ile title/bio/aboutHtml/subSpecialty çevirisi (yoksa kanonik).
-      // Paket O — uzmanlık adları da aktif dilde (varsayılan dil dahil; yoksa kanonik EN).
-      const localeSet = locale ? await getLocaleSet(app) : null;
-      const effectiveLocale = localeSet ? resolveEffectiveLocaleCode(localeSet, locale) : undefined;
-      const contentLocale = localeSet ? resolveContentLocaleCode(localeSet, locale) : undefined;
+      // Paket O — uzmanlık adları da aktif dilde. 2026-10-24 — kanonik dil EN olduğundan doktor
+      // çevirisi de varsayılan dil (TR) DAHİL her dilde uygulanır; yoksa kanonik (EN) metin.
+      const contentLocale = locale ? resolveContentLocaleCode(await getLocaleSet(app), locale) : undefined;
       return reply.send(
         ok(
-          rows.map((row) => toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(row, effectiveLocale), contentLocale))),
+          rows.map((row) => toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(row, contentLocale), contentLocale))),
           buildPageMeta(rows, limit)
         )
       );
@@ -244,10 +243,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
       const { locale } = request.query;
-      const localeSet = locale ? await getLocaleSet(app) : null;
-      const effectiveLocale = localeSet ? resolveEffectiveLocaleCode(localeSet, locale) : undefined;
-      const contentLocale = localeSet ? resolveContentLocaleCode(localeSet, locale) : undefined;
-      return reply.send(ok(toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, effectiveLocale), contentLocale))));
+      const contentLocale = locale ? resolveContentLocaleCode(await getLocaleSet(app), locale) : undefined;
+      return reply.send(ok(toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, contentLocale), contentLocale))));
     }
   );
 

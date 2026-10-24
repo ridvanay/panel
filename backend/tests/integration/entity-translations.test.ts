@@ -102,7 +102,11 @@ describe("Paket O — menü/footer/uzmanlık/slayt çevirileri", () => {
 
     const tr = (await app.inject({ method: "GET", url: "/api/v1/navigation?locale=tr" })).json().data;
     expect(tr.navigationItems[0].label).toBe("Doktorlar");
-    expect(tr.footerColumns[0].title).toBe("Company");
+    expect(tr.footerColumns[0].title).toBe("Company"); // TR çevirisi yok → EN
+    // Footer'da TR çevirisi verilince varsayılan dil TR'de de uygulanır.
+    await app.prisma.footerLink.update({ where: { id: linkId }, data: { translations: { ru: { label: "О нас" }, tr: { label: "Hakkımızda" } } } });
+    const tr2 = (await app.inject({ method: "GET", url: "/api/v1/navigation?locale=tr" })).json().data;
+    expect(tr2.footerColumns[0].links[0].label).toBe("Hakkımızda");
 
     // Kapalı/bilinmeyen dil → kanonik, hata yok.
     const xx = await app.inject({ method: "GET", url: "/api/v1/navigation?locale=es" });
@@ -156,6 +160,23 @@ describe("Paket O — menü/footer/uzmanlık/slayt çevirileri", () => {
     expect(doctors[0].specialty.name).toBe("Онкохирургия");
     const doctorTr = (await app.inject({ method: "GET", url: "/api/v1/doctors/test-doctor?locale=tr" })).json().data;
     expect(doctorTr.specialty.name).toBe("Cerrahi Onkoloji");
+
+    // 2026-10-24 — doktor çevirisi varsayılan dil TR DAHİL uygulanır (kanonik EN); yoksa EN.
+    await app.prisma.doctorProfile.update({
+      where: { slug: "test-doctor" },
+      data: { translations: { tr: { title: "Doç. Dr.", bio: "Türkçe biyografi", aboutHtml: "<p>Hakkında</p><script>x</script>" }, ru: { bio: "Биография" } } },
+    });
+    const trDoc = (await app.inject({ method: "GET", url: "/api/v1/doctors/test-doctor?locale=tr" })).json().data;
+    expect(trDoc).toMatchObject({ title: "Doç. Dr.", bio: "Türkçe biyografi" });
+    expect(trDoc.aboutHtml).not.toContain("<script");
+    const trList = (await app.inject({ method: "GET", url: "/api/v1/doctors?locale=tr" })).json().data;
+    expect(trList[0].bio).toBe("Türkçe biyografi");
+    const deDoc = (await app.inject({ method: "GET", url: "/api/v1/doctors/test-doctor?locale=de" })).json().data;
+    expect(deDoc).toMatchObject({ title: "Dr.", bio: "Bio" });
+    const ruDoc = (await app.inject({ method: "GET", url: "/api/v1/doctors/test-doctor?locale=ru" })).json().data;
+    expect(ruDoc).toMatchObject({ title: "Dr.", bio: "Биография" }); // alan bazlı: eksik title → EN
+    const noLocale = (await app.inject({ method: "GET", url: "/api/v1/doctors/test-doctor" })).json().data;
+    expect(noLocale.bio).toBe("Bio");
 
     const tooLong = await app.inject({
       method: "PATCH",
