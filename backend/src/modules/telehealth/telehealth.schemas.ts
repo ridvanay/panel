@@ -432,7 +432,7 @@ export const UpdateDoctorSelfProfileRequestSchema = z
   .strict();
 export type UpdateDoctorSelfProfileRequest = z.infer<typeof UpdateDoctorSelfProfileRequestSchema>;
 
-const AVAILABILITY_RULE_INPUT_SCHEMA = z
+export const AVAILABILITY_RULE_INPUT_SCHEMA = z
   .object({
     dayOfWeek: z.number().int().min(1).max(7),
     startMinute: z.number().int().min(0).max(1440),

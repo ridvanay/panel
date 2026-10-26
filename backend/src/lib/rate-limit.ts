@@ -163,3 +163,6 @@ export const SUPPORT_POLL_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
  * TAMAMLAYICI bir ek savunma katmanıdır.
  */
 export const VERIFICATION_CODE_RESEND_RATE_LIMIT = { max: 2, timeWindow: "1 minute" };
+
+/** Paket Q — `/admin/telehealth/bulk-availability/*` (CSV ayrıştırma + toplu yazma; yalnızca ADMIN). */
+export const BULK_AVAILABILITY_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };

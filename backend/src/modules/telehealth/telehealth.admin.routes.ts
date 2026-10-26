@@ -53,6 +53,8 @@ import {
 } from "./lib/emergency-notice";
 import { UpdateDoctorHeroRequestSchema, applyDoctorHeroUpdate, parseDoctorHero, resolveDoctorHero } from "./lib/doctor-hero";
 import { wallTimeToUtc } from "./lib/timezone";
+import { replaceWeeklyAvailability } from "./lib/weekly-availability";
+import { invalidateEarliestAvailability } from "./lib/earliest-availability";
 import {
   NOT_ARCHIVED_APPOINTMENT_WHERE,
   NOT_ARCHIVED_BOOKING_WHERE,
@@ -683,20 +685,9 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       const doctor = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
 
-      const rules = await app.prisma.$transaction(async (tx) => {
-        await tx.doctorAvailability.deleteMany({ where: { doctorId: doctor.id } });
-        if (request.body.rules.length === 0) return [];
-        await tx.doctorAvailability.createMany({
-          data: request.body.rules.map((rule) => ({
-            doctorId: doctor.id,
-            dayOfWeek: rule.dayOfWeek,
-            startMinute: rule.startMinute,
-            endMinute: rule.endMinute,
-            isActive: rule.isActive ?? true,
-          })),
-        });
-        return tx.doctorAvailability.findMany({ where: { doctorId: doctor.id }, orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] });
-      });
+      const rules = await app.prisma.$transaction((tx) => replaceWeeklyAvailability(tx, doctor.id, request.body.rules));
+      // Paket Q — doktor kartlarındaki "en erken randevu" önbelleği haftalık saat değişince de yenilenir.
+      invalidateEarliestAvailability(doctor.id);
 
       return reply.send(
         ok(rules.map((rule) => ({ id: rule.id, dayOfWeek: rule.dayOfWeek, startMinute: rule.startMinute, endMinute: rule.endMinute, isActive: rule.isActive })))

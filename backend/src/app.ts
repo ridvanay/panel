@@ -74,6 +74,7 @@ import { telehealthDemoPaymentRoutes } from "./modules/telehealth/telehealth.dem
 import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
 import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
 import { adminDoctorTimeOffRoutes, doctorScheduleRoutes } from "./modules/telehealth/telehealth.time-off.routes";
+import { adminBulkAvailabilityRoutes } from "./modules/telehealth/telehealth.bulk-availability.routes";
 import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recording.routes";
 import { telehealthRecordingAccessRoutes } from "./modules/telehealth/telehealth.recording-access.routes";
 import { telehealthEgressWebhookRoutes } from "./modules/telehealth/telehealth.egress-webhook.routes";
@@ -333,6 +334,7 @@ export function buildApp() {
       api.register(adminTelehealthDoctorsRoutes, { prefix: "/admin/telehealth/doctors" });
       // Paket P (İş 2) — doktor adına izin/istisna yönetimi.
       api.register(adminDoctorTimeOffRoutes, { prefix: "/admin/telehealth/doctors" });
+      api.register(adminBulkAvailabilityRoutes, { prefix: "/admin/telehealth/bulk-availability" });
       api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });
       // Paket C — kalite kontrol dinleyicisi (YALNIZCA ADMIN + 2FA). Ayrı dosya, aynı prefix.
       api.register(adminTelehealthQaListenerRoutes, { prefix: "/admin/telehealth/appointments" });

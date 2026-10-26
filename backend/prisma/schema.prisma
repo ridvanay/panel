@@ -2401,6 +2401,28 @@ model DoctorTimeOff {
   @@map("doctor_time_off")
 }
 
+/// Paket Q — admin toplu çalışma saati/izin işlemi kaydı (geri alma için). `snapshot`:
+/// `{ doctors: [{ doctorId, name, before: Rule[], after: Rule[] }], timeOff: [{ id, doctorId, name }] }` —
+/// yalnızca haftalık kural değerleri ve eklenen izin id'leri; iç not/hasta verisi TUTULMAZ.
+model DoctorAvailabilityBulkOperation {
+  id          String    @id @default(uuid())
+  /// CSV | TEMPLATE | TIME_OFF
+  source      String
+  fileName    String?
+  rowCount    Int       @default(0)
+  doctorCount Int       @default(0)
+  summary     Json
+  snapshot    Json
+  actorId     String?
+  actorEmail  String?
+  createdAt   DateTime  @default(now())
+  undoneAt    DateTime?
+  undoneById  String?
+
+  @@index([createdAt])
+  @@map("doctor_availability_bulk_operations")
+}
+
 model Appointment {
   id            String  @id @default(uuid())
   seq           Int     @unique @default(autoincrement())

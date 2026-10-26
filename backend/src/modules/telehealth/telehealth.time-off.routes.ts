@@ -16,6 +16,7 @@ import { DoctorIdParamSchema, SetDoctorAvailabilityRequestSchema } from "./teleh
 import { requireDoctorPortalAccess } from "./telehealth.portal.routes";
 import { CreateTimeOffRequestSchema, TimeOffIdParamSchema, TimeOffSchema, createTimeOff, listTimeOff } from "./lib/time-off";
 import { invalidateEarliestAvailability } from "./lib/earliest-availability";
+import { replaceWeeklyAvailability } from "./lib/weekly-availability";
 
 /**
  * Paket P (İş 2) — doktor müsaitliği tek ekranda: haftalık çalışma saatleri + izin/istisna günleri.
@@ -31,7 +32,7 @@ function toRuleDto(rule: { id: string; dayOfWeek: number; startMinute: number; e
   return { id: rule.id, dayOfWeek: rule.dayOfWeek, startMinute: rule.startMinute, endMinute: rule.endMinute, isActive: rule.isActive };
 }
 
-async function revalidateDoctorSlots(app: FastifyInstance) {
+export async function revalidateDoctorSlots(app: FastifyInstance) {
   invalidateEarliestAvailability();
   // Slotlar istemciden `no-store` çekilir; doktor kartlarındaki "en erken" bilgisi doktor listesi önbelleğindedir.
   await triggerTagRevalidation(app, [CACHE_TAGS.doctors]);
@@ -55,21 +56,7 @@ export async function doctorScheduleRoutes(app: FastifyInstance) {
     { schema: { body: SetDoctorAvailabilityRequestSchema, response: { 200: ApiSuccessSchema(RuleListSchema) } } },
     async (request, reply) => {
       const { user, doctorProfileId } = await requireDoctorPortalAccess(app, request.user!.id);
-      const rules = await app.prisma.$transaction(async (tx) => {
-        await tx.doctorAvailability.deleteMany({ where: { doctorId: doctorProfileId } });
-        if (request.body.rules.length > 0) {
-          await tx.doctorAvailability.createMany({
-            data: request.body.rules.map((rule) => ({
-              doctorId: doctorProfileId,
-              dayOfWeek: rule.dayOfWeek,
-              startMinute: rule.startMinute,
-              endMinute: rule.endMinute,
-              isActive: rule.isActive ?? true,
-            })),
-          });
-        }
-        return tx.doctorAvailability.findMany({ where: { doctorId: doctorProfileId }, orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] });
-      });
+      const rules = await app.prisma.$transaction((tx) => replaceWeeklyAvailability(tx, doctorProfileId, request.body.rules));
       await logAudit(app, {
         actorId: user.id,
         actorEmail: user.email,

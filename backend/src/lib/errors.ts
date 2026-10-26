@@ -171,7 +171,10 @@ export type ApiErrorCode =
    * İletişim sayfası — imzalı zaman damgası geçersiz ya da 24 saatten eski (`details.token`:
    * `invalid` | `expired`). İstemci yeni damga alıp formu verisini kaybetmeden tekrar gönderir. 422.
    */
-  | "CONTACT_FORM_TOKEN_INVALID";
+  | "CONTACT_FORM_TOKEN_INVALID"
+  | "BULK_PREVIEW_STALE"
+  | "BULK_CONFLICT_ACK_REQUIRED"
+  | "BULK_UNDO_BLOCKED";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -601,5 +604,26 @@ export class SupportMessageLimitError extends ApiError {
 export class VerificationCodeInvalidError extends ApiError {
   constructor(message = "Doğrulama kodu geçersiz, süresi dolmuş veya deneme hakkı tükenmiş.") {
     super(401, "VERIFICATION_CODE_INVALID", message);
+  }
+}
+
+/** Paket Q — toplu çalışma saati/izin: önizlemeden sonra veriler değişti; yeniden önizleme gerekir. 409. */
+export class BulkPreviewStaleError extends ApiError {
+  constructor(message = "Önizlemeden sonra veriler değişti. Lütfen yeniden önizleyin.") {
+    super(409, "BULK_PREVIEW_STALE", message);
+  }
+}
+
+/** Paket Q — önizlemede onaylı randevu çakışması var ve admin onay kutusunu işaretlemedi. 400. */
+export class BulkConflictAckRequiredError extends ApiError {
+  constructor(message = "Onaylı randevularla çakışma var. Uygulamak için çakışmaları gördüğünüzü onaylayın.") {
+    super(400, "BULK_CONFLICT_ACK_REQUIRED", message);
+  }
+}
+
+/** Paket Q — geri alma: işlemden sonra elle değiştirilmiş kayıtlar var. `details.changes` listeler. 409. */
+export class BulkUndoBlockedError extends ApiError {
+  constructor(changes: string[]) {
+    super(409, "BULK_UNDO_BLOCKED", "Bu işlemden sonra elle değiştirilmiş kayıtlar var; geri alma yapılmadı.", { changes });
   }
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import type { DoctorTimeOff } from "@prisma/client";
+import type { DoctorTimeOff, Prisma } from "@prisma/client";
 import { ValidationError } from "../../../lib/errors";
 
 /**
@@ -90,8 +90,13 @@ export async function findTimeOffInWindow(app: FastifyInstance, doctorId: string
 }
 
 /** Aralıktaki ONAYLI randevular (SCHEDULED/IN_PROGRESS) — uyarı listesi; hiçbirine dokunulmaz. */
-export async function findConflictingAppointments(app: FastifyInstance, doctorId: string, startsAt: Date, endsAt: Date): Promise<TimeOffConflictDto[]> {
-  const rows = await app.prisma.appointment.findMany({
+export async function findConflictingAppointments(
+  db: Prisma.TransactionClient,
+  doctorId: string,
+  startsAt: Date,
+  endsAt: Date
+): Promise<TimeOffConflictDto[]> {
+  const rows = await db.appointment.findMany({
     where: { doctorId, status: { in: ["SCHEDULED", "IN_PROGRESS"] }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
     orderBy: { startsAt: "asc" },
     select: { id: true, startsAt: true, endsAt: true, patientName: true, booking: { select: { bookingNumber: true } } },
@@ -127,7 +132,7 @@ export async function listTimeOff(app: FastifyInstance, doctorId: string, now = 
   // İnceleme bulgusu — satır başına sorgu yerine tüm aralığı kapsayan TEK sorgu, eşleme bellekte.
   const minStart = new Date(Math.min(...rows.map((r) => r.startsAt.getTime())));
   const maxEnd = new Date(Math.max(...rows.map((r) => r.endsAt.getTime())));
-  const all = await findConflictingAppointments(app, doctorId, minStart, maxEnd);
+  const all = await findConflictingAppointments(app.prisma, doctorId, minStart, maxEnd);
   return rows.map((row) =>
     toTimeOffDto(
       row,
@@ -136,10 +141,46 @@ export async function listTimeOff(app: FastifyInstance, doctorId: string, now = 
   );
 }
 
+export interface TimeOffInsert {
+  startsAt: Date;
+  endsAt: Date;
+  kind: TimeOffKind;
+  allDay?: boolean;
+  note?: string | null;
+}
+
+function toTimeOffData(doctorId: string, input: TimeOffInsert, createdById: string | null) {
+  return {
+    doctorId,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    kind: input.kind,
+    allDay: input.allDay ?? false,
+    note: input.note?.trim() || null,
+    createdById,
+  };
+}
+
+/** Paket Q — tek yazma noktası (tekil uç ve toplu işlem aynı veri eşlemesini kullanır). */
+export function insertTimeOff(db: Prisma.TransactionClient, doctorId: string, input: TimeOffInsert, createdById: string | null): Promise<DoctorTimeOff> {
+  return db.doctorTimeOff.create({ data: toTimeOffData(doctorId, input, createdById) });
+}
+
+/** Paket Q — toplu işlem: tek sorguda yazar, geri alma kaydı için id'leri döner. */
+export function insertTimeOffMany(
+  db: Prisma.TransactionClient,
+  rows: readonly ({ doctorId: string } & TimeOffInsert)[],
+  createdById: string | null
+): Promise<{ id: string; doctorId: string }[]> {
+  if (rows.length === 0) return Promise.resolve([]);
+  return db.doctorTimeOff.createManyAndReturn({
+    data: rows.map(({ doctorId, ...input }) => toTimeOffData(doctorId, input, createdById)),
+    select: { id: true, doctorId: true },
+  });
+}
+
 export async function createTimeOff(app: FastifyInstance, doctorId: string, body: CreateTimeOffRequest, createdById: string | null): Promise<TimeOffDto> {
   const { startsAt, endsAt } = parseTimeOffRange(body);
-  const row = await app.prisma.doctorTimeOff.create({
-    data: { doctorId, startsAt, endsAt, kind: body.kind, allDay: body.allDay ?? false, note: body.note?.trim() || null, createdById },
-  });
-  return toTimeOffDto(row, await findConflictingAppointments(app, doctorId, startsAt, endsAt));
+  const row = await insertTimeOff(app.prisma, doctorId, { startsAt, endsAt, kind: body.kind, allDay: body.allDay, note: body.note }, createdById);
+  return toTimeOffDto(row, await findConflictingAppointments(app.prisma, doctorId, startsAt, endsAt));
 }
