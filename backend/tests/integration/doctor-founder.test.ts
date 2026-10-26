@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
@@ -75,6 +75,31 @@ describe("Paket P — kurucu doktor", () => {
     const slugs = ((await app.inject({ method: "GET", url: "/api/v1/doctors" })).json().data as { slug: string }[]).map((d) => d.slug);
     expect(slugs).not.toContain(archived.json().data.slug);
     expect(slugs).not.toContain(inactive.json().data.slug);
+  });
+
+  it("DB kuralı (kısmi benzersiz indeks): ikinci kurucu doğrudan yazılamaz; yarışta API anlaşılır 409 döner", async () => {
+    // Önceki test bir kurucu bıraktı.
+    expect(await app.prisma.doctorProfile.count({ where: { isFounder: true } })).toBe(1);
+    await expect(
+      app.prisma.doctorProfile.create({
+        data: { title: "Dr.", fullName: "Kural", slug: `kural-${crypto.randomUUID()}`, bio: "x", languages: ["tr"], timeZone: "Europe/Istanbul", isFounder: true },
+      })
+    ).rejects.toMatchObject({ code: "P2002" });
+    // isFounder=false satırları indeksin dışında: istenen sayıda eklenebilir.
+    expect((await create(doctorPayload())).statusCode).toBe(201);
+    expect((await create(doctorPayload())).statusCode).toBe(201);
+
+    // Yarış: uygulama ön kontrolü (findFirst) eşzamanlı istekte "kurucu yok" görmüş olsun → DB reddeder.
+    const spy = vi.spyOn(app.prisma.doctorProfile, "findFirst").mockResolvedValueOnce(null);
+    try {
+      const raced = await create(doctorPayload({ isFounder: true }));
+      expect(raced.statusCode).toBe(409);
+      expect(raced.json().error.code).toBe("CONFLICT");
+      expect(raced.json().error.message).toContain("kurucu");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await app.prisma.doctorProfile.count({ where: { isFounder: true } })).toBe(1);
   });
 
   it("geçersiz kadro katmanı 422", async () => {

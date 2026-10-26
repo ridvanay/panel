@@ -135,14 +135,27 @@ function assertPracticeStartYearNotFuture(practiceStartYear: number | null | und
  */
 /**
  * Yazma SONRASI ikinci savunma (inceleme bulgusu — check-then-write yarışı): eşzamanlı iki istek
- * ön kontrolü birlikte geçerse, bu doktorun işareti geri alınır ve `409` döner. DB kısıtı (kısmi
- * benzersiz indeks) bu paketin migration kuralı (yalnızca kolon/tablo) nedeniyle sonraki pakete bırakıldı.
+ * ön kontrolü birlikte geçerse, bu doktorun işareti geri alınır ve `409` döner. Üçüncü hat DB'dir:
+ * kısmi benzersiz indeks `doctor_profiles_single_founder_key` → `rethrowFounderConflict`.
  */
 async function enforceSingleFounderAfterWrite(app: FastifyInstance, doctorId: string): Promise<void> {
   const founders = await app.prisma.doctorProfile.count({ where: { isFounder: true } });
   if (founders <= 1) return;
   await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { isFounder: false } });
   throw new ConflictError("Aynı anda başka bir kurucu işaretlendi; işlem geri alındı. Önce mevcut kurucunun işaretini kaldırın.");
+}
+
+const FOUNDER_INDEX_NAME = "doctor_profiles_single_founder_key";
+const FOUNDER_RACE_MESSAGE = "Aynı anda başka bir kurucu işaretlendi; işlem kaydedilmedi. Önce mevcut kurucunun işaretini kaldırın.";
+
+/** Kısmi benzersiz indeks ihlalini (P2002) genel "Bu kayıt zaten mevcut." yerine anlaşılır `409`'a çevirir. */
+export function rethrowFounderConflict(err: unknown): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    const target = err.meta?.target;
+    const targets = Array.isArray(target) ? target.map(String) : [String(target ?? "")];
+    if (targets.some((t) => t === "isFounder" || t.includes(FOUNDER_INDEX_NAME))) throw new ConflictError(FOUNDER_RACE_MESSAGE);
+  }
+  throw err;
 }
 
 async function assertNoOtherFounder(app: FastifyInstance, exceptId: string | null): Promise<void> {
@@ -365,7 +378,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           rosterTier: body.rosterTier ?? null,
           userId: body.userId ?? null,
         },
-      });
+      }).catch(rethrowFounderConflict);
       if (body.isFounder === true) await enforceSingleFounderAfterWrite(app, doctor.id);
 
       // Birincil (`specialtyId`) DIŞINDAKİ EK uzmanlıklar — `additionalSpecialtyIds`
@@ -471,7 +484,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...(publications !== undefined ? { publications: publications as Prisma.InputJsonValue } : {}),
           ...(socialLinks !== undefined ? { socialLinks: socialLinks as Prisma.InputJsonValue } : {}),
         },
-      });
+      }).catch(rethrowFounderConflict);
       if (rest.isFounder === true) await enforceSingleFounderAfterWrite(app, request.params.doctorId);
 
       // Birincil (`specialtyId`) DIŞINDAKİ EK uzmanlıklar — `additionalSpecialtyIds`

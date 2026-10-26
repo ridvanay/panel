@@ -2300,6 +2300,9 @@ model DoctorProfile {
   isActive   Boolean   @default(true)
   order      Int       @default(0)
   /// Paket P (İş 3) — WM Health kurucusu (aynı anda yalnızca bir doktor; sunucuda doğrulanır).
+  /// DB garantisi: migration `20261026190000_doctor_single_founder_index` — kısmi benzersiz indeks
+  /// `doctor_profiles_single_founder_key` (WHERE "isFounder" = true). Prisma şemada ifade edilemez;
+  /// `migrate dev` onu DROP etmeyi önerirse o satır üretilen migration'dan silinmelidir.
   isFounder   Boolean @default(false)
   /// Paket P (İş 3) — kadro katmanı (1 = en üst); opsiyonel, piramit sıralamasında `order` ile birlikte.
   rosterTier  Int?
