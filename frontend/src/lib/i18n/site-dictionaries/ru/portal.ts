@@ -580,7 +580,7 @@ export const portalStrings: PortalStrings = {
     earliestShortcut: "Ближайшая свободная запись:",
     earliestValue: "{date}, {time} (Турция {turkeyTime})",
     earliestShort: "Ближайшая: {date}",
-    weeklyHours: "{days} {from}–{to} (по вашему времени)",
+    weeklyHours: "{days} {hours} (по вашему времени)",
     dayFull: "Занято",
     dayUnavailable: "В этот день врач не принимает",
     slotsBadgeAria: "Свободных окон: {count}",

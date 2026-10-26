@@ -580,7 +580,7 @@ export const portalStrings: PortalStrings = {
     earliestShortcut: "أقرب موعد متاح:",
     earliestValue: "{date}، {time} (تركيا {turkeyTime})",
     earliestShort: "الأقرب: {date}",
-    weeklyHours: "{days} {from}–{to} (بتوقيتك)",
+    weeklyHours: "{days} {hours} (بتوقيتك)",
     dayFull: "محجوز",
     dayUnavailable: "الطبيب غير متاح في هذا اليوم",
     slotsBadgeAria: "{count} مواعيد متاحة",

@@ -123,7 +123,17 @@ export function toTimeOffDto(row: DoctorTimeOff, conflicts: TimeOffConflictDto[]
 export async function listTimeOff(app: FastifyInstance, doctorId: string, now = new Date()): Promise<TimeOffDto[]> {
   const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const rows = await app.prisma.doctorTimeOff.findMany({ where: { doctorId, endsAt: { gt: since } }, orderBy: { startsAt: "asc" } });
-  return Promise.all(rows.map(async (row) => toTimeOffDto(row, await findConflictingAppointments(app, doctorId, row.startsAt, row.endsAt))));
+  if (rows.length === 0) return [];
+  // İnceleme bulgusu — satır başına sorgu yerine tüm aralığı kapsayan TEK sorgu, eşleme bellekte.
+  const minStart = new Date(Math.min(...rows.map((r) => r.startsAt.getTime())));
+  const maxEnd = new Date(Math.max(...rows.map((r) => r.endsAt.getTime())));
+  const all = await findConflictingAppointments(app, doctorId, minStart, maxEnd);
+  return rows.map((row) =>
+    toTimeOffDto(
+      row,
+      all.filter((c) => overlaps(new Date(c.startsAt).getTime(), new Date(c.endsAt).getTime(), row.startsAt.getTime(), row.endsAt.getTime()))
+    )
+  );
 }
 
 export async function createTimeOff(app: FastifyInstance, doctorId: string, body: CreateTimeOffRequest, createdById: string | null): Promise<TimeOffDto> {

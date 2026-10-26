@@ -580,7 +580,7 @@ export const portalStrings: PortalStrings = {
     earliestShortcut: "Frühester freier Termin:",
     earliestValue: "{date}, {time} (Türkei {turkeyTime})",
     earliestShort: "Frühestens: {date}",
-    weeklyHours: "{days} {from}–{to} (Ihre Zeit)",
+    weeklyHours: "{days} {hours} (Ihre Zeit)",
     dayFull: "Ausgebucht",
     dayUnavailable: "Der Arzt ist an diesem Tag nicht verfügbar",
     slotsBadgeAria: "{count} freie Termine",

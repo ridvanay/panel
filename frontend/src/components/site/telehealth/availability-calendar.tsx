@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, CloudSun, ShieldAlert, Sun } from "lucide-react";
 import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
@@ -226,13 +226,34 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
     [weeklyRules, visitorTimeZone, doctorTimeZone, now]
   );
 
-  function goToEarliest() {
-    if (!earliestSlot) return;
-    const key = formatDayKey(earliestSlot.startsAt, displayTimeZone);
+  // İnceleme bulgusu — ilk seçim doktorun diliminde (SSR) yapılır; hasta dilimi mount sonrası (ya da
+  // seçiciyle) değişince, kullanıcı henüz gün seçmediyse seçim hastanın takvimindeki en erken güne taşınır.
+  const [dayTouched, setDayTouched] = useState(false);
+
+  function showDay(key: string) {
     const [y, m] = key.split("-").map(Number);
     setViewMonth({ year: y!, month0: m! - 1 });
     setSelectedDayKey(key);
   }
+
+  function pickDay(key: string) {
+    setDayTouched(true);
+    setSelectedDayKey(key);
+  }
+
+  function goToEarliest() {
+    if (!earliestSlot) return;
+    setDayTouched(true);
+    showDay(formatDayKey(earliestSlot.startsAt, displayTimeZone));
+  }
+
+  useEffect(() => {
+    if (dayTouched || !earliestSlot) return;
+    const key = formatDayKey(earliestSlot.startsAt, displayTimeZone);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hasta dilimi yalnızca mount sonrası bilinir; seçili günü o dile senkronize etmenin yolu budur
+    if (key !== selectedDayKey) showDay(key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca dilim/slot değişiminde yeniden eşitlenir
+  }, [displayTimeZone, earliestSlot]);
 
   const earliestKey = useMemo(() => {
     const keys = Array.from(availableDayKeySet).sort();
@@ -281,6 +302,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   }
 
   function changeMonth(delta: number) {
+    setDayTouched(true);
     let { year, month0 } = viewMonth;
     month0 += delta;
     if (month0 < 0) {
@@ -356,8 +378,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   .map((g) =>
                     fmt(t.schedule.weeklyHours, {
                       days: formatDayRange(g.days, intlLocale),
-                      from: formatMinuteOfDay(g.fromMinute),
-                      to: formatMinuteOfDay(g.toMinute),
+                      hours: g.ranges.map((r) => `${formatMinuteOfDay(r.from)}–${formatMinuteOfDay(r.to)}`).join(", "),
                     })
                   )
                   .join(" · ")}
@@ -449,7 +470,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           type="button"
                           aria-pressed="true"
                           aria-label={`${fmt(t.calendar.cellSelected, { date: datePart })}${isEarliest ? t.calendar.cellEarliestSuffix : ""}`}
-                          onClick={() => setSelectedDayKey(dayKey)}
+                          onClick={() => pickDay(dayKey)}
                           // Görev (2026-09-14) Görev 2 — takvim SEÇİLİ GÜN hücresi artık admin
                           // panelinden yönetilen `calendarActiveBg`'e (`.telehealth-scope`'un
                           // `--telehealth-calendar-active-bg`'i) EXPLICIT bağlanır; `--primary`
@@ -468,7 +489,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           key={dayKey}
                           type="button"
                           aria-label={`${fmt(t.calendar.cellAvailable, { date: datePart })}${isEarliest ? t.calendar.cellEarliestSuffix : ""}${isWeekend ? t.calendar.cellWeekendSuffix : ""}, ${fmt(t.schedule.slotsBadgeAria, { count: dayStatuses.get(dayKey)?.status === "available" ? (dayStatuses.get(dayKey) as { availableCount: number }).availableCount : 0 })}`}
-                          onClick={() => setSelectedDayKey(dayKey)}
+                          onClick={() => pickDay(dayKey)}
                           className={cn(
                             "flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:text-base",
                             isWeekend
@@ -506,7 +527,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           type="button"
                           data-day-status="full"
                           aria-label={`${datePart} — ${t.schedule.dayFull}`}
-                          onClick={() => setSelectedDayKey(dayKey)}
+                          onClick={() => pickDay(dayKey)}
                           className="flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border border-border bg-muted text-sm font-medium tabular-nums text-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:text-base"
                         >
                           <span>{day}</span>
@@ -521,6 +542,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                     return (
                       <span
                         key={dayKey}
+                        role="img"
                         data-day-status="unavailable"
                         title={t.schedule.dayUnavailable}
                         aria-label={`${datePart} — ${t.schedule.dayUnavailable}`}

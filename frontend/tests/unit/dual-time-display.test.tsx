@@ -137,7 +137,7 @@ describe("saat dilimi seçici", () => {
     expect(bar).toHaveTextContent("Türkiye saati: GMT+3");
     await user.click(within(bar).getByRole("button", { name: "Değiştir — Saat diliminizi seçin" }));
     await user.type(screen.getByPlaceholderText("Şehir veya ülke ile arayın"), "Almanya");
-    await user.click(screen.getByRole("option", { name: /Berlin/ }));
+    await user.click(screen.getByRole("button", { name: /^Berlin/ }));
     expect(screen.getByTestId("probe")).toHaveTextContent("Europe/Berlin|Europe/Berlin");
     expect(window.localStorage.getItem(PATIENT_TIME_ZONE_STORAGE_KEY)).toBe("Europe/Berlin");
     expect(updateMe).toHaveBeenCalledWith({ timeZone: "Europe/Berlin" });

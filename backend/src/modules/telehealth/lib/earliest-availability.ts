@@ -11,6 +11,20 @@ import { subtractTimeOff } from "./time-off";
  */
 export const EARLIEST_WINDOW_DAYS = 30;
 
+/**
+ * İnceleme bulgusu (CPU maliyeti) — doktor başına sonuç 60 sn bellekte tutulur (public liste her
+ * istekte 30 günlük slot üretmesin). Randevu/izin/haftalık saat değişince `invalidateEarliestAvailability`.
+ * Yeni bir randevu en geç 60 sn sonra yansır; slot ucunun kendisi önbelleksizdir (rezervasyon doğruluğu
+ * etkilenmez — bu yalnızca gösterim bilgisidir).
+ */
+const CACHE_TTL_MS = 60_000;
+const cache = new Map<string, { value: string | null; expiresAt: number }>();
+
+export function invalidateEarliestAvailability(doctorId?: string): void {
+  if (doctorId) cache.delete(doctorId);
+  else cache.clear();
+}
+
 interface DoctorForEarliest {
   id: string;
   timeZone: string;
@@ -25,8 +39,18 @@ export async function computeEarliestAvailability(
   windowDays = EARLIEST_WINDOW_DAYS
 ): Promise<Map<string, string | null>> {
   const result = new Map<string, string | null>();
-  const withRules = doctors.filter((d) => d.availability && d.availability.some((r) => r.isActive));
-  for (const d of doctors) result.set(d.id, null);
+  const nowMs = Date.now();
+  const pending: DoctorForEarliest[] = [];
+  for (const d of doctors) {
+    const hit = cache.get(d.id);
+    if (hit && hit.expiresAt > nowMs) result.set(d.id, hit.value);
+    else {
+      result.set(d.id, null);
+      pending.push(d);
+    }
+  }
+  const withRules = pending.filter((d) => d.availability && d.availability.some((r) => r.isActive));
+  for (const d of pending) if (!withRules.includes(d)) cache.set(d.id, { value: null, expiresAt: nowMs + CACHE_TTL_MS });
   if (withRules.length === 0) return result;
 
   const from = new Date(now.getTime() - 24 * 3600_000);
@@ -53,7 +77,9 @@ export async function computeEarliestAvailability(
       slots.filter((s) => s.available),
       timeOff.filter((t) => t.doctorId === doctor.id)
     );
-    result.set(doctor.id, open[0]?.startsAt.toISOString() ?? null);
+    const value = open[0]?.startsAt.toISOString() ?? null;
+    result.set(doctor.id, value);
+    cache.set(doctor.id, { value, expiresAt: nowMs + CACHE_TTL_MS });
   }
   return result;
 }

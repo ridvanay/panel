@@ -133,6 +133,18 @@ function assertPracticeStartYearNotFuture(practiceStartYear: number | null | und
  * Paket P (İş 3) — aynı anda yalnızca BİR kurucu doktor olabilir. Başka bir doktor zaten kurucuysa
  * `409` (sessizce devralma yok: admin önce eskisinin işaretini kaldırır). `exceptId` güncellenen doktor.
  */
+/**
+ * Yazma SONRASI ikinci savunma (inceleme bulgusu — check-then-write yarışı): eşzamanlı iki istek
+ * ön kontrolü birlikte geçerse, bu doktorun işareti geri alınır ve `409` döner. DB kısıtı (kısmi
+ * benzersiz indeks) bu paketin migration kuralı (yalnızca kolon/tablo) nedeniyle sonraki pakete bırakıldı.
+ */
+async function enforceSingleFounderAfterWrite(app: FastifyInstance, doctorId: string): Promise<void> {
+  const founders = await app.prisma.doctorProfile.count({ where: { isFounder: true } });
+  if (founders <= 1) return;
+  await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { isFounder: false } });
+  throw new ConflictError("Aynı anda başka bir kurucu işaretlendi; işlem geri alındı. Önce mevcut kurucunun işaretini kaldırın.");
+}
+
 async function assertNoOtherFounder(app: FastifyInstance, exceptId: string | null): Promise<void> {
   const other = await app.prisma.doctorProfile.findFirst({
     where: { isFounder: true, ...(exceptId ? { id: { not: exceptId } } : {}) },
@@ -354,6 +366,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           userId: body.userId ?? null,
         },
       });
+      if (body.isFounder === true) await enforceSingleFounderAfterWrite(app, doctor.id);
 
       // Birincil (`specialtyId`) DIŞINDAKİ EK uzmanlıklar — `additionalSpecialtyIds`
       // gönderilmezse (`undefined`) hiç yazılmaz (yeni doktorda zaten boş). `skipDuplicates`
@@ -459,6 +472,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...(socialLinks !== undefined ? { socialLinks: socialLinks as Prisma.InputJsonValue } : {}),
         },
       });
+      if (rest.isFounder === true) await enforceSingleFounderAfterWrite(app, request.params.doctorId);
 
       // Birincil (`specialtyId`) DIŞINDAKİ EK uzmanlıklar — `additionalSpecialtyIds`
       // gövdede YOKSA (`undefined`) mevcut ilişkilere DOKUNULMAZ. Gönderildiyse dizinin

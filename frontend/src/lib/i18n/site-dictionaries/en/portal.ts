@@ -585,7 +585,7 @@ export const portalStrings = {
     earliestShortcut: "Earliest available appointment:",
     earliestValue: "{date}, {time} (Turkey {turkeyTime})",
     earliestShort: "Earliest: {date}",
-    weeklyHours: "{days} {from}–{to} (your time)",
+    weeklyHours: "{days} {hours} (your time)",
     dayFull: "Full",
     dayUnavailable: "The doctor is not available on this day",
     slotsBadgeAria: "{count} available slots",

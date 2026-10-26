@@ -13,6 +13,7 @@ import type {
 } from "@/lib/api/types";
 import { addDaysToDateKey, wallTimeToUtcIso } from "@/lib/doctor-schedule";
 import { cityLabel, gmtLabel } from "@/lib/dual-time";
+import { formatDayKey } from "@/lib/telehealth-format";
 
 /**
  * Paket P (İş 2) — izin/istisna günleri yönetimi (doktor portalı + admin, aynı bileşen). Tam gün ya
@@ -101,7 +102,8 @@ export function TimeOffManager({
   const [lastConflicts, setLastConflicts] = useState<
     DoctorTimeOff["conflicts"]
   >([]);
-  const today = new Date().toISOString().slice(0, 10);
+  // Doktorun takvimine göre bugün (UTC tarihi gece yarısı civarında bir gün geri kalabilir).
+  const today = formatDayKey(new Date().toISOString(), doctorTimeZone);
   const [form, setForm] = useState({
     kind: "VACATION" as DoctorTimeOffKind,
     allDay: true,
@@ -383,7 +385,7 @@ export function TimeOffManager({
               <div className="min-w-0">
                 <p className="font-medium text-foreground">
                   {labels.kinds[item.kind]} ·{" "}
-                  <span className="tabular-nums">{fmtRange(item)}</span>
+                  <bdi dir="ltr" className="tabular-nums">{fmtRange(item)}</bdi>
                 </p>
                 {item.note && (
                   <p className="truncate text-xs text-foreground/50">

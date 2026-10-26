@@ -137,8 +137,7 @@ export function TimeZonePickerDialog({
     <li key={tz}>
       <button
         type="button"
-        role="option"
-        aria-selected={tz === value}
+        aria-pressed={tz === value}
         onClick={() => onSelect(tz)}
         className={cn(
           "flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-start text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
@@ -176,7 +175,7 @@ export function TimeZonePickerDialog({
             {fmt(t.useDetected, { zone: zoneLabel(detectedTimeZone, now) })}
           </button>
         )}
-        <div className="max-h-[50vh] overflow-y-auto" role="listbox" aria-label={t.pickerTitle}>
+        <div className="max-h-[50vh] overflow-y-auto" aria-label={t.pickerTitle}>
           {results.length === 0 && <p className="p-3 text-center text-sm text-foreground/50">{t.noResults}</p>}
           {common.length > 0 && (
             <>
@@ -310,7 +309,7 @@ export function DualTimeInline({
  */
 export function usePatientDisplayTimeZone(): string {
   const auth = useAuthOptional();
-  const [clientTimeZone, setClientTimeZone] = useState<string | undefined>(undefined);
+  const [client, setClient] = useState<{ stored?: string; browser?: string }>({});
   useEffect(() => {
     let stored: string | undefined;
     try {
@@ -320,8 +319,9 @@ export function usePatientDisplayTimeZone(): string {
       stored = undefined;
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tarayıcı dilimi/localStorage yalnızca istemcide okunur
-    setClientTimeZone(stored ?? browserTimeZone());
+    setClient({ stored, browser: browserTimeZone() });
   }, []);
   const profile = isValidTimeZone(auth?.user?.timeZone) ? auth?.user?.timeZone ?? undefined : undefined;
-  return clientTimeZone ?? profile ?? TURKEY_TIME_ZONE;
+  // Randevu sihirbazıyla (`BookingSelectionProvider`) AYNI öncelik: saklı seçim → profil → tarayıcı.
+  return client.stored ?? profile ?? client.browser ?? TURKEY_TIME_ZONE;
 }

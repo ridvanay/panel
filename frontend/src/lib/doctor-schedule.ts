@@ -46,8 +46,8 @@ export interface WeeklyRule {
 export interface WeeklyHoursGroup {
   /** ISO gün numaraları (hastanın diliminde), ardışık. */
   days: number[];
-  fromMinute: number;
-  toMinute: number;
+  /** O günlerin aralıkları (öğle arası gibi boşluklar korunur). */
+  ranges: { from: number; to: number }[];
 }
 
 const DAY_MINUTES = 24 * 60;
@@ -74,18 +74,21 @@ export function weeklyHoursInTimeZone(rules: readonly WeeklyRule[], doctorTimeZo
       cursor = pieceEnd;
     }
   }
-  // Aynı güne düşen parçaları birleştir (en erken başlangıç–en geç bitiş).
-  const byDay = new Map<number, { from: number; to: number }>();
-  for (const p of pieces) {
-    const existing = byDay.get(p.day);
-    byDay.set(p.day, existing ? { from: Math.min(existing.from, p.from), to: Math.max(existing.to, p.to) } : { from: p.from, to: p.to });
-  }
+  // Aynı güne düşen parçalar sıralanır; yalnızca BİTİŞİK/örtüşen aralıklar birleşir (öğle arası korunur).
+  const byDay = new Map<number, { from: number; to: number }[]>();
+  for (const p of pieces) byDay.set(p.day, [...(byDay.get(p.day) ?? []), { from: p.from, to: p.to }]);
   const groups: WeeklyHoursGroup[] = [];
   for (const day of [...byDay.keys()].sort((a, b) => a - b)) {
-    const range = byDay.get(day)!;
+    const ranges: { from: number; to: number }[] = [];
+    for (const r of byDay.get(day)!.sort((a, b) => a.from - b.from)) {
+      const prev = ranges[ranges.length - 1];
+      if (prev && r.from <= prev.to) prev.to = Math.max(prev.to, r.to);
+      else ranges.push({ ...r });
+    }
+    const key = JSON.stringify(ranges);
     const last = groups[groups.length - 1];
-    if (last && last.days[last.days.length - 1] === day - 1 && last.fromMinute === range.from && last.toMinute === range.to) last.days.push(day);
-    else groups.push({ days: [day], fromMinute: range.from, toMinute: range.to });
+    if (last && last.days[last.days.length - 1] === day - 1 && JSON.stringify(last.ranges) === key) last.days.push(day);
+    else groups.push({ days: [day], ranges });
   }
   return groups;
 }

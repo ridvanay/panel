@@ -47,13 +47,24 @@ describe("lib/doctor-schedule", () => {
   it("haftalık saatler hastanın diliminde: İstanbul Pzt–Cum 09–17 → Berlin (kış) 07–15; Sydney gece yarısını aşar", () => {
     const rules = [1, 2, 3, 4, 5].map((d) => ({ dayOfWeek: d, startMinute: 540, endMinute: 1020, isActive: true }));
     expect(weeklyHoursInTimeZone(rules, "Europe/Istanbul", "Europe/Berlin", new Date("2026-11-02T12:00:00Z"))).toEqual([
-      { days: [1, 2, 3, 4, 5], fromMinute: 420, toMinute: 900 },
+      { days: [1, 2, 3, 4, 5], ranges: [{ from: 420, to: 900 }] },
     ]);
+    // Bölünmüş vardiya (09–12, 14–18) birleştirilmez: öğle arası korunur.
+    const split = weeklyHoursInTimeZone(
+      [
+        { dayOfWeek: 1, startMinute: 540, endMinute: 720, isActive: true },
+        { dayOfWeek: 1, startMinute: 840, endMinute: 1080, isActive: true },
+      ],
+      "Europe/Istanbul",
+      "Europe/Istanbul",
+      new Date("2026-11-02T12:00:00Z")
+    );
+    expect(split).toEqual([{ days: [1], ranges: [{ from: 540, to: 720 }, { from: 840, to: 1080 }] }]);
     // Sydney GMT+11 (yaz) — İstanbul'dan 8 saat ileride: 17:00–01:00 → gün içi parça + ertesi güne taşan parça birleşir.
     const sydney = weeklyHoursInTimeZone([{ dayOfWeek: 1, startMinute: 540, endMinute: 1020, isActive: true }], "Europe/Istanbul", "Australia/Sydney", new Date("2026-11-02T12:00:00Z"));
     expect(sydney).toEqual([
-      { days: [1], fromMinute: 1020, toMinute: 1440 },
-      { days: [2], fromMinute: 0, toMinute: 60 },
+      { days: [1], ranges: [{ from: 1020, to: 1440 }] },
+      { days: [2], ranges: [{ from: 0, to: 60 }] },
     ]);
   });
 

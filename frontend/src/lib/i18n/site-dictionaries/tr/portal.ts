@@ -578,7 +578,7 @@ export const portalStrings: PortalStrings = {
     earliestShortcut: "En erken uygun randevu:",
     earliestValue: "{date}, {time} (Türkiye {turkeyTime})",
     earliestShort: "En erken: {date}",
-    weeklyHours: "{days} {from}–{to} (sizin saatinizle)",
+    weeklyHours: "{days} {hours} (sizin saatinizle)",
     dayFull: "Dolu",
     dayUnavailable: "Doktor bu gün hizmet vermiyor",
     slotsBadgeAria: "{count} uygun saat",

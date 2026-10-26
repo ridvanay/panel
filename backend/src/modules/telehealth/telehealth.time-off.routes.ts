@@ -15,6 +15,7 @@ import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { DoctorIdParamSchema, SetDoctorAvailabilityRequestSchema } from "./telehealth.schemas";
 import { requireDoctorPortalAccess } from "./telehealth.portal.routes";
 import { CreateTimeOffRequestSchema, TimeOffIdParamSchema, TimeOffSchema, createTimeOff, listTimeOff } from "./lib/time-off";
+import { invalidateEarliestAvailability } from "./lib/earliest-availability";
 
 /**
  * Paket P (İş 2) — doktor müsaitliği tek ekranda: haftalık çalışma saatleri + izin/istisna günleri.
@@ -31,6 +32,7 @@ function toRuleDto(rule: { id: string; dayOfWeek: number; startMinute: number; e
 }
 
 async function revalidateDoctorSlots(app: FastifyInstance) {
+  invalidateEarliestAvailability();
   // Slotlar istemciden `no-store` çekilir; doktor kartlarındaki "en erken" bilgisi doktor listesi önbelleğindedir.
   await triggerTagRevalidation(app, [CACHE_TAGS.doctors]);
 }

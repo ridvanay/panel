@@ -97,7 +97,16 @@ export function DoctorSchedulePanel() {
         <h1 className="text-xl font-semibold text-foreground">{s.pageTitle}</h1>
         <p className="mt-1 text-sm text-foreground/60">{s.pageDescription}</p>
       </div>
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && (
+        <Alert variant="error">
+          <span className="flex flex-wrap items-center justify-between gap-3">
+            {error}
+            <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+              {t.common.retry}
+            </Button>
+          </span>
+        </Alert>
+      )}
       {!rules || !timeZone ? (
         !error && <Skeleton className="h-64 w-full" />
       ) : (
