@@ -197,6 +197,7 @@ export function toUserDto(user: UserWithDoctorLink): UserDto {
     name: user.name,
     avatarUrl: user.avatarUrl,
     phone: user.phone,
+    timeZone: user.timeZone,
     emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
     role: user.role,
     createdAt: user.createdAt.toISOString(),
@@ -1780,7 +1781,11 @@ export function toDoctorSummaryDto(doctor: Pick<DoctorProfile, "id" | "title" | 
   return { id: doctor.id, title: doctor.title, fullName: doctor.fullName, slug: doctor.slug };
 }
 
-type AppointmentWithDoctor = Appointment & { doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug"> };
+type AppointmentWithDoctor = Appointment & {
+  doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug">;
+  /** Paket P — yalnızca dahil edildiğinde (admin listesi) `patientTimeZone` doldurulur. */
+  booking?: { patientTimeZone?: string | null; [key: string]: unknown } | null;
+};
 
 /**
  * `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK bu DTO'ya DAHİL EDİLMEZ (bkz.
@@ -1803,6 +1808,7 @@ export function toAppointmentDto(appointment: AppointmentWithDoctor): Appointmen
     endedAt: appointment.endedAt ? appointment.endedAt.toISOString() : null,
     cancelledAt: appointment.cancelledAt ? appointment.cancelledAt.toISOString() : null,
     cancelReason: appointment.cancelReason,
+    ...(appointment.booking && "patientTimeZone" in appointment.booking ? { patientTimeZone: appointment.booking.patientTimeZone ?? null } : {}),
     createdAt: appointment.createdAt.toISOString(),
     updatedAt: appointment.updatedAt.toISOString(),
   };
@@ -1865,6 +1871,7 @@ export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations
     patientUserId: booking.patientUserId,
     patientName: booking.patientName,
     patientEmail: booking.patientEmail,
+    patientTimeZone: booking.patientTimeZone,
     identity: toBookingIdentitySummaryDto(booking, hasHealthDataAccess),
     slotCount: booking.slotCount,
     unitPriceCents: booking.unitPriceCents,

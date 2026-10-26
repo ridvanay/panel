@@ -101,8 +101,8 @@ describe("modules/telehealth/lib/notifications", () => {
       const [, purpose, to, values] = sendTemplateEmailMock.mock.calls[0]!;
       expect(purpose).toBe("APPOINTMENT_CONFIRMATION");
       expect(to).toBe("ayse@example.com");
-      // Europe/Istanbul (UTC+3) — 06:00Z/06:30Z → 09:00/09:30 duvar saati.
-      expect(values.slots_summary).toBe("06.01.2025 09:00, 06.01.2025 09:30");
+      // Paket P — hasta dilimi bilinmiyor → yalnızca Türkiye saati (06:00Z/06:30Z → 09:00/09:30).
+      expect(values.slots_summary).toBe("06.01.2025 09:00 Turkey time (GMT+3); 06.01.2025 09:30 Turkey time (GMT+3)");
       expect(values.booking_number).toBe("BKG-ABC123-XYZ9");
       expect(values.patient_name).toBe("Ayşe Yılmaz");
       expect(values.total_formatted).toBe("750.00 TRY");
@@ -113,6 +113,18 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(values.join_link).toBe("http://localhost:3000/tr/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=raw-token-abc");
       // 2026-09-21 (kullanıcı talebi) — ücretli randevu (totalCents > 0): ödeme onayına özgü cümle.
       expect(values.status_message).toBe("We have received your payment and your appointment is confirmed.");
+    });
+
+    it("Paket P — hasta dilimi kayıtlıysa e-postada hastanın saati + Türkiye saati (ad ve GMT farkıyla) birlikte", async () => {
+      const { app } = fakeApp();
+      const appointments = [{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2026-10-28T14:00:00.000Z") }];
+      await triggerAppointmentConfirmationEmail(app, {
+        booking: { ...BOOKING, patientTimeZone: "Europe/Berlin" } as never,
+        appointments,
+        rawAccessToken: "t",
+      });
+      const values = sendTemplateEmailMock.mock.calls[0]![3];
+      expect(values.slots_summary).toBe("28.10.2026 15:00 your time (Berlin, GMT+1) · Turkey time: 28.10.2026 17:00 (GMT+3)");
     });
 
     it("2026-09-21 (kullanıcı talebi) — totalCents === 0 (ücretsiz/bilgi-alınız doktor) iken status_message 'ödeme aldık' DEĞİL 'başarıyla oluşturuldu' der", async () => {

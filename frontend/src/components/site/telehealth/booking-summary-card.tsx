@@ -3,12 +3,13 @@
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import { formatDayLabel } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DualDateTimeSummary, DualSlotLabel } from "@/components/site/telehealth/dual-time";
 
 /**
  * Ortak rezervasyon özet kartı — ödeme dönüş sayfaları (§9.7.1) VE hasta booking detay sayfası
@@ -40,10 +41,12 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
       <div className="mt-2 flex flex-wrap gap-1.5">
         {booking.appointments.map((appointment) => (
           <span key={appointment.id} className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70">
-            {formatTime(appointment.startsAt, timeZone, intlLocale)}
+            {/* Paket P — hastanın saati + küçük Türkiye saati. */}
+            <DualSlotLabel iso={appointment.startsAt} timeZone={timeZone} intlLocale={intlLocale} />
           </span>
         ))}
       </div>
+      {firstSlot && <DualDateTimeSummary iso={firstSlot.startsAt} timeZone={timeZone} intlLocale={intlLocale} className="mt-3" />}
 
       <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
         <span className="text-sm font-semibold text-foreground">{t.common.total}</span>

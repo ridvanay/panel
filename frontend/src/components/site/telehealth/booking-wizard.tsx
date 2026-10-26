@@ -12,6 +12,7 @@ import type { Appointment, AvailabilitySlot, BookingIdentityInput, BookingPaymen
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
+import { DualDateTimeSummary } from "@/components/site/telehealth/dual-time";
 import { AvailabilityCalendar } from "@/components/site/telehealth/availability-calendar";
 import { BookingIdentityStep } from "@/components/site/telehealth/booking-identity-step";
 import { BookingIntakeStep } from "@/components/site/telehealth/booking-intake-step";
@@ -161,7 +162,7 @@ export function BookingWizard({
   telehealthDict,
 }: BookingWizardProps) {
   const router = useRouter();
-  const { selectedSlots, clearAllSlots, displayTimeZone, setHasCompletedBooking, resetSignal } = useBookingSelection();
+  const { selectedSlots, clearAllSlots, displayTimeZone, visitorTimeZone, setHasCompletedBooking, resetSignal } = useBookingSelection();
 
   const { t } = usePortalStrings();
   const friendlyErrorMessage = useFriendlyError();
@@ -334,6 +335,8 @@ export function BookingWizard({
         identity,
         consent: true,
         consentVersion: BOOKING_CONSENT_VERSION,
+        // Paket P — yalnızca gösterim (e-posta/portal çift saat); rezervasyon kurallarını etkilemez.
+        ...(visitorTimeZone ? { patientTimeZone: visitorTimeZone } : {}),
       });
       setBookingResult(result);
       persistPendingBooking(doctorSlug, { bookingId: result.bookingId, accessToken: result.accessToken });
@@ -462,10 +465,16 @@ export function BookingWizard({
                     <div className="flex flex-wrap gap-1.5">
                       {bookingResult.appointments.map((appointment) => (
                         <span key={appointment.id} className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs tabular-nums">
-                          {formatDayLabel(appointment.startsAt, displayTimeZone, intlLocale)} · {formatTime(appointment.startsAt, displayTimeZone, intlLocale)}
+                          <bdi dir="ltr">
+                            {formatDayLabel(appointment.startsAt, displayTimeZone, intlLocale)} · {formatTime(appointment.startsAt, displayTimeZone, intlLocale)}
+                          </bdi>
                         </span>
                       ))}
                     </div>
+                    {/* Paket P — onay ekranı: hastanın tarih/saati, Türkiye tarih/saati ve aradaki fark. */}
+                    {bookingResult.appointments[0] && (
+                      <DualDateTimeSummary iso={bookingResult.appointments[0].startsAt} timeZone={displayTimeZone} intlLocale={intlLocale} />
+                    )}
                     {isFreeBooking ? (
                       <p className="text-sm">
                         {fmt(t.wizard.freeBooking, { count: bookingResult.slotCount })}

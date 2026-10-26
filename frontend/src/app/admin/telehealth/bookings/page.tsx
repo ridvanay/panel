@@ -20,6 +20,7 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { ArchiveBookingDialog } from "@/components/admin/telehealth/archive-booking-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { TURKEY_TIME_ZONE, cityLabel, gmtLabel, isSameClockAsTurkey } from "@/lib/dual-time";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.1/§8.4/§9.7.1 madde 7 — rezervasyon
@@ -52,7 +53,18 @@ const STATUS_TONES: Record<BookingPaymentStatus, "neutral" | "primary" | "succes
   REFUNDED: "neutral",
 };
 
-const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
+// Paket P — admin listesi Türkiye saatini AÇIKÇA gösterir (tarayıcının dilimi değil) + hastanın saati.
+const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short", timeZone: TURKEY_TIME_ZONE });
+
+function PatientLocalTime({ iso, timeZone }: { iso: string; timeZone: string | null | undefined }) {
+  if (!timeZone || isSameClockAsTurkey(iso, timeZone)) return null;
+  const time = new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short", timeZone }).format(new Date(iso));
+  return (
+    <p className="text-xs text-foreground/50" data-testid="admin-patient-time">
+      Hasta: {cityLabel(timeZone)} {time} ({gmtLabel(iso, timeZone)})
+    </p>
+  );
+}
 
 /** Manuel test ödemesi için sabit, açıklayıcı denetim (audit) nedeni — `reason` backend'de
  * ZORUNLUDUR (§9.7.1 madde 7), her seferinde elle yazdırmak "tek tıkla test" hedefiyle ÇELİŞİR. */
@@ -214,8 +226,9 @@ export default function AdminTelehealthBookingsPage() {
                         {booking.doctor.title} {booking.doctor.fullName}
                       </TableCell>
                       <TableCell className="text-sm text-foreground/70">
-                        {booking.appointments[0] ? dateFormatter.format(new Date(booking.appointments[0].startsAt)) : "—"}
+                        {booking.appointments[0] ? `${dateFormatter.format(new Date(booking.appointments[0].startsAt))} TSİ` : "—"}
                         {booking.slotCount > 1 && <span className="ml-1 text-xs text-foreground/50">(+{booking.slotCount - 1} slot)</span>}
+                        {booking.appointments[0] && <PatientLocalTime iso={booking.appointments[0].startsAt} timeZone={booking.patientTimeZone} />}
                       </TableCell>
                       <TableCell className="text-sm text-foreground/70">{formatPriceFromCents(booking.totalCents, booking.currency)}</TableCell>
                       <TableCell>

@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { BookingSummaryCard } from "@/components/site/telehealth/booking-summary-card";
+import { usePatientDisplayTimeZone } from "@/components/site/telehealth/dual-time";
 import { BookingIntakeStep } from "@/components/site/telehealth/booking-intake-step";
 import { BookingPaymentStep } from "@/components/site/telehealth/booking-payment-step";
 import { DocumentUploader } from "@/components/site/telehealth/document-uploader";
@@ -54,6 +55,7 @@ export function PatientBookingDetailPanel({
 }) {
   const localize = useLocalizePath();
   const { t } = usePortalStrings();
+  const patientTimeZone = usePatientDisplayTimeZone();
   const friendlyErrorMessage = useFriendlyError();
   /**
    * Bug-fix turu (2026-09-15, frontend-agent) — `patient-booking-invoice-panel.tsx`teki AYNI
@@ -298,7 +300,7 @@ export function PatientBookingDetailPanel({
         </Alert>
       )}
 
-      <BookingSummaryCard booking={booking} accessToken={accessToken} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} />
+      <BookingSummaryCard booking={booking} accessToken={accessToken} timeZone={patientTimeZone} />
 
       {/*
        * F5 — görüşme kaydı erişimi (izle/indir/sil). `RecordingAccessPanel` yalnızca ilgili

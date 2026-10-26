@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TimeZoneSchema } from "../../lib/dual-time";
 
 /** Serbest formatlı telefon — ülke kodu/format ülkeye göre değişir, katı bir E.164 zorunluluğu YOK. */
 const ADDRESS_PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
@@ -11,6 +12,8 @@ export const UpdateUserRequestSchema = z.object({
   // kılar) — `avatarUrl` ile AYNI disiplin. Regex `ADDRESS_PHONE_REGEX` ile AYNI (aşağıda tanımlı,
   // ikinci bir kopya YAZILMAZ).
   phone: z.string().regex(ADDRESS_PHONE_REGEX, "Geçerli bir telefon numarası giriniz.").nullable().optional(),
+  // Paket P — randevu saatlerinin gösterileceği IANA dilimi; `null` tercihi kaldırır.
+  timeZone: TimeZoneSchema.nullable().optional(),
 });
 
 /** `POST /users/me/change-password` gövdesi — mesaj `auth.schemas.ts::RegisterRequestSchema` ile AYNI. */

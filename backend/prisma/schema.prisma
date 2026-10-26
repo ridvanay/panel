@@ -265,6 +265,9 @@ model User {
   passwordHash    String
   name            String
   avatarUrl       String?
+  // Paket P — hastanın tercih ettiği IANA saat dilimi (randevu saatleri hem bu dilimde hem Türkiye
+  // saatinde gösterilir). NULL = tarayıcıdan algılanan dilim kullanılır.
+  timeZone        String?
   // Hesap seviyesinde genel iletişim numarası (randevu/SMS hatırlatma vb.) — `Address.phone`
   // (e-ticaret adres defteri, ZORUNLU alan, satır ~2657) ile KARIŞTIRILMAMALI: o teslimat
   // adresine özgüdür ve zorunludur, bu ise kullanıcı hesabının genel numarasıdır ve opsiyoneldir
@@ -2518,6 +2521,10 @@ model AppointmentBooking {
   /// denetimidir (§2.4-2.5). Hiçbir DTO/UI/e-posta metninde "kimlik doğrulandı" ifadesi
   /// KULLANILMAZ.
   identityCapturedAt       DateTime?
+
+  /// Paket P — randevu anında hastanın IANA saat dilimi (ör. "Europe/Berlin"). E-posta/portal
+  /// saatleri bununla + Türkiye saatiyle birlikte üretilir. NULL = bilinmiyor (yalnız Türkiye saati).
+  patientTimeZone String?
 
   slotCount      Int
   /// DoctorProfile.sessionPriceCents SNAPSHOT'ı — istemciden ASLA alınmaz (§8 madde 3).

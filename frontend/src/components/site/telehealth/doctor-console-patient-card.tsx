@@ -4,6 +4,7 @@ import { Ban, CalendarX2, IdCard, NotebookPen, Paperclip } from "lucide-react";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { computeAppointmentBlock, formatFullDayLabel, formatTime, formatTimeZoneAbbreviation } from "@/lib/telehealth-format";
 import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { cityLabel, offsetMinutes } from "@/lib/dual-time";
 import { getJoinState } from "@/lib/telehealth-join-window";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -120,6 +121,15 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
                 </span>
               </p>
               <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(blockStartIso, timeZone, intlLocale)}</p>
+              {/* Paket P — hastanın kendi saati ("Hasta: Berlin 16:00"); doktorla aynı saatteyse gösterilmez. */}
+              {booking.patientTimeZone && offsetMinutes(blockStartIso, booking.patientTimeZone) !== offsetMinutes(blockStartIso, timeZone) && (
+                <p className="mt-0.5 text-[11px] text-foreground/50" data-testid="patient-local-time">
+                  {fmt(t.schedule.patientTime, {
+                    zone: cityLabel(booking.patientTimeZone),
+                    time: formatTime(blockStartIso, booking.patientTimeZone, intlLocale),
+                  })}
+                </p>
+              )}
               {hasMultipleSlots && (
                 <Badge tone="neutral" size="sm" className="mt-1">
                   {fmt(t.doctorConsole.slotSummary, { count: booking.appointments.length, minutes: block.totalMinutes })}

@@ -8,7 +8,7 @@ import { sendMail } from "../../../lib/mail";
 import { renderTemplate } from "../../../lib/template-render";
 import { renderComplianceFooterFragment } from "../../../lib/email-renderer";
 import { sendTemplateEmail, buildEmailRenderContext } from "../../email-templates/email-templates.service";
-import { getWallClockParts } from "./timezone";
+import { formatDoctorSlots, formatPatientSlots } from "../../../lib/dual-time";
 
 /**
  * 2026-09-19 (kullanıcı talebi) — `sendTemplateEmail`'in `APPOINTMENT_CONFIRMATION` için
@@ -68,36 +68,21 @@ function buildConfirmationStatusMessage(totalCents: number): string {
  * olsa da ÇAĞIRAN akışı (ödeme onayı/booking PAID geçişi) ASLA bozmaz — hata yalnızca loglanır
  * (kural: "sessiz başarısızlık olmaz" — `app.log.error` HER zaman çağrılır, yutulmaz).
  */
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
 function formatMoney(cents: number, currency: string): string {
   return `${(cents / 100).toFixed(2)} ${currency}`;
 }
 
 /**
- * Slotlar hastaya DAİMA doktorun IANA diliminin duvar saatinde gösterilir — booking oluşturulurken
- * (`lib/booking.ts::createBooking`) taşınan/doğrulanan TEK saat dilimi budur (hasta için ayrı bir
- * saat dilimi alanı şemada YOKTUR, bkz. `AppointmentBooking`/`Appointment` modelleri). Ham UTC ISO
- * dizgesi ASLA gösterilmez — `email-variables.ts` örnek değeriyle (`"06.01.2025 09:00, …"`) BİREBİR
- * aynı biçim (`DD.MM.YYYY HH:mm`, virgülle ayrık).
+ * Paket P (2026-10-26) — hastaya giden saatler İKİ dilimde birlikte: hastanın randevu anındaki
+ * dilimi (`AppointmentBooking.patientTimeZone`, adı + GMT farkı) ve Türkiye saati. Hasta dilimi
+ * bilinmiyorsa ya da Türkiye ile aynıysa yalnızca Türkiye saati. Doktora giden e-postalarda
+ * doktorun kendi dilimi + "Patient: Berlin …". Biçim `lib/dual-time.ts`'te (yaz saati `Intl` ile).
  */
-function formatSlotsSummary(appointments: readonly Pick<Appointment, "startsAt">[], doctorTimeZone: string): string {
-  return appointments
-    .map((a) => {
-      const wall = getWallClockParts(a.startsAt, doctorTimeZone);
-      return `${pad2(wall.day)}.${pad2(wall.month)}.${wall.year} ${pad2(wall.hour)}:${pad2(wall.minute)}`;
-    })
-    .join(", ");
-}
-
-/** `Appointment.startsAt`i duvar saatine çevirmek için booking'in doktorunun IANA dilimi. */
-async function resolveDoctorTimeZone(app: FastifyInstance, doctorId: string): Promise<string> {
-  const doctor = await app.prisma.doctorProfile.findUnique({ where: { id: doctorId }, select: { timeZone: true } });
-  // Şema zorunluluğu: `DoctorProfile.timeZone` NOT NULL + `@default("Europe/Istanbul")` — bu dal
-  // yalnızca beklenmedik bir eşzamanlı silme durumunda (FK olsa da) savunma amaçlı devreye girer.
-  return doctor?.timeZone ?? "Europe/Istanbul";
+function formatSlotsSummary(appointments: readonly Pick<Appointment, "startsAt">[], patientTimeZone: string | null): string {
+  return formatPatientSlots(
+    appointments.map((a) => a.startsAt),
+    patientTimeZone
+  );
 }
 
 /**
@@ -133,8 +118,7 @@ export async function triggerAppointmentConfirmationEmail(
     // seçimiyle AYNI kural (§ dosya başı yorum).
     const firstAppointment = appointments[0];
 
-    const [doctorTimeZone, magicLink, joinLink] = await Promise.all([
-      resolveDoctorTimeZone(app, booking.doctorId),
+    const [magicLink, joinLink] = await Promise.all([
       buildMagicLink(app, booking.id, rawAccessToken),
       firstAppointment ? buildConsultationJoinLink(app, firstAppointment.id, rawAccessToken) : Promise.resolve(undefined),
     ]);
@@ -143,7 +127,7 @@ export async function triggerAppointmentConfirmationEmail(
       booking_number: booking.bookingNumber,
       patient_name: booking.patientName,
       status_message: buildConfirmationStatusMessage(booking.totalCents),
-      slots_summary: formatSlotsSummary(appointments, doctorTimeZone),
+      slots_summary: formatSlotsSummary(appointments, booking.patientTimeZone),
       total_formatted: formatMoney(booking.totalCents, booking.currency),
       magic_link: magicLink,
       ...(joinLink ? { join_link: joinLink } : {}),
@@ -204,6 +188,7 @@ export async function triggerAppointmentRescheduledEmail(
     let bookingNumber: string;
     let patientName: string;
     let patientEmail: string;
+    let patientTimeZone: string | null = null;
 
     if (appointment.bookingId) {
       const booking = await app.prisma.appointmentBooking.findUnique({ where: { id: appointment.bookingId } });
@@ -213,21 +198,20 @@ export async function triggerAppointmentRescheduledEmail(
       bookingNumber = booking?.bookingNumber ?? `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
       patientName = booking?.patientName ?? appointment.patientName;
       patientEmail = booking?.patientEmail ?? appointment.patientEmail;
+      patientTimeZone = booking?.patientTimeZone ?? null;
     } else {
       bookingNumber = `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
       patientName = appointment.patientName;
       patientEmail = appointment.patientEmail;
     }
 
-    const oldSlotSummary = formatSlotsSummary([{ startsAt: oldStartsAt }], doctorTimeZone);
-    const newSlotSummary = formatSlotsSummary([{ startsAt: newStartsAt }], doctorTimeZone);
     const reasonValue = reason ?? "";
 
     await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", patientEmail, {
       recipient_name: patientName,
       booking_number: bookingNumber,
-      old_slot_summary: oldSlotSummary,
-      new_slot_summary: newSlotSummary,
+      old_slot_summary: formatSlotsSummary([{ startsAt: oldStartsAt }], patientTimeZone),
+      new_slot_summary: formatSlotsSummary([{ startsAt: newStartsAt }], patientTimeZone),
       reason: reasonValue,
     });
 
@@ -237,8 +221,8 @@ export async function triggerAppointmentRescheduledEmail(
         await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", doctorUser.email, {
           recipient_name: doctorFullName,
           booking_number: bookingNumber,
-          old_slot_summary: oldSlotSummary,
-          new_slot_summary: newSlotSummary,
+          old_slot_summary: formatDoctorSlots([oldStartsAt], doctorTimeZone, patientTimeZone),
+          new_slot_summary: formatDoctorSlots([newStartsAt], doctorTimeZone, patientTimeZone),
           reason: reasonValue,
         });
       }
@@ -286,6 +270,7 @@ export async function triggerAppointmentReminderEmail(
     let bookingNumber: string;
     let patientName: string;
     let patientEmail: string;
+    let patientTimeZone: string | null = null;
 
     if (appointment.bookingId) {
       const booking = await app.prisma.appointmentBooking.findUnique({ where: { id: appointment.bookingId } });
@@ -295,13 +280,15 @@ export async function triggerAppointmentReminderEmail(
       bookingNumber = booking?.bookingNumber ?? `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
       patientName = booking?.patientName ?? appointment.patientName;
       patientEmail = booking?.patientEmail ?? appointment.patientEmail;
+      patientTimeZone = booking?.patientTimeZone ?? null;
     } else {
       bookingNumber = `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
       patientName = appointment.patientName;
       patientEmail = appointment.patientEmail;
     }
 
-    const slotSummary = formatSlotsSummary([{ startsAt: appointment.startsAt }], doctorTimeZone);
+    const slotSummary = formatSlotsSummary([{ startsAt: appointment.startsAt }], patientTimeZone);
+    const doctorSlotSummary = formatDoctorSlots([appointment.startsAt], doctorTimeZone, patientTimeZone);
     const doctorNameFormatted = `${doctorTitle} ${doctorFullName}`.trim();
     const purpose: EmailTemplatePurpose = kind === "60m" ? "APPOINTMENT_REMINDER_60M" : "APPOINTMENT_REMINDER_30M";
 
@@ -331,7 +318,7 @@ export async function triggerAppointmentReminderEmail(
           recipient_name: doctorFullName,
           booking_number: bookingNumber,
           doctor_name: doctorNameFormatted,
-          slot_summary: slotSummary,
+          slot_summary: doctorSlotSummary,
           ...(doctorJoinLink ? { join_link: doctorJoinLink } : {}),
         });
       }

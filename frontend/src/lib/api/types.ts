@@ -109,6 +109,8 @@ export interface User {
    * (`Address.phone` — `/^[0-9+()\-\s]{7,20}$/`, bkz. `backend/src/modules/users/users.schemas.ts`).
    */
   phone: string | null;
+  /** Paket P — randevu saatleri için tercih edilen IANA dilimi; `null` = tarayıcıdan algılanır. */
+  timeZone?: string | null;
   emailVerifiedAt: string | null;
   role: SiteRole;
   /**
@@ -325,6 +327,8 @@ export interface UpdateUserRequest {
   avatarUrl?: string | null;
   /** §9.8.2 KARAR M — `null` alanı temizler; boş string GEÇERSİZDİR (backend 422 döner). */
   phone?: string | null;
+  /** Paket P — geçerli bir IANA dilimi; `null` tercihi kaldırır. */
+  timeZone?: string | null;
 }
 
 /**
@@ -3949,6 +3953,8 @@ export interface Appointment {
   id: string;
   doctorId: string;
   doctor: DoctorSummary;
+  /** Paket P — booking'deki hasta dilimi (yalnızca admin listesinde gelir). */
+  patientTimeZone?: string | null;
   patientUserId: string | null;
   patientName: string;
   patientEmail: string;
@@ -4094,6 +4100,8 @@ export interface CreateBookingRequest {
   /** Randevu KVKK onay kutusu — sağlık verisi rızasından (`UpsertIntakeRequest.healthDataConsent`) AYRI. */
   consent: true;
   consentVersion?: string;
+  /** Paket P — yalnızca gösterim: hastanın o anki IANA dilimi (e-posta/portal çift saat). */
+  patientTimeZone?: string;
 }
 
 /** `POST /appointments/bookings` yanıtı — ham `accessToken`'ı BİR KEZ döner. */
@@ -4128,6 +4136,8 @@ export interface AppointmentBooking {
   patientUserId: string | null;
   patientName: string;
   patientEmail: string;
+  /** Paket P — randevu anında hastanın IANA dilimi; `null`/yok = bilinmiyor (Türkiye saati + tarayıcı). */
+  patientTimeZone?: string | null;
   /**
    * [DPI] §2.7 — `null` İKİ AYRI durumu ifade eder: (a) çağıran aktör eşiği geçmiyor (`MANAGER`
    * dahil), (b) booking bu turdan ÖNCE/deprecated `POST /appointments` ile oluşmuş, kimlik HİÇ

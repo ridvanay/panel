@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, ShieldAlert, Sun } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudSun, ShieldAlert, Sun } from "lucide-react";
 import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
@@ -10,6 +10,7 @@ import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { SlotAvailabilityLegend } from "@/components/site/telehealth/slot-availability-legend";
+import { DualSlotLabel, TimeZoneBar, dualSlotAriaTime } from "@/components/site/telehealth/dual-time";
 import { useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Switch } from "@/components/ui/switch";
@@ -65,8 +66,9 @@ function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
 }
 
 /** §2.2.1/§12.2.1 — seçim pili taban dili, çoklu seçimde de DEĞİŞMEDEN kullanılır. */
+// Paket P — slot iki satırlı olabilir (hastanın saati + küçük Türkiye saati): sabit yükseklik yerine min-h.
 const SELECTION_PILL_BASE =
-  "inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
+  "inline-flex min-h-10 py-1 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
 const SELECTION_PILL_AVAILABLE =
   "border-border bg-surface text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary";
 const SELECTION_PILL_SELECTED =
@@ -151,7 +153,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
   const auth = useAuthOptional();
   const isDoctorSession = auth?.status === "authenticated" && auth.user?.doctorProfileId != null;
-  const { selectedSlots, toggleSlot, displayTimeZone, visitorTimeZone } = useBookingSelection();
+  const { selectedSlots, toggleSlot, displayTimeZone, visitorTimeZone, detectedTimeZone, setPatientTimeZone } = useBookingSelection();
   // Görev (2026-09-16) — takvim gün/ay isimleri denetimi: sabit `"tr-TR"` yerine aktif site dili.
   const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const { t } = usePortalStrings();
@@ -161,7 +163,6 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
     const formatter = new Intl.DateTimeFormat(intlLocale, { weekday: "short", timeZone: "UTC" });
     return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(Date.UTC(2024, 0, 1 + i))));
   }, [intlLocale]);
-  const [timesShownBefore, timesShownAfter = ""] = t.calendar.timesShownIn.split("{timeZone}");
   const [slots, setSlots] = useState<AvailabilitySlot[]>(initialSlots);
   const [monthFetchError, setMonthFetchError] = useState<string | null>(null);
   const [dayChangedNotice, setDayChangedNotice] = useState(false);
@@ -302,20 +303,9 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
           </Alert>
         )}
 
-        {/* §4/§2.3.5 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir), stil KORUNUR. */}
-        <div className="flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
-          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
-          {visitorTimeZone ? (
-            <span>
-              {timesShownBefore}
-              <strong className="font-medium text-foreground">{visitorTimeZone}</strong>
-              {timesShownAfter}
-              <span className="text-foreground/50"> {fmt(t.calendar.doctorTimeZone, { timeZone: doctorTimeZone })}</span>
-            </span>
-          ) : (
-            <span>{t.calendar.detectingTimeZone}</span>
-          )}
-        </div>
+        {/* Paket P — "Saatler sizin saat diliminize göre: Berlin (GMT+1). Türkiye saati: GMT+3 · Değiştir".
+            Mount öncesi (SSR) dilim bilinmez → hidrasyon güvenli "…" (§4.2). */}
+        <TimeZoneBar timeZone={visitorTimeZone} detectedTimeZone={detectedTimeZone} onChange={setPatientTimeZone} />
 
         {slots.length === 0 && <p className="text-sm text-foreground/60">{t.calendar.noUpcomingSlots}</p>}
       </div>
@@ -515,7 +505,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                         {group.items.map((slot) => {
                           const isPast = new Date(slot.startsAt).getTime() < now;
                           const isSelected = selectedSlots.some((s) => s.startsAt === slot.startsAt);
-                          const time = formatTime(slot.startsAt, displayTimeZone, intlLocale);
+                          // Paket P — ekran okuyucu metni de iki saati içerir; görünen etiket `DualSlotLabel`.
+                          const time = dualSlotAriaTime(slot.startsAt, displayTimeZone, intlLocale, t.schedule);
+                          const plainTime = formatTime(slot.startsAt, displayTimeZone, intlLocale);
+                          const label = <DualSlotLabel iso={slot.startsAt} timeZone={displayTimeZone} intlLocale={intlLocale} />;
 
                           if (isSelected) {
                             return (
@@ -529,7 +522,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
                               >
                                 <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                                {time}
+                                {label}
                               </button>
                             );
                           }
@@ -545,7 +538,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                     aria-label={fmt(t.calendar.slotDoctorBlocked, { time })}
                                     className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
                                   >
-                                    {time}
+                                    {label}
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>{t.calendar.doctorSessionBlocked}</TooltipContent>
@@ -560,7 +553,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 aria-label={fmt(t.calendar.slotPast, { time })}
                                 className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
                               >
-                                {time}
+                                <bdi dir="ltr">{plainTime}</bdi>
                               </span>
                             );
                           }
@@ -573,7 +566,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 aria-disabled="true"
                                 className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
                               >
-                                <span className="line-through decoration-foreground/30">{time}</span>
+                                <bdi dir="ltr" className="line-through decoration-foreground/30">{plainTime}</bdi>
                                 <span className="text-[10px] text-foreground/50">{t.calendar.full}</span>
                               </span>
                             );
@@ -590,7 +583,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                     aria-label={fmt(t.calendar.slotAtLimit, { time, max: MAX_BOOKING_SLOTS })}
                                     className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
                                   >
-                                    {time}
+                                    {label}
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>{fmt(t.calendar.atLimitTooltip, { max: MAX_BOOKING_SLOTS })}</TooltipContent>
@@ -608,7 +601,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                               onClick={() => handleSlotClick(slot)}
                               className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
                             >
-                              {time}
+                              {label}
                             </button>
                           );
                         })}

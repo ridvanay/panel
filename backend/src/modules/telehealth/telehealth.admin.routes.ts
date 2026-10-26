@@ -87,7 +87,11 @@ const WITH_DOCTOR_RELATIONS = {
   availability: true,
   additionalSpecialties: { include: { specialty: true } },
 } as const;
-const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true } } } as const;
+// Paket P — admin listesinde hastanın saati de gösterilir (booking'deki `patientTimeZone`).
+const WITH_APPOINTMENT_RELATIONS = {
+  doctor: { select: { id: true, title: true, fullName: true, slug: true } },
+  booking: { select: { patientTimeZone: true } },
+} as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
   // `startsAt asc` — `telehealth.routes.ts::WITH_BOOKING_RELATIONS` İLE AYNI disiplin (ilişki

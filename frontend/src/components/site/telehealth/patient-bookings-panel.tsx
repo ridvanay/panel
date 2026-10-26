@@ -9,6 +9,7 @@ import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 import type { AppointmentBooking, PatientBookingCounts, PatientBookingsScope } from "@/lib/api/types";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { BookingListView } from "@/components/site/telehealth/booking-list-view";
+import { usePatientDisplayTimeZone } from "@/components/site/telehealth/dual-time";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,7 @@ function PatientBookingsPanelContent() {
   const localize = useLocalizePath();
   const { t } = usePortalStrings();
   const friendlyErrorMessage = useFriendlyError();
+  const patientTimeZone = usePatientDisplayTimeZone();
 
   const scopeParam = searchParams.get("scope");
   const scope: PatientBookingsScope = isPatientBookingsScope(scopeParam) ? scopeParam : "upcoming";
@@ -152,7 +154,7 @@ function PatientBookingsPanelContent() {
           loadError={loadError}
           onRetry={() => void load(scope)}
           perspective="patient"
-          timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+          timeZone={patientTimeZone}
         />
       )}
 

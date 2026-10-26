@@ -14,6 +14,7 @@ import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
 import { useNow } from "@/hooks/use-now";
 import { BookingDocumentsDialog } from "@/components/site/telehealth/booking-documents-dialog";
+import { DualSlotLabel } from "@/components/site/telehealth/dual-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -283,7 +284,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                     key={appointment.id}
                     className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70"
                   >
-                    {formatTime(appointment.startsAt, timeZone, intlLocale)}
+                    <DualSlotLabel iso={appointment.startsAt} timeZone={timeZone} intlLocale={intlLocale} />
                   </span>
                 ))}
               </div>
@@ -329,7 +330,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                         key={appointment.id}
                         className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70"
                       >
-                        {formatTime(appointment.startsAt, timeZone, intlLocale)}
+                        <DualSlotLabel iso={appointment.startsAt} timeZone={timeZone} intlLocale={intlLocale} />
                       </span>
                     ))}
                   </div>

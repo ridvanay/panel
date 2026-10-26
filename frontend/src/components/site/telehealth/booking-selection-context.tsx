@@ -4,6 +4,18 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { AvailabilitySlot } from "@/lib/api/types";
 import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey } from "@/lib/telehealth-format";
+import { PATIENT_TIME_ZONE_STORAGE_KEY, browserTimeZone, isValidTimeZone } from "@/lib/dual-time";
+import { useAuthOptional } from "@/context/auth-context";
+import * as usersApi from "@/lib/api/users";
+
+function readStoredTimeZone(): string | undefined {
+  try {
+    const value = window.localStorage.getItem(PATIENT_TIME_ZONE_STORAGE_KEY);
+    return isValidTimeZone(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * `.claude/design-notes-telehealth.md` §2.4/§12.2 — "Hizmet Özeti" paneli artık
@@ -41,7 +53,14 @@ interface BookingSelectionContextValue {
   clearAllSlots: () => void;
   /** Ziyaretçi dilimi bilinmiyorsa (mount öncesi) `doctorTimeZone`'a düşer — §4.2. */
   displayTimeZone: string;
+  /**
+   * Paket P — hastanın dilimi: elle seçilen (tarayıcıda saklanır, giriş yapılmışsa profile yazılır),
+   * yoksa giriş yapmış hastanın profilindeki, yoksa tarayıcıdan algılanan. Mount öncesi `undefined`.
+   */
   visitorTimeZone: string | undefined;
+  /** Tarayıcının kendi dilimi ("Cihazımın dilimini kullan" seçeneği için). */
+  detectedTimeZone: string | undefined;
+  setPatientTimeZone: (timeZone: string) => void;
   doctorTimeZone: string;
   /**
    * Bug-fix turu (2026-09-21, kullanıcı talebi) — `booking-wizard.tsx` (sihirbaz) ile
@@ -68,7 +87,10 @@ const BookingSelectionContext = createContext<BookingSelectionContextValue | nul
 
 export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorTimeZone: string; children: ReactNode }) {
   const [selectedSlots, setSelectedSlots] = useState<AvailabilitySlot[]>([]);
-  const [visitorTimeZone, setVisitorTimeZone] = useState<string | undefined>(undefined);
+  const [detectedTimeZone, setDetectedTimeZone] = useState<string | undefined>(undefined);
+  const [chosenTimeZone, setChosenTimeZone] = useState<string | undefined>(undefined);
+  const auth = useAuthOptional();
+  const profileTimeZone = isValidTimeZone(auth?.user?.timeZone) ? auth?.user?.timeZone ?? undefined : undefined;
   const [hasCompletedBooking, setHasCompletedBooking] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -77,11 +99,28 @@ export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorT
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ziyaretçi dilimi yalnızca istemcide okunabilir (Intl), bu değeri React dışı bir kaynaktan React state'ine SENKRONİZE etmenin tek yolu budur (§4.2)
-    setVisitorTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ziyaretçi dilimi yalnızca istemcide okunabilir (Intl/localStorage), bu değeri React dışı bir kaynaktan React state'ine SENKRONİZE etmenin tek yolu budur (§4.2)
+    setDetectedTimeZone(browserTimeZone());
+    setChosenTimeZone(readStoredTimeZone());
   }, []);
 
+  // Öncelik: bu tarayıcıda elle seçilen → giriş yapmış hastanın profili → tarayıcı.
+  const visitorTimeZone = chosenTimeZone ?? profileTimeZone ?? detectedTimeZone;
   const displayTimeZone = visitorTimeZone ?? doctorTimeZone;
+
+  function setPatientTimeZone(timeZone: string) {
+    if (!isValidTimeZone(timeZone)) return;
+    setChosenTimeZone(timeZone);
+    try {
+      window.localStorage.setItem(PATIENT_TIME_ZONE_STORAGE_KEY, timeZone);
+    } catch {
+      // Gizli pencere / engelli depolama — seçim bu oturumda yine geçerli.
+    }
+    if (auth?.user && auth.user.timeZone !== timeZone) {
+      // En iyi çaba: profil kaydı başarısız olsa da seçim tarayıcıda geçerli kalır.
+      usersApi.updateMe({ timeZone }).catch(() => undefined);
+    }
+  }
 
   function toggleSlot(slot: AvailabilitySlot, timeZone: string): { dayChanged: boolean; limitReached: boolean } {
     let dayChanged = false;
@@ -128,6 +167,8 @@ export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorT
         clearAllSlots,
         displayTimeZone,
         visitorTimeZone,
+        detectedTimeZone,
+        setPatientTimeZone,
         doctorTimeZone,
         hasCompletedBooking,
         setHasCompletedBooking,

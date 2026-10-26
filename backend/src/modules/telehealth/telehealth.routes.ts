@@ -497,7 +497,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       schema: { body: CreateBookingRequestSchema, response: { 201: ApiSuccessSchema(CreateBookingResultSchema) } },
     },
     async (request, reply) => {
-      const { doctorSlug, slots, patientName, patientEmail, identity, consentVersion } = request.body;
+      const { doctorSlug, slots, patientName, patientEmail, identity, consentVersion, patientTimeZone } = request.body;
 
       // §9.7.7 KARAR K (bu tur) — hekim profiline sahip bir kullanıcı KENDİ adına hasta
       // randevusu oluşturamaz (yanlışlıkla/kötüye kullanım yüzeyi). `authenticateOptional`
@@ -539,6 +539,12 @@ export async function telehealthRoutes(app: FastifyInstance) {
       let booking = result.booking;
       let appointments = result.appointments;
       let rawAccessToken = result.rawAccessToken;
+
+      // Paket P — gösterim amaçlı hasta saat dilimi, onay e-postasından ÖNCE yazılır (rezervasyon
+      // kurallarına — `lib/booking.ts` — dokunulmaz; ayrı ve yalnızca görüntüleme alanı).
+      if (patientTimeZone) {
+        booking = await app.prisma.appointmentBooking.update({ where: { id: booking.id }, data: { patientTimeZone } });
+      }
 
       // Doktorun `sessionPriceCents`'i `null`sa (ücretsiz/bilgi-alınız seans) `createBooking`
       // `unitPriceCents`i 0 üretir (bkz. `lib/booking.ts`) — ödeme adımı hiç YOKTUR, booking

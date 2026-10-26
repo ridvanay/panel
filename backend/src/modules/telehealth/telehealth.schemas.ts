@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DoctorCvEntrySchema, DoctorPublicationSchema, DoctorSocialLinkSchema } from "../../schemas/entities";
 import { textTranslationsSchema } from "../../lib/entity-translations";
+import { TimeZoneSchema } from "../../lib/dual-time";
 
 /** `.claude/architect-scope-telehealth-template.md` §3.2/§4.1 — Zod istek/param şemaları. */
 
@@ -162,6 +163,9 @@ export const CreateBookingRequestSchema = z.object({
   identity: BookingIdentityInputSchema,
   consent: z.literal(true),
   consentVersion: z.string().trim().min(1).max(40).optional(),
+  // Paket P — yalnızca GÖSTERİM: hastanın o anki saat dilimi (e-posta/portal çift saat). Rezervasyon
+  // kurallarını etkilemez; geçersiz IANA kimliği 422.
+  patientTimeZone: TimeZoneSchema.optional(),
 });
 export type CreateBookingRequest = z.infer<typeof CreateBookingRequestSchema>;
 

@@ -36,6 +36,8 @@ export const UserSchema = z.object({
   // `PATCH /users/me` ile yazılır — regex `modules/users/users.schemas.ts::ADDRESS_PHONE_REGEX`
   // ile AYNI (bkz. UpdateUserRequestSchema). `null` = telefon kayıtlı değil.
   phone: z.string().nullable(),
+  // Paket P — tercih edilen IANA saat dilimi (`PATCH /users/me`); `null` = tarayıcıdan algılanır.
+  timeZone: z.string().nullable().optional(),
   emailVerifiedAt: z.string().nullable(),
   role: SiteRoleSchema,
   createdAt: z.string(),
@@ -2601,6 +2603,8 @@ export const AppointmentSchema = z.object({
   endedAt: z.string().nullable(),
   cancelledAt: z.string().nullable(),
   cancelReason: z.string().nullable(),
+  /** Paket P — booking'deki hasta dilimi (yalnızca admin listesinde dahil edilir). */
+  patientTimeZone: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -2723,6 +2727,8 @@ export const AppointmentBookingSchema = z.object({
   patientUserId: z.string().uuid().nullable(),
   patientName: z.string(),
   patientEmail: z.string(),
+  // Paket P — randevu anında hastanın IANA dilimi; portal/doktor/admin çift saat gösterir. `null` = bilinmiyor.
+  patientTimeZone: z.string().nullable().optional(),
   // [DPI] §2.7 — `null` İKİ AYRI durumu ifade eder: (a) aktör `canAccessBookingHealthData`
   // eşiğini geçmiyor (`MANAGER` DAHİL), (b) booking bu turdan ÖNCE oluşmuş, kimlik HİÇ alınmamış.
   identity: BookingIdentitySummarySchema.nullable(),

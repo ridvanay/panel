@@ -28,6 +28,7 @@ import { formatPriceFromCents } from "@/lib/format-price";
 import { resolveDisplayedAppointmentStatus } from "@/components/site/telehealth/appointment-status-badge";
 import { getJoinState } from "@/lib/telehealth-join-window";
 import { useNow } from "@/hooks/use-now";
+import { TURKEY_TIME_ZONE, cityLabel, gmtLabel, isSameClockAsTurkey } from "@/lib/dual-time";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.1/§8.4 — randevu listesi, hasta PII'si
@@ -69,7 +70,18 @@ const STATUS_TONES: Record<AppointmentStatus, "neutral" | "primary" | "success" 
   NO_SHOW: "danger",
 };
 
-const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
+// Paket P — admin listesi Türkiye saatini AÇIKÇA gösterir (tarayıcının dilimi değil) + hastanın saati.
+const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short", timeZone: TURKEY_TIME_ZONE });
+
+function PatientLocalTime({ iso, timeZone }: { iso: string; timeZone: string | null | undefined }) {
+  if (!timeZone || isSameClockAsTurkey(iso, timeZone)) return null;
+  const time = new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short", timeZone }).format(new Date(iso));
+  return (
+    <p className="text-xs text-foreground/50" data-testid="admin-patient-time">
+      Hasta: {cityLabel(timeZone)} {time} ({gmtLabel(iso, timeZone)})
+    </p>
+  );
+}
 
 export default function AdminTelehealthAppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[] | null>(null);
@@ -213,7 +225,10 @@ export default function AdminTelehealthAppointmentsPage() {
                       <TableCell className="text-sm text-foreground/70">
                         {appointment.doctor.title} {appointment.doctor.fullName}
                       </TableCell>
-                      <TableCell className="text-sm text-foreground/70">{dateFormatter.format(new Date(appointment.startsAt))}</TableCell>
+                      <TableCell className="text-sm text-foreground/70">
+                        {dateFormatter.format(new Date(appointment.startsAt))} TSİ
+                        <PatientLocalTime iso={appointment.startsAt} timeZone={appointment.patientTimeZone} />
+                      </TableCell>
                       <TableCell className="text-sm text-foreground/70">{formatPriceFromCents(appointment.priceCents, appointment.currency)}</TableCell>
                       <TableCell>
                         {resolveDisplayedAppointmentStatus(appointment.status, getJoinState({ appointments: [appointment] }, now) === "ended") === "ENDED" ? (
