@@ -9631,6 +9631,120 @@ paths:
         "204": { description: Silindi }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /doctor/availability:
+    get:
+      tags: [TeleHealth]
+      summary: Paket P — doktorun kendi haftalık çalışma saatleri (portal; doktor ilişkisi + 2FA)
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [TeleHealth]
+      summary: Paket P — haftalık saatlerin TAMAMINI değiştir (admin ucu ile aynı gövde)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetDoctorAvailabilityRequest" }
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /doctor/time-off:
+    get:
+      tags: [TeleHealth]
+      summary: Paket P — doktorun kendi izinleri (son 30 gün + gelecek), çakışmalarıyla
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DoctorTimeOff" }
+    post:
+      tags: [TeleHealth]
+      summary: Paket P — izin ekle (çakışma varsa 201 + `conflicts`; randevulara dokunulmaz)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDoctorTimeOffRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorTimeOff" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /doctor/time-off/{timeOffId}:
+    delete:
+      tags: [TeleHealth]
+      summary: Paket P — kendi iznini sil (başka doktorun kaydı 404)
+      parameters:
+        - { name: timeOffId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Silindi }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/telehealth/doctors/{doctorId}/time-off:
+    parameters:
+      - $ref: "#/components/parameters/DoctorId"
+    get:
+      tags: [TeleHealth]
+      summary: Paket P — doktorun izinleri (ADMIN veya MANAGER)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DoctorTimeOff" }
+    post:
+      tags: [TeleHealth]
+      summary: Paket P — doktor adına izin ekle (ADMIN veya MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDoctorTimeOffRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorTimeOff" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/doctors/{doctorId}/time-off/{timeOffId}:
+    parameters:
+      - $ref: "#/components/parameters/DoctorId"
+      - { name: timeOffId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [TeleHealth]
+      summary: Paket P — izni sil (ADMIN veya MANAGER)
+      responses:
+        "204": { description: Silindi }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /doctor/me:
     get:
       tags: [TeleHealth]
@@ -14550,6 +14664,7 @@ components:
     User:
       type: object
       properties:
+        timeZone: { type: string, nullable: true, description: "Paket P — randevu saatleri için tercih edilen IANA dilimi; null = tarayıcıdan algılanır." }
         id: { type: string, format: uuid }
         email: { type: string, format: email }
         name: { type: string }
@@ -14952,6 +15067,7 @@ components:
         için de GEÇERSİZDİR, 422 döner).
       type: object
       properties:
+        timeZone: { type: string, nullable: true, maxLength: 64, description: "Paket P — geçerli IANA dilimi (aksi 422); null tercihi kaldırır." }
         name: { type: string, minLength: 1, maxLength: 80 }
         avatarUrl: { type: string, format: uri, nullable: true }
         phone:
@@ -20580,6 +20696,44 @@ components:
         endMinute: { type: integer, minimum: 0, maximum: 1440 }
         isActive: { type: boolean }
 
+    DoctorTimeOff:
+      type: object
+      description: >
+        Paket P (İş 2) — doktor izin/istisna aralığı `[startsAt, endsAt)` (UTC). Public slotlardan düşülür.
+        `note` İÇ nottur (sağlık verisi içermemeli), public uçlara ASLA dönmez. `conflicts`: aralıktaki
+        onaylı randevular — kayıt ENGELLENMEZ, randevulara dokunulmaz.
+      required: [id, doctorId, startsAt, endsAt, kind, allDay, conflicts]
+      properties:
+        id: { type: string, format: uuid }
+        doctorId: { type: string, format: uuid }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        kind: { type: string, enum: [VACATION, CONGRESS, SURGERY_DAY, OTHER] }
+        allDay: { type: boolean }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        conflicts:
+          type: array
+          items:
+            type: object
+            properties:
+              appointmentId: { type: string }
+              startsAt: { type: string, format: date-time }
+              endsAt: { type: string, format: date-time }
+              patientName: { type: string }
+              bookingNumber: { type: string, nullable: true }
+
+    CreateDoctorTimeOffRequest:
+      type: object
+      additionalProperties: false
+      required: [startsAt, endsAt, kind]
+      properties:
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time, description: "startsAt'ten sonra; aralık en fazla 366 gün (aksi 422)." }
+        kind: { type: string, enum: [VACATION, CONGRESS, SURGERY_DAY, OTHER] }
+        allDay: { type: boolean }
+        note: { type: string, maxLength: 500, nullable: true }
+
     DoctorProfile:
       type: object
       description: >
@@ -20595,6 +20749,9 @@ components:
           createdAt, updatedAt,
         ]
       properties:
+        isFounder: { type: boolean, description: "Paket P — kurucu doktor (aynı anda tek; ikinci kurucu 409)." }
+        rosterTier: { type: integer, nullable: true, minimum: 1, maximum: 9, description: "Paket P — kadro katmanı (1 = en üst)." }
+        earliestAvailableAt: { type: string, format: date-time, nullable: true, description: "Paket P — public uçlarda: önümüzdeki 30 gündeki en erken uygun slot (izinler düşülmüş)." }
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid, nullable: true }
         specialtyId: { type: string, format: uuid, nullable: true }
@@ -20801,6 +20958,7 @@ components:
           cancelReason, createdAt, updatedAt,
         ]
       properties:
+        patientTimeZone: { type: string, nullable: true, description: "Paket P — booking'deki hasta dilimi (yalnızca admin listesinde)." }
         id: { type: string, format: uuid }
         doctorId: { type: string, format: uuid }
         doctor: { $ref: "#/components/schemas/DoctorSummary" }
@@ -21021,6 +21179,7 @@ components:
         rızayla toplanır (§3.5 + §9.7.5).
       required: [doctorSlug, slots, patientName, patientEmail, identity, consent]
       properties:
+        patientTimeZone: { type: string, maxLength: 64, description: "Paket P — yalnızca gösterim (e-posta/portal çift saat); geçersiz IANA 422. Rezervasyon kurallarını etkilemez." }
         doctorSlug: { type: string }
         slots:
           type: array
@@ -21114,6 +21273,7 @@ components:
           hasIntakeNote, hasConsultationNote, documentCount, createdAt, updatedAt,
         ]
       properties:
+        patientTimeZone: { type: string, nullable: true, description: "Paket P — randevu anında hastanın IANA dilimi; null = bilinmiyor." }
         id: { type: string, format: uuid }
         bookingNumber: { type: string }
         doctorId: { type: string, format: uuid }
@@ -21620,6 +21780,8 @@ components:
       type: object
       required: [title, fullName, bio, languages, timeZone, sessionDurationMin, sessionPriceCents]
       properties:
+        isFounder: { type: boolean, description: "Paket P — başka bir doktor kurucuysa 409 CONFLICT." }
+        rosterTier: { type: integer, nullable: true, minimum: 1, maximum: 9 }
         title: { type: string, minLength: 1, maxLength: 40 }
         subSpecialty: { type: string, minLength: 1, maxLength: 120, nullable: true }
         fullName: { type: string, minLength: 1, maxLength: 120 }
