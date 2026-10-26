@@ -7,7 +7,7 @@ import { formatPriceFromCents } from "@/lib/format-price";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
-import { DualTimeInline } from "@/components/site/telehealth/dual-time";
+import { DualTimeInline, TimeZoneBar } from "@/components/site/telehealth/dual-time";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,10 +48,32 @@ export function DoctorQuickBookingCard({ doctor, earliestAvailableIso, intlLocal
   // paylaşılan context'i üzerinden) ZATEN tamamlanmış bir rezervasyonu gösteriyorsa, bu CTA'ya
   // tıklamak yalnızca `#randevu`'ya kaydırmak YERİNE sihirbazı TEMİZ Adım 2'ye SIFIRLAMALIDIR —
   // aksi halde kullanıcı eski "randevunuz tamamlandı" ekranına kaydırılır, yeni tarih SEÇEMEZ.
-  const { hasCompletedBooking, requestBookingReset, visitorTimeZone } = useBookingSelection();
+  const {
+    hasCompletedBooking,
+    requestBookingReset,
+    visitorTimeZone,
+    detectedTimeZone,
+    setPatientTimeZone,
+    timeZoneSource,
+    ipHint,
+    keepCurrentTimeZone,
+  } = useBookingSelection();
 
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">
+      {/* Paket R — randevu kutusunun üstünde saat dilimi bandı (sihirbazdakiyle aynı durum; öneri bildirimi
+          yalnızca sihirbazda gösterilir ki aynı soru iki kez sorulmasın). */}
+      <TimeZoneBar
+        compact
+        className="mb-4"
+        timeZone={visitorTimeZone}
+        source={timeZoneSource}
+        detectedTimeZone={detectedTimeZone}
+        ipHint={ipHint}
+        suggestion={null}
+        onChange={setPatientTimeZone}
+        onKeep={keepCurrentTimeZone}
+      />
       <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{dict.quickBookingLabel}</p>
 
       {/* Grid görevi (2026-09-14) — ui-designer turu: "kurumsal randevu widget'ı" fiyat vurgusu için

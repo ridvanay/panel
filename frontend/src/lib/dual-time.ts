@@ -5,6 +5,7 @@
  * `backend/src/lib/dual-time.ts` (e-postalar).
  */
 import { formatDayKey, formatDayLabel, formatTime } from "./telehealth-format";
+import { countryForTimeZone, countryName } from "./country-display";
 
 export const TURKEY_TIME_ZONE = "Europe/Istanbul";
 export const PATIENT_TIME_ZONE_STORAGE_KEY = "wm-patient-tz";
@@ -117,34 +118,29 @@ export function dualDateTimeLabels(iso: string, patientTimeZone: string, intlLoc
 }
 
 // ---------------------------------------------------------------------------------------------
-// Saat dilimi listesi — `Intl.supportedValuesOf('timeZone')`; yaygın şehirler üstte, ülke adıyla aranabilir.
+// Saat dilimi listesi — `Intl.supportedValuesOf('timeZone')`. Paket R: sık kullanılanlar üstte, arama
+// ülke adıyla (aktif dilde ve İngilizce), şehirle ve "GMT+4" gibi ofsetle.
 // ---------------------------------------------------------------------------------------------
 
-/** Hasta kitlesinin yaygın dilimleri (üstte gösterilir) + aramada kullanılan ülke adları (EN/TR/yerel). */
-export const COMMON_TIME_ZONES: { tz: string; countries: string[] }[] = [
-  { tz: "Europe/Istanbul", countries: ["Turkey", "Türkiye", "Türkei", "Turquía", "تركيا", "Турция"] },
-  { tz: "Europe/London", countries: ["United Kingdom", "UK", "England", "Birleşik Krallık", "İngiltere", "Reino Unido", "Vereinigtes Königreich", "المملكة المتحدة", "Великобритания"] },
-  { tz: "Europe/Berlin", countries: ["Germany", "Almanya", "Deutschland", "Alemania", "ألمانيا", "Германия"] },
-  { tz: "Europe/Paris", countries: ["France", "Fransa", "Frankreich", "Francia", "فرنسا", "Франция"] },
-  { tz: "Europe/Amsterdam", countries: ["Netherlands", "Hollanda", "Niederlande", "Países Bajos", "هولندا", "Нидерланды"] },
-  { tz: "Europe/Madrid", countries: ["Spain", "İspanya", "Spanien", "España", "إسبانيا", "Испания"] },
-  { tz: "Europe/Moscow", countries: ["Russia", "Rusya", "Russland", "Rusia", "روسيا", "Россия"] },
-  { tz: "Asia/Almaty", countries: ["Kazakhstan", "Kazakistan", "Kasachstan", "Kazajistán", "كازاخستان", "Казахстан"] },
-  { tz: "Asia/Baku", countries: ["Azerbaijan", "Azerbaycan", "Aserbaidschan", "Azerbaiyán", "أذربيجان", "Азербайджан"] },
-  { tz: "Asia/Riyadh", countries: ["Saudi Arabia", "Suudi Arabistan", "Saudi-Arabien", "Arabia Saudí", "السعودية", "Саудовская Аравия"] },
-  { tz: "Asia/Dubai", countries: ["United Arab Emirates", "UAE", "Birleşik Arap Emirlikleri", "BAE", "Vereinigte Arabische Emirate", "Emiratos Árabes Unidos", "الإمارات", "ОАЭ"] },
-  { tz: "Asia/Qatar", countries: ["Qatar", "Katar", "قطر", "Катар"] },
-  { tz: "Asia/Kuwait", countries: ["Kuwait", "Kuveyt", "الكويت", "Кувейт"] },
-  { tz: "Asia/Baghdad", countries: ["Iraq", "Irak", "العراق", "Ирак"] },
-  { tz: "Africa/Cairo", countries: ["Egypt", "Mısır", "Ägypten", "Egipto", "مصر", "Египет"] },
-  { tz: "America/New_York", countries: ["United States", "USA", "ABD", "Amerika", "Vereinigte Staaten", "Estados Unidos", "الولايات المتحدة", "США"] },
-  { tz: "America/Chicago", countries: ["United States", "USA", "ABD"] },
-  { tz: "America/Los_Angeles", countries: ["United States", "USA", "ABD"] },
-  { tz: "America/Toronto", countries: ["Canada", "Kanada", "كندا", "Канада"] },
-  { tz: "Australia/Sydney", countries: ["Australia", "Avustralya", "Australien", "أستراليا", "Австралия"] },
+/** Paket R — hasta trafiğinin olası kaynakları (Türkiye referans olarak başta). */
+export const POPULAR_TIME_ZONES: readonly string[] = [
+  "Europe/Istanbul",
+  "Europe/Berlin",
+  "Europe/London",
+  "Europe/Amsterdam",
+  "Europe/Paris",
+  "Asia/Dubai",
+  "Asia/Riyadh",
+  "Asia/Qatar",
+  "Europe/Moscow",
+  "Asia/Baku",
+  "America/New_York",
+  "America/Los_Angeles",
+  "America/Toronto",
+  "Australia/Sydney",
 ];
 
-/** Tüm IANA dilimleri (destek yoksa yaygın liste). Yaygınlar önce, gerisi alfabetik. */
+/** Tüm IANA dilimleri (destek yoksa sık kullanılanlar). Sık kullanılanlar önce, gerisi alfabetik. */
 export function listTimeZones(): string[] {
   let all: string[] = [];
   try {
@@ -153,25 +149,41 @@ export function listTimeZones(): string[] {
   } catch {
     all = [];
   }
-  const common = COMMON_TIME_ZONES.map((c) => c.tz);
-  const rest = all.filter((tz) => !common.includes(tz)).sort();
-  return [...common, ...rest];
+  const rest = all.filter((tz) => !POPULAR_TIME_ZONES.includes(tz)).sort();
+  return [...POPULAR_TIME_ZONES, ...rest];
 }
 
 const fold = (value: string) =>
   value
     .toLocaleLowerCase("en")
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\p{M}/gu, "")
     .replace(/ı/g, "i");
 
-/** Şehir (dilimin son parçası), tam IANA kimliği veya (yaygınlar için) ülke adıyla arar. */
-export function searchTimeZones(query: string, zones: string[] = listTimeZones()): string[] {
+/** `gmt+4`, `+4`, `utc+4`, `GMT+04:00` → `gmt+4` (ofset araması); ofset değilse `null`. */
+function offsetQuery(q: string): string | null {
+  const m = /^(?:gmt|utc)?\s*([+\-−])\s*0?(\d{1,2})(?::?(\d{2}))?$/.exec(q);
+  if (!m) return /^(gmt|utc)$/.test(q) ? "gmt" : null;
+  const minutes = m[3] && m[3] !== "00" ? `:${m[3]}` : "";
+  return `gmt${m[1] === "−" ? "-" : m[1]}${Number(m[2])}${minutes}`;
+}
+
+/**
+ * Şehir (dilimin son parçası), tam IANA kimliği, ülke adı (aktif dilde ve İngilizce) ya da ofsetle
+ * ("GMT+4", "+4") arar. Ofset bu anki değerdir (yaz saati dahil).
+ */
+export function searchTimeZones(query: string, zones: string[] = listTimeZones(), intlLocale = "en-US", at: Date = new Date()): string[] {
   const q = fold(query.trim());
   if (!q) return zones;
+  const offset = offsetQuery(q);
   return zones.filter((tz) => {
+    if (offset) {
+      const label = fold(gmtLabel(at, tz));
+      return label === offset;
+    }
     if (fold(tz.replace(/_/g, " ")).includes(q)) return true;
-    const countries = COMMON_TIME_ZONES.find((c) => c.tz === tz)?.countries ?? [];
-    return countries.some((country) => fold(country).includes(q));
+    const country = countryForTimeZone(tz);
+    if (!country) return false;
+    return fold(countryName(country, intlLocale)).includes(q) || fold(countryName(country, "en")).includes(q);
   });
 }

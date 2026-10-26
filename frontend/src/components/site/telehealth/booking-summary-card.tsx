@@ -9,7 +9,9 @@ import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { DualDateTimeSummary, DualSlotLabel } from "@/components/site/telehealth/dual-time";
+import { AddToCalendar, DualDateTimeSummary, DualSlotLabel } from "@/components/site/telehealth/dual-time";
+import { fmt } from "@/lib/i18n/use-portal-strings";
+import { mergeSlotRanges } from "@/lib/country-display";
 
 /**
  * Ortak rezervasyon özet kartı — ödeme dönüş sayfaları (§9.7.1) VE hasta booking detay sayfası
@@ -46,7 +48,27 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
           </span>
         ))}
       </div>
-      {firstSlot && <DualDateTimeSummary iso={firstSlot.startsAt} timeZone={timeZone} intlLocale={intlLocale} className="mt-3" />}
+      {/* Paket R — başlangıç–bitiş (ardışık slotlar tek aralık), İstanbul satırı, fark. */}
+      <div className="mt-3 space-y-2">
+        {mergeSlotRanges(booking.appointments).map((range) => (
+          <DualDateTimeSummary key={range.startsAt} iso={range.startsAt} endIso={range.endsAt} timeZone={timeZone} intlLocale={intlLocale} />
+        ))}
+      </div>
+      {booking.paymentStatus === "PAID" && (
+        <AddToCalendar
+          className="mt-3"
+          events={mergeSlotRanges(booking.appointments).map((range) => ({
+            uid: booking.id,
+            title: fmt(t.schedule.calendarEventTitle, { doctor: `${booking.doctor.title} ${booking.doctor.fullName}`.trim() }),
+            startsAt: range.startsAt,
+            endsAt: range.endsAt,
+            url:
+              typeof window !== "undefined"
+                ? `${window.location.origin}${localize(`/patient/bookings/${booking.id}${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)}`
+                : null,
+          }))}
+        />
+      )}
 
       <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
         <span className="text-sm font-semibold text-foreground">{t.common.total}</span>

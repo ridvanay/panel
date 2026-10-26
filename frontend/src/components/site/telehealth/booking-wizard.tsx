@@ -12,7 +12,8 @@ import type { Appointment, AvailabilitySlot, BookingIdentityInput, BookingPaymen
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
-import { DualDateTimeSummary } from "@/components/site/telehealth/dual-time";
+import { AddToCalendar, DualDateTimeSummary } from "@/components/site/telehealth/dual-time";
+import { mergeSlotRanges } from "@/lib/country-display";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { AvailabilityCalendar } from "@/components/site/telehealth/availability-calendar";
 import { BookingIdentityStep } from "@/components/site/telehealth/booking-identity-step";
@@ -474,9 +475,26 @@ export function BookingWizard({
                         </span>
                       ))}
                     </div>
-                    {/* Paket P — onay ekranı: hastanın tarih/saati, Türkiye tarih/saati ve aradaki fark. */}
-                    {bookingResult.appointments[0] && (
-                      <DualDateTimeSummary iso={bookingResult.appointments[0].startsAt} timeZone={displayTimeZone} intlLocale={intlLocale} />
+                    {/* Paket R — onay ekranı: "28 Ekim 2026 Salı, 16:00–16:30 (Berlin, CET)" + İstanbul satırı + fark;
+                        ardışık slotlar tek aralık. */}
+                    {mergeSlotRanges(bookingResult.appointments).map((range) => (
+                      <DualDateTimeSummary key={range.startsAt} iso={range.startsAt} endIso={range.endsAt} timeZone={displayTimeZone} intlLocale={intlLocale} />
+                    ))}
+                    {/* Paket R — "Takvime ekle" yalnızca onaylı (ücretsiz → anında onaylı) randevuda; dosya/bağlantı
+                        tarayıcıda üretilir, içerikte yalnızca randevu erişim bağlantısı vardır. */}
+                    {isFreeBooking && (
+                      <AddToCalendar
+                        events={mergeSlotRanges(bookingResult.appointments).map((range) => ({
+                          uid: bookingResult.bookingId,
+                          title: fmt(t.schedule.calendarEventTitle, { doctor: `${doctor.title} ${doctor.fullName}`.trim() }),
+                          startsAt: range.startsAt,
+                          endsAt: range.endsAt,
+                          url:
+                            typeof window !== "undefined"
+                              ? `${window.location.origin}${withLocalePrefix(`/patient/bookings/${bookingResult.bookingId}?t=${encodeURIComponent(bookingResult.accessToken)}`, lang, defaultLocaleCode)}`
+                              : null,
+                        }))}
+                      />
                     )}
                     {isFreeBooking ? (
                       <p className="text-sm">

@@ -7,6 +7,7 @@ import { COOKIE_BANNER_VISIBILITY_EVENT } from "@/components/site/cookie-consent
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { DualDateTimeSummary } from "@/components/site/telehealth/dual-time";
+import { mergeSlotRanges } from "@/lib/country-display";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import type { DoctorProfile } from "@/lib/api/types";
@@ -185,13 +186,12 @@ export function DoctorServiceSummaryPanel({
               <p className="mt-2 text-xs text-foreground/60">
                 {formatSiteString(dict.slotSummaryLabel, { count: slotCount, minutes: slotCount * doctor.sessionDurationMin })}
               </p>
-              {/* Paket P — seçim özeti: hastanın tarih/saati, Türkiye tarih/saati, aradaki fark. */}
-              <DualDateTimeSummary
-                iso={selectedSlots[0]!.startsAt}
-                timeZone={displayTimeZone}
-                intlLocale={intlLocale}
-                className="mt-2 border-t border-border pt-2"
-              />
+              {/* Paket R — seçim özeti: başlangıç–bitiş (ardışık slotlar tek aralık), İstanbul satırı, fark. */}
+              <div className="mt-2 space-y-2 border-t border-border pt-2">
+                {mergeSlotRanges(selectedSlots).map((range) => (
+                  <DualDateTimeSummary key={range.startsAt} iso={range.startsAt} endIso={range.endsAt} timeZone={displayTimeZone} intlLocale={intlLocale} />
+                ))}
+              </div>
             </>
           )}
         </div>

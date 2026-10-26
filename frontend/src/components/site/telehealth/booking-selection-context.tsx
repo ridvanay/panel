@@ -1,21 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import type { AvailabilitySlot } from "@/lib/api/types";
 import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey } from "@/lib/telehealth-format";
-import { PATIENT_TIME_ZONE_STORAGE_KEY, browserTimeZone, isValidTimeZone } from "@/lib/dual-time";
-import { useAuthOptional } from "@/context/auth-context";
-import * as usersApi from "@/lib/api/users";
-
-function readStoredTimeZone(): string | undefined {
-  try {
-    const value = window.localStorage.getItem(PATIENT_TIME_ZONE_STORAGE_KEY);
-    return isValidTimeZone(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
+import type { GeoHint } from "@/lib/api/geo";
+import { usePatientTimeZoneState, type PatientTimeZoneSource } from "@/components/site/telehealth/use-patient-time-zone";
 
 /**
  * `.claude/design-notes-telehealth.md` §2.4/§12.2 — "Hizmet Özeti" paneli artık
@@ -54,13 +44,20 @@ interface BookingSelectionContextValue {
   /** Ziyaretçi dilimi bilinmiyorsa (mount öncesi) `doctorTimeZone`'a düşer — §4.2. */
   displayTimeZone: string;
   /**
-   * Paket P — hastanın dilimi: elle seçilen (tarayıcıda saklanır, giriş yapılmışsa profile yazılır),
-   * yoksa giriş yapmış hastanın profilindeki, yoksa tarayıcıdan algılanan. Mount öncesi `undefined`.
+   * Paket P/R — hastanın dilimi (öncelik: bu sayfadaki seçim → profil → saklı seçim → tarayıcı → IP
+   * önerisi; bkz. `use-patient-time-zone.ts`). Mount öncesi `undefined`.
    */
   visitorTimeZone: string | undefined;
-  /** Tarayıcının kendi dilimi ("Cihazımın dilimini kullan" seçeneği için). */
+  /** Tarayıcının kendi dilimi ("Önerilen" grubunda "Cihazınız"). */
   detectedTimeZone: string | undefined;
   setPatientTimeZone: (timeZone: string) => void;
+  /** Paket R — dilimin nereden geldiği (`ip` ise bant bunu açıkça söyler). */
+  timeZoneSource: PatientTimeZoneSource | undefined;
+  /** Paket R — IP'den ülke/dilim önerisi (yalnızca öneri). */
+  ipHint: GeoHint | null;
+  /** Paket R — tarayıcı ülkesi ≠ IP ülkesi bildirimi. */
+  timeZoneSuggestion: { timeZone: string; countryCode: string } | null;
+  keepCurrentTimeZone: () => void;
   doctorTimeZone: string;
   /**
    * Bug-fix turu (2026-09-21, kullanıcı talebi) — `booking-wizard.tsx` (sihirbaz) ile
@@ -87,10 +84,7 @@ const BookingSelectionContext = createContext<BookingSelectionContextValue | nul
 
 export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorTimeZone: string; children: ReactNode }) {
   const [selectedSlots, setSelectedSlots] = useState<AvailabilitySlot[]>([]);
-  const [detectedTimeZone, setDetectedTimeZone] = useState<string | undefined>(undefined);
-  const [chosenTimeZone, setChosenTimeZone] = useState<string | undefined>(undefined);
-  const auth = useAuthOptional();
-  const profileTimeZone = isValidTimeZone(auth?.user?.timeZone) ? auth?.user?.timeZone ?? undefined : undefined;
+  const patientTimeZone = usePatientTimeZoneState();
   const [hasCompletedBooking, setHasCompletedBooking] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -98,29 +92,9 @@ export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorT
     setResetSignal((n) => n + 1);
   }
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ziyaretçi dilimi yalnızca istemcide okunabilir (Intl/localStorage), bu değeri React dışı bir kaynaktan React state'ine SENKRONİZE etmenin tek yolu budur (§4.2)
-    setDetectedTimeZone(browserTimeZone());
-    setChosenTimeZone(readStoredTimeZone());
-  }, []);
-
-  // Öncelik: bu tarayıcıda elle seçilen → giriş yapmış hastanın profili → tarayıcı.
-  const visitorTimeZone = chosenTimeZone ?? profileTimeZone ?? detectedTimeZone;
+  // Mount öncesi (SSR) dilim bilinmez → doktorun dilimi (§4.2 hidrasyon güvenliği).
+  const visitorTimeZone = patientTimeZone.timeZone;
   const displayTimeZone = visitorTimeZone ?? doctorTimeZone;
-
-  function setPatientTimeZone(timeZone: string) {
-    if (!isValidTimeZone(timeZone)) return;
-    setChosenTimeZone(timeZone);
-    try {
-      window.localStorage.setItem(PATIENT_TIME_ZONE_STORAGE_KEY, timeZone);
-    } catch {
-      // Gizli pencere / engelli depolama — seçim bu oturumda yine geçerli.
-    }
-    if (auth?.user && auth.user.timeZone !== timeZone) {
-      // En iyi çaba: profil kaydı başarısız olsa da seçim tarayıcıda geçerli kalır.
-      usersApi.updateMe({ timeZone }).catch(() => undefined);
-    }
-  }
 
   function toggleSlot(slot: AvailabilitySlot, timeZone: string): { dayChanged: boolean; limitReached: boolean } {
     let dayChanged = false;
@@ -167,8 +141,12 @@ export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorT
         clearAllSlots,
         displayTimeZone,
         visitorTimeZone,
-        detectedTimeZone,
-        setPatientTimeZone,
+        detectedTimeZone: patientTimeZone.browserTimeZone,
+        setPatientTimeZone: patientTimeZone.setPatientTimeZone,
+        timeZoneSource: patientTimeZone.source,
+        ipHint: patientTimeZone.ipHint,
+        timeZoneSuggestion: patientTimeZone.suggestion,
+        keepCurrentTimeZone: patientTimeZone.keepCurrentTimeZone,
         doctorTimeZone,
         hasCompletedBooking,
         setHasCompletedBooking,

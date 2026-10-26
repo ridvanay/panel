@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, CloudSun, ShieldAlert, Sun } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudSun, Moon, ShieldAlert, Sun } from "lucide-react";
 import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
@@ -10,9 +10,16 @@ import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { SlotAvailabilityLegend } from "@/components/site/telehealth/slot-availability-legend";
-import { DualSlotLabel, LtrTime, TimeZoneBar, dualSlotAriaTime } from "@/components/site/telehealth/dual-time";
-import { computeDayStatuses, earliestAvailableSlot, formatDayRange, formatMinuteOfDay, weeklyHoursInTimeZone, type WeeklyRule } from "@/lib/doctor-schedule";
+import { SlotCardContent, TimeZoneBar, buildSlotView, usePatientHour12 } from "@/components/site/telehealth/dual-time";
+import { computeDayStatuses, earliestAvailableSlot, formatDayRange, weeklyHoursInTimeZone, type WeeklyRule } from "@/lib/doctor-schedule";
 import { TURKEY_TIME_ZONE } from "@/lib/dual-time";
+import { formatClock } from "@/lib/country-display";
+
+/** Gün içi dakika → saat (hastanın 12/24 tercihiyle); 24:00 gece yarısı olarak gösterilir. */
+function minuteClock(minute: number, intlLocale: string, hour12: boolean): string {
+  if (!hour12 && minute >= 1440) return "24:00";
+  return formatClock(new Date(Date.UTC(2000, 0, 1, 0, minute)), "UTC", intlLocale, hour12);
+}
 import { formatDayLabel } from "@/lib/telehealth-format";
 import { useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
@@ -56,8 +63,9 @@ interface AvailabilityCalendarProps {
  * ürettiği `HH:mm` dizesinden saat kısmı `parseInt` ile okunur (ikinci bir saat biçimlendirici
  * İCAT EDİLMEZ, mevcut `formatTime` ile AYNI kaynaktan türer).
  */
-/** Grup anahtarları dahili; görünen başlık sözlükten gelir (`t.calendar.morning` / `afternoon`). */
-const HOUR_GROUP_LABELS = ["morning", "afternoon"] as const;
+/** Grup anahtarları dahili; görünen başlık sözlükten gelir (`t.calendar.morning` / `afternoon` / `evening`). */
+// Paket R — hastanın saatine göre üç grup: sabah (<12), öğleden sonra (12–17), akşam (≥17).
+const HOUR_GROUP_LABELS = ["morning", "afternoon", "evening"] as const;
 type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
 
 /**
@@ -69,7 +77,7 @@ type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
  */
 function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
   const hour = parseInt(formatTime(iso, timeZone).slice(0, 2), 10);
-  return hour < 12 ? "morning" : "afternoon";
+  return hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
 }
 
 /** §2.2.1/§12.2.1 — seçim pili taban dili, çoklu seçimde de DEĞİŞMEDEN kullanılır. */
@@ -85,6 +93,27 @@ const SELECTION_PILL_AT_LIMIT = "border-border/60 bg-surface text-foreground/35 
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+/**
+ * Paket R — slot ızgarasında ok tuşlarıyla gezinme (← → ↑ ↓, Home/End). Dolu/geçmiş slotlar da
+ * (`tabIndex=-1`) ok tuşlarıyla odaklanır ki ekran okuyucu durumlarını okuyabilsin; Tab sırası değişmez.
+ */
+function handleSlotGridKeys(event: React.KeyboardEvent<HTMLDivElement>) {
+  if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-slot-nav]"));
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  if (index === -1) return;
+  event.preventDefault();
+  const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
+  let next = index;
+  if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = items.length - 1;
+  else {
+    const forward = event.key === "ArrowDown" || event.key === (rtl ? "ArrowLeft" : "ArrowRight");
+    next = Math.min(items.length - 1, Math.max(0, index + (forward ? 1 : -1)));
+  }
+  items[next]?.focus();
 }
 
 /** Takvim hücresi anahtarı — `formatDayKey`'in (`en-CA`) ürettiği `YYYY-MM-DD` ile BİREBİR aynı biçim. */
@@ -160,7 +189,19 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
   const auth = useAuthOptional();
   const isDoctorSession = auth?.status === "authenticated" && auth.user?.doctorProfileId != null;
-  const { selectedSlots, toggleSlot, displayTimeZone, visitorTimeZone, detectedTimeZone, setPatientTimeZone } = useBookingSelection();
+  const {
+    selectedSlots,
+    toggleSlot,
+    displayTimeZone,
+    visitorTimeZone,
+    detectedTimeZone,
+    setPatientTimeZone,
+    timeZoneSource,
+    ipHint,
+    timeZoneSuggestion,
+    keepCurrentTimeZone,
+  } = useBookingSelection();
+  const hour12 = usePatientHour12(visitorTimeZone);
   // Görev (2026-09-16) — takvim gün/ay isimleri denetimi: sabit `"tr-TR"` yerine aktif site dili.
   const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const { t } = usePortalStrings();
@@ -351,9 +392,17 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
           </Alert>
         )}
 
-        {/* Paket P — "Saatler sizin saat diliminize göre: Berlin (GMT+1). Türkiye saati: GMT+3 · Değiştir".
-            Mount öncesi (SSR) dilim bilinmez → hidrasyon güvenli "…" (§4.2). */}
-        <TimeZoneBar timeZone={visitorTimeZone} detectedTimeZone={detectedTimeZone} onChange={setPatientTimeZone} />
+        {/* Paket R — bayrak + ülke · şehir (GMT, kısaltma) + canlı saat | Türkiye · İstanbul + "Değiştir";
+            IP önerisi yalnızca bildirim. Mount öncesi (SSR) dilim bilinmez → hidrasyon güvenli "…" (§4.2). */}
+        <TimeZoneBar
+          timeZone={visitorTimeZone}
+          source={timeZoneSource}
+          detectedTimeZone={detectedTimeZone}
+          ipHint={ipHint}
+          suggestion={timeZoneSuggestion}
+          onChange={setPatientTimeZone}
+          onKeep={keepCurrentTimeZone}
+        />
 
         {/* Paket P — en erken uygun randevu kısayolu (tıklanınca o güne gider) + haftalık saat özeti. */}
         {!noUpcomingAvailability && earliestSlot && (
@@ -364,13 +413,15 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
               className="inline-flex flex-wrap items-center gap-x-1.5 rounded-[var(--site-radius)] border border-primary/30 bg-primary/5 px-3 py-1.5 text-start font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >
               <span>{t.schedule.earliestShortcut}</span>
-              <LtrTime>
+              {/* İnceleme bulgusu — cümlede kelimeler var: `dir="ltr"` değil, yalnızca yalıtım (`<bdi>`); saat hastanın
+                  12/24 tercihine göre, Türkiye saati 24 saat. */}
+              <bdi>
                 {fmt(t.schedule.earliestValue, {
                   date: formatDayLabel(earliestSlot.startsAt, displayTimeZone, intlLocale),
-                  time: formatTime(earliestSlot.startsAt, displayTimeZone, intlLocale),
-                  turkeyTime: formatTime(earliestSlot.startsAt, TURKEY_TIME_ZONE, intlLocale),
+                  time: formatClock(earliestSlot.startsAt, displayTimeZone, intlLocale, hour12),
+                  turkeyTime: formatClock(earliestSlot.startsAt, TURKEY_TIME_ZONE, intlLocale, false),
                 })}
-              </LtrTime>
+              </bdi>
             </button>
             {weeklySummary.length > 0 && (
               <span className="text-xs text-foreground/60" data-testid="weekly-hours">
@@ -378,7 +429,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   .map((g) =>
                     fmt(t.schedule.weeklyHours, {
                       days: formatDayRange(g.days, intlLocale),
-                      hours: g.ranges.map((r) => `${formatMinuteOfDay(r.from)}–${formatMinuteOfDay(r.to)}`).join(", "),
+                      hours: g.ranges.map((r) => `${minuteClock(r.from, intlLocale, hour12)}–${minuteClock(r.to, intlLocale, hour12)}`).join(", "),
                     })
                   )
                   .join(" · ")}
@@ -588,7 +639,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
               </label>
             </div>
 
-            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5 max-h-[460px] overflow-y-auto">
+            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5 max-h-[460px] overflow-y-auto" onKeyDown={handleSlotGridKeys}>
               {displayedHourGroups.length === 0 && activeDayItems.length > 0 && (
                 <p className="rounded-[var(--site-radius)] border border-dashed border-border p-4 text-center text-sm text-foreground/50">
                   {t.calendar.noVisibleSlots}
@@ -613,25 +664,34 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                             {t.calendar.morning}
                           </span>
                         </div>
-                      ) : (
+                      ) : group.label === "afternoon" ? (
                         <div className="flex items-center gap-2 bg-muted px-4 py-2.5">
                           <CloudSun className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
                           <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">{t.calendar.afternoon}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 bg-muted px-4 py-2.5">
+                          <Moon className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+                          <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">{t.calendar.evening}</span>
                         </div>
                       )}
 
                       <div
                         role="group"
-                        aria-label={fmt(group.label === "morning" ? t.calendar.morningGroupAria : t.calendar.afternoonGroupAria, { max: MAX_BOOKING_SLOTS })}
-                        className="grid grid-cols-3 gap-2.5 p-3 sm:grid-cols-4"
+                        aria-label={fmt(
+                          group.label === "morning" ? t.calendar.morningGroupAria : group.label === "afternoon" ? t.calendar.afternoonGroupAria : t.calendar.eveningGroupAria,
+                          { max: MAX_BOOKING_SLOTS }
+                        )}
+                        className="grid grid-cols-2 gap-2.5 p-3 sm:grid-cols-3"
                       >
                         {group.items.map((slot) => {
                           const isPast = new Date(slot.startsAt).getTime() < now;
                           const isSelected = selectedSlots.some((s) => s.startsAt === slot.startsAt);
-                          // Paket P — ekran okuyucu metni de iki saati içerir; görünen etiket `DualSlotLabel`.
-                          const time = dualSlotAriaTime(slot.startsAt, displayTimeZone, intlLocale, t.schedule);
-                          const plainTime = formatTime(slot.startsAt, displayTimeZone, intlLocale);
-                          const label = <DualSlotLabel iso={slot.startsAt} timeZone={displayTimeZone} intlLocale={intlLocale} />;
+                          // Paket R — ekran okuyucu tam cümle okur ("Salı 28 Ekim, sizin saatinizle 16:00–16:30,
+                          // İstanbul saatiyle 18:00–18:30"); görünen içerik `SlotCardContent` (aria-hidden).
+                          const view = buildSlotView(slot, displayTimeZone, intlLocale, hour12, t.schedule);
+                          const time = view.sentence;
+                          const label = <SlotCardContent view={view} />;
 
                           if (isSelected) {
                             return (
@@ -640,11 +700,12 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 type="button"
                                 role="checkbox"
                                 aria-checked="true"
+                                data-slot-nav=""
                                 aria-label={fmt(t.calendar.slotSelected, { time })}
                                 onClick={() => handleSlotClick(slot)}
-                                className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
+                                className={cn(SELECTION_PILL_BASE, "px-2", SELECTION_PILL_SELECTED)}
                               >
-                                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                                <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                                 {label}
                               </button>
                             );
@@ -658,8 +719,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 <TooltipTrigger>
                                   <span
                                     aria-disabled="true"
+                                    tabIndex={-1}
+                                    data-slot-nav=""
                                     aria-label={fmt(t.calendar.slotDoctorBlocked, { time })}
-                                    className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
+                                    className={cn(SELECTION_PILL_BASE, "w-full px-2", SELECTION_PILL_AT_LIMIT)}
                                   >
                                     {label}
                                   </span>
@@ -673,10 +736,16 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                             return (
                               <span
                                 key={slot.startsAt}
+                                tabIndex={-1}
+                                role="checkbox"
+                                aria-checked="false"
+                                aria-disabled="true"
+                                data-slot-nav=""
+                                data-slot-status="past"
                                 aria-label={fmt(t.calendar.slotPast, { time })}
-                                className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
+                                className="flex min-h-10 cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                               >
-                                <bdi dir="ltr">{plainTime}</bdi>
+                                <SlotCardContent view={view} status={t.schedule.pastShort} />
                               </span>
                             );
                           }
@@ -685,12 +754,16 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                             return (
                               <span
                                 key={slot.startsAt}
+                                tabIndex={-1}
+                                role="checkbox"
+                                aria-checked="false"
+                                data-slot-nav=""
+                                data-slot-status="full"
                                 aria-label={fmt(t.calendar.slotFull, { time })}
                                 aria-disabled="true"
-                                className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
+                                className="flex min-h-10 cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-2 py-1 text-foreground/45 line-through decoration-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                               >
-                                <bdi dir="ltr" className="line-through decoration-foreground/30">{plainTime}</bdi>
-                                <span className="text-[10px] text-foreground/50">{t.calendar.full}</span>
+                                <SlotCardContent view={view} status={t.calendar.full} />
                               </span>
                             );
                           }
@@ -703,8 +776,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 <TooltipTrigger>
                                   <span
                                     aria-disabled="true"
+                                    tabIndex={-1}
+                                    data-slot-nav=""
                                     aria-label={fmt(t.calendar.slotAtLimit, { time, max: MAX_BOOKING_SLOTS })}
-                                    className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
+                                    className={cn(SELECTION_PILL_BASE, "w-full px-2", SELECTION_PILL_AT_LIMIT)}
                                   >
                                     {label}
                                   </span>
@@ -720,9 +795,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                               type="button"
                               role="checkbox"
                               aria-checked="false"
+                              data-slot-nav=""
                               aria-label={fmt(t.calendar.slotAvailable, { time })}
                               onClick={() => handleSlotClick(slot)}
-                              className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
+                              className={cn(SELECTION_PILL_BASE, "px-2", SELECTION_PILL_AVAILABLE)}
                             >
                               {label}
                             </button>

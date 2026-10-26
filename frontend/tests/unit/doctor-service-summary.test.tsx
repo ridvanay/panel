@@ -214,7 +214,7 @@ describe("DoctorServiceSummaryPanel", () => {
       </BookingSelectionProvider>
     );
 
-    fireEvent.click(screen.getByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait"));
+    fireEvent.click(screen.getByLabelText("18 Eylül Cuma, sizin saatinizle 10:00–10:30, İstanbul saatiyle 13:00–13:30 — müsait"));
     expect(screen.queryByRole("button", { name: "Değiştir" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("10:00 slotunu kaldır")).not.toBeInTheDocument();
     expect(screen.getAllByText(/10:00/).length).toBeGreaterThanOrEqual(1);
@@ -252,7 +252,7 @@ describe("DoctorServiceSummaryPanel", () => {
 
     expect(screen.getByText("Tarih ve saatleri seçin")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait"));
+    fireEvent.click(screen.getByLabelText("18 Eylül Cuma, sizin saatinizle 10:00–10:30, İstanbul saatiyle 13:00–13:30 — müsait"));
 
     // Takvimin seçim durumu VE Hizmet Özeti panelinin "Seçilen Randevu" kutusu AYNI context'ten
     // (`useBookingSelection`) beslendiği için İKİSİ DE "10:00"i gösterir — panel prop-drilling

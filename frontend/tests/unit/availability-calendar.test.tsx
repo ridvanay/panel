@@ -149,16 +149,16 @@ describe("AvailabilityCalendar", () => {
 
   it("bir takvim günü değiştirildiğinde saat ızgarası SEÇİLEN GÜNE göre günceller", () => {
     renderCalendar();
-    expect(screen.getByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait")).toBeInTheDocument();
+    expect(screen.getByLabelText("18 Eylül Cuma, sizin saatinizle 10:00–10:30, İstanbul saatiyle 13:00–13:30 — müsait")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
 
     // Artık 20 Eylül'ün saatleri (Sabah + Öğleden Sonra, biri dolu) görünür, 18 Eylül'ünki YOK.
-    expect(screen.queryByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("18 Eylül Cuma, sizin saatinizle 10:00–10:30, İstanbul saatiyle 13:00–13:30 — müsait")).not.toBeInTheDocument();
     expect(screen.getByText("ÖÖ Sabah")).toBeInTheDocument();
     expect(screen.getByText("ÖS Öğleden Sonra")).toBeInTheDocument();
-    expect(screen.getByLabelText("09:00 (sizin saatiniz), 12:00 Türkiye — müsait")).toBeInTheDocument();
-    const fullSlot = screen.getByLabelText("15:00 (sizin saatiniz), 18:00 Türkiye — dolu, seçilemez");
+    expect(screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 09:00–09:30, İstanbul saatiyle 12:00–12:30 — müsait")).toBeInTheDocument();
+    const fullSlot = screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 15:00–15:30, İstanbul saatiyle 18:00–18:30 — dolu, seçilemez");
     expect(fullSlot).toHaveAttribute("aria-disabled", "true");
     // `getByText("Dolu")` ARTIK BELİRSİZ — `<SlotAvailabilityLegend>` (Grid görevi, 2026-09-14)
     // de "Dolu" metnini taşır; bu yüzden doğrulama slot pili'nin KENDİ içeriğine SCOPE edilir.
@@ -167,8 +167,8 @@ describe("AvailabilityCalendar", () => {
 
   it("müsait bir saat seçildiğinde `aria-checked` 'true' olur ve `Check` ikonlu seçili sınıfı uygulanır", () => {
     renderCalendar();
-    fireEvent.click(screen.getByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait"));
-    const selected = screen.getByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — seçili");
+    fireEvent.click(screen.getByLabelText("18 Eylül Cuma, sizin saatinizle 10:00–10:30, İstanbul saatiyle 13:00–13:30 — müsait"));
+    const selected = screen.getByLabelText("18 Eylül Cuma, sizin saatinizle 10:00–10:30, İstanbul saatiyle 13:00–13:30 — seçili");
     expect(selected).toHaveAttribute("aria-checked", "true");
     expect(selected.className).toContain("bg-primary");
   });
@@ -176,14 +176,35 @@ describe("AvailabilityCalendar", () => {
   it("Grid görevi (2026-09-14) — 'Dolu saatleri gizle' açıkken sadece DOLU slotlar gizlenir, geçmiş slotlar ETKİLENMEZ", () => {
     renderCalendar();
     fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
-    expect(screen.getByLabelText("15:00 (sizin saatiniz), 18:00 Türkiye — dolu, seçilemez")).toBeInTheDocument();
+    expect(screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 15:00–15:30, İstanbul saatiyle 18:00–18:30 — dolu, seçilemez")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("switch", { name: "Dolu saatleri gizle" }));
-    expect(screen.queryByLabelText("15:00 (sizin saatiniz), 18:00 Türkiye — dolu, seçilemez")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("09:00 (sizin saatiniz), 12:00 Türkiye — müsait")).toBeInTheDocument();
+    expect(screen.queryByLabelText("20 Eylül Pazar, sizin saatinizle 15:00–15:30, İstanbul saatiyle 18:00–18:30 — dolu, seçilemez")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 09:00–09:30, İstanbul saatiyle 12:00–12:30 — müsait")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("switch", { name: "Dolu saatleri gizle" }));
-    expect(screen.getByLabelText("15:00 (sizin saatiniz), 18:00 Türkiye — dolu, seçilemez")).toBeInTheDocument();
+    expect(screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 15:00–15:30, İstanbul saatiyle 18:00–18:30 — dolu, seçilemez")).toBeInTheDocument();
+  });
+
+  it("Paket R — ok tuşları slotlar arasında gezer (dolu slot da odaklanır); durumlar metinle de ayırt edilir", () => {
+    renderCalendar();
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
+    const first = screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 09:00–09:30, İstanbul saatiyle 12:00–12:30 — müsait");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 14:00–14:30, İstanbul saatiyle 17:00–17:30 — müsait"));
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    const full = screen.getByLabelText("20 Eylül Pazar, sizin saatinizle 15:00–15:30, İstanbul saatiyle 18:00–18:30 — dolu, seçilemez");
+    expect(document.activeElement).toBe(full);
+    expect(full).toHaveTextContent("Dolu");
+    fireEvent.keyDown(full, { key: "Home" });
+    expect(document.activeElement).toBe(first);
+  });
+
+  it("Paket R — akşam (17:00 ve sonrası, hastanın saatiyle) ayrı grup", () => {
+    renderCalendar([{ startsAt: "2026-09-18T19:00:00.000Z", endsAt: "2026-09-18T19:30:00.000Z", available: true }]);
+    expect(screen.getByText("Akşam")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Akşam müsaitlik saatleri, en fazla 4 seçim" })).toBeInTheDocument();
   });
 
   it("müsait saat YOKSA bilgi mesajı gösterir, hiçbir takvim/grup render EDİLMEZ", () => {
