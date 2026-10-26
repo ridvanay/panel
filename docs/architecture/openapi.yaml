@@ -9745,6 +9745,227 @@ paths:
         "204": { description: Silindi }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/telehealth/bulk-availability/template:
+    get:
+      tags: [TeleHealth]
+      summary: Paket Q — doldurulmuş toplu çalışma saati/izin CSV şablonu (yalnızca ADMIN)
+      description: >
+        UTF-8 BOM'lu CSV. Aktif ve arşivlenmemiş doktorların mevcut haftalık saatleri ve gelecekteki
+        izinleri; `#` ile başlayan açıklama satırları. Hücreler `=`, `+`, `-`, `@`, sekme ya da CR ile
+        başlıyorsa başına `'` eklenir (CSV injection). Saatler doktorun kendi saat diliminde.
+      parameters:
+        - { name: delimiter, in: query, schema: { type: string, enum: [semicolon, comma], default: semicolon } }
+      responses:
+        "200":
+          description: CSV dosyası
+          content:
+            text/csv: { schema: { type: string, format: binary } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/bulk-availability/preview/csv:
+    post:
+      tags: [TeleHealth]
+      summary: Paket Q — CSV'yi doğrula ve önizle (yalnızca ADMIN)
+      description: >
+        Dosya base64 olarak gövdede gelir (en fazla 2 MB, 5.000 satır), bellekte işlenir, diske yazılmaz.
+        Ayraç (`;`/`,`/sekme) ve kodlama (UTF-8 / Windows-1254) otomatik algılanır. Tek satır bile
+        hatalıysa `valid: false` + satır numaralı hatalar döner ve önizleme oluşmaz. Önizleme 15 dk geçerlidir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [fileName, contentBase64]
+              properties:
+                fileName: { type: string, maxLength: 200, description: ".csv ya da .txt" }
+                contentBase64: { type: string }
+                weeklyMode: { $ref: "#/components/schemas/BulkWeeklyMode" }
+      responses:
+        "200":
+          description: Önizleme ya da satır numaralı hatalar
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkPreviewResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/bulk-availability/preview/template:
+    post:
+      tags: [TeleHealth]
+      summary: Paket Q — seçilen doktorlara aynı haftalık şablonu önizle (yalnızca ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [doctorIds, rules]
+              properties:
+                doctorIds: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                rules:
+                  type: array
+                  minItems: 1
+                  maxItems: 21
+                  items:
+                    type: object
+                    required: [dayOfWeek, startMinute, endMinute]
+                    properties:
+                      dayOfWeek: { type: integer, minimum: 1, maximum: 7 }
+                      startMinute: { type: integer, minimum: 0, maximum: 1440 }
+                      endMinute: { type: integer, minimum: 0, maximum: 1440 }
+                weeklyMode: { $ref: "#/components/schemas/BulkWeeklyMode" }
+      responses:
+        "200":
+          description: Önizleme
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkPreviewResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/bulk-availability/preview/time-off:
+    post:
+      tags: [TeleHealth]
+      summary: Paket Q — seçilen doktorlara aynı izni önizle (yalnızca ADMIN)
+      description: Tarih/saatler her doktorun KENDİ saat diliminde uygulanır. İzinler yalnızca eklenir; aynısı varsa atlanır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [doctorIds, startDate, endDate, kind]
+              properties:
+                doctorIds: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                startDate: { type: string, format: date }
+                endDate: { type: string, format: date }
+                startTime: { type: string, nullable: true, example: "09:00", description: "Tam gün izinde null." }
+                endTime: { type: string, nullable: true, example: "17:00" }
+                kind: { type: string, enum: [VACATION, CONGRESS, SURGERY_DAY, OTHER] }
+                note: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "200":
+          description: Önizleme
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkPreviewResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/bulk-availability/previews/{previewId}/mode:
+    parameters:
+      - { name: previewId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [TeleHealth]
+      summary: Paket Q — önizlemede haftalık saat kipini değiştir (plan yeniden hesaplanır)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [weeklyMode]
+              properties:
+                weeklyMode: { $ref: "#/components/schemas/BulkWeeklyMode" }
+      responses:
+        "200":
+          description: Önizleme
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkPreviewResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/telehealth/bulk-availability/apply:
+    post:
+      tags: [TeleHealth]
+      summary: Paket Q — önizlemeyi uygula (tek transaction; yalnızca ADMIN)
+      description: >
+        Plan uygulamadan hemen önce yeniden hesaplanır; önizlemeden sonra veri değiştiyse
+        `409 BULK_PREVIEW_STALE`. Onaylı randevu çakışması varsa `acknowledgeConflicts: true`
+        olmadan `400 BULK_CONFLICT_ACK_REQUIRED`. Randevulara dokunulmaz. Değişiklik yoksa 422.
+        Audit: `telehealth.availability.bulk_import`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [previewId]
+              properties:
+                previewId: { type: string, format: uuid }
+                acknowledgeConflicts: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Uygulandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkAvailabilityOperation" }
+        "400": { description: "BULK_CONFLICT_ACK_REQUIRED" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "BULK_PREVIEW_STALE" }
+
+  /admin/telehealth/bulk-availability/operations:
+    get:
+      tags: [TeleHealth]
+      summary: Paket Q — son 20 toplu işlem (yalnızca ADMIN)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/BulkAvailabilityOperation" }
+
+  /admin/telehealth/bulk-availability/operations/{operationId}/undo:
+    parameters:
+      - { name: operationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [TeleHealth]
+      summary: Paket Q — toplu işlemi geri al (yalnızca ADMIN)
+      description: >
+        Haftalık saatler önceki hâline döner, bu işlemle eklenen izinler silinir. İşlemden sonra elle
+        değiştirilmiş saat ya da silinmiş izin varsa `409 BULK_UNDO_BLOCKED` (`details.changes`) ve hiçbir
+        şey değişmez. Zaten geri alınmışsa `409 CONFLICT`. Audit: `telehealth.availability.bulk_undo`.
+      responses:
+        "200":
+          description: Geri alındı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkAvailabilityOperation" }
+        "409": { description: "BULK_UNDO_BLOCKED ya da CONFLICT" }
+
   /doctor/me:
     get:
       tags: [TeleHealth]
@@ -20722,6 +20943,75 @@ components:
               endsAt: { type: string, format: date-time }
               patientName: { type: string }
               bookingNumber: { type: string, nullable: true }
+
+    BulkWeeklyMode:
+      type: string
+      enum: [replace, append]
+      default: replace
+      description: "Paket Q — replace: dosyadaki/seçilen doktorların haftalık saatleri tamamen değişir; append: yalnızca eklenir, mevcutla çakışma hata."
+
+    BulkPreviewResult:
+      type: object
+      description: Paket Q — toplu işlem önizlemesi. `valid=false` ise `preview` null ve `errors` satır numaralıdır.
+      required: [valid, errors, preview]
+      properties:
+        valid: { type: boolean }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer, nullable: true }
+              message: { type: string }
+        preview:
+          type: object
+          nullable: true
+          properties:
+            previewId: { type: string, format: uuid }
+            expiresAt: { type: string, format: date-time }
+            source: { type: string, enum: [CSV, TEMPLATE, TIME_OFF] }
+            fileName: { type: string, nullable: true }
+            rowCount: { type: integer }
+            weeklyMode: { $ref: "#/components/schemas/BulkWeeklyMode" }
+            doctors:
+              type: array
+              items:
+                type: object
+                description: "weekly: before/after/added/removed/unchanged aralıklar (null = haftalık saatlere dokunulmuyor). timeOff.toAdd notu içermez (yalnızca hasNote). conflicts: hasta adı yok, yalnızca randevu numarası."
+                properties:
+                  doctorId: { type: string }
+                  slug: { type: string }
+                  name: { type: string }
+                  timeZone: { type: string }
+                  weekly: { type: object, nullable: true }
+                  timeOff: { type: object }
+                  conflicts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        appointmentId: { type: string }
+                        bookingNumber: { type: string, nullable: true }
+                        startsAt: { type: string, format: date-time }
+                        endsAt: { type: string, format: date-time }
+                        patientTimeZone: { type: string, nullable: true }
+                        reason: { type: string, enum: [TIME_OFF, REMOVED_HOURS] }
+            untouchedDoctors: { type: array, items: { type: object } }
+            totals: { type: object }
+
+    BulkAvailabilityOperation:
+      type: object
+      description: Paket Q — toplu işlem kaydı (geri alma için önceki haftalık saatler ve eklenen izin id'leri sunucuda saklanır).
+      properties:
+        id: { type: string, format: uuid }
+        source: { type: string, enum: [CSV, TEMPLATE, TIME_OFF] }
+        fileName: { type: string, nullable: true }
+        rowCount: { type: integer }
+        doctorCount: { type: integer }
+        summary: { type: object }
+        actorEmail: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        undoneAt: { type: string, format: date-time, nullable: true }
 
     CreateDoctorTimeOffRequest:
       type: object
