@@ -9966,6 +9966,35 @@ paths:
                       data: { $ref: "#/components/schemas/BulkAvailabilityOperation" }
         "409": { description: "BULK_UNDO_BLOCKED ya da CONFLICT" }
 
+  /geo/hint:
+    get:
+      tags: [Public]
+      summary: Paket R — IP'den ülke kodu ve olası saat dilimi (yalnızca öneri)
+      description: >
+        Ziyaretçinin IP'sinden (geoip-lite, offline) YALNIZCA ISO ülke kodu ve o ülkenin olası IANA
+        dilimi döner; randevu ekranında saat dilimi ÖNERİSİ için kullanılır, otomatik değişiklik yapılmaz.
+        IP yanıtta yoktur, saklanmaz ve bu route'un istek logları kapalıdır. `Cache-Control: private, no-store`.
+        Hız sınırı: IP başına dakikada 20. Kimlik doğrulama gerekmez. Bilinmeyen/yerel IP için iki alan da null.
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control: { schema: { type: string, example: "private, no-store" } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [countryCode, timeZone]
+                        properties:
+                          countryCode: { type: string, nullable: true, example: "DE" }
+                          timeZone: { type: string, nullable: true, example: "Europe/Berlin" }
+        "429": { description: "RATE_LIMITED" }
+
   /doctor/me:
     get:
       tags: [TeleHealth]
