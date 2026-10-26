@@ -346,6 +346,9 @@ const DoctorRequestBaseSchema = z.object({
   isVerified: z.boolean().optional(),
   isActive: z.boolean().optional(),
   order: z.number().int().min(0).optional(),
+  // Paket P (İş 3) — kurucu işareti (tek kurucu; sunucu 409 ile doğrular) ve kadro katmanı.
+  isFounder: z.boolean().optional(),
+  rosterTier: z.number().int().min(1).max(9).nullable().optional(),
   // Opsiyonel panel kullanıcısı bağlantısı (§2.5) — `User.id`, `@@unique` ihlali `409 CONFLICT`.
   userId: z.string().uuid().nullable().optional(),
 });

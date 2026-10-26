@@ -4,6 +4,8 @@
  * (Faz 2) — buradaki anahtarlar YALNIZCA Faz 1 listesindeki dosyalarda tüketilir.
  */
 export const telehealthStrings = {
+  /** Paket P (İş 3) — kurucu doktor rozeti. */
+  founderBadge: "Founder",
   /** Paket P — doktor kartında en erken uygun randevu günü. */
   earliestShortLabel: "Earliest: {date}",
   /**

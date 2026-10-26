@@ -50,6 +50,7 @@ const SHAPE_OPTIONS: { value: FeaturedDoctorsImageShape; label: string }[] = [
 const LAYOUT_OPTIONS: { value: FeaturedDoctorsLayout; label: string }[] = [
   { value: "grid", label: "Izgara" },
   { value: "carousel", label: "Kaydırmalı" },
+  { value: "pyramid", label: "Piramit" },
 ];
 
 const SOURCE_OPTIONS: { value: FeaturedDoctorsSource; label: string }[] = [
@@ -169,7 +170,7 @@ export function FeaturedDoctorsBlockEditor({
 
   /** Izgaraya dönüşte backend 8 sınırını uygular — fazlası listeden çıkarılır. */
   function changeLayout(next: FeaturedDoctorsLayout) {
-    patchData(next === "grid" ? { layout: next, doctorIds: doctorIds.slice(0, FEATURED_DOCTORS_MAX) } : { layout: next });
+    patchData(next === "carousel" ? { layout: next } : { layout: next, doctorIds: doctorIds.slice(0, featuredDoctorsMax(next)) });
   }
 
   const doctorById = new Map((doctors ?? []).map((doctor) => [doctor.id, doctor]));
@@ -229,7 +230,9 @@ export function FeaturedDoctorsBlockEditor({
           <p className="text-xs text-foreground/60">
             {layout === "carousel"
               ? `Kaydırmalı: masaüstünde 4, tablette 2–3, mobilde ~1 kart görünür; en fazla ${maxDoctors} doktor seçilebilir.`
-              : `Izgara: en fazla ${FEATURED_DOCTORS_MAX} doktor; düzen ızgaraya dönünce fazlası listeden çıkarılır.`}
+              : layout === "pyramid"
+                ? `Piramit: kurucu (doktor formundaki "Kurucu" işareti) üstte ortada, diğerleri altında sıralanır; en fazla ${maxDoctors} doktor. Kurucu listede yoksa ızgara gibi görünür.`
+                : `Izgara: en fazla ${FEATURED_DOCTORS_MAX} doktor; düzen ızgaraya dönünce fazlası listeden çıkarılır.`}
           </p>
         </div>
       )}

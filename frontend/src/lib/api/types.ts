@@ -3895,6 +3895,10 @@ export interface DoctorProfile {
   availability: DoctorAvailabilityRule[];
   /** Paket P — public uçlarda: önümüzdeki 30 gündeki en erken uygun slot (izinler düşülmüş); yoksa null. */
   earliestAvailableAt?: string | null;
+  /** Paket P (İş 3) — WM Health kurucusu (aynı anda tek doktor). */
+  isFounder?: boolean;
+  /** Paket P (İş 3) — kadro katmanı (1 = en üst); opsiyonel. */
+  rosterTier?: number | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -3938,6 +3942,9 @@ export interface CreateDoctorRequest {
   order?: number;
   /** Opsiyonel panel kullanıcısı bağlantısı (§2.5) — `@@unique` ihlali `409 CONFLICT`. */
   userId?: string | null;
+  /** Paket P (İş 3) — kurucu (tek; başka kurucu varsa 409) ve kadro katmanı (1–9). */
+  isFounder?: boolean;
+  rosterTier?: number | null;
 }
 
 export type UpdateDoctorRequest = Partial<CreateDoctorRequest>;

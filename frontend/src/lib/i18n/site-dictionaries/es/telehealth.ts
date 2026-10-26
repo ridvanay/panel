@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  founderBadge: "Fundador",
   earliestShortLabel: "Primera cita: {date}",
   emergencyNoticeSummary: "No apto para urgencias. En una emergencia, llame al número de emergencias local.",
   emergencyNoticeFull:

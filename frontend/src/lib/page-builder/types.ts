@@ -664,7 +664,10 @@ export interface SpecialtyCardsBlock extends BaseNode {
 export const FEATURED_DOCTORS_MAX = 8;
 /** Paket D (2026-10-19) — kaydırmalı (carousel) düzende seçilebilecek en fazla doktor. */
 export const FEATURED_DOCTORS_CAROUSEL_MAX = 24;
-export type FeaturedDoctorsLayout = "grid" | "carousel";
+/** Paket P (İş 3) — piramit: kurucu + en fazla 3 sıra × 4 doktor. */
+export const FEATURED_DOCTORS_PYRAMID_MAX = 13;
+/** Paket P — `pyramid`: kurucu üstte ortada, diğerleri altında; kurucu yoksa `grid` gibi davranır. */
+export type FeaturedDoctorsLayout = "grid" | "carousel" | "pyramid";
 /** `selected`: `doctorIds` sırası; `all`: tüm aktif (arşivsiz) doktorlar, doktor kaydı sırasıyla (`seq`). */
 export type FeaturedDoctorsSource = "selected" | "all";
 export const FEATURED_DOCTORS_COLUMNS = [3, 4] as const;
@@ -700,7 +703,7 @@ export interface FeaturedDoctorsBlock extends BaseNode {
 }
 
 export function featuredDoctorsMax(layout: FeaturedDoctorsLayout | undefined): number {
-  return layout === "carousel" ? FEATURED_DOCTORS_CAROUSEL_MAX : FEATURED_DOCTORS_MAX;
+  return layout === "carousel" ? FEATURED_DOCTORS_CAROUSEL_MAX : layout === "pyramid" ? FEATURED_DOCTORS_PYRAMID_MAX : FEATURED_DOCTORS_MAX;
 }
 
 /**

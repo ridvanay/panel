@@ -2299,6 +2299,10 @@ model DoctorProfile {
   verifiedAt DateTime?
   isActive   Boolean   @default(true)
   order      Int       @default(0)
+  /// Paket P (İş 3) — WM Health kurucusu (aynı anda yalnızca bir doktor; sunucuda doğrulanır).
+  isFounder   Boolean @default(false)
+  /// Paket P (İş 3) — kadro katmanı (1 = en üst); opsiyonel, piramit sıralamasında `order` ile birlikte.
+  rosterTier  Int?
   /// 2026-10-18 (Paket B2) — arşiv damgası. Randevu geçmişi olan doktor `Appointment.doctor`
   /// `onDelete: Restrict` nedeniyle silinemez; arşivlenir. Arşivli doktor public yüzeyde, sitemap'te
   /// ve sayaçlarda GÖRÜNMEZ; geçmiş randevu/fatura/kayıt bozulmaz. Arşivleme `isActive=false` da yapar.

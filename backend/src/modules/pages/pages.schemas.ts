@@ -932,6 +932,8 @@ const TextBlockSchema = z
 export const FEATURED_DOCTORS_MAX = 8;
 /** Paket D (2026-10-19) — carousel düzeninde sınır 24; `grid` (varsayılan) için 8 aynen geçerli. */
 export const FEATURED_DOCTORS_CAROUSEL_MAX = 24;
+/** Paket P (İş 3) — piramit: kurucu + en fazla 3 sıra × 4 doktor. */
+export const FEATURED_DOCTORS_PYRAMID_MAX = 13;
 const FeaturedDoctorsLocaleContentSchema = z.object({
   title: z.string().trim().max(120).default(""),
   subtitle: z.string().trim().max(300).default(""),
@@ -951,12 +953,14 @@ const FeaturedDoctorsBlockDataSchema = z.object({
   imageShape: z.enum(["circle", "oval", "square"]).default("oval"),
   showAllButton: z.boolean().default(true),
   // Paket D — opsiyonel, varsayılan YOK: eski kayıtlar parse sonrası birebir aynı kalır.
-  layout: z.enum(["grid", "carousel"]).optional(),
+  // Paket P (İş 3) — "pyramid": kurucu üstte, diğerleri altında (kurucu yoksa grid gibi davranır).
+  layout: z.enum(["grid", "carousel", "pyramid"]).optional(),
   source: z.enum(["selected", "all"]).optional(),
   autoplay: z.boolean().optional(),
 }).superRefine((data, ctx) => {
-  if (data.layout !== "carousel" && data.doctorIds.length > FEATURED_DOCTORS_MAX) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["doctorIds"], message: `En fazla ${FEATURED_DOCTORS_MAX} doktor seçilebilir.` });
+  const max = data.layout === "carousel" ? FEATURED_DOCTORS_CAROUSEL_MAX : data.layout === "pyramid" ? FEATURED_DOCTORS_PYRAMID_MAX : FEATURED_DOCTORS_MAX;
+  if (data.doctorIds.length > max) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["doctorIds"], message: `En fazla ${max} doktor seçilebilir.` });
   }
 });
 const FeaturedDoctorsBlockSchema = z.object({

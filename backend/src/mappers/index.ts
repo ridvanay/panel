@@ -1737,6 +1737,8 @@ function deriveExperienceYears(practiceStartYear: number | null): number | null 
 export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorProfileDto {
   return {
     id: doctor.id,
+    isFounder: doctor.isFounder,
+    rosterTier: doctor.rosterTier,
     userId: doctor.userId,
     specialtyId: doctor.specialtyId,
     specialty: doctor.specialty ? toSpecialtyDto(doctor.specialty) : null,

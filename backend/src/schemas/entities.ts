@@ -2512,6 +2512,9 @@ export type DoctorSocialLinkDto = z.infer<typeof DoctorSocialLinkSchema>;
 
 export const DoctorProfileSchema = z.object({
   id: z.string().uuid(),
+  /** Paket P (İş 3) — kurucu doktor (tek) ve opsiyonel kadro katmanı (1 = en üst). */
+  isFounder: z.boolean().optional(),
+  rosterTier: z.number().int().nullable().optional(),
   // §2.5 — opsiyonel panel kullanıcısı bağlantısı. Şablon bu alanı DAİMA null bırakır.
   userId: z.string().uuid().nullable(),
   specialtyId: z.string().uuid().nullable(),

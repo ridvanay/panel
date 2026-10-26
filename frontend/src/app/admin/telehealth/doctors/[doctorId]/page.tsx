@@ -56,6 +56,9 @@ const formSchema = z.object({
   currency: z.string().min(1),
   isActive: z.boolean(),
   isVerified: z.boolean(),
+  // Paket P (İş 3) — kurucu işareti (tek kurucu; sunucu 409) + opsiyonel kadro katmanı (boş = yok).
+  isFounder: z.boolean(),
+  rosterTier: z.string().regex(/^[1-9]?$/, "1–9 arasında bir sayı girin ya da boş bırakın."),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -130,6 +133,8 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         currency: doc.currency,
         isActive: doc.isActive,
         isVerified: doc.isVerified,
+        isFounder: doc.isFounder ?? false,
+        rosterTier: doc.rosterTier != null ? String(doc.rosterTier) : "",
       });
       setLoadError(null);
     } catch (err) {
@@ -164,6 +169,8 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         avatarMediaId: avatar?.id ?? null,
         isActive: values.isActive,
         isVerified: values.isVerified,
+        isFounder: values.isFounder,
+        rosterTier: values.rosterTier ? Number(values.rosterTier) : null,
         socialLinks,
       });
       setDoctor(updated);
@@ -426,6 +433,24 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                   render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} aria-label="Doktor doğrulanmış mı" />}
                 />
               </div>
+
+              {/* Paket P (İş 3) — kurucu ve kadro katmanı (Öne Çıkan Doktorlar "Piramit" + /doctors sıralaması). */}
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Kurucu (Founder)</p>
+                  <p className="text-xs text-foreground/60">
+                    Aynı anda yalnızca bir doktor kurucu olabilir. Anasayfa “Piramit” düzeninde üstte, doktorlar sayfasında en üstte ayrı kartla gösterilir.
+                  </p>
+                </div>
+                <Controller
+                  control={control}
+                  name="isFounder"
+                  render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} aria-label="Kurucu doktor mu" />}
+                />
+              </div>
+              <Field id="doctor-roster-tier" label="Kadro katmanı (isteğe bağlı)" hint="1 = en üst. Piramitte diğer doktorlar katmana, sonra sıraya göre dizilir." error={errors.rosterTier?.message}>
+                {(inputProps) => <Input {...inputProps} inputMode="numeric" maxLength={1} className="w-24" {...register("rosterTier")} />}
+              </Field>
 
               <Button type="submit" loading={isSubmitting}>
                 Kaydet

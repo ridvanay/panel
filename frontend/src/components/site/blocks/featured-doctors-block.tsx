@@ -59,6 +59,31 @@ export function resolveFeaturedDoctors(doctors: DoctorProfile[], data: FeaturedD
   return pickFeaturedDoctors(doctors, (data.doctorIds ?? []).slice(0, featuredDoctorsMax(data.layout)));
 }
 
+/**
+ * Paket P (İş 3) — piramit yerleşimi: kurucu (gösterilen listede varsa) üstte, diğerleri altında.
+ * "Tüm doktorlar" kaynağında diğerleri kadro katmanı → `order` sırasıyla; seçili kaynakta seçim sırası
+ * korunur. Kurucu listede yoksa `null` → blok ızgara gibi davranır.
+ */
+export function splitFounderPyramid(
+  doctors: DoctorProfile[],
+  source: FeaturedDoctorsBlock["data"]["source"]
+): { founder: DoctorProfile; others: DoctorProfile[] } | null {
+  const founder = doctors.find((doctor) => doctor.isFounder);
+  if (!founder) return null;
+  const others = doctors.filter((doctor) => doctor.id !== founder.id);
+  if (source === "all") others.sort((a, b) => (a.rosterTier ?? 99) - (b.rosterTier ?? 99) || a.order - b.order);
+  return { founder, others };
+}
+
+/** `bio`'nun ilk cümlesi (kurucu kartındaki kısa tanıtım); en fazla ~220 karakter. */
+export function firstSentence(text: string | null | undefined, max = 220): string {
+  const clean = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const match = clean.match(/^(.+?[.!?])(\s|$)/);
+  const sentence = match ? match[1]! : clean;
+  return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}…` : sentence;
+}
+
 /** Kart alt satırı: `subSpecialty` doluysa o, değilse birincil uzmanlığın adı. */
 export function featuredDoctorSpecialtyText(doctor: DoctorProfile): string {
   return doctor.subSpecialty?.trim() || doctor.specialty?.name || "";
@@ -89,6 +114,7 @@ export async function FeaturedDoctorsBlockView({
   const allButtonLabel = buttonLabel || dict.about.viewAllDoctorsCta;
   const shape = data.imageShape ?? "oval";
   const renderCard = (doctor: DoctorProfile) => <FeaturedDoctorCard doctor={doctor} href={localizedHref(`/doctors/${doctor.slug}`)} shape={shape} />;
+  const pyramid = data.layout === "pyramid" ? splitFounderPyramid(doctors, data.source) : null;
 
   return (
     <section className={cn("featured-doctors", chrome === "page" && "px-4 py-16 sm:px-6")}>
@@ -112,6 +138,33 @@ export async function FeaturedDoctorsBlockView({
             }}
             items={doctors.map((doctor) => ({ key: doctor.id, node: renderCard(doctor) }))}
           />
+        ) : pyramid ? (
+          // Paket P — piramit: kurucu üstte ortada (mobilde tam genişlik), ince ayraç, diğerleri altında
+          // ortalanmış sıralar (masaüstü 3/4, mobil 2 sütun; son sıra da ortalanır). RTL'de flex aynalanır.
+          <div className="flex flex-col items-center" data-testid="featured-doctors-pyramid">
+            <div className="w-full sm:max-w-md">
+              <FounderCard
+                doctor={pyramid.founder}
+                href={localizedHref(`/doctors/${pyramid.founder.slug}`)}
+                badge={dict.telehealth.founderBadge}
+              />
+            </div>
+            {pyramid.others.length > 0 && (
+              <>
+                <span aria-hidden="true" className="my-3 h-10 w-px bg-border" data-testid="pyramid-connector" />
+                <ul className="flex w-full flex-wrap justify-center gap-6">
+                  {pyramid.others.map((doctor) => (
+                    <li
+                      key={doctor.id}
+                      className={cn("flex min-w-0 w-[calc(50%-12px)]", data.columns === 3 ? "lg:w-[calc(33.333%-16px)]" : "lg:w-[calc(25%-18px)]")}
+                    >
+                      {renderCard(doctor)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
         ) : (
           <ul className={cn("grid grid-cols-1 gap-6 sm:grid-cols-2", DESKTOP_COLUMNS_CLASS[data.columns] ?? DESKTOP_COLUMNS_CLASS[4])}>
             {doctors.map((doctor) => (
@@ -133,6 +186,36 @@ export async function FeaturedDoctorsBlockView({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Paket P (İş 3) — kurucu kartı: daha büyük oval görsel, "Kurucu" rozeti (6 dil), unvan ve ad,
+ * uzmanlıklar ve `bio`'nun ilk cümlesi. Sade; organizasyon şeması değil.
+ */
+function FounderCard({ doctor, href, badge }: { doctor: DoctorProfile; href: string; badge: string }) {
+  const displayName = `${doctor.title} ${doctor.fullName}`.trim();
+  const specialties = [doctor.specialty?.name, ...(doctor.additionalSpecialties ?? []).map((s) => s.name)].filter(Boolean).join(" · ");
+  const intro = firstSentence(doctor.bio);
+  return (
+    <Link
+      href={href}
+      aria-label={`${badge}: ${displayName}`}
+      data-testid="featured-founder-card"
+      className="group flex w-full flex-col items-center rounded-[var(--site-radius)] px-4 py-6 text-center transition-shadow duration-300 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]"
+    >
+      <span className={cn("relative block w-full max-w-[260px] overflow-hidden bg-muted", SHAPE_CLASS.oval)}>
+        <span className="block h-full w-full [&_img]:object-top">
+          <DoctorAvatarMedia doctor={doctor} sizeClassName="h-full w-full" textClassName="text-5xl" sizes="260px" />
+        </span>
+      </span>
+      <span className="mt-4 inline-flex items-center rounded-full bg-[var(--site-primary)]/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--site-primary)]">
+        {badge}
+      </span>
+      <span className="mt-3 text-xl font-semibold leading-7 text-foreground group-hover:text-[var(--site-primary)]">{displayName}</span>
+      {specialties && <span className="mt-1 text-sm text-foreground/65">{specialties}</span>}
+      {intro && <span className="mt-3 max-w-prose text-sm leading-6 text-foreground/75">{intro}</span>}
+    </Link>
   );
 }
 

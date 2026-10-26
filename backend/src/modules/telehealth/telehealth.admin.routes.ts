@@ -129,6 +129,20 @@ function assertPracticeStartYearNotFuture(practiceStartYear: number | null | und
   }
 }
 
+/**
+ * Paket P (İş 3) — aynı anda yalnızca BİR kurucu doktor olabilir. Başka bir doktor zaten kurucuysa
+ * `409` (sessizce devralma yok: admin önce eskisinin işaretini kaldırır). `exceptId` güncellenen doktor.
+ */
+async function assertNoOtherFounder(app: FastifyInstance, exceptId: string | null): Promise<void> {
+  const other = await app.prisma.doctorProfile.findFirst({
+    where: { isFounder: true, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    select: { title: true, fullName: true },
+  });
+  if (other) {
+    throw new ConflictError(`Zaten bir kurucu doktor var (${other.title} ${other.fullName}). Önce onun kurucu işaretini kaldırın.`);
+  }
+}
+
 /** [DPI] §1.1/§1.2 — `aboutHtml` `lib/html-sanitize.ts`'ten geçer; temizlik SONRASI boşsa `null`. */
 function sanitizeAboutHtml(aboutHtml: string | null | undefined): string | null | undefined {
   if (aboutHtml === undefined) return undefined;
@@ -309,6 +323,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       assertUserLinkChangeAllowed(request);
       if (body.avatarMediaId) await assertImageMedia(app, body.avatarMediaId);
       assertPracticeStartYearNotFuture(body.practiceStartYear);
+      if (body.isFounder === true) await assertNoOtherFounder(app, null);
 
       const doctor = await app.prisma.doctorProfile.create({
         data: {
@@ -334,6 +349,8 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           isVerified: body.isVerified ?? false,
           isActive: body.isActive ?? true,
           order: body.order ?? 0,
+          isFounder: body.isFounder ?? false,
+          rosterTier: body.rosterTier ?? null,
           userId: body.userId ?? null,
         },
       });
@@ -427,6 +444,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       } = request.body;
       if (avatarMediaId) await assertImageMedia(app, avatarMediaId);
       assertPracticeStartYearNotFuture(practiceStartYear);
+      if (rest.isFounder === true) await assertNoOtherFounder(app, existing.id);
 
       await app.prisma.doctorProfile.update({
         where: { id: request.params.doctorId },

@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  founderBadge: "Основатель",
   earliestShortLabel: "Ближайшая: {date}",
   emergencyNoticeSummary: "Не для экстренных случаев. В экстренной ситуации звоните в местную службу спасения.",
   emergencyNoticeFull:
