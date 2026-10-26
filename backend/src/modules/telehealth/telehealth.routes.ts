@@ -47,6 +47,8 @@ import { hashToken } from "../../lib/tokens";
 import { timingSafeEqualHex } from "../../lib/api-key";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { generateAvailableSlots, parseIsoCalendarDate } from "./lib/availability";
+import { findTimeOffInWindow, subtractTimeOff } from "./lib/time-off";
+import { computeEarliestAvailability } from "./lib/earliest-availability";
 import { bookAppointment, confirmBookingPayment, createBooking } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
@@ -224,9 +226,14 @@ export async function telehealthRoutes(app: FastifyInstance) {
       // Paket O — uzmanlık adları da aktif dilde. 2026-10-24 — kanonik dil EN olduğundan doktor
       // çevirisi de varsayılan dil (TR) DAHİL her dilde uygulanır; yoksa kanonik (EN) metin.
       const contentLocale = locale ? resolveContentLocaleCode(await getLocaleSet(app), locale) : undefined;
+      // Paket P — kartlarda "En erken: 28 Eki" (izinler düşülmüş, tek sorguda).
+      const earliest = await computeEarliestAvailability(app, rows);
       return reply.send(
         ok(
-          rows.map((row) => toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(row, contentLocale), contentLocale))),
+          rows.map((row) => ({
+            ...toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(row, contentLocale), contentLocale)),
+            earliestAvailableAt: earliest.get(row.id) ?? null,
+          })),
           buildPageMeta(rows, limit)
         )
       );
@@ -244,7 +251,13 @@ export async function telehealthRoutes(app: FastifyInstance) {
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
       const { locale } = request.query;
       const contentLocale = locale ? resolveContentLocaleCode(await getLocaleSet(app), locale) : undefined;
-      return reply.send(ok(toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, contentLocale), contentLocale))));
+      const earliest = await computeEarliestAvailability(app, [doctor]);
+      return reply.send(
+        ok({
+          ...toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, contentLocale), contentLocale)),
+          earliestAvailableAt: earliest.get(doctor.id) ?? null,
+        })
+      );
     }
   );
 
@@ -280,7 +293,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
         select: { startsAt: true },
       });
 
-      const slots = generateAvailableSlots({
+      const generated = generateAvailableSlots({
         timeZone: doctor.timeZone,
         sessionDurationMin: doctor.sessionDurationMin,
         rules: doctor.availability,
@@ -289,6 +302,10 @@ export async function telehealthRoutes(app: FastifyInstance) {
         now: new Date(),
         bookedStartTimesMs: new Set(bookedAppointments.map((row) => row.startsAt.getTime())),
       });
+      // Paket P (İş 2) — izin/istisna aralıklarıyla kesişen slotlar listeden düşülür (gün "müsait değil"
+      // görünür; nedeni hastaya gösterilmez). Haftalık kural, dolu randevu ve geçmiş saat kuralları aynen.
+      const timeOff = await findTimeOffInWindow(app, doctor.id, new Date(rangeStartMs), new Date(rangeEndMs));
+      const slots = subtractTimeOff(generated, timeOff);
 
       return reply.send(
         ok(slots.map((slot) => ({ startsAt: slot.startsAt.toISOString(), endsAt: slot.endsAt.toISOString(), available: slot.available })))

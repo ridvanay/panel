@@ -276,12 +276,12 @@ export function DualDateTimeSummary({ iso, timeZone, intlLocale = "tr-TR", class
 export function DualTimeInline({
   iso,
   timeZone,
-  intlLocale,
+  intlLocale = "tr-TR",
   className,
 }: {
   iso: string;
   timeZone: string | null | undefined;
-  intlLocale: string;
+  intlLocale?: string;
   className?: string;
 }) {
   const t = usePortalStrings().t.schedule;

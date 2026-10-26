@@ -22,6 +22,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { WeeklyAvailabilityEditor } from "@/components/admin/telehealth/weekly-availability-editor";
+import { TimeOffManager } from "@/components/telehealth/time-off-manager";
 import { DoctorSocialLinksEditor } from "@/components/site/telehealth/doctor-social-links-editor";
 import { DoctorAdditionalSpecialtiesField } from "@/components/admin/telehealth/doctor-additional-specialties-field";
 import { DoctorDeleteOrArchiveDialog } from "@/components/admin/telehealth/doctor-delete-or-archive-dialog";
@@ -455,6 +456,17 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
             <Button type="button" className="mt-4" loading={savingAvailability} onClick={() => void saveAvailability()}>
               Müsaitliği Kaydet
             </Button>
+
+            {/* Paket P (İş 2) — haftalık saatler ve izinler aynı kartta: doktor adına izin ekleme. */}
+            <div className="mt-6 border-t border-border pt-6">
+              <TimeOffManager
+                doctorTimeZone={doctor.timeZone}
+                list={() => telehealthApi.listDoctorTimeOff(doctor.id)}
+                create={(input) => telehealthApi.createDoctorTimeOff(doctor.id, input)}
+                remove={(id) => telehealthApi.deleteDoctorTimeOff(doctor.id, id)}
+                errorMessage={friendlyErrorMessage}
+              />
+            </div>
           </Card>
         </>
       ) : null}

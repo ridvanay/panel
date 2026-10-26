@@ -78,6 +78,12 @@ export interface ContactPageFormProps {
   defaultPhoneCountry: string;
   /** Damga alındıktan sonra gönderim öncesi asgari bekleme — yalnızca testlerde değiştirilir. */
   minTokenAgeMs?: number;
+  /**
+   * Paket P — doktor sayfasından "talep bırakın" ile gelindiğinde ön doldurma (ziyaretçi değiştirebilir).
+   * Gönderim mevcut akıştan geçer; CRM talep kaydı oradan otomatik oluşur.
+   */
+  initialMessage?: string;
+  initialTreatment?: string;
 }
 
 function emptyValues(defaultPhoneCountry: string): FormValues {
@@ -180,10 +186,16 @@ export function ContactPageForm({
   responseTime,
   defaultPhoneCountry,
   minTokenAgeMs = MIN_TOKEN_AGE_MS,
+  initialMessage,
+  initialTreatment,
 }: ContactPageFormProps) {
   const idBase = useId();
   const id = (name: string) => `${idBase}-${name}`;
-  const [values, setValues] = useState<FormValues>(() => emptyValues(defaultPhoneCountry));
+  const [values, setValues] = useState<FormValues>(() => ({
+    ...emptyValues(defaultPhoneCountry),
+    ...(initialMessage ? { message: initialMessage } : {}),
+    ...(initialTreatment ? { treatment: initialTreatment } : {}),
+  }));
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);

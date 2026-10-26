@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  earliestShortLabel: "Ближайшая: {date}",
   emergencyNoticeSummary: "Не для экстренных случаев. В экстренной ситуации звоните в местную службу спасения.",
   emergencyNoticeFull:
     "Платформа не предназначена для экстренных случаев и не заменяет неотложную медицинскую помощь. В экстренной ситуации звоните по местному номеру экстренных служб (112 в Турции и ЕС, 911 в США и Канаде, 999 в Великобритании).",

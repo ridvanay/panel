@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  earliestShortLabel: "En erken: {date}",
   emergencyNoticeSummary: "Acil durumlar için kullanılamaz. Acil bir durumda yerel acil numarayı arayın.",
   emergencyNoticeFull:
     "Bu platform acil durumlar için kullanılamaz ve acil tıbbi bakımın yerine geçmez. Acil bir durumda bulunduğunuz ülkenin acil numarasını arayın (Türkiye ve AB'de 112).",

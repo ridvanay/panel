@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  earliestShortLabel: "Primera cita: {date}",
   emergencyNoticeSummary: "No apto para urgencias. En una emergencia, llame al número de emergencias local.",
   emergencyNoticeFull:
     "Esta plataforma no está destinada a urgencias y no sustituye a la atención médica de emergencia. En una emergencia, llame al número de emergencias local (112 en Turquía y la UE, 911 en EE. UU. y Canadá, 999 en el Reino Unido).",

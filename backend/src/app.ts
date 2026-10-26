@@ -73,6 +73,7 @@ import { telehealthCheckoutRoutes } from "./modules/telehealth/telehealth.checko
 import { telehealthDemoPaymentRoutes } from "./modules/telehealth/telehealth.demo-payment.routes";
 import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
 import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
+import { adminDoctorTimeOffRoutes, doctorScheduleRoutes } from "./modules/telehealth/telehealth.time-off.routes";
 import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recording.routes";
 import { telehealthRecordingAccessRoutes } from "./modules/telehealth/telehealth.recording-access.routes";
 import { telehealthEgressWebhookRoutes } from "./modules/telehealth/telehealth.egress-webhook.routes";
@@ -330,6 +331,8 @@ export function buildApp() {
       api.register(telehealthIdentityRoutes);
       api.register(adminTelehealthSpecialtiesRoutes, { prefix: "/admin/telehealth/specialties" });
       api.register(adminTelehealthDoctorsRoutes, { prefix: "/admin/telehealth/doctors" });
+      // Paket P (İş 2) — doktor adına izin/istisna yönetimi.
+      api.register(adminDoctorTimeOffRoutes, { prefix: "/admin/telehealth/doctors" });
       api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });
       // Paket C — kalite kontrol dinleyicisi (YALNIZCA ADMIN + 2FA). Ayrı dosya, aynı prefix.
       api.register(adminTelehealthQaListenerRoutes, { prefix: "/admin/telehealth/appointments" });
@@ -345,6 +348,8 @@ export function buildApp() {
       // [TCT] §9.7.7 KARAR K — doktor/hasta portalları. Panel DEĞİLDİR (`requirePanelAccess()`
       // KULLANILMAZ); doktor tarafı KENDİ 2FA kapısını route içinde uygular.
       api.register(telehealthDoctorPortalRoutes, { prefix: "/doctor" });
+      // Paket P (İş 2) — doktorun kendi haftalık saatleri + izinleri (tek ekran).
+      api.register(doctorScheduleRoutes, { prefix: "/doctor" });
       api.register(telehealthPatientPortalRoutes, { prefix: "/patient" });
 
       // [ASD] §3.5 — Canlı Destek Masası. `telehealth.notifications.routes.ts`'in ayrık-dosya

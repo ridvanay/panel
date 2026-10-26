@@ -10,7 +10,10 @@ import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { SlotAvailabilityLegend } from "@/components/site/telehealth/slot-availability-legend";
-import { DualSlotLabel, TimeZoneBar, dualSlotAriaTime } from "@/components/site/telehealth/dual-time";
+import { DualSlotLabel, LtrTime, TimeZoneBar, dualSlotAriaTime } from "@/components/site/telehealth/dual-time";
+import { computeDayStatuses, earliestAvailableSlot, formatDayRange, formatMinuteOfDay, weeklyHoursInTimeZone, type WeeklyRule } from "@/lib/doctor-schedule";
+import { TURKEY_TIME_ZONE } from "@/lib/dual-time";
+import { formatDayLabel } from "@/lib/telehealth-format";
 import { useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Switch } from "@/components/ui/switch";
@@ -41,6 +44,10 @@ interface AvailabilityCalendarProps {
   initialSlots: AvailabilitySlot[];
   /** `booking-wizard.tsx`'ten gelen 409 (slot çakışması) bildirimi — bu bileşenin KENDİ ay-getirme hatasından AYRI. */
   conflictNotice?: string | null;
+  /** Paket P — doktorun haftalık kuralları (hastanın diliminde özet için). */
+  weeklyRules?: WeeklyRule[];
+  /** Paket P — yakın tarihte hiç slot yoksa "talep bırakın" butonunun hedefi (iletişim formu, doktor bilgisiyle). */
+  requestHref?: string;
 }
 
 /**
@@ -148,7 +155,7 @@ function mergeSlots(prev: AvailabilitySlot[], fetched: AvailabilitySlot[]): Avai
   return merged;
 }
 
-export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice }: AvailabilityCalendarProps) {
+export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice, weeklyRules, requestHref }: AvailabilityCalendarProps) {
   // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
   const auth = useAuthOptional();
@@ -207,6 +214,25 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
     }
     return set;
   }, [dayItemsByKey]);
+
+  // Paket P (İş 2) — gün durumları: müsait (uygun saat sayısıyla) / dolu / müsait değil (slot yok —
+  // doktor hizmet vermiyor ya da izinli; nedeni hastaya gösterilmez).
+  const dayStatuses = useMemo(() => computeDayStatuses(slots, displayTimeZone, now), [slots, displayTimeZone, now]);
+  const earliestSlot = useMemo(() => earliestAvailableSlot(slots), [slots]);
+  // İlk 30 günlük pencerede (sunucudan gelen) hiç uygun saat yoksa boş takvim yerine talep yönlendirmesi.
+  const noUpcomingAvailability = !initialSlots.some((slot) => slot.available) && !slots.some((slot) => slot.available);
+  const weeklySummary = useMemo(
+    () => (weeklyRules && visitorTimeZone ? weeklyHoursInTimeZone(weeklyRules, doctorTimeZone, visitorTimeZone, new Date(now)) : []),
+    [weeklyRules, visitorTimeZone, doctorTimeZone, now]
+  );
+
+  function goToEarliest() {
+    if (!earliestSlot) return;
+    const key = formatDayKey(earliestSlot.startsAt, displayTimeZone);
+    const [y, m] = key.split("-").map(Number);
+    setViewMonth({ year: y!, month0: m! - 1 });
+    setSelectedDayKey(key);
+  }
 
   const earliestKey = useMemo(() => {
     const keys = Array.from(availableDayKeySet).sort();
@@ -307,10 +333,56 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
             Mount öncesi (SSR) dilim bilinmez → hidrasyon güvenli "…" (§4.2). */}
         <TimeZoneBar timeZone={visitorTimeZone} detectedTimeZone={detectedTimeZone} onChange={setPatientTimeZone} />
 
-        {slots.length === 0 && <p className="text-sm text-foreground/60">{t.calendar.noUpcomingSlots}</p>}
+        {/* Paket P — en erken uygun randevu kısayolu (tıklanınca o güne gider) + haftalık saat özeti. */}
+        {!noUpcomingAvailability && earliestSlot && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="earliest-shortcut">
+            <button
+              type="button"
+              onClick={goToEarliest}
+              className="inline-flex flex-wrap items-center gap-x-1.5 rounded-[var(--site-radius)] border border-primary/30 bg-primary/5 px-3 py-1.5 text-start font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            >
+              <span>{t.schedule.earliestShortcut}</span>
+              <LtrTime>
+                {fmt(t.schedule.earliestValue, {
+                  date: formatDayLabel(earliestSlot.startsAt, displayTimeZone, intlLocale),
+                  time: formatTime(earliestSlot.startsAt, displayTimeZone, intlLocale),
+                  turkeyTime: formatTime(earliestSlot.startsAt, TURKEY_TIME_ZONE, intlLocale),
+                })}
+              </LtrTime>
+            </button>
+            {weeklySummary.length > 0 && (
+              <span className="text-xs text-foreground/60" data-testid="weekly-hours">
+                {weeklySummary
+                  .map((g) =>
+                    fmt(t.schedule.weeklyHours, {
+                      days: formatDayRange(g.days, intlLocale),
+                      from: formatMinuteOfDay(g.fromMinute),
+                      to: formatMinuteOfDay(g.toMinute),
+                    })
+                  )
+                  .join(" · ")}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Paket P — önümüzdeki 30 günde hiç uygun saat yoksa boş takvim yerine talep yönlendirmesi. */}
+        {noUpcomingAvailability && (
+          <div className="rounded-[var(--site-radius)] border border-dashed border-border bg-muted/40 p-5 text-center" data-testid="no-slots-request">
+            <p className="text-sm text-foreground/80">{t.schedule.noSlotsTitle}</p>
+            {requestHref && (
+              <a
+                href={requestHref}
+                className="mt-3 inline-flex items-center rounded-[var(--site-radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              >
+                {t.schedule.noSlotsCta}
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
-      {slots.length > 0 && (
+      {!noUpcomingAvailability && slots.length > 0 && (
         <>
           {/* TAKVİM KARTI — `lg:col-span-4`. Legend ARTIK burada (task madde 2 — takvim kartının
               hemen üstünde, kompakt), üst meta bloğunda DEĞİL. */}
@@ -395,7 +467,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                         <button
                           key={dayKey}
                           type="button"
-                          aria-label={`${fmt(t.calendar.cellAvailable, { date: datePart })}${isEarliest ? t.calendar.cellEarliestSuffix : ""}${isWeekend ? t.calendar.cellWeekendSuffix : ""}`}
+                          aria-label={`${fmt(t.calendar.cellAvailable, { date: datePart })}${isEarliest ? t.calendar.cellEarliestSuffix : ""}${isWeekend ? t.calendar.cellWeekendSuffix : ""}, ${fmt(t.schedule.slotsBadgeAria, { count: dayStatuses.get(dayKey)?.status === "available" ? (dayStatuses.get(dayKey) as { availableCount: number }).availableCount : 0 })}`}
                           onClick={() => setSelectedDayKey(dayKey)}
                           className={cn(
                             "flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:text-base",
@@ -410,19 +482,48 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                               {t.calendar.earliest}
                             </span>
                           ) : (
+                            // Paket P — uygun saat sayısı küçük rozetle.
                             <span
                               aria-hidden="true"
-                              className={cn("h-1 w-1 rounded-full", isWeekend ? "bg-[var(--site-secondary)]" : "bg-primary")}
-                            />
+                              data-testid="day-slot-count"
+                              className={cn(
+                                "rounded-full px-1 text-[9px] font-semibold leading-tight",
+                                isWeekend ? "bg-[var(--site-secondary)]/20 text-foreground/70" : "bg-primary/15 text-primary"
+                              )}
+                            >
+                              {dayStatuses.get(dayKey)?.status === "available" ? (dayStatuses.get(dayKey) as { availableCount: number }).availableCount : ""}
+                            </span>
                           )}
                         </button>
                       );
                     }
 
+                    // Paket P — "dolu": o günün gelecekteki tüm saatleri alınmış (tıklanabilir, saatler dolu görünür).
+                    if (dayStatuses.get(dayKey)?.status === "full") {
+                      return (
+                        <button
+                          key={dayKey}
+                          type="button"
+                          data-day-status="full"
+                          aria-label={`${datePart} — ${t.schedule.dayFull}`}
+                          onClick={() => setSelectedDayKey(dayKey)}
+                          className="flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border border-border bg-muted text-sm font-medium tabular-nums text-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:text-base"
+                        >
+                          <span>{day}</span>
+                          <span aria-hidden="true" className="text-[8px] font-semibold uppercase leading-none tracking-wide">
+                            {t.schedule.dayFull}
+                          </span>
+                        </button>
+                      );
+                    }
+
+                    // "Müsait değil": soluk, tıklanamaz; neden (tatil/kongre) gösterilmez.
                     return (
                       <span
                         key={dayKey}
-                        aria-label={fmt(t.calendar.cellUnavailable, { date: datePart })}
+                        data-day-status="unavailable"
+                        title={t.schedule.dayUnavailable}
+                        aria-label={`${datePart} — ${t.schedule.dayUnavailable}`}
                         className="flex aspect-square w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:text-base"
                       >
                         {day}

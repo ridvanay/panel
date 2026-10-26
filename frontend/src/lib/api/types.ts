@@ -3762,6 +3762,38 @@ export interface DoctorAvailabilityRule {
   isActive: boolean;
 }
 
+/** Paket P (İş 2) — doktor izin/istisna aralığı. `note` iç nottur (hastaya gösterilmez). */
+export type DoctorTimeOffKind = "VACATION" | "CONGRESS" | "SURGERY_DAY" | "OTHER";
+
+export interface DoctorTimeOffConflict {
+  appointmentId: string;
+  startsAt: string;
+  endsAt: string;
+  patientName: string;
+  bookingNumber: string | null;
+}
+
+export interface DoctorTimeOff {
+  id: string;
+  doctorId: string;
+  startsAt: string;
+  endsAt: string;
+  kind: DoctorTimeOffKind;
+  allDay: boolean;
+  note: string | null;
+  createdAt: string;
+  /** Aralıktaki onaylı randevular — kayıt engellenmez, uyarı gösterilir. */
+  conflicts: DoctorTimeOffConflict[];
+}
+
+export interface CreateDoctorTimeOffRequest {
+  startsAt: string;
+  endsAt: string;
+  kind: DoctorTimeOffKind;
+  allDay?: boolean;
+  note?: string | null;
+}
+
 export interface DoctorAvailabilityRuleInput {
   dayOfWeek: number;
   startMinute: number;
@@ -3861,6 +3893,8 @@ export interface DoctorProfile {
   /** 2026-10-18 (Paket B2) — arşiv damgası; arşivli doktor public yüzeyde görünmez. */
   archivedAt?: string | null;
   availability: DoctorAvailabilityRule[];
+  /** Paket P — public uçlarda: önümüzdeki 30 gündeki en erken uygun slot (izinler düşülmüş); yoksa null. */
+  earliestAvailableAt?: string | null;
   createdAt: string;
   updatedAt: string;
   /**

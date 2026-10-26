@@ -4,10 +4,10 @@ import { CalendarClock, FileText, ShieldCheck } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { formatPriceFromCents } from "@/lib/format-price";
-import { formatDayLabel } from "@/lib/telehealth-format";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
+import { DualTimeInline } from "@/components/site/telehealth/dual-time";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,7 +48,7 @@ export function DoctorQuickBookingCard({ doctor, earliestAvailableIso, intlLocal
   // paylaşılan context'i üzerinden) ZATEN tamamlanmış bir rezervasyonu gösteriyorsa, bu CTA'ya
   // tıklamak yalnızca `#randevu`'ya kaydırmak YERİNE sihirbazı TEMİZ Adım 2'ye SIFIRLAMALIDIR —
   // aksi halde kullanıcı eski "randevunuz tamamlandı" ekranına kaydırılır, yeni tarih SEÇEMEZ.
-  const { hasCompletedBooking, requestBookingReset } = useBookingSelection();
+  const { hasCompletedBooking, requestBookingReset, visitorTimeZone } = useBookingSelection();
 
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">
@@ -69,7 +69,8 @@ export function DoctorQuickBookingCard({ doctor, earliestAvailableIso, intlLocal
         {earliestAvailableIso ? (
           <p className="text-foreground/80">
             <span className="font-medium text-foreground">{dict.earliestAppointmentLabel}</span>{" "}
-            {formatDayLabel(earliestAvailableIso, doctor.timeZone, intlLocale)}
+            {/* Paket P — hastanın tarih/saati + Türkiye saati (mount öncesi Türkiye saati). */}
+            <DualTimeInline iso={earliestAvailableIso} timeZone={visitorTimeZone} intlLocale={intlLocale} />
           </p>
         ) : (
           <p className="text-foreground/60">{dict.noAvailableAppointment}</p>

@@ -24,6 +24,37 @@ const DAY_LABELS: { value: number; label: string }[] = [
   { value: 7, label: "Pazar" },
 ];
 
+/** Paket P — doktor portalında (6 dil) yeniden kullanım için etiketler; verilmezse Türkçe (admin). */
+export interface WeeklyEditorLabels {
+  /** ISO 1=Pazartesi … 7=Pazar sırasıyla 7 gün adı. */
+  days: string[];
+  addWindow: string;
+  /** `{day}` */
+  addWindowAria: string;
+  noWindows: string;
+  /** `{day}` */
+  startAria: string;
+  /** `{day}` */
+  endAria: string;
+  endAfterStart: string;
+  removeWindow: string;
+  footer: string;
+}
+
+export const WEEKLY_EDITOR_LABELS_TR: WeeklyEditorLabels = {
+  days: DAY_LABELS.map((d) => d.label),
+  addWindow: "Pencere Ekle",
+  addWindowAria: "{day} için müsaitlik penceresi ekle",
+  noWindows: "Bu gün için müsaitlik tanımlanmadı.",
+  startAria: "{day} başlangıç saati",
+  endAria: "{day} bitiş saati",
+  endAfterStart: "Bitiş, başlangıçtan sonra olmalı.",
+  removeWindow: "Pencereyi kaldır",
+  footer: "En fazla 21 pencere (haftalık 3 pencere × 7 gün) tanımlanabilir. Saatler doktorun kendi zaman diliminin duvar saatidir.",
+};
+
+const fillDay = (template: string, day: string) => template.replace("{day}", day);
+
 function minutesToTimeInput(minutes: number): string {
   const h = Math.floor(minutes / 60)
     .toString()
@@ -40,10 +71,13 @@ function timeInputToMinutes(value: string): number {
 export function WeeklyAvailabilityEditor({
   rules,
   onChange,
+  labels = WEEKLY_EDITOR_LABELS_TR,
 }: {
   rules: DoctorAvailabilityRuleInput[];
   onChange: (rules: DoctorAvailabilityRuleInput[]) => void;
+  labels?: WeeklyEditorLabels;
 }) {
+  const days = DAY_LABELS.map((d, i) => ({ value: d.value, label: labels.days[i] ?? d.label }));
   function addWindow(dayOfWeek: number) {
     if (rules.length >= 21) return;
     onChange([...rules, { dayOfWeek, startMinute: 540, endMinute: 1020, isActive: true }]);
@@ -59,7 +93,7 @@ export function WeeklyAvailabilityEditor({
 
   return (
     <div className="space-y-4">
-      {DAY_LABELS.map((day) => {
+      {days.map((day) => {
         const dayWindows = rules
           .map((rule, index) => ({ rule, index }))
           .filter(({ rule }) => rule.dayOfWeek === day.value);
@@ -74,22 +108,22 @@ export function WeeklyAvailabilityEditor({
                 size="sm"
                 disabled={rules.length >= 21}
                 onClick={() => addWindow(day.value)}
-                aria-label={`${day.label} için müsaitlik penceresi ekle`}
+                aria-label={fillDay(labels.addWindowAria, day.label)}
               >
                 <Plus className="h-3.5 w-3.5" />
-                Pencere Ekle
+                {labels.addWindow}
               </Button>
             </div>
 
             {dayWindows.length === 0 ? (
-              <p className="mt-2 text-xs text-foreground/40">Bu gün için müsaitlik tanımlanmadı.</p>
+              <p className="mt-2 text-xs text-foreground/40">{labels.noWindows}</p>
             ) : (
               <div className="mt-2 space-y-2">
                 {dayWindows.map(({ rule, index }) => (
                   <div key={index} className="flex flex-wrap items-center gap-2">
                     <Input
                       type="time"
-                      aria-label={`${day.label} başlangıç saati`}
+                      aria-label={fillDay(labels.startAria, day.label)}
                       className="w-auto"
                       value={minutesToTimeInput(rule.startMinute)}
                       onChange={(e) => updateWindow(index, { startMinute: timeInputToMinutes(e.target.value) })}
@@ -97,19 +131,19 @@ export function WeeklyAvailabilityEditor({
                     <span className="text-xs text-foreground/50">—</span>
                     <Input
                       type="time"
-                      aria-label={`${day.label} bitiş saati`}
+                      aria-label={fillDay(labels.endAria, day.label)}
                       className="w-auto"
                       value={minutesToTimeInput(rule.endMinute)}
                       onChange={(e) => updateWindow(index, { endMinute: timeInputToMinutes(e.target.value) })}
                     />
                     {rule.startMinute >= rule.endMinute && (
-                      <span className="text-xs text-danger">Bitiş, başlangıçtan sonra olmalı.</span>
+                      <span className="text-xs text-danger">{labels.endAfterStart}</span>
                     )}
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Pencereyi kaldır"
+                      aria-label={labels.removeWindow}
                       onClick={() => removeWindow(index)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -121,10 +155,7 @@ export function WeeklyAvailabilityEditor({
           </div>
         );
       })}
-      <p className="text-xs text-foreground/50">
-        En fazla 21 pencere (haftalık 3 pencere × 7 gün) tanımlanabilir. Saatler doktorun kendi zaman diliminin duvar
-        saatidir.
-      </p>
+      <p className="text-xs text-foreground/50">{labels.footer}</p>
     </div>
   );
 }

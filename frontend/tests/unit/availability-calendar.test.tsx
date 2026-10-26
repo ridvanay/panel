@@ -109,7 +109,7 @@ describe("AvailabilityCalendar", () => {
     renderCalendar();
     // Başka bir günü seçince (20 Eylül) 18 Eylül artık "seçili" DEĞİL, "Erken" etiketli müsait
     // hücreye geri döner.
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
     expect(screen.getByLabelText(/18 Eylül .+ — müsait, en yakın randevu tarihi/)).toBeInTheDocument();
     expect(screen.getByLabelText(/20 Eylül .+ — seçili/)).toBeInTheDocument();
   });
@@ -125,7 +125,7 @@ describe("AvailabilityCalendar", () => {
     expect(screen.getByText("En yakın müsait randevu tarihi seçili.")).toBeInTheDocument();
 
     // Başka bir günü (20 Eylül) seçince çakışma ortadan kalkar, satır KAYBOLUR.
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
     expect(screen.queryByText("En yakın müsait randevu tarihi seçili.")).not.toBeInTheDocument();
 
     // Tekrar en yakın müsait güne (18 Eylül) dönülünce satır YENİDEN görünür.
@@ -135,7 +135,7 @@ describe("AvailabilityCalendar", () => {
 
   it("§2.3.2 — müsait olmayan/geçmiş günler tıklanamaz bir `<span>`dır, `<button>` DEĞİLDİR", () => {
     renderCalendar();
-    const emptyCell = screen.getByLabelText(/17 Eylül .+ — müsait saat yok/);
+    const emptyCell = screen.getByLabelText(/17 Eylül .+ — Doktor bu gün hizmet vermiyor/);
     expect(emptyCell.tagName).toBe("SPAN");
   });
 
@@ -151,7 +151,7 @@ describe("AvailabilityCalendar", () => {
     renderCalendar();
     expect(screen.getByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
 
     // Artık 20 Eylül'ün saatleri (Sabah + Öğleden Sonra, biri dolu) görünür, 18 Eylül'ünki YOK.
     expect(screen.queryByLabelText("10:00 (sizin saatiniz), 13:00 Türkiye — müsait")).not.toBeInTheDocument();
@@ -175,7 +175,7 @@ describe("AvailabilityCalendar", () => {
 
   it("Grid görevi (2026-09-14) — 'Dolu saatleri gizle' açıkken sadece DOLU slotlar gizlenir, geçmiş slotlar ETKİLENMEZ", () => {
     renderCalendar();
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?, \d+ uygun saat$/));
     expect(screen.getByLabelText("15:00 (sizin saatiniz), 18:00 Türkiye — dolu, seçilemez")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("switch", { name: "Dolu saatleri gizle" }));
@@ -188,7 +188,7 @@ describe("AvailabilityCalendar", () => {
 
   it("müsait saat YOKSA bilgi mesajı gösterir, hiçbir takvim/grup render EDİLMEZ", () => {
     renderCalendar([]);
-    expect(screen.getByText("Önümüzdeki günlerde müsait bir saat bulunmuyor.")).toBeInTheDocument();
+    expect(screen.getByText("Bu doktor için yakın tarihte uygun saat yok — talep bırakın, sizi arayalım")).toBeInTheDocument();
     expect(screen.queryByText("EYLÜL 2026")).not.toBeInTheDocument();
     expect(screen.queryByText("ÖÖ Sabah")).not.toBeInTheDocument();
   });

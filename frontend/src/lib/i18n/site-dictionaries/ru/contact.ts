@@ -1,6 +1,7 @@
 import type { ContactStrings } from "../en/contact";
 
 export const contactStrings: ContactStrings = {
+  doctorRequestMessage: "Я хотел(а) бы записаться к {doctor}. Пожалуйста, свяжитесь со мной, когда появится подходящее время.",
   metaTitle: "Связаться с нами",
   metaDescription: "Отправьте нам свой вопрос, и наша служба поддержки пациентов свяжется с вами.",
   breadcrumbCurrent: "Контакты",

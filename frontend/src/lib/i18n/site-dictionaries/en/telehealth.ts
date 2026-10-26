@@ -4,6 +4,8 @@
  * (Faz 2) — buradaki anahtarlar YALNIZCA Faz 1 listesindeki dosyalarda tüketilir.
  */
 export const telehealthStrings = {
+  /** Paket P — doktor kartında en erken uygun randevu günü. */
+  earliestShortLabel: "Earliest: {date}",
   /**
    * Acil durum uyarısı — VARSAYILAN metinler (ürün sahibinin 2026-09-25 kararı; admin → TeleHealth
    * ayarlarında dil başına değiştirilebilir, admin alanı boşsa bunlar gösterilir). `Summary`:

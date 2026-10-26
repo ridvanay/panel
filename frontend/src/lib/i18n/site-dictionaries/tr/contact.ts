@@ -2,6 +2,7 @@ import type { ContactStrings } from "../en/contact";
 
 /** `/contact` — Türkçe. Onay metinleri sunucudadır (bkz. `en/contact.ts` başlığı). */
 export const contactStrings: ContactStrings = {
+  doctorRequestMessage: "{doctor} ile randevu almak istiyorum. Uygun bir saat olduğunda lütfen benimle iletişime geçin.",
   metaTitle: "İletişim",
   metaDescription: "Sorunuzu bize iletin, hasta ekibimiz size dönüş yapsın.",
   breadcrumbCurrent: "İletişim",

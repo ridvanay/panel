@@ -121,6 +121,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const bookingsHref = localize("/doctor");
   const earningsHref = localize("/doctor/earnings");
   const profileHref = localize("/doctor/profile");
+  const scheduleHref = localize("/doctor/schedule");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -133,6 +134,9 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
         </Link>
         <Link href={profileHref} className={pathname === profileHref ? "font-medium text-primary" : "hover:text-foreground"}>
           {t.doctorPortal.navProfile}
+        </Link>
+        <Link href={scheduleHref} className={pathname === scheduleHref ? "font-medium text-primary" : "hover:text-foreground"}>
+          {t.doctorSchedule.navLabel}
         </Link>
       </nav>
       {children}

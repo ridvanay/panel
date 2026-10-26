@@ -2548,6 +2548,8 @@ export const DoctorProfileSchema = z.object({
   // 2026-10-18 (Paket B2) — arşiv damgası; public uçlarda arşivli doktor hiç dönmediği için daima `null`.
   archivedAt: z.string().nullable().optional(),
   availability: z.array(DoctorAvailabilityRuleSchema),
+  /** Paket P — public uçlarda: önümüzdeki 30 gündeki en erken uygun slot (izinler düşülmüş); yoksa null. */
+  earliestAvailableAt: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   // Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — bkz.

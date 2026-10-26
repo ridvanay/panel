@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  earliestShortLabel: "الأقرب: {date}",
   emergencyNoticeSummary: "غير مخصص لحالات الطوارئ. في حالة الطوارئ، اتصل برقم الطوارئ المحلي.",
   emergencyNoticeFull:
     "هذه المنصة غير مخصصة لحالات الطوارئ ولا تُغني عن الرعاية الطبية الطارئة. في حالة الطوارئ، اتصل برقم الطوارئ المحلي (112 في تركيا والاتحاد الأوروبي، و911 في الولايات المتحدة وكندا، و999 في المملكة المتحدة).",

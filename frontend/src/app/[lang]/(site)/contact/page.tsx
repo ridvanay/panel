@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import { Clock, Mail, MapPin, MessageCircle, Phone, ExternalLink } from "lucide-react";
 import { fetchContactPageServer } from "@/lib/api/server-contact";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
-import { fetchSpecialtiesServer, fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
+import { fetchDoctorBySlugServer, fetchSpecialtiesServer, fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
-import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
+import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { resolveEmergencyNotice } from "@/lib/emergency-notice";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
@@ -17,7 +17,7 @@ import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import type { ContactPageLocale } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-type PageProps = { params: Promise<{ lang: string }> };
+type PageProps = { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
 function contactLocale(lang: string): ContactPageLocale {
   return lang === "tr" ? "tr" : "en";
@@ -48,8 +48,11 @@ const CARD_CLASS = "rounded-[24px] border border-border bg-surface p-6 sm:p-7";
  * (Newsreader, `.about-serif`); renkler `--site-*` token'larından (`.contact-page`, globals.css).
  * Masaüstü 7/12 form + 5/12 bilgi kartları; mobilde tek kolon: başlık → Ara/WhatsApp → form → kartlar.
  */
-export default async function ContactPage({ params }: PageProps) {
+export default async function ContactPage({ params, searchParams }: PageProps) {
   const { lang } = await params;
+  // Paket P — doktor sayfasından "talep bırakın" (`?doctor=<slug>`): mesaj ve uzmanlık ön doldurulur.
+  const doctorParam = (await searchParams)?.doctor;
+  const requestedDoctorSlug = typeof doctorParam === "string" && /^[a-z0-9-]{1,80}$/.test(doctorParam) ? doctorParam : null;
   const locale = contactLocale(lang);
   const [page, dict, locales, telehealthEnabled] = await Promise.all([
     fetchContactPageServer(locale),
@@ -64,6 +67,13 @@ export default async function ContactPage({ params }: PageProps) {
     : [[], null];
 
   const t = dict.contact;
+  const requestedDoctor = requestedDoctorSlug && telehealthEnabled ? await fetchDoctorBySlugServer(requestedDoctorSlug, lang) : null;
+  const doctorPrefill = requestedDoctor
+    ? {
+        initialMessage: formatSiteString(t.doctorRequestMessage, { doctor: `${requestedDoctor.title} ${requestedDoctor.fullName}`.trim() }),
+        initialTreatment: specialties.some((s) => s.slug === requestedDoctor.specialty?.slug) ? requestedDoctor.specialty?.slug : undefined,
+      }
+    : {};
   const content = page.content;
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const homeHref = withLocalePrefix("/", lang, defaultLocaleCode);
@@ -149,6 +159,7 @@ export default async function ContactPage({ params }: PageProps) {
                   treatmentNotSure={page.treatmentNotSure}
                   responseTime={content.responseTime || t.responseTimeDefault}
                   defaultPhoneCountry={locale === "tr" ? "TR" : ""}
+                  {...doctorPrefill}
                 />
               </div>
             </div>

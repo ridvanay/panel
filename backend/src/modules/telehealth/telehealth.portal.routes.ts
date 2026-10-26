@@ -63,7 +63,7 @@ const WITH_BOOKING_RELATIONS = {
  * `403 TWO_FACTOR_REQUIRED`). Sıra bilinçlidir: önce ilişki (`NOT_A_DOCTOR`), sonra 2FA kapısı —
  * doktor OLMAYAN birine "2FA açman lazım" demek yanıltıcı olurdu.
  */
-async function requireDoctorPortalAccess(
+export async function requireDoctorPortalAccess(
   app: FastifyInstance,
   userId: string
 ): Promise<{ user: { id: string; email: string; name: string; twoFactorEnabled: boolean }; doctorProfileId: string }> {

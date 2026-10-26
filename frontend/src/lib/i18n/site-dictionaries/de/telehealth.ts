@@ -1,6 +1,7 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
+  earliestShortLabel: "Frühestens: {date}",
   emergencyNoticeSummary: "Nicht für Notfälle. Im Notfall wählen Sie Ihre örtliche Notrufnummer.",
   emergencyNoticeFull:
     "Diese Plattform ist nicht für Notfälle bestimmt und ersetzt keine notfallmedizinische Versorgung. Im Notfall wählen Sie Ihre örtliche Notrufnummer (112 in der Türkei/EU, 911 in den USA/Kanada, 999 im Vereinigten Königreich).",

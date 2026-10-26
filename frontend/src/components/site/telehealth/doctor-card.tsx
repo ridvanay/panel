@@ -123,6 +123,16 @@ export function DoctorCard({
           {doctor.sessionPriceCents != null ? formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale) : dict.freeSessionLabel}
         </span>
       </div>
+      {/* Paket P — "En erken: 28 Eki" (Türkiye takvimine göre gün; saatler profil sayfasında çift dilimde). */}
+      {doctor.earliestAvailableAt && (
+        <p className="mt-1 text-xs font-medium text-primary" data-testid="doctor-card-earliest">
+          {formatSiteString(dict.earliestShortLabel, {
+            date: new Intl.DateTimeFormat(intlLocale ?? "tr-TR", { day: "numeric", month: "short", timeZone: "Europe/Istanbul" }).format(
+              new Date(doctor.earliestAvailableAt)
+            ),
+          })}
+        </p>
+      )}
 
       <Link
         href={ctaHref ?? href}

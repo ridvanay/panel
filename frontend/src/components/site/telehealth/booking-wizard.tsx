@@ -13,6 +13,7 @@ import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { DualDateTimeSummary } from "@/components/site/telehealth/dual-time";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { AvailabilityCalendar } from "@/components/site/telehealth/availability-calendar";
 import { BookingIdentityStep } from "@/components/site/telehealth/booking-identity-step";
 import { BookingIntakeStep } from "@/components/site/telehealth/booking-intake-step";
@@ -422,6 +423,8 @@ export function BookingWizard({
             doctorTimeZone={doctorTimeZone}
             initialSlots={initialSlots}
             conflictNotice={conflictNotice}
+            weeklyRules={doctor.availability}
+            requestHref={withLocalePrefix(`/contact?doctor=${encodeURIComponent(doctorSlug)}`, lang, defaultLocaleCode)}
           />
         ) : (
           <div className="lg:col-span-9 min-w-0 space-y-4">

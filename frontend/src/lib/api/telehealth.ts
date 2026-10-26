@@ -43,6 +43,8 @@ import type {
   PatientBookingsPage,
   RescheduleAppointmentRequest,
   SetDoctorAvailabilityRequest,
+  DoctorTimeOff,
+  CreateDoctorTimeOffRequest,
   Specialty,
   TelehealthOverview,
   TelehealthOverviewQuery,
@@ -737,4 +739,40 @@ export function getQaListenerHistory(appointmentId: string, cursor?: string): Pr
   return apiFetchPage<QaListenerHistoryEntry>(`/admin/telehealth/appointments/${appointmentId}/listener-history`, {
     query: { cursor, limit: 50 },
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paket P (İş 2) — doktor haftalık saatleri + izin/istisna günleri (doktor portalı ve admin).
+// ---------------------------------------------------------------------------------------------
+
+export function getMyAvailability(): Promise<DoctorAvailabilityRule[]> {
+  return apiFetch<DoctorAvailabilityRule[]>("/doctor/availability");
+}
+
+export function setMyAvailability(input: SetDoctorAvailabilityRequest): Promise<DoctorAvailabilityRule[]> {
+  return apiFetch<DoctorAvailabilityRule[]>("/doctor/availability", { method: "PUT", body: input });
+}
+
+export function listMyTimeOff(): Promise<DoctorTimeOff[]> {
+  return apiFetch<DoctorTimeOff[]>("/doctor/time-off");
+}
+
+export function createMyTimeOff(input: CreateDoctorTimeOffRequest): Promise<DoctorTimeOff> {
+  return apiFetch<DoctorTimeOff>("/doctor/time-off", { method: "POST", body: input });
+}
+
+export function deleteMyTimeOff(timeOffId: string): Promise<void> {
+  return apiFetch<void>(`/doctor/time-off/${timeOffId}`, { method: "DELETE" });
+}
+
+export function listDoctorTimeOff(doctorId: string): Promise<DoctorTimeOff[]> {
+  return apiFetch<DoctorTimeOff[]>(`/admin/telehealth/doctors/${doctorId}/time-off`);
+}
+
+export function createDoctorTimeOff(doctorId: string, input: CreateDoctorTimeOffRequest): Promise<DoctorTimeOff> {
+  return apiFetch<DoctorTimeOff>(`/admin/telehealth/doctors/${doctorId}/time-off`, { method: "POST", body: input });
+}
+
+export function deleteDoctorTimeOff(doctorId: string, timeOffId: string): Promise<void> {
+  return apiFetch<void>(`/admin/telehealth/doctors/${doctorId}/time-off/${timeOffId}`, { method: "DELETE" });
 }

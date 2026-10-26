@@ -2310,6 +2310,8 @@ model DoctorProfile {
   specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   avatarMedia         Media?               @relation("DoctorAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
   availability        DoctorAvailability[]
+  /// Paket P — izin/istisna aralıkları (ilişki alanı; kolon eklemez).
+  timeOff      DoctorTimeOff[]
   appointments        Appointment[]
   // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kayıtları.
   appointmentBookings AppointmentBooking[]
@@ -2351,6 +2353,28 @@ model DoctorAdditionalSpecialty {
 /// (§4.2) bu kurallardan + mevcut randevulardan ÇALIŞMA ZAMANINDA türetilir.
 /// Gerekçe: 4 doktor × 5 gün × 16 slot × 52 hafta = 16.640 satır/yıl'lık ölü veri; ayrıca
 /// "gelecek ne kadar süre için slot üretelim?" sorusunun doğru cevabı yoktur.
+/// Paket P (İş 2) — doktor izin/istisna aralığı (tatil, kongre, ameliyat günü, diğer). Slot üretiminde
+/// düşülür. UTC anları, `[startsAt, endsAt)`. `note` İÇ nottur — sağlık verisi içermemeli, hastaya ve
+/// public uçlara ASLA dönmez. `kind` metin: "VACATION" | "CONGRESS" | "SURGERY_DAY" | "OTHER"
+/// (yeni enum tipi yerine — doğrulama Zod'da, bkz. lib/time-off.ts).
+model DoctorTimeOff {
+  id          String   @id @default(uuid())
+  doctorId    String
+  startsAt    DateTime
+  endsAt      DateTime
+  kind        String
+  allDay      Boolean  @default(false)
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, startsAt])
+  @@map("doctor_time_off")
+}
+
 model DoctorAvailability {
   id          String  @id @default(uuid())
   doctorId    String

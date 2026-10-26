@@ -5,6 +5,8 @@
  * bkz. backend `modules/contact/contact-page.ts::CONTACT_PAGE_CONSENT_TEXTS`).
  */
 export const contactStrings = {
+  /** Paket P — doktor sayfasından gelen talep (yakın tarihte uygun saat yok) için hazır mesaj. */
+  doctorRequestMessage: "I would like an appointment with {doctor}. Please contact me when a suitable time is available.",
   metaTitle: "Contact us",
   metaDescription: "Send us your question and our patient team will get back to you.",
   breadcrumbCurrent: "Contact",
