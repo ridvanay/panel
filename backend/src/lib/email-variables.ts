@@ -105,7 +105,7 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
       sampleValue: "We have received your payment and your appointment is confirmed.",
       source: "system",
     },
-    { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "06.01.2025 07:00 your time (Berlin, GMT+1) · Turkey time: 06.01.2025 09:00 (GMT+3); 06.01.2025 07:30 your time (Berlin, GMT+1) · Turkey time: 06.01.2025 09:30 (GMT+3)", source: "system" },
+    { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "Monday, 6 January 2025, 07:00–08:00 (Berlin, CET) — Istanbul: Monday, 6 January 2025, 09:00–10:00 (GMT+3)", source: "system" },
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
     { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
     // 2026-09-18 (kullanıcı talebi) — `magic_link`in aksine DOĞRUDAN görüşme odasına gider
@@ -125,8 +125,8 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
   APPOINTMENT_RESCHEDULED: [
     { key: "recipient_name", label: "Alıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
     { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
-    { key: "old_slot_summary", label: "Eski Randevu Saati", sampleValue: "06.01.2025 07:00 your time (Berlin, GMT+1) · Turkey time: 06.01.2025 09:00 (GMT+3)", source: "system" },
-    { key: "new_slot_summary", label: "Yeni Randevu Saati", sampleValue: "08.01.2025 08:00 your time (Berlin, GMT+1) · Turkey time: 08.01.2025 10:00 (GMT+3)", source: "system" },
+    { key: "old_slot_summary", label: "Eski Randevu Saati", sampleValue: "Monday, 6 January 2025, 07:00–07:30 (Berlin, CET) — Istanbul: Monday, 6 January 2025, 09:00–09:30 (GMT+3)", source: "system" },
+    { key: "new_slot_summary", label: "Yeni Randevu Saati", sampleValue: "Wednesday, 8 January 2025, 08:00–08:30 (Berlin, CET) — Istanbul: Wednesday, 8 January 2025, 10:00–10:30 (GMT+3)", source: "system" },
     { key: "reason", label: "Değişiklik Notu", sampleValue: "Doktorun programı nedeniyle", source: "system" },
   ],
   /**
@@ -140,7 +140,7 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "recipient_name", label: "Alıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
     { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
     { key: "doctor_name", label: "Doktor Adı", sampleValue: "Dr. Mehmet Demir", source: "system" },
-    { key: "slot_summary", label: "Randevu Saati", sampleValue: "06.01.2025 07:00 your time (Berlin, GMT+1) · Turkey time: 06.01.2025 09:00 (GMT+3)", source: "system" },
+    { key: "slot_summary", label: "Randevu Saati", sampleValue: "Monday, 6 January 2025, 07:00–07:30 (Berlin, CET) — Istanbul: Monday, 6 January 2025, 09:00–09:30 (GMT+3)", source: "system" },
   ],
   /**
    * [ASD] §2.4/§2.5 (bağlayıcı) — `startsAt`e ~30 dakika kala. `APPOINTMENT_REMINDER_60M` İLE
@@ -152,7 +152,7 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "recipient_name", label: "Alıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
     { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
     { key: "doctor_name", label: "Doktor Adı", sampleValue: "Dr. Mehmet Demir", source: "system" },
-    { key: "slot_summary", label: "Randevu Saati", sampleValue: "06.01.2025 07:00 your time (Berlin, GMT+1) · Turkey time: 06.01.2025 09:00 (GMT+3)", source: "system" },
+    { key: "slot_summary", label: "Randevu Saati", sampleValue: "Monday, 6 January 2025, 07:00–07:30 (Berlin, CET) — Istanbul: Monday, 6 January 2025, 09:00–09:30 (GMT+3)", source: "system" },
     { key: "join_link", label: "Katılım Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc", source: "system" },
   ],
   /**

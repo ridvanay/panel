@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   cityLabel,
   formatDoctorSlot,
+  formatPatientRange,
+  formatPatientRanges,
   formatPatientSlot,
   formatWall,
+  mergeSlotRanges,
+  zoneAbbreviation,
   gmtLabel,
   isValidTimeZone,
   offsetMinutes,
@@ -81,5 +85,54 @@ describe("dual-time", () => {
     );
     expect(formatDoctorSlot(at("2026-12-01T10:00:00Z"), "Europe/Istanbul", null)).toBe("01.12.2026 13:00 (Istanbul, GMT+3)");
     expect(cityLabel("America/Argentina/Buenos_Aires")).toBe("Buenos Aires");
+  });
+
+  describe("Paket R — e-posta aralık biçimi", () => {
+    const r = (start: string, end: string) => ({ startsAt: at(start), endsAt: at(end) });
+
+    it("dilim kısaltması: CET/CEST, GST, EST/EDT, AEDT; yalnızca ofset dönerse null", () => {
+      expect(zoneAbbreviation(at("2026-12-01T12:00:00Z"), "Europe/Berlin")).toBe("CET");
+      expect(zoneAbbreviation(at("2026-07-01T12:00:00Z"), "Europe/Berlin")).toBe("CEST");
+      expect(zoneAbbreviation(at("2026-12-01T12:00:00Z"), "Asia/Dubai")).toBe("GST");
+      expect(zoneAbbreviation(at("2026-12-01T12:00:00Z"), "America/New_York")).toBe("EST");
+      expect(zoneAbbreviation(at("2026-10-28T12:00:00Z"), "Australia/Sydney")).toBe("AEDT");
+      expect(zoneAbbreviation(at("2026-12-01T12:00:00Z"), "Europe/Istanbul")).toBeNull();
+    });
+
+    it("Avrupa yaz saati bitişi (25 Ekim): öncesi CEST, sonrası CET; Türkiye hep 24 saat", () => {
+      expect(formatPatientRange(r("2026-10-24T14:00:00Z", "2026-10-24T14:30:00Z"), "Europe/Berlin")).toBe(
+        "Saturday, 24 October 2026, 16:00–16:30 (Berlin, CEST) — Istanbul: Saturday, 24 October 2026, 17:00–17:30 (GMT+3)"
+      );
+      expect(formatPatientRange(r("2026-10-28T14:00:00Z", "2026-10-28T14:30:00Z"), "Europe/Berlin")).toBe(
+        "Wednesday, 28 October 2026, 15:00–15:30 (Berlin, CET) — Istanbul: Wednesday, 28 October 2026, 17:00–17:30 (GMT+3)"
+      );
+    });
+
+    it("ABD yaz saati bitişi (1 Kasım): 12 saat biçimi; İstanbul ertesi gün ve 24 saat", () => {
+      expect(formatPatientRange(r("2026-10-31T20:00:00Z", "2026-10-31T20:30:00Z"), "America/New_York")).toBe(
+        "Saturday, 31 October 2026, 4:00 PM–4:30 PM (New York, EDT) — Istanbul: Saturday, 31 October 2026, 23:00–23:30 (GMT+3)"
+      );
+      expect(formatPatientRange(r("2026-11-03T21:00:00Z", "2026-11-03T21:30:00Z"), "America/New_York")).toBe(
+        "Tuesday, 3 November 2026, 4:00 PM–4:30 PM (New York, EST) — Istanbul: Wednesday, 4 November 2026, 00:00–00:30 (GMT+3)"
+      );
+    });
+
+    it("ardışık slotlar birleşir; arada boşluk varsa ayrı aralık", () => {
+      expect(mergeSlotRanges([r("2026-12-01T10:30:00Z", "2026-12-01T11:00:00Z"), r("2026-12-01T10:00:00Z", "2026-12-01T10:30:00Z")])).toEqual([
+        r("2026-12-01T10:00:00Z", "2026-12-01T11:00:00Z"),
+      ]);
+      expect(formatPatientRanges([r("2026-12-01T10:00:00Z", "2026-12-01T10:30:00Z"), r("2026-12-01T11:00:00Z", "2026-12-01T11:30:00Z")], null)).toBe(
+        "Tuesday, 1 December 2026, 13:00–13:30 Turkey time (GMT+3); Tuesday, 1 December 2026, 14:00–14:30 Turkey time (GMT+3)"
+      );
+    });
+
+    it("Riyad (Türkiye ile aynı saat) → tek satır; bölge yoksa 24 saat (Dubai)", () => {
+      expect(formatPatientRange(r("2026-12-01T10:00:00Z", "2026-12-01T10:30:00Z"), "Asia/Riyadh")).toBe(
+        "Tuesday, 1 December 2026, 13:00–13:30 Turkey time (GMT+3)"
+      );
+      expect(formatPatientRange(r("2026-12-01T10:00:00Z", "2026-12-01T10:30:00Z"), "Asia/Dubai")).toBe(
+        "Tuesday, 1 December 2026, 14:00–14:30 (Dubai, GST) — Istanbul: Tuesday, 1 December 2026, 13:00–13:30 (GMT+3)"
+      );
+    });
   });
 });

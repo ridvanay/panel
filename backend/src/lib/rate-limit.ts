@@ -166,3 +166,6 @@ export const VERIFICATION_CODE_RESEND_RATE_LIMIT = { max: 2, timeWindow: "1 minu
 
 /** Paket Q — `/admin/telehealth/bulk-availability/*` (CSV ayrıştırma + toplu yazma; yalnızca ADMIN). */
 export const BULK_AVAILABILITY_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
+
+/** Paket R — `GET /geo/hint` (herkese açık; sayfa başına bir kez çağrılır). */
+export const GEO_HINT_RATE_LIMIT = { max: 20, timeWindow: "1 minute" };

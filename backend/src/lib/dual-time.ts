@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { countryForTimeZone } from "./tz-country";
 
 /**
  * Paket P (2026-10-26) — hastanın saati + Türkiye saati birlikte gösterimi (e-postalar, DTO
@@ -116,3 +117,80 @@ export function formatPatientSlots(instants: readonly Date[], patientTimeZone: s
 export function formatDoctorSlots(instants: readonly Date[], doctorTimeZone: string, patientTimeZone: string | null | undefined): string {
   return instants.map((i) => formatDoctorSlot(i, doctorTimeZone, patientTimeZone)).join("; ");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Paket R (2026-10-26) — aralıklı, bölgeye göre 12/24 saatli e-posta biçimi
+// ---------------------------------------------------------------------------------------------
+
+/** Varsayılan olarak 12 saat (ÖÖ/ÖS) kullanan bölgeler — ABD, Birleşik Krallık, Avustralya vb. */
+export const TWELVE_HOUR_REGIONS: ReadonlySet<string> = new Set(["US", "GB", "AU", "NZ", "CA", "IN", "PH"]);
+
+/**
+ * `CET`, `GST`, `EST`, `AEDT` — `Intl` kısa dilim adı (İngilizce yerellerde sırayla denenir). Yalnızca
+ * `GMT+1` gibi bir ofset dönüyorsa (anlamsız kısaltma) `null`.
+ */
+export function zoneAbbreviation(instant: Date, timeZone: string): string | null {
+  for (const locale of ["en-US", "en-GB", "en-AU"]) {
+    const name = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: "short" }).formatToParts(instant).find((p) => p.type === "timeZoneName")?.value;
+    if (name && !/^(GMT|UTC)([+\-−]|$)/.test(name)) return name;
+  }
+  return null;
+}
+
+/** `Tuesday, 28 October 2026` — İngilizce e-posta tarihi (verilen dilimin takvim günü). */
+function formatLongDate(instant: Date, timeZone: string): string {
+  const parts: Record<string, string> = {};
+  for (const p of new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "long", day: "numeric", month: "long", year: "numeric" }).formatToParts(instant)) {
+    if (p.type !== "literal") parts[p.type] = p.value;
+  }
+  return `${parts.weekday}, ${parts.day} ${parts.month} ${parts.year}`;
+}
+
+function formatClock(instant: Date, timeZone: string, hour12: boolean): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone, hour: hour12 ? "numeric" : "2-digit", minute: "2-digit", hourCycle: hour12 ? "h12" : "h23" }).format(instant);
+}
+
+export interface SlotRange {
+  startsAt: Date;
+  endsAt?: Date | null;
+}
+
+/** Ardışık slotları (bir öncekinin bitişi = sonrakinin başlangıcı) tek aralıkta birleştirir. */
+export function mergeSlotRanges(slots: readonly SlotRange[]): SlotRange[] {
+  const sorted = [...slots].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const merged: SlotRange[] = [];
+  for (const slot of sorted) {
+    const last = merged[merged.length - 1];
+    if (last?.endsAt && slot.endsAt && last.endsAt.getTime() === slot.startsAt.getTime()) last.endsAt = slot.endsAt;
+    else merged.push({ startsAt: slot.startsAt, endsAt: slot.endsAt ?? null });
+  }
+  return merged;
+}
+
+function rangeText(range: SlotRange, timeZone: string, hour12: boolean): string {
+  const start = formatClock(range.startsAt, timeZone, hour12);
+  return range.endsAt ? `${formatLongDate(range.startsAt, timeZone)}, ${start}–${formatClock(range.endsAt, timeZone, hour12)}` : `${formatLongDate(range.startsAt, timeZone)}, ${start}`;
+}
+
+/**
+ * Hastaya giden e-postalar (Paket R biçimi):
+ * `Tuesday, 28 October 2026, 16:00–16:30 (Berlin, CET) — Istanbul: Tuesday, 28 October 2026, 18:00–18:30 (GMT+3)`.
+ * Hastanın saati bölgesine göre 12/24 saat (ABD/BK/Avustralya 12 saat); Türkiye saati HER ZAMAN 24 saat.
+ * Hasta dilimi yoksa ya da Türkiye ile aynı saatteyse tek satır: `… 18:00–18:30 Turkey time (GMT+3)`.
+ */
+export function formatPatientRange(range: SlotRange, patientTimeZone: string | null | undefined): string {
+  const tz = patientTimeZone && isValidTimeZone(patientTimeZone) ? patientTimeZone : null;
+  const turkey = `${rangeText(range, TURKEY_TIME_ZONE, false)}`;
+  const turkeyGmt = gmtLabel(range.startsAt, TURKEY_TIME_ZONE);
+  if (!tz || sameWallClock(range.startsAt, tz, TURKEY_TIME_ZONE)) return `${turkey} Turkey time (${turkeyGmt})`;
+  const hour12 = TWELVE_HOUR_REGIONS.has(countryForTimeZone(tz) ?? "");
+  const zone = zoneAbbreviation(range.startsAt, tz) ?? gmtLabel(range.startsAt, tz);
+  return `${rangeText(range, tz, hour12)} (${cityLabel(tz)}, ${zone}) — Istanbul: ${turkey} (${turkeyGmt})`;
+}
+
+export function formatPatientRanges(slots: readonly SlotRange[], patientTimeZone: string | null | undefined): string {
+  return mergeSlotRanges(slots)
+    .map((r) => formatPatientRange(r, patientTimeZone))
+    .join("; ");
+}
+

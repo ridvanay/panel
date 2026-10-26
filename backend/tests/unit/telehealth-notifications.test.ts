@@ -101,8 +101,8 @@ describe("modules/telehealth/lib/notifications", () => {
       const [, purpose, to, values] = sendTemplateEmailMock.mock.calls[0]!;
       expect(purpose).toBe("APPOINTMENT_CONFIRMATION");
       expect(to).toBe("ayse@example.com");
-      // Paket P — hasta dilimi bilinmiyor → yalnızca Türkiye saati (06:00Z/06:30Z → 09:00/09:30).
-      expect(values.slots_summary).toBe("06.01.2025 09:00 Turkey time (GMT+3); 06.01.2025 09:30 Turkey time (GMT+3)");
+      // Paket P/R — hasta dilimi bilinmiyor → yalnızca Türkiye saati (06:00Z/06:30Z → 09:00/09:30; bitiş yok → başlangıç).
+      expect(values.slots_summary).toBe("Monday, 6 January 2025, 09:00 Turkey time (GMT+3); Monday, 6 January 2025, 09:30 Turkey time (GMT+3)");
       expect(values.booking_number).toBe("BKG-ABC123-XYZ9");
       expect(values.patient_name).toBe("Ayşe Yılmaz");
       expect(values.total_formatted).toBe("750.00 TRY");
@@ -117,14 +117,20 @@ describe("modules/telehealth/lib/notifications", () => {
 
     it("Paket P — hasta dilimi kayıtlıysa e-postada hastanın saati + Türkiye saati (ad ve GMT farkıyla) birlikte", async () => {
       const { app } = fakeApp();
-      const appointments = [{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2026-10-28T14:00:00.000Z") }];
+      // Paket R — ardışık iki slot tek aralıkta: "16:00–17:00" yerine Berlin (CET) 15:00–16:00, İstanbul 17:00–18:00.
+      const appointments = [
+        { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2026-10-28T14:00:00.000Z"), endsAt: new Date("2026-10-28T14:30:00.000Z") },
+        { id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", startsAt: new Date("2026-10-28T14:30:00.000Z"), endsAt: new Date("2026-10-28T15:00:00.000Z") },
+      ];
       await triggerAppointmentConfirmationEmail(app, {
         booking: { ...BOOKING, patientTimeZone: "Europe/Berlin" } as never,
         appointments,
         rawAccessToken: "t",
       });
       const values = sendTemplateEmailMock.mock.calls[0]![3];
-      expect(values.slots_summary).toBe("28.10.2026 15:00 your time (Berlin, GMT+1) · Turkey time: 28.10.2026 17:00 (GMT+3)");
+      expect(values.slots_summary).toBe(
+        "Wednesday, 28 October 2026, 15:00–16:00 (Berlin, CET) — Istanbul: Wednesday, 28 October 2026, 17:00–18:00 (GMT+3)"
+      );
     });
 
     it("2026-09-21 (kullanıcı talebi) — totalCents === 0 (ücretsiz/bilgi-alınız doktor) iken status_message 'ödeme aldık' DEĞİL 'başarıyla oluşturuldu' der", async () => {

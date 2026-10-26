@@ -171,8 +171,8 @@ describe("PATCH /admin/telehealth/appointments/:id/reschedule", () => {
     expect(purpose).toBe("APPOINTMENT_RESCHEDULED");
     expect(to).toBe(body.patientEmail);
     expect(values.old_slot_summary).toEqual(expect.stringContaining("09:00"));
-    // Paket P — hasta dilimi bilinmiyor (deprecated tekil randevu) → yalnızca Türkiye saati.
-    expect(values.new_slot_summary).toBe("15.12.2026 14:30 Turkey time (GMT+3)");
+    // Paket P/R — hasta dilimi bilinmiyor (deprecated tekil randevu) → yalnızca Türkiye saati, aralık olarak.
+    expect(values.new_slot_summary).toBe("Tuesday, 15 December 2026, 14:30–15:00 Turkey time (GMT+3)");
     expect(values.reason).toBe("Doktorun programı nedeniyle");
   });
 

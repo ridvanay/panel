@@ -8,7 +8,7 @@ import { sendMail } from "../../../lib/mail";
 import { renderTemplate } from "../../../lib/template-render";
 import { renderComplianceFooterFragment } from "../../../lib/email-renderer";
 import { sendTemplateEmail, buildEmailRenderContext } from "../../email-templates/email-templates.service";
-import { formatDoctorSlots, formatPatientSlots } from "../../../lib/dual-time";
+import { formatDoctorSlots, formatPatientRanges } from "../../../lib/dual-time";
 
 /**
  * 2026-09-19 (kullanıcı talebi) — `sendTemplateEmail`'in `APPOINTMENT_CONFIRMATION` için
@@ -78,11 +78,9 @@ function formatMoney(cents: number, currency: string): string {
  * bilinmiyorsa ya da Türkiye ile aynıysa yalnızca Türkiye saati. Doktora giden e-postalarda
  * doktorun kendi dilimi + "Patient: Berlin …". Biçim `lib/dual-time.ts`'te (yaz saati `Intl` ile).
  */
-function formatSlotsSummary(appointments: readonly Pick<Appointment, "startsAt">[], patientTimeZone: string | null): string {
-  return formatPatientSlots(
-    appointments.map((a) => a.startsAt),
-    patientTimeZone
-  );
+// Paket R — başlangıç–bitiş aralığı, ardışık slotlar birleştirilir, hastanın saati bölgesine göre 12/24 saat.
+function formatSlotsSummary(appointments: readonly { startsAt: Date; endsAt?: Date | null }[], patientTimeZone: string | null): string {
+  return formatPatientRanges(appointments, patientTimeZone);
 }
 
 /**
@@ -180,10 +178,13 @@ export async function triggerAppointmentRescheduledEmail(
     doctorUserId: string | null;
     oldStartsAt: Date;
     newStartsAt: Date;
+    /** Paket R — verilirse e-postada aralık (`16:00–16:30`) gösterilir. */
+    oldEndsAt?: Date;
+    newEndsAt?: Date;
     reason: string | null;
   }
 ): Promise<void> {
-  const { appointment, doctorTimeZone, doctorFullName, doctorUserId, oldStartsAt, newStartsAt, reason } = input;
+  const { appointment, doctorTimeZone, doctorFullName, doctorUserId, oldStartsAt, newStartsAt, oldEndsAt, newEndsAt, reason } = input;
   try {
     let bookingNumber: string;
     let patientName: string;
@@ -210,8 +211,8 @@ export async function triggerAppointmentRescheduledEmail(
     await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", patientEmail, {
       recipient_name: patientName,
       booking_number: bookingNumber,
-      old_slot_summary: formatSlotsSummary([{ startsAt: oldStartsAt }], patientTimeZone),
-      new_slot_summary: formatSlotsSummary([{ startsAt: newStartsAt }], patientTimeZone),
+      old_slot_summary: formatSlotsSummary([{ startsAt: oldStartsAt, endsAt: oldEndsAt }], patientTimeZone),
+      new_slot_summary: formatSlotsSummary([{ startsAt: newStartsAt, endsAt: newEndsAt }], patientTimeZone),
       reason: reasonValue,
     });
 
@@ -257,7 +258,7 @@ export async function triggerAppointmentRescheduledEmail(
 export async function triggerAppointmentReminderEmail(
   app: FastifyInstance,
   input: {
-    appointment: Pick<Appointment, "id" | "bookingId" | "doctorId" | "patientName" | "patientEmail" | "startsAt">;
+    appointment: Pick<Appointment, "id" | "bookingId" | "doctorId" | "patientName" | "patientEmail" | "startsAt"> & { endsAt?: Date };
     doctorTimeZone: string;
     doctorTitle: string;
     doctorFullName: string;
@@ -287,7 +288,7 @@ export async function triggerAppointmentReminderEmail(
       patientEmail = appointment.patientEmail;
     }
 
-    const slotSummary = formatSlotsSummary([{ startsAt: appointment.startsAt }], patientTimeZone);
+    const slotSummary = formatSlotsSummary([{ startsAt: appointment.startsAt, endsAt: appointment.endsAt }], patientTimeZone);
     const doctorSlotSummary = formatDoctorSlots([appointment.startsAt], doctorTimeZone, patientTimeZone);
     const doctorNameFormatted = `${doctorTitle} ${doctorFullName}`.trim();
     const purpose: EmailTemplatePurpose = kind === "60m" ? "APPOINTMENT_REMINDER_60M" : "APPOINTMENT_REMINDER_30M";

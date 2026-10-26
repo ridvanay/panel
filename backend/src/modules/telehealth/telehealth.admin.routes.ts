@@ -846,6 +846,8 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
         doctorUserId: existing.doctor.userId,
         oldStartsAt,
         newStartsAt,
+        oldEndsAt,
+        newEndsAt,
         reason: request.body.reason ?? null,
       });
 
