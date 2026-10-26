@@ -20,6 +20,7 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useAuthOptional } from "@/context/auth-context";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.1 — doktor listesi. Ürünler listesinin
@@ -36,6 +37,8 @@ export default function AdminTelehealthDoctorsPage() {
   const [pendingDelete, setPendingDelete] = useState<DoctorProfile | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
+  // Paket Q — toplu giriş uçları yalnızca ADMIN'e açık.
+  const isAdmin = useAuthOptional()?.user?.role === "ADMIN";
 
   const load = useCallback(async (search?: string) => {
     try {
@@ -76,6 +79,11 @@ export default function AdminTelehealthDoctorsPage() {
             <LinkButton href="/admin/telehealth/specialties" variant="outline">
               Uzmanlıklar
             </LinkButton>
+            {isAdmin && (
+              <LinkButton href="/admin/telehealth/doctors/bulk" variant="outline">
+                Toplu çalışma saatleri / izin
+              </LinkButton>
+            )}
             <LinkButton href="/admin/telehealth/doctors/new">Yeni Doktor</LinkButton>
           </div>
         }

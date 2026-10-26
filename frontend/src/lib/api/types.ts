@@ -75,7 +75,10 @@ export type ApiErrorCode =
   // yüzeyi yok).
   | "VERIFICATION_CODE_INVALID"
   /** İletişim sayfası — imzalı zaman damgası geçersiz/süresi dolmuş (`details.token`: invalid|expired). 422. */
-  | "CONTACT_FORM_TOKEN_INVALID";
+  | "CONTACT_FORM_TOKEN_INVALID"
+  | "BULK_PREVIEW_STALE"
+  | "BULK_CONFLICT_ACK_REQUIRED"
+  | "BULK_UNDO_BLOCKED";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -3799,6 +3802,80 @@ export interface DoctorAvailabilityRuleInput {
   startMinute: number;
   endMinute: number;
   isActive?: boolean;
+}
+
+// Paket Q — admin toplu çalışma saati/izin (CSV + çoklu doktor).
+export type BulkWeeklyMode = "replace" | "append";
+export type BulkSource = "CSV" | "TEMPLATE" | "TIME_OFF";
+
+export interface BulkRule {
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+  isActive: boolean;
+}
+
+export interface BulkConflict {
+  appointmentId: string;
+  bookingNumber: string | null;
+  startsAt: string;
+  endsAt: string;
+  patientTimeZone: string | null;
+  /** `TIME_OFF`: yeni izin aralığında; `REMOVED_HOURS`: kaldırılan çalışma saatinde. */
+  reason: "TIME_OFF" | "REMOVED_HOURS";
+}
+
+export interface BulkPreviewDoctor {
+  doctorId: string;
+  slug: string;
+  name: string;
+  timeZone: string;
+  weekly: { before: BulkRule[]; after: BulkRule[]; added: BulkRule[]; removed: BulkRule[]; unchanged: BulkRule[] } | null;
+  timeOff: { skipped: number; toAdd: { startsAt: string; endsAt: string; kind: DoctorTimeOffKind; allDay: boolean; hasNote: boolean }[] };
+  conflicts: BulkConflict[];
+}
+
+export interface BulkPreview {
+  previewId: string;
+  expiresAt: string;
+  source: BulkSource;
+  fileName: string | null;
+  rowCount: number;
+  weeklyMode: BulkWeeklyMode;
+  doctors: BulkPreviewDoctor[];
+  untouchedDoctors: { doctorId: string; slug: string; name: string }[];
+  totals: { doctors: number; rulesAdded: number; rulesRemoved: number; timeOffAdded: number; timeOffSkipped: number; conflicts: number };
+}
+
+export interface BulkPreviewResult {
+  valid: boolean;
+  /** `row`: dosyadaki satır numarası (dosya geneli hatalarda `null`). */
+  errors: { row: number | null; message: string }[];
+  preview: BulkPreview | null;
+}
+
+export interface BulkOperation {
+  id: string;
+  source: BulkSource;
+  fileName: string | null;
+  rowCount: number;
+  doctorCount: number;
+  summary: { rulesAdded: number; rulesRemoved: number; timeOffAdded: number; timeOffSkipped: number; conflicts: number; doctorNames: string[] };
+  actorEmail: string | null;
+  createdAt: string;
+  undoneAt: string | null;
+}
+
+export interface BulkTimeOffPreviewRequest {
+  doctorIds: string[];
+  /** `YYYY-MM-DD`, her doktorun KENDİ saat diliminde. */
+  startDate: string;
+  endDate: string;
+  /** `SS:DD`; tam gün izinde ikisi de `null`. */
+  startTime: string | null;
+  endTime: string | null;
+  kind: DoctorTimeOffKind;
+  note: string | null;
 }
 
 /**

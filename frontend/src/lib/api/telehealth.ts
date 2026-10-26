@@ -44,6 +44,11 @@ import type {
   RescheduleAppointmentRequest,
   SetDoctorAvailabilityRequest,
   DoctorTimeOff,
+  BulkOperation,
+  DoctorAvailabilityRuleInput,
+  BulkPreviewResult,
+  BulkTimeOffPreviewRequest,
+  BulkWeeklyMode,
   CreateDoctorTimeOffRequest,
   Specialty,
   TelehealthOverview,
@@ -775,4 +780,57 @@ export function createDoctorTimeOff(doctorId: string, input: CreateDoctorTimeOff
 
 export function deleteDoctorTimeOff(doctorId: string, timeOffId: string): Promise<void> {
   return apiFetch<void>(`/admin/telehealth/doctors/${doctorId}/time-off/${timeOffId}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paket Q — toplu çalışma saati/izin (yalnızca ADMIN).
+// ---------------------------------------------------------------------------------------------
+
+const BULK_BASE = "/admin/telehealth/bulk-availability";
+
+/** Doldurulmuş CSV şablonu (UTF-8 BOM). `fetchDocumentContentBlob` ile aynı taşıma deseni. */
+export async function downloadBulkAvailabilityTemplate(delimiter: "semicolon" | "comma"): Promise<{ blob: Blob; filename: string | null }> {
+  const headers: Record<string, string> = {};
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${BULK_BASE}/template?delimiter=${delimiter}`, { headers, credentials: "include" });
+  } catch {
+    throw new ApiClientError(0, { code: "NETWORK_ERROR", message: "Sunucuya ulaşılamadı." } as never);
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new ApiClientError(res.status, body?.error ?? { code: "INTERNAL_ERROR", message: "Şablon indirilemedi." });
+  }
+  const match = /filename="([^"]*)"/.exec(res.headers.get("Content-Disposition") ?? "");
+  return { blob: await res.blob(), filename: match?.[1] ?? null };
+}
+
+export function previewBulkCsv(input: { fileName: string; contentBase64: string; weeklyMode: BulkWeeklyMode }): Promise<BulkPreviewResult> {
+  return apiFetch<BulkPreviewResult>(`${BULK_BASE}/preview/csv`, { method: "POST", body: input });
+}
+
+export function previewBulkWeeklyTemplate(input: { doctorIds: string[]; rules: DoctorAvailabilityRuleInput[]; weeklyMode: BulkWeeklyMode }): Promise<BulkPreviewResult> {
+  return apiFetch<BulkPreviewResult>(`${BULK_BASE}/preview/template`, { method: "POST", body: input });
+}
+
+export function previewBulkTimeOff(input: BulkTimeOffPreviewRequest): Promise<BulkPreviewResult> {
+  return apiFetch<BulkPreviewResult>(`${BULK_BASE}/preview/time-off`, { method: "POST", body: input });
+}
+
+export function changeBulkPreviewMode(previewId: string, weeklyMode: BulkWeeklyMode): Promise<BulkPreviewResult> {
+  return apiFetch<BulkPreviewResult>(`${BULK_BASE}/previews/${previewId}/mode`, { method: "POST", body: { weeklyMode } });
+}
+
+export function applyBulkPreview(previewId: string, acknowledgeConflicts: boolean): Promise<BulkOperation> {
+  return apiFetch<BulkOperation>(`${BULK_BASE}/apply`, { method: "POST", body: { previewId, acknowledgeConflicts } });
+}
+
+export function listBulkOperations(): Promise<BulkOperation[]> {
+  return apiFetch<BulkOperation[]>(`${BULK_BASE}/operations`);
+}
+
+export function undoBulkOperation(operationId: string): Promise<BulkOperation> {
+  return apiFetch<BulkOperation>(`${BULK_BASE}/operations/${operationId}/undo`, { method: "POST" });
 }
