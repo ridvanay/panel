@@ -7,6 +7,10 @@ import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
 import { BookingNotPayableError, NotFoundError, SlotTakenError, ValidationError } from "../../../lib/errors";
 import { isBookableSlotStart } from "./availability";
 import { getWallClockParts } from "./timezone";
+import { overlaps } from "./time-off";
+
+/** Paket P ek (1) — izinli saate rezervasyon denemesinde `SlotTakenError` mesajı (neden belirtilmez). */
+export const SLOT_UNAVAILABLE_MESSAGE = "Bu randevu saati artık uygun değil. Takvimi yenileyip başka bir saat seçin.";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §3.5 — LiveKit oda adı TAHMİN EDİLEMEZ,
@@ -205,6 +209,21 @@ export async function createBooking(app: FastifyInstance, input: CreateBookingIn
       // §4.3/§9.7.2 — kısmi rezervasyon YOKTUR: herhangi bir slot doluysa HİÇBİRİ oluşturulmaz.
       const existing = await tx.appointment.findFirst({ where: { doctorId: doctor.id, startsAt: { in: sortedSlots } } });
       if (existing) throw new SlotTakenError();
+
+      // Paket P ek (1) — doktorun izin/istisna aralığına düşen slot reddedilir (public slot ucu bu
+      // slotları zaten göstermez; bu, doğrudan API isteğine karşı sunucu garantisidir). Ödeme
+      // başlamadan, booking satırı yazılmadan ÖNCE. Hata kodu `SLOT_TAKEN` ailesi; izin nedeni/notu
+      // hastaya SIZDIRILMAZ.
+      const lastEndsAt = new Date(sortedSlots[sortedSlots.length - 1]!.getTime() + doctor.sessionDurationMin * 60_000);
+      const timeOff = await tx.doctorTimeOff.findMany({
+        where: { doctorId: doctor.id, startsAt: { lt: lastEndsAt }, endsAt: { gt: sortedSlots[0]! } },
+        select: { startsAt: true, endsAt: true },
+      });
+      const blocked = sortedSlots.some((slot) => {
+        const slotEnd = slot.getTime() + doctor.sessionDurationMin * 60_000;
+        return timeOff.some((t) => overlaps(slot.getTime(), slotEnd, t.startsAt.getTime(), t.endsAt.getTime()));
+      });
+      if (blocked) throw new SlotTakenError(SLOT_UNAVAILABLE_MESSAGE);
 
       // Ücret bilgisi tanımlanmamış (admin panelde "Ücretli Hizmet" kapalı) doktorlarda
       // `sessionPriceCents` `null`dır — bu bir HATA DEĞİL, ücretsiz/bilgi-alınız seans anlamına

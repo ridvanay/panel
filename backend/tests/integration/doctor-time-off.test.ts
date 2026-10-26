@@ -163,6 +163,51 @@ describe("Paket P — doktor izinleri", () => {
     expect(list.json().data.find((t: { id: string }) => t.id === res.json().data.id).conflicts).toHaveLength(1);
   });
 
+  it("izinli saate API'den doğrudan rezervasyon 409 SLOT_TAKEN (hiçbir kayıt oluşmaz); izin dışı saat çalışır; admin yeniden planlama da izne düşemez", async () => {
+    const day = mondayInWeeks(8);
+    // 09:00–10:00 TSİ (06:00–07:00Z) izin; slotlar 09:00, 09:30, 10:00, 10:30.
+    await app.prisma.doctorTimeOff.create({ data: { doctorId, startsAt: at(day, 6), endsAt: at(day, 7), kind: "SURGERY_DAY", note: "iç not" } });
+    const book = (slots: Date[]) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/appointments/bookings",
+        payload: {
+          doctorSlug,
+          slots: slots.map((s) => s.toISOString()),
+          patientName: "Can Hasta",
+          patientEmail: `hasta-${crypto.randomUUID()}@example.com`,
+          identity: VALID_TEST_IDENTITY,
+          consent: true,
+        },
+      });
+    const bookingsBefore = await app.prisma.appointmentBooking.count();
+
+    const blocked = await book([at(day, 6)]);
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe("SLOT_TAKEN");
+    expect(blocked.json().error.message).not.toContain("iç not");
+    // Çoklu slotta biri izinliyse hiçbiri oluşmaz (kısmi rezervasyon yok).
+    expect((await book([at(day, 6.5), at(day, 7)])).statusCode).toBe(409);
+    expect(await app.prisma.appointmentBooking.count()).toBe(bookingsBefore);
+
+    const okRes = await book([at(day, 7)]);
+    expect(okRes.statusCode).toBe(201);
+    const appointmentId = okRes.json().data.appointments[0].id as string;
+
+    const reschedule = (newStartTime: string) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/telehealth/appointments/${appointmentId}/reschedule`,
+        headers: adminAuth,
+        payload: { newDate: isoDate(day), newStartTime },
+      });
+    const intoTimeOff = await reschedule("09:30");
+    expect(intoTimeOff.statusCode).toBe(409);
+    expect(intoTimeOff.json().error.code).toBe("APPOINTMENT_RESCHEDULE_CONFLICT");
+    expect((await app.prisma.appointment.findUniqueOrThrow({ where: { id: appointmentId } })).startsAt.toISOString()).toBe(at(day, 7).toISOString());
+    expect((await reschedule("10:30")).statusCode).toBe(200);
+  });
+
   it("doğrulama: bitiş ≤ başlangıç, bilinmeyen tür, uzun not → 422; başka doktorun kaydı 404; EDITOR 403", async () => {
     const day = mondayInWeeks(6);
     const base = { startsAt: at(day, 10).toISOString(), endsAt: at(day, 9).toISOString(), kind: "VACATION" };

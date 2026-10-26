@@ -800,6 +800,13 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
         });
         if (conflict) throw new AppointmentRescheduleConflictError();
 
+        // Paket P ek (1) — yeni aralık doktorun izin/istisna aralığına düşüyorsa AYNI 409 ailesiyle red.
+        const timeOff = await tx.doctorTimeOff.findFirst({
+          where: { doctorId: existing.doctorId, startsAt: { lt: newEndsAt }, endsAt: { gt: newStartsAt } },
+          select: { id: true },
+        });
+        if (timeOff) throw new AppointmentRescheduleConflictError("Doktor bu zaman aralığında izinli/müsait değil; başka bir saat seçin.");
+
         // [ASD] §2.6 (bağlayıcı) — hatırlatma süpürücüsü damgaları AYNI transaction'da null'lanır;
         // aksi hâlde saati ileri alınan bir randevu bir daha ASLA hatırlatma e-postası almaz
         // (bkz. lib/appointment-reminders.ts).
