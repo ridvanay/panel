@@ -7,6 +7,7 @@
  * ÇALIŞTIRMA (backend/ dizininden):
  *   npx tsx scripts/export-translatable-content.ts [--out=storage/translations/export.json]
  *   npx tsx scripts/export-translatable-content.ts --only=page:home[,doctor:vahit-mutlu]   # Paket O: yalnızca seçilen kalemler (tip:ref ya da tip:id)
+ *   npx tsx scripts/export-translatable-content.ts --locales=ro,fr,sr-latn               # Paket T: yalnızca bu dillerin yuvaları
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -22,7 +23,9 @@ async function main() {
   const prisma = new PrismaClient();
   try {
     const only = arg("only")?.split(",").filter(Boolean);
-    const data = await buildTranslationExport(prisma, new Date(), { only });
+    // Paket T — yalnızca belirtilen dillerin yuvaları (ör. --locales=ro,fr,sr-latn).
+    const locales = arg("locales")?.split(",").map((l) => l.trim().toLowerCase()).filter(Boolean);
+    const data = await buildTranslationExport(prisma, new Date(), { only, locales });
     const out = path.resolve(arg("out") ?? `storage/translations/export-${data.exportedAt.replace(/[:.]/g, "-")}.json`);
     await fs.mkdir(path.dirname(out), { recursive: true });
     await fs.writeFile(out, JSON.stringify(data, null, 2), "utf8");

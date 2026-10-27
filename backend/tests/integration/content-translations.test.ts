@@ -136,6 +136,15 @@ describe("content-translations (Paket L)", () => {
     expect(() => filterExportItems(data.items, ["page"])).toThrow(TranslationImportError);
   });
 
+  it("Paket T — export --locales yalnızca seçilen dillerin yuvalarını yazar; bilinmeyen dil reddedilir", async () => {
+    const data = await buildTranslationExport(app.prisma, new Date(), { locales: ["ro", "fr", "sr-latn"] });
+    expect(data.targetLocales).toEqual(["ro", "fr", "sr-latn"]);
+    for (const item of data.items) expect(Object.keys(item.translations).sort()).toEqual(["fr", "ro", "sr-latn"]);
+    expect((await buildTranslationExport(app.prisma)).targetLocales).toEqual(expect.arrayContaining(["es", "ro", "fr", "sr-latn"]));
+    await expect(buildTranslationExport(app.prisma, new Date(), { locales: ["sr"] })).rejects.toThrow(TranslationImportError);
+    await expect(buildTranslationExport(app.prisma, new Date(), { locales: ["en"] })).rejects.toThrow(TranslationImportError);
+  });
+
   it("Paket O — TR yalnızca hedef boşsa ya da --overwrite-locale=tr ile yazılır; EN kanonik değişmez", async () => {
     await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { translations: {} } });
     const trPage = { title: "Hakkımızda (yeni)", blocks: [

@@ -41,7 +41,8 @@ import { CACHE_TAGS, triggerPublicPageRevalidation, triggerTagRevalidation } fro
 import { sanitizePageBlocks } from "../modules/pages/lib/sanitize-blocks";
 import { PageBlockListSchema } from "../modules/pages/pages.schemas";
 
-export const TARGET_LOCALES = ["es", "de", "ar", "ru"] as const;
+// Paket T (2026-10-27) — ro/fr/sr-latn (Sırpça Latin) eklendi.
+export const TARGET_LOCALES = ["es", "de", "ar", "ru", "ro", "fr", "sr-latn"] as const;
 /** İçe aktarılabilen tüm diller: hedef diller + varsayılan dil TR (koşullu; bkz. dosya başı). */
 export const IMPORT_LOCALES = ["tr", ...TARGET_LOCALES] as const;
 export type TargetLocale = (typeof IMPORT_LOCALES)[number];
@@ -182,8 +183,6 @@ const INSTRUCTIONS =
   "Sayfa `blocks` ağacında YALNIZCA görünen metinleri çevirin: yapı, id/type, bağlantı (href/url), görsel, renk ve sayı değerleri aynen kalmalıdır. " +
   "`importable: false` kalemler bilgi amaçlıdır, içe aktarılmaz. Boş bırakılan (null) dil yazılmaz.";
 
-const emptyTranslations = (): ExportItem["translations"] => Object.fromEntries(IMPORT_LOCALES.map((l) => [l, null]));
-
 /** Kayıttaki `translations` JSON'unda dolu olan diller (export'ta çevirmene bilgi). */
 function filledLocales(translations: unknown): string[] {
   if (!translations || typeof translations !== "object" || Array.isArray(translations)) return [];
@@ -217,7 +216,17 @@ export function filterExportItems(items: ExportItem[], selectors: string[]): { i
 /* Export (salt okuma)                                                 */
 /* ------------------------------------------------------------------ */
 
-export async function buildTranslationExport(db: Db, now = new Date(), options: { only?: string[] } = {}): Promise<TranslationExport> {
+export async function buildTranslationExport(
+  db: Db,
+  now = new Date(),
+  options: { only?: string[]; locales?: string[] } = {}
+): Promise<TranslationExport> {
+  // Paket T — `--locales=ro,fr,sr-latn`: çeviri yuvaları yalnızca bu dillerle (mevcut diller dosyada hiç yer almaz,
+  // dolayısıyla import'ta yeniden yazılamaz).
+  const locales = options.locales?.length ? options.locales : [...IMPORT_LOCALES];
+  const unknownLocales = locales.filter((l) => !(IMPORT_LOCALES as readonly string[]).includes(l));
+  if (unknownLocales.length) throw new TranslationImportError(`--locales bilinmeyen dil: ${unknownLocales.join(", ")} (yalnızca ${IMPORT_LOCALES.join(", ")}).`);
+  const emptyTranslations = (): ExportItem["translations"] => Object.fromEntries(locales.map((l) => [l, null]));
   const defaultLocale = (await db.locale.findFirst({ where: { isDefault: true } }))?.code ?? "en";
   const items: ExportItem[] = [];
 
@@ -299,7 +308,7 @@ export async function buildTranslationExport(db: Db, now = new Date(), options: 
     version: EXPORT_VERSION,
     exportedAt: now.toISOString(),
     canonicalLocale: defaultLocale,
-    targetLocales: IMPORT_LOCALES,
+    targetLocales: locales,
     instructions: INSTRUCTIONS,
     items: selected,
   };

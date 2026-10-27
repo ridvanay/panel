@@ -1,5 +1,5 @@
 /**
- * Paket L (2026-10-23) — es/de/ar/ru `Locale` satırlarını ekler / açar. Script:
+ * Paket L (2026-10-23) — es/de/ar/ru (Paket T: + ro/fr/sr-latn) `Locale` satırlarını ekler / açar. Script:
  * `scripts/add-site-locales.ts`. Rapor: `docs/prompts/2026-10-23-L-RAPOR.md`.
  *
  * Kurallar: satırlar `enabled: false` eklenir; mevcut `tr`/`en` satırlarına ve `isDefault`
@@ -21,6 +21,11 @@ export const NEW_SITE_LOCALES = [
   { code: "de", label: "Almanca", nativeLabel: "Deutsch", hreflang: "de" },
   { code: "ar", label: "Arapça", nativeLabel: "العربية", hreflang: "ar" },
   { code: "ru", label: "Rusça", nativeLabel: "Русский", hreflang: "ru" },
+  // Paket T (2026-10-27) — kapalı eklenir (sortOrder mevcut en büyük + 1: canlıda 6, 7, 8). Sırpça yalnızca
+  // Latin alfabesiyle: kod `sr-latn`, hreflang `sr-Latn` (Intl etiketi `sr-Latn-RS`, frontend eşlemesinde).
+  { code: "ro", label: "Romence", nativeLabel: "Română", hreflang: "ro" },
+  { code: "fr", label: "Fransızca", nativeLabel: "Français", hreflang: "fr" },
+  { code: "sr-latn", label: "Sırpça (Latin)", nativeLabel: "Srpski", hreflang: "sr-Latn" },
 ] as const;
 export type NewSiteLocaleCode = (typeof NEW_SITE_LOCALES)[number]["code"];
 const NEW_CODES = NEW_SITE_LOCALES.map((l) => l.code) as readonly string[];
