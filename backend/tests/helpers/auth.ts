@@ -32,7 +32,7 @@ export async function registerTestUser(
   overrides: Partial<{ email: string; password: string; name: string }> = {}
 ): Promise<RegisteredUser> {
   const email = overrides.email ?? `test-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
-  const password = overrides.password ?? "Sifre12345!";
+  const password = overrides.password ?? "GucluSifre.2026!";
   const name = overrides.name ?? "Test User";
 
   const registerRes = await app.inject({

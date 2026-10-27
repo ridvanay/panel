@@ -31,7 +31,7 @@ describe("users — /me profil ve şifre değiştirme", () => {
     await resetDatabase(app.prisma);
 
     email = "eve@example.com";
-    password = "Sifre12345!";
+    password = "GucluSifre.2026!";
 
     // `.claude/architect-scope-guest-account-otp.md` §2 (bağlayıcı) — `POST /auth/register`
     // ARTIK token/cookie DÖNDÜRMEZ (`202 RegistrationPendingVerification`). "Oturum #1" bu yüzden

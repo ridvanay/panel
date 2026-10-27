@@ -1,3 +1,4 @@
+import { assertPasswordPolicy } from "../../lib/password-policy-assert";
 import crypto from "node:crypto";
 import { assertNotLastTwoFactorAdmin } from "../../lib/staff-two-factor";
 import type { FastifyInstance } from "fastify";
@@ -360,6 +361,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const target = await app.prisma.user.findUnique({ where: { id: request.params.userId } });
       if (!target || target.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
+      // Paket S — şifre politikası (hedef kullanıcının e-posta/adıyla).
+      assertPasswordPolicy(request.body.password, { email: target.email, name: target.name });
 
       const passwordHash = await hashPassword(request.body.password);
 

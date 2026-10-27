@@ -27,7 +27,7 @@ import { encryptSecret } from "../../src/lib/crypto";
 import { hashPassword } from "../../src/lib/password";
 import { hashBackupCode } from "../../src/lib/backup-codes";
 
-const PASSWORD = "Sifre12345!";
+const PASSWORD = "GucluSifre.2026!";
 
 function authHeader(token: string) {
   return { authorization: `Bearer ${token}` };

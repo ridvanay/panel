@@ -1,3 +1,4 @@
+import { assertPasswordPolicy } from "../../lib/password-policy-assert";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -97,6 +98,9 @@ export default async function usersRoutes(app: FastifyInstance) {
           newPassword: ["Yeni şifre mevcut şifreden farklı olmalı."],
         });
       }
+
+      // Paket S — şifre politikası (yeni şifre).
+      assertPasswordPolicy(request.body.newPassword, { email: user.email, name: user.name }, "newPassword");
 
       // argon2 async olduğu için hash'i transaction DIŞINDA hesaplıyoruz.
       const passwordHash = await hashPassword(request.body.newPassword);

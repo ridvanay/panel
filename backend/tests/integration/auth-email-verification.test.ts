@@ -32,7 +32,7 @@ async function registerAndOverrideCode(app: FastifyInstance, email: string, know
   const res = await app.inject({
     method: "POST",
     url: "/api/v1/auth/register",
-    payload: { email, password: "Sifre12345!", name: "Test User" },
+    payload: { email, password: "GucluSifre.2026!", name: "Test User" },
   });
   expect(res.statusCode).toBe(202);
   const body = res.json();
@@ -65,7 +65,7 @@ describe("POST /auth/register — kırıcı sözleşme değişikliği (202, toke
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/auth/register",
-      payload: { email: uniqueEmail("pending"), password: "Sifre12345!", name: "Pending User" },
+      payload: { email: uniqueEmail("pending"), password: "GucluSifre.2026!", name: "Pending User" },
     });
 
     expect(res.statusCode).toBe(202);
@@ -85,7 +85,7 @@ describe("POST /auth/register — kırıcı sözleşme değişikliği (202, toke
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/auth/register",
-      payload: { email: uniqueEmail("no-leak"), password: "Sifre12345!", name: "No Leak" },
+      payload: { email: uniqueEmail("no-leak"), password: "GucluSifre.2026!", name: "No Leak" },
     });
     expect(JSON.stringify(res.json())).not.toMatch(/"code"\s*:\s*"\d{6}"/);
   });
@@ -112,7 +112,7 @@ describe("POST /auth/register — kırıcı sözleşme değişikliği (202, toke
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/auth/register",
-        payload: { email: uniqueEmail("no-dev-log"), password: "Sifre12345!", name: "No Dev Log" },
+        payload: { email: uniqueEmail("no-dev-log"), password: "GucluSifre.2026!", name: "No Dev Log" },
       });
       expect(res.statusCode).toBe(202);
     } finally {
@@ -143,7 +143,7 @@ describe("POST /auth/verify-email + POST /auth/login — e-posta doğrulama gate
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/auth/login",
-      payload: { email, password: "Sifre12345!" },
+      payload: { email, password: "GucluSifre.2026!" },
     });
 
     expect(res.statusCode).toBe(200);
@@ -171,7 +171,7 @@ describe("POST /auth/verify-email + POST /auth/login — e-posta doğrulama gate
     const loginRes = await app.inject({
       method: "POST",
       url: "/api/v1/auth/login",
-      payload: { email, password: "Sifre12345!" },
+      payload: { email, password: "GucluSifre.2026!" },
     });
     expect(loginRes.statusCode).toBe(200);
     expect(loginRes.json().data.tokens).toBeDefined();
@@ -251,7 +251,7 @@ describe("mevcut (backfill edilmiş) kullanıcıların girişi DEĞİŞMEDİ —
     await app.prisma.user.create({
       data: {
         email,
-        passwordHash: await hashPassword("Sifre12345!"),
+        passwordHash: await hashPassword("GucluSifre.2026!"),
         name: "Grandfathered User",
         // Migration'ın backfill'iyle AYNI semantik: bu turdan ÖNCE var olan hesap gibi.
         emailVerifiedAt: new Date(),
@@ -261,7 +261,7 @@ describe("mevcut (backfill edilmiş) kullanıcıların girişi DEĞİŞMEDİ —
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/auth/login",
-      payload: { email, password: "Sifre12345!" },
+      payload: { email, password: "GucluSifre.2026!" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.tokens).toBeDefined();
@@ -299,7 +299,7 @@ describe("2FA açık + emailVerifiedAt dolu — regresyon (backend-agent bulgusu
     await app.prisma.user.create({
       data: {
         email,
-        passwordHash: await hashPassword("Sifre12345!"),
+        passwordHash: await hashPassword("GucluSifre.2026!"),
         name: "2FA Verified User",
         emailVerifiedAt: new Date(),
         twoFactorEnabled: true,
@@ -310,7 +310,7 @@ describe("2FA açık + emailVerifiedAt dolu — regresyon (backend-agent bulgusu
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/auth/login",
-      payload: { email, password: "Sifre12345!" },
+      payload: { email, password: "GucluSifre.2026!" },
     });
 
     expect(res.statusCode).toBe(200);

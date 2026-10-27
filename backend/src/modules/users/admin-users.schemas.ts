@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CursorQuerySchema } from "../../schemas/common";
+import { NewPasswordSchema } from "../auth/auth.schemas";
 import { SiteRoleSchema, SiteUserStatusSchema } from "../../schemas/entities";
 
 export const AdminUserIdParamSchema = z.object({
@@ -44,7 +45,7 @@ export const UpdateAdminUserStatusRequestSchema = z.object({
  * (argon2 hash'leme maliyetiyle DoS'u önler) — mevcut şifre şemalarında YOK, burada BİLİNÇLİ eklendi.
  */
 export const SetAdminUserPasswordRequestSchema = z.object({
-  password: z.string().min(8, "Şifre en az 8 karakter olmalı.").max(200),
+  password: NewPasswordSchema,
 });
 
 /**

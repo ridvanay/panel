@@ -32,7 +32,7 @@ describe("auth", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/auth/register",
-      payload: { email: sharedUser.email, password: "Sifre12345!", name: "Alice Again" },
+      payload: { email: sharedUser.email, password: "GucluSifre.2026!", name: "Alice Again" },
     });
 
     expect(res.statusCode).toBe(409);

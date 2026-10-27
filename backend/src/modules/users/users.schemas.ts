@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TimeZoneSchema } from "../../lib/dual-time";
+import { NewPasswordSchema } from "../auth/auth.schemas";
 
 /** Serbest formatlı telefon — ülke kodu/format ülkeye göre değişir, katı bir E.164 zorunluluğu YOK. */
 const ADDRESS_PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
@@ -19,7 +20,7 @@ export const UpdateUserRequestSchema = z.object({
 /** `POST /users/me/change-password` gövdesi — mesaj `auth.schemas.ts::RegisterRequestSchema` ile AYNI. */
 export const ChangePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(8, "Şifre en az 8 karakter olmalı."),
+  newPassword: NewPasswordSchema,
   /**
    * Paket G — true ise diğer cihazların AÇIK access token'ları da HEMEN geçersiz olur
    * (`sessionsValidAfter`); mevcut oturum düşmez, yanıtta yeni bir access token döner. false/yok:

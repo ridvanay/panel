@@ -37,7 +37,7 @@ describe("issueVerificationCode — gerçek eşzamanlılıkta ikinci bir 'canlı
 
   it("iki eşzamanlı issueVerificationCode çağrısı (aynı userId+purpose, hiç önceki kod yok) — en fazla BİR canlı satır kalır, ve bu satır dönen kodlardan biriyle EŞLEŞİR", async () => {
     const user = await app.prisma.user.create({
-      data: { email: uniqueEmail("race-fresh"), passwordHash: await hashPassword("Sifre12345!"), name: "Race Fresh" },
+      data: { email: uniqueEmail("race-fresh"), passwordHash: await hashPassword("GucluSifre.2026!"), name: "Race Fresh" },
     });
 
     const [r1, r2] = await Promise.all([
@@ -70,7 +70,7 @@ describe("issueVerificationCode — gerçek eşzamanlılıkta ikinci bir 'canlı
     const registerRes = await app.inject({
       method: "POST",
       url: "/api/v1/auth/register",
-      payload: { email, password: "Sifre12345!", name: "Race Resend" },
+      payload: { email, password: "GucluSifre.2026!", name: "Race Resend" },
     });
     expect(registerRes.statusCode).toBe(202);
 

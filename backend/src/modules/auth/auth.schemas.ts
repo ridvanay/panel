@@ -1,8 +1,16 @@
 import { z } from "zod";
+import { PASSWORD_MAX_LENGTH } from "../../lib/password-policy";
+
+/**
+ * Paket S — yeni şifre alanları: şemada yalnızca boş olmama + üst sınır; asıl kurallar (uzunluk,
+ * karakter grupları, dizi/yaygın/kişisel) kullanıcı bağlamıyla servis katmanında
+ * `assertPasswordPolicy` ile uygulanır (kural kodları 6 dile çevrilebilsin diye tek yerden).
+ */
+export const NewPasswordSchema = z.string().min(1, "Şifre gerekli.").max(PASSWORD_MAX_LENGTH, `Şifre en fazla ${PASSWORD_MAX_LENGTH} karakter olabilir.`);
 
 export const RegisterRequestSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, "Şifre en az 8 karakter olmalı."),
+  password: NewPasswordSchema,
   name: z.string().min(1),
 });
 
@@ -17,7 +25,7 @@ export const ForgotPasswordRequestSchema = z.object({
 
 export const ResetPasswordRequestSchema = z.object({
   token: z.string().min(1),
-  newPassword: z.string().min(8, "Şifre en az 8 karakter olmalı."),
+  newPassword: NewPasswordSchema,
 });
 
 /** §10.4 Güvenlik & 2FA — POST /auth/2fa/verify body'si. `code`: 6 haneli TOTP veya "XXXX-XXXX" backup kodu. */
@@ -45,5 +53,5 @@ export const ResendVerificationCodeRequestSchema = z.object({
 export const ActivateAccountRequestSchema = z.object({
   email: z.string().email(),
   code: z.string().regex(/^[0-9]{6}$/, "Kod tam 6 haneli olmalı."),
-  password: z.string().min(8, "Şifre en az 8 karakter olmalı."),
+  password: NewPasswordSchema,
 });

@@ -12,6 +12,7 @@ import { ConflictError, UnauthorizedError, NotFoundError, ForbiddenError } from 
 import { issueVerificationCode, consumeVerificationCode, RESEND_COOLDOWN_MS } from "../../lib/otp";
 import { toUserDto } from "../../mappers";
 import { env } from "../../config/env";
+import { assertPasswordPolicy } from "../../lib/password-policy-assert";
 import { sendPasswordResetEmail, sendEmailVerificationCode, sendAccountActivationEmail } from "../email-templates/email-templates.service";
 
 interface RequestMeta {
@@ -105,6 +106,8 @@ export async function register(
   _meta: RequestMeta
 ): Promise<RegisterResult> {
   const email = input.email.toLowerCase();
+  // Paket S — şifre politikası (yeni şifre); e-posta ve ad bağlamıyla.
+  assertPasswordPolicy(input.password, { email, name: input.name });
   const existing = await app.prisma.user.findUnique({ where: { email } });
   if (existing) {
     throw new ConflictError("Bu e-posta adresi zaten kayıtlı.");
@@ -316,6 +319,10 @@ export async function activateAccount(
 ): Promise<{ user: UserWithDoctorLink; tokens: TokenIssue }> {
   const user = await app.prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
 
+  // Paket S (inceleme bulgusu) — politika kod TÜKETİLMEDEN önce: zayıf şifre tek kullanımlık kodu yakmasın.
+  // Sonuç yalnızca gönderilen şifre/e-posta ve (varsa) ada bağlıdır; hesap varlığını ayırt etmez.
+  assertPasswordPolicy(input.password, { email: input.email, name: user?.name });
+
   await consumeVerificationCode(app, user?.id ?? null, "ACCOUNT_ACTIVATION", input.code);
   /* istanbul ignore next — `consumeVerificationCode` userId=null iken HER ZAMAN fırlatır. */
   if (!user) {
@@ -468,6 +475,9 @@ export async function resetPassword(app: FastifyInstance, rawToken: string, newP
     throw new UnauthorizedError("Geçersiz veya süresi dolmuş sıfırlama bağlantısı.");
   }
 
+  // Paket S — politika, geçerli token'dan SONRA (geçersiz token için kural bilgisi sızmasın).
+  const owner = await app.prisma.user.findUnique({ where: { id: resetToken.userId }, select: { email: true, name: true } });
+  assertPasswordPolicy(newPassword, { email: owner?.email, name: owner?.name }, "newPassword");
   const passwordHash = await hashPassword(newPassword);
 
   // `.claude/architect-scope-guest-account-otp.md` §2.5 (bağlayıcı) — başarılı sıfırlamada
