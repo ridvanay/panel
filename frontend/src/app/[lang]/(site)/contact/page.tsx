@@ -8,6 +8,7 @@ import { fetchDoctorBySlugServer, fetchSpecialtiesServer, fetchTelehealthThemeSe
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { resolveEmergencyNotice } from "@/lib/emergency-notice";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
 import { ContactPageForm } from "@/components/site/contact/contact-page-form";
@@ -152,7 +153,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                 <ContactPageForm
                   dict={t}
                   locale={locale}
-                  displayLocale={lang}
+                  displayLocale={contentLocaleToIntl(lang)}
                   consent={page.consent}
                   privacyHref={privacyHref}
                   treatments={specialties.map((s) => ({ slug: s.slug, name: s.name }))}

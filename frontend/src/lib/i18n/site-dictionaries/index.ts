@@ -10,7 +10,7 @@ export type { SiteDictionary, SiteUiLocale, CommonStrings, NavStrings, Telehealt
  */
 export const SITE_UI_SOURCE_LOCALE = "en" satisfies SiteUiLocale;
 
-const SITE_UI_LOCALES: readonly SiteUiLocale[] = ["en", "tr", "es", "de", "ar", "ru"];
+const SITE_UI_LOCALES: readonly SiteUiLocale[] = ["en", "tr", "es", "de", "ar", "ru", "ro", "fr", "sr-latn"];
 
 export function hasSiteDictionary(lang: string): lang is SiteUiLocale {
   return (SITE_UI_LOCALES as readonly string[]).includes(lang);
@@ -24,6 +24,10 @@ const loaders: Record<SiteUiLocale, () => Promise<{ siteDictionary: SiteDictiona
   de: () => import("./de"),
   ar: () => import("./ar"),
   ru: () => import("./ru"),
+  // Paket T (2026-10-27)
+  ro: () => import("./ro"),
+  fr: () => import("./fr"),
+  "sr-latn": () => import("./sr-latn"),
 };
 
 /**

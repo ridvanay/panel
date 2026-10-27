@@ -19,6 +19,9 @@ const CONTENT_LOCALE_TO_INTL: Record<string, string> = {
   ar: "ar-SA",
   // Paket L
   ru: "ru-RU",
+  // Paket T — Sırpça Latin: `Intl`'in Sırpça varsayılanı Kiril'dir; yazı sistemi AÇIKÇA Latin verilir.
+  ro: "ro-RO",
+  "sr-latn": "sr-Latn-RS",
 };
 
 export function contentLocaleToIntl(code: string): string {

@@ -7,6 +7,9 @@ import { authStrings as esAuthStrings } from "./site-dictionaries/es/auth";
 import { authStrings as deAuthStrings } from "./site-dictionaries/de/auth";
 import { authStrings as arAuthStrings } from "./site-dictionaries/ar/auth";
 import { authStrings as ruAuthStrings } from "./site-dictionaries/ru/auth";
+import { authStrings as roAuthStrings } from "./site-dictionaries/ro/auth";
+import { authStrings as frAuthStrings } from "./site-dictionaries/fr/auth";
+import { authStrings as srLatnAuthStrings } from "./site-dictionaries/sr-latn/auth";
 
 /**
  * Paket O — giriş/kayıt/şifre/doğrulama ekranları ve doktor girişi metinleri. Dil `usePortalStrings`
@@ -20,6 +23,9 @@ const AUTH_DICTIONARIES: Record<string, AuthStrings> = {
   de: deAuthStrings,
   ar: arAuthStrings,
   ru: ruAuthStrings,
+  ro: roAuthStrings,
+  fr: frAuthStrings,
+  "sr-latn": srLatnAuthStrings,
 };
 
 export function useAuthStrings(): AuthStrings {

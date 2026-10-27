@@ -52,8 +52,9 @@ export const MAP_IFRAME_REFERRER_POLICY = "strict-origin-when-cross-origin" as c
  * derinliği — `getMapEmbedUrl` çağıranın routing katmanına GÜVENMEDEN kendi içinde de doğrular).
  * Desteklenmeyen/boş bir değer sabit bir varsayılana (`"tr"`) düşer.
  */
-// Paket L — site arayüz dilleri (es/de/ar/ru) de harita arayüz dili olarak geçer.
-const SUPPORTED_LOCALES = ["tr", "en", "es", "de", "ar", "ru"] as const;
+// Paket L — site arayüz dilleri (es/de/ar/ru) de harita arayüz dili olarak geçer. Paket T — ro/fr.
+// `sr-latn` Google Haritalar'da Latin arayüz garantisi vermediği için listede yok (varsayılana düşer).
+const SUPPORTED_LOCALES = ["tr", "en", "es", "de", "ar", "ru", "ro", "fr"] as const;
 type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 const DEFAULT_LOCALE: SupportedLocale = "tr";
 

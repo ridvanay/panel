@@ -5,6 +5,9 @@ import { siteDictionary as es } from "@/lib/i18n/site-dictionaries/es";
 import { siteDictionary as de } from "@/lib/i18n/site-dictionaries/de";
 import { siteDictionary as ar } from "@/lib/i18n/site-dictionaries/ar";
 import { siteDictionary as ru } from "@/lib/i18n/site-dictionaries/ru";
+import { siteDictionary as ro } from "@/lib/i18n/site-dictionaries/ro";
+import { siteDictionary as fr } from "@/lib/i18n/site-dictionaries/fr";
+import { siteDictionary as srLatn } from "@/lib/i18n/site-dictionaries/sr-latn";
 import { getSiteDictionary, hasSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { validateEmergencyNoticeText } from "@/lib/emergency-notice";
 
@@ -31,7 +34,8 @@ function placeholders(value: string): string[] {
 }
 
 const enFlat = flatten(en as unknown as Tree);
-const OTHERS = { tr, es, de, ar, ru } as const;
+// Paket T — ro/fr/sr-latn da EN ile birebir aynı anahtarlara sahip olmalı.
+const OTHERS = { tr, es, de, ar, ru, ro, fr, "sr-latn": srLatn } as const;
 
 describe.each(Object.entries(OTHERS))("site sözlüğü — %s / EN eşliği", (code, dict) => {
   const flat = flatten(dict as unknown as Tree);
@@ -63,11 +67,13 @@ describe.each(Object.entries(OTHERS))("site sözlüğü — %s / EN eşliği", (
 });
 
 describe("site sözlükleri — yükleme", () => {
-  it("altı dilin sözlüğü vardır; bilinmeyen dil EN'e düşer", async () => {
-    for (const code of ["en", "tr", "es", "de", "ar", "ru"]) expect(hasSiteDictionary(code)).toBe(true);
-    expect(hasSiteDictionary("fr")).toBe(false);
+  it("dokuz dilin sözlüğü vardır; bilinmeyen dil EN'e düşer", async () => {
+    for (const code of ["en", "tr", "es", "de", "ar", "ru", "ro", "fr", "sr-latn"]) expect(hasSiteDictionary(code)).toBe(true);
+    expect(hasSiteDictionary("pt")).toBe(false);
+    expect(hasSiteDictionary("sr")).toBe(false); // yalnızca Latin sürüm var
     expect((await getSiteDictionary("ru")).nav.login).toBe(ru.nav.login);
-    expect((await getSiteDictionary("fr")).nav.login).toBe(en.nav.login);
+    expect((await getSiteDictionary("sr-latn")).nav.login).toBe(srLatn.nav.login);
+    expect((await getSiteDictionary("pt")).nav.login).toBe(en.nav.login);
   });
 
   it("portal bölümü kapsamlı (hasta, doktor, sihirbaz, hata kodları)", () => {

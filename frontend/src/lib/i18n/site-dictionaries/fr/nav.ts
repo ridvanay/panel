@@ -1,0 +1,23 @@
+import type { NavStrings } from "../en/nav";
+
+export const navStrings: NavStrings = {
+  siteNavigationAriaLabel: "Navigation du site",
+  accountMenuAriaLabel: "Mon compte, {name}",
+  doctorPortal: "Espace médecin",
+  myAppointments: "Mes rendez-vous",
+  myAccount: "Mon compte",
+  myOrders: "Mes commandes",
+  logout: "Se déconnecter",
+  login: "Se connecter",
+  loginAriaLabel: "Se connecter",
+  wishlistAriaLabel: "Liste de souhaits",
+  cartAriaLabel: "Panier, {count} articles",
+  openMenu: "Ouvrir le menu",
+  closeMenu: "Fermer le menu",
+  menuTitle: "Menu",
+  languageHeading: "Langue",
+  wishlist: "Liste de souhaits",
+  cart: "Panier",
+  dropdownViewAll: "Voir tout : {label}",
+  dropdownFindDoctor: "Trouver un médecin",
+};

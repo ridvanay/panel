@@ -14,7 +14,8 @@ import type { ConsentStrings } from "./en/consent";
  * (DB locale kümesi, `GET /locales`) İLE KARIŞTIRILMAZ (§14.2 tablo) — bu, repo'daki
  * `site-dictionaries/<code>/` klasörlerinin kapsadığı, yalnızca DEPLOY ile genişleyen kümedir.
  */
-export type SiteUiLocale = "en" | "tr" | "es" | "de" | "ar" | "ru";
+// Paket T — ro/fr ve Sırpça Latin (`sr-latn`; Intl etiketi `sr-Latn-RS`).
+export type SiteUiLocale = "en" | "tr" | "es" | "de" | "ar" | "ru" | "ro" | "fr" | "sr-latn";
 
 export type SiteDictionary = {
   common: CommonStrings;

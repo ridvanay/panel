@@ -34,7 +34,11 @@ const LOCALES: Locale[] = [
 
 describe("bayrak eşlemesi", () => {
   it("tek eşleme; bölge alt etiketi yok sayılır; eşlemesiz dil null", () => {
-    expect(LOCALE_FLAG_COUNTRY).toEqual({ tr: "tr", en: "gb", ar: "sa", ru: "ru", es: "es", de: "de", fr: "fr" });
+    // Paket T — ro ve Sırpça Latin (`sr-latn` → Sırbistan bayrağı `rs`).
+    expect(LOCALE_FLAG_COUNTRY).toEqual({ tr: "tr", en: "gb", ar: "sa", ru: "ru", es: "es", de: "de", fr: "fr", ro: "ro", "sr-latn": "rs" });
+    expect(localeFlagSrc("sr-latn")).toBe("/flags/4x3/rs.svg");
+    expect(localeFlagSrc("ro")).toBe("/flags/4x3/ro.svg");
+    expect(localeFlagSrc("fr")).toBe("/flags/4x3/fr.svg");
     expect(localeFlagSrc("en")).toBe("/flags/4x3/gb.svg");
     expect(localeFlagSrc("ar")).toBe("/flags/4x3/sa.svg");
     expect(localeFlagSrc("en-US")).toBe("/flags/4x3/gb.svg");

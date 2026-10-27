@@ -1,0 +1,60 @@
+import type { HomeStrings } from "../en/home";
+
+export const homeStrings: HomeStrings = {
+  heroEyebrow: "Consultație prin telemedicină",
+  heroTitle: "Programați o consultație video cu specialiști de top",
+  heroBody: "Programați-vă în câteva clicuri și discutați cu medicul dumneavoastră într-o consultație video securizată — fără să plecați de acasă.",
+  heroPrimaryCta: "Găsiți un medic",
+  heroSecondaryCta: "Cum funcționează",
+  heroCardTitle: "Consultație video securizată",
+  heroCardText: "Conectați-vă din browser",
+
+  trust1Title: "Acces 24/7",
+  trust1Text: "Găsiți un medic disponibil și faceți o programare la ora care vă convine.",
+  trust2Title: "Consultații criptate",
+  trust2Text: "Consultațiile video au loc printr-o conexiune criptată.",
+  trust3Title: "Profiluri verificate",
+  trust3Text: "Profilurile medicilor publicate trec printr-o verificare a identității și a diplomei.",
+
+  specialtiesEyebrow: "Specialități",
+  specialtiesTitle: "Găsiți îngrijire în funcție de specialitate",
+  specialtiesViewAll: "Vezi toate specialitățile",
+
+  howEyebrow: "Cum funcționează",
+  howTitle: "Trei pași până la consultația dumneavoastră",
+  step1Title: "Alegeți un medic",
+  step1Text: "Filtrați după specialitate și limbă și consultați profilurile medicilor.",
+  step2Title: "Alegeți o oră",
+  step2Text: "Selectați un interval disponibil și finalizați programarea online.",
+  step3Title: "Intrați în apelul video",
+  step3Text: "La ora programării, intrați în consultație din browser.",
+  stepLabel: "Pasul {number}",
+
+  journeyEyebrow: "Parcursul pacientului internațional",
+  journeyTitle: "Din întreaga lume, la Istanbul",
+  journeyBody:
+    "WM Health coordonează fiecare etapă a călătoriei dumneavoastră la Istanbul, iar planificarea tratamentului este ghidată de nevoile dumneavoastră medicale.",
+  journeyStep1Title: "Planificarea înainte de călătorie",
+  journeyStep1Text: "Transmiteți-ne istoricul medical și obiectivele de tratament, astfel încât să putem pregăti un plan adaptat dumneavoastră înainte de călătorie.",
+  journeyStep2Title: "Sosirea la Istanbul",
+  journeyStep2Text: "Echipa noastră vă întâmpină, vă organizează cazarea și vă confirmă programul consultațiilor.",
+  journeyStep3Title: "Examinare și tratament",
+  journeyStep3Text: "Medicul curant efectuează examinările necesare și pune în aplicare planul de tratament.",
+  journeyStep4Title: "Monitorizare după întoarcere",
+  journeyStep4Text: "Rămânem în legătură cu dumneavoastră după întoarcerea acasă, pentru a vă sprijini recuperarea și a vă răspunde la întrebări.",
+  journeyCountry1: "Regatul Unit",
+  journeyCountry2: "Germania",
+  journeyCountry3: "Rusia",
+  journeyCountry4: "Kazahstan",
+  journeyCountry5: "Arabia Saudită",
+  journeyCountry6: "Statele Unite",
+  journeyIstanbulLabel: "Istanbul",
+
+  doctorsEyebrow: "Echipa noastră medicală",
+  doctorsTitle: "Cunoașteți medicii noștri",
+  doctorsCta: "Vezi toți medicii",
+
+  closingTitle: "Începeți cu o consultație",
+  closingPrimaryCta: "Găsiți un medic",
+  closingSecondaryCta: "Contactați-ne",
+};

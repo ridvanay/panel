@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
 import { DoctorSocialLinks } from "@/components/site/telehealth/doctor-social-links";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 
 /**
@@ -34,7 +35,7 @@ const DARK_CHIP_BASE =
 export function DoctorProfileHero({ doctor, dict, lang }: { doctor: DoctorProfile; dict: TelehealthStrings; lang: string }) {
   let languageNames: Intl.DisplayNames | null = null;
   try {
-    languageNames = new Intl.DisplayNames([lang], { type: "language" });
+    languageNames = new Intl.DisplayNames([contentLocaleToIntl(lang)], { type: "language" });
   } catch {
     languageNames = null;
   }

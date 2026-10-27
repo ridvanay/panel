@@ -11,6 +11,9 @@ import { portalStrings as esPortalStrings } from "./site-dictionaries/es/portal"
 import { portalStrings as dePortalStrings } from "./site-dictionaries/de/portal";
 import { portalStrings as arPortalStrings } from "./site-dictionaries/ar/portal";
 import { portalStrings as ruPortalStrings } from "./site-dictionaries/ru/portal";
+import { portalStrings as roPortalStrings } from "./site-dictionaries/ro/portal";
+import { portalStrings as frPortalStrings } from "./site-dictionaries/fr/portal";
+import { portalStrings as srLatnPortalStrings } from "./site-dictionaries/sr-latn/portal";
 
 /**
  * Paket A2 (2026-10-18) — hasta/doktor portalı, randevu sihirbazı ve başlıktaki kullanıcı menüsü
@@ -28,6 +31,9 @@ const PORTAL_DICTIONARIES: Record<string, PortalStrings> = {
   de: dePortalStrings,
   ar: arPortalStrings,
   ru: ruPortalStrings,
+  ro: roPortalStrings,
+  fr: frPortalStrings,
+  "sr-latn": srLatnPortalStrings,
 };
 
 export function usePortalStrings(): { t: PortalStrings; lang: string; intlLocale: string } {

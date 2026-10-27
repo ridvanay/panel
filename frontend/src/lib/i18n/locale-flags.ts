@@ -11,11 +11,15 @@ export const LOCALE_FLAG_COUNTRY: Readonly<Record<string, string>> = {
   es: "es",
   de: "de",
   fr: "fr",
+  // Paket T
+  ro: "ro",
+  "sr-latn": "rs",
 };
 
 /** Bayrak dosyasının yolu; eşlemede yoksa `null` (kod rozeti gösterilir). Bölge alt etiketi yok sayılır. */
 export function localeFlagSrc(code: string): string | null {
-  const base = code.toLowerCase().split("-")[0] ?? "";
-  const country = LOCALE_FLAG_COUNTRY[base];
+  const lower = code.toLowerCase();
+  // Paket T — önce tam kod (`sr-latn` → `rs`), sonra yalnızca dil alt etiketi.
+  const country = LOCALE_FLAG_COUNTRY[lower] ?? LOCALE_FLAG_COUNTRY[lower.split("-")[0] ?? ""];
   return country ? `/flags/4x3/${country}.svg` : null;
 }

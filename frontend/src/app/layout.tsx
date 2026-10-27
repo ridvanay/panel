@@ -9,14 +9,15 @@ import { buildSiteIconsMetadata } from "@/lib/site-settings/site-icons";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import "./globals.css";
 
+// Paket T — `latin-ext`: Romence (ș ț ă î â), Sırpça Latin (č ć đ š ž), Fransızca (œ) giriş/admin ekranlarında da.
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
 });
 
 export async function generateMetadata(): Promise<Metadata> {

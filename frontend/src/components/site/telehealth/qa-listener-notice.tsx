@@ -26,13 +26,30 @@ const QA_LISTENER_NOTICE_COPY = {
     notice: "An authorised WM Health staff member is listening to this consultation for quality control purposes.",
     participant: "Participant: WM Health – Quality Control",
   },
+  // Paket T — hukuk onaylı EN metnin çevirileri (canlıya almadan önce hukuk/insan kontrolü gerekli; rapordaki liste).
+  ro: {
+    notice: "Un membru autorizat al personalului WM Health ascultă această consultație în scopul controlului calității.",
+    participant: "Participant: WM Health – Controlul calității",
+  },
+  fr: {
+    notice: "Un membre autorisé du personnel de WM Health écoute cette consultation à des fins de contrôle qualité.",
+    participant: "Participant : WM Health – Contrôle qualité",
+  },
+  "sr-latn": {
+    notice: "Ovlašćeni član osoblja WM Health sluša ovu konsultaciju u svrhu kontrole kvaliteta.",
+    participant: "Učesnik: WM Health – Kontrola kvaliteta",
+  },
 } as const;
 
-/** Locale `en` ile başlıyorsa İngilizce, diğer her durumda (bağlam yok/boş/beklenmeyen) Türkçe. */
+/**
+ * Dil koduna tam eşleşen metin (`ro`, `fr`, `sr-latn`); yoksa `en` ile başlıyorsa İngilizce, diğer her
+ * durumda (bağlam yok/boş/beklenmeyen) Türkçe. Paket T — `startsWith("en")` iki harf varsayımı tireli
+ * kodlar için tam eşleşmeyle desteklendi.
+ */
 export function resolveQaListenerNoticeCopy(localeCode: unknown) {
-  return typeof localeCode === "string" && localeCode.trim().toLowerCase().startsWith("en")
-    ? QA_LISTENER_NOTICE_COPY.en
-    : QA_LISTENER_NOTICE_COPY.tr;
+  const code = typeof localeCode === "string" ? localeCode.trim().toLowerCase() : "";
+  if (code in QA_LISTENER_NOTICE_COPY) return QA_LISTENER_NOTICE_COPY[code as keyof typeof QA_LISTENER_NOTICE_COPY];
+  return code.startsWith("en") ? QA_LISTENER_NOTICE_COPY.en : QA_LISTENER_NOTICE_COPY.tr;
 }
 
 export function isQaListenerParticipant(participant: { identity: string; metadata?: string }): boolean {
