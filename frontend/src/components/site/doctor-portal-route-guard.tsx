@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuthOptional } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { isDoctorHostname, isSubdomainModeEnabled, toDoctorOrigin } from "@/lib/doctor-host";
+import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 /**
  * §K6 (`.claude/architect-scope-telehealth-template.md`) + görev talimatı — doktor hesabı
@@ -29,7 +30,7 @@ import { isDoctorHostname, isSubdomainModeEnabled, toDoctorOrigin } from "@/lib/
  */
 function isDoctorPortalRoute(pathname: string | null): boolean {
   if (!pathname) return false;
-  return /^\/(?:[a-z]{2}\/)?doctor(?:\/|$)/.test(pathname);
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?doctor(?:/|$)`).test(pathname);
 }
 
 /**
@@ -58,7 +59,7 @@ function isDoctorSharedRouteException(pathname: string | null): boolean {
   if (!pathname) return false;
   // YALNIZCA `/consultation/{id}` (`app/[lang]/(site)/consultation/[id]/page.tsx`) — `{id}`
   // segmenti ZORUNLUDUR, çıplak `/consultation` bir sayfa DEĞİLDİR.
-  return /^\/(?:[a-z]{2}\/)?consultation\/[^/]+/.test(pathname);
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?consultation/[^/]+`).test(pathname);
 }
 
 export function DoctorPortalRouteGuard() {

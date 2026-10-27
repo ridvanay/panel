@@ -52,7 +52,8 @@ export default async function DoctorScopeLayout({
   // Bakım modu (§3.3) doktor host'unda proxy tarafından UYGULANMAZ; bu layout onu HİÇ sorgulamaz.
   const locales = await fetchLocalesServer();
   const activeLocale = locales.find((l) => l.code === lang);
-  if (!activeLocale) notFound();
+  // Paket T — kapalı dil (ör. henüz açılmamış ro/fr/sr-latn) public listede olmasa bile 404.
+  if (!activeLocale || activeLocale.enabled === false) notFound();
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
 
   const [settings, appearance] = await Promise.all([fetchSiteSettingsServer(), fetchSiteAppearanceServer()]);

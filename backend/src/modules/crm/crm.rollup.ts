@@ -63,8 +63,9 @@ const DIMENSIONS: DimensionDef[] = [
   },
   { name: "timezone", keyExpr: `COALESCE(s."timezone", 'unknown')`, entryKeyExpr: `COALESCE(s."timezone", 'unknown')` },
   { name: "device", keyExpr: `s."deviceType"::text`, entryKeyExpr: `s."deviceType"::text` },
-  { name: "doctor", keyExpr: `substring(e."path" from '^(?:/[a-z]{2})?/doctors/([^/]+)')`, entryKeyExpr: null },
-  { name: "specialty", keyExpr: `substring(e."path" from '^(?:/[a-z]{2})?/specialties/([^/]+)')`, entryKeyExpr: null },
+  // Paket T — dil öneki `/tr` ya da `/sr-latn` olabilir.
+  { name: "doctor", keyExpr: `substring(e."path" from '^(?:/[a-z]{2}(?:-[a-z]{4})?)?/doctors/([^/]+)')`, entryKeyExpr: null },
+  { name: "specialty", keyExpr: `substring(e."path" from '^(?:/[a-z]{2}(?:-[a-z]{4})?)?/specialties/([^/]+)')`, entryKeyExpr: null },
 ];
 
 const METRICS_SELECT = `

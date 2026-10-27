@@ -31,7 +31,8 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
   "/dashboard",
 ] as const;
 
-const LOCALE_PREFIX = /^\/[a-z]{2}(?=\/|$)/;
+// Paket T — dil öneki iki harfli ya da yazı sistemli (`/sr-latn`) olabilir.
+const LOCALE_PREFIX = /^\/[a-z]{2}(?:-[a-z]{4})?(?=\/|$)/;
 
 /** `/en/doctors/x?y#z` → `/doctors/x`. Dil öneki ve sorgu/parça atılır. */
 export function stripLocale(path: string): string {

@@ -8,6 +8,7 @@ import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { DoctorPortalProfile } from "@/lib/api/types";
 import { DoctorPortalContext, type DoctorPortalContextValue, type DoctorPortalStatus } from "@/components/site/telehealth/doctor-portal-context";
+import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 /**
  * `/doctor/login` (opsiyonel `[a-z]{2}` locale prefix'i — `doctor-portal-route-guard.tsx`'teki
@@ -16,7 +17,7 @@ import { DoctorPortalContext, type DoctorPortalContextValue, type DoctorPortalSt
  */
 function isDoctorLoginRoute(pathname: string | null): boolean {
   if (!pathname) return false;
-  return /^\/(?:[a-z]{2}\/)?doctor\/login(?:\/|$)/.test(pathname);
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?doctor/login(?:/|$)`).test(pathname);
 }
 
 /**

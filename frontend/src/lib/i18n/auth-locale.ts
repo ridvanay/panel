@@ -1,4 +1,5 @@
 import { isSafeInternalPath } from "@/lib/safe-redirect";
+import { hasLocalePrefix, matchLocaleTag } from "@/lib/i18n/locale-code";
 
 /**
  * Paket O (2026-10-23) — `[lang]` dışında kalan giriş/kayıt/şifre/doğrulama ekranlarının dili.
@@ -35,11 +36,16 @@ export function localeFromAcceptLanguage(header: string | null | undefined, enab
       const [tag = "", ...params] = part.trim().split(";");
       const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
       const quality = q ? Number(q.slice(2)) : 1;
-      return { code: tag.trim().toLowerCase().split("-")[0] ?? "", quality: Number.isFinite(quality) ? quality : 0, index };
+      // Paket T — tam etiket korunur (`sr-Latn-RS`); eşleme `matchLocaleTag` ile (tireli kodlar dahil).
+      return { tag: tag.trim(), quality: Number.isFinite(quality) ? quality : 0, index };
     })
-    .filter((entry) => entry.code && entry.code !== "*" && entry.quality > 0)
+    .filter((entry) => entry.tag && entry.tag !== "*" && entry.quality > 0)
     .sort((a, b) => b.quality - a.quality || a.index - b.index);
-  return ranked.find((entry) => enabledCodes.includes(entry.code))?.code ?? null;
+  for (const entry of ranked) {
+    const code = matchLocaleTag(entry.tag, enabledCodes);
+    if (code) return code;
+  }
+  return null;
 }
 
 export function resolveAuthLocale(input: AuthLocaleInput): string {
@@ -60,7 +66,7 @@ export function resolveAuthLocale(input: AuthLocaleInput): string {
 export function localizeDestination(path: string, lang: string, defaultCode: string): string {
   if (!isSafeInternalPath(path) || lang === defaultCode) return path;
   if (/^\/(admin|doctor|dashboard|api)(\/|$|\?)/.test(path)) return path;
-  // Zaten iki harfli bir dil önekiyle başlıyorsa (`/ru/...`) olduğu gibi kalır.
-  if (/^\/[a-z]{2}(\/|$|\?|#)/.test(path)) return path;
+  // Zaten bir dil önekiyle başlıyorsa (`/ru/...`, `/sr-latn/...`) olduğu gibi kalır.
+  if (hasLocalePrefix(path)) return path;
   return path === "/" ? `/${lang}` : `/${lang}${path}`;
 }

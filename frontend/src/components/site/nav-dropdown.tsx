@@ -6,6 +6,7 @@ import { Menu } from "@base-ui/react/menu";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { cn } from "@/lib/utils";
+import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 /** Header menüsü için uzmanlık özeti — `(site)/layout.tsx` uzmanlıklar modülünden verir. */
 export interface NavSpecialty {
@@ -35,7 +36,7 @@ export function specialtySlugFromHref(href: string): string | null {
     return null;
   }
   if (url.origin !== "https://nav.invalid") return null;
-  const path = url.pathname.replace(/\/+$/, "").replace(/^\/[a-z]{2}(?=\/)/, "");
+  const path = url.pathname.replace(/\/+$/, "").replace(new RegExp(`^/${LOCALE_SEGMENT_SOURCE}(?=/)`), "");
   const direct = /^\/specialties\/([^/]+)$/.exec(path);
   if (direct) return decodeURIComponent(direct[1]!);
   if (path === "/doctors") {

@@ -52,7 +52,8 @@ export function noindexHeaderSources(): string[] {
   }
   for (const path of LOCALIZED_PRIVATE_PATHS) {
     for (const source of toSource(path)) {
-      sources.push(source, `/:lang([a-z]{2})${source}`);
+      // Paket T — `/sr-latn/...` gibi yazı sistemli önekler de (path-to-regexp; yakalamasız grup).
+      sources.push(source, `/:lang([a-z]{2}|[a-z]{2}-[a-z]{4})${source}`);
     }
   }
   return sources;

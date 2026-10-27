@@ -104,6 +104,9 @@ describe("CRM N1 — saf yardımcılar", () => {
       expect(isExcludedPath(p), p).toBe(false);
     }
     expect(isExcludedPath("/en/kampanya-test/x", ["/kampanya-test"])).toBe(true);
+    // Paket T — tireli dil öneki (`/sr-latn`) de soyulur; benzer ama geçersiz önek soyulmaz.
+    for (const p of ["/sr-latn/patient/bookings/x", "/sr-latn/doctor", "/ro/checkout", "/fr/consultation/abc"]) expect(isExcludedPath(p), p).toBe(true);
+    expect(isExcludedPath("/sr-latn/doctors/vahit-mutlu")).toBe(false);
   });
 
   it("bot UA, UA aileleri, metin temizleme, hedef temizleme", () => {

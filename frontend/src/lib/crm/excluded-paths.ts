@@ -1,3 +1,4 @@
+import { LEADING_LOCALE_SEGMENT } from "@/lib/i18n/locale-code";
 /**
  * Paket N — ASLA takip edilmeyen yollar (dil öneki çıkarıldıktan sonra, segment bazlı). Backend
  * `modules/crm/crm.privacy.ts::CRM_ALWAYS_EXCLUDED_PATHS` ile AYNI liste (test metin olarak karşılaştırır);
@@ -26,7 +27,7 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
 
 function stripLocale(path: string): string {
   const clean = path.split(/[?#]/)[0] || "/";
-  const stripped = clean.replace(/^\/[a-z]{2}(?=\/|$)/, "");
+  const stripped = clean.replace(LEADING_LOCALE_SEGMENT, "");
   return stripped === "" ? "/" : stripped;
 }
 

@@ -42,7 +42,8 @@ export default async function SiteLayout({
   // Bilinmeyen/devre dışı `[lang]` → 404 (rota katmanı kararı — bkz. LocaleQuery sözleşmesi,
   // `.claude/architect-scope-i18n.md` §4.3: veri katmanı hata DÖNMEZ, rota katmanı döner).
   const activeLocale = locales.find((l) => l.code === lang);
-  if (!activeLocale) notFound();
+  // Paket T — kapalı dil (ör. henüz açılmamış ro/fr/sr-latn) public listede olmasa bile 404.
+  if (!activeLocale || activeLocale.enabled === false) notFound();
 
   const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled, dict, crmConfig] = await Promise.all([
     fetchSiteSettingsServer(),

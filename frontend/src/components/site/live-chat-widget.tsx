@@ -17,6 +17,7 @@ import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useAuthOptional } from "@/context/auth-context";
 import type { LiveChatPosition, SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 /**
  * `.claude/architect-scope-support-desk-and-reminders.md` §3 — Sağ alt canlı destek widget'ı.
@@ -50,7 +51,7 @@ interface LiveChatWidgetProps {
  */
 function isConsultationRoute(pathname: string | null): boolean {
   if (!pathname) return false;
-  return /^\/(?:[a-z]{2}\/)?consultation(?:\/|$)/.test(pathname);
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?consultation(?:/|$)`).test(pathname);
 }
 
 /**

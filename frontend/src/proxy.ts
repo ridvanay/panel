@@ -6,6 +6,7 @@ import { isSafeInternalPath } from "@/lib/safe-redirect";
 import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
 import { CACHE_TAGS } from "@/lib/cache-tags";
 import { SITE_LOCALE_COOKIE, SITE_LOCALE_COOKIE_MAX_AGE, resolveAuthLocale } from "@/lib/i18n/auth-locale";
+import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
@@ -150,11 +151,12 @@ const SAAS_AUTH_SURFACE_PATHS = new Set(["/login", "/register", "/forgot-passwor
  *  edilir" sorusunu (oturumdan bağımsız, HASTA istekleri DAHİL) yanıtlar; `/consultation/**` ana
  *  host'ta kalır. Buraya eklenirse hasta magic-link (`?t=`) erişimi de doktor subdomain'ine 307'lenir
  *  (hasta orada authenticated değildir → login döngüsü). Gerekçenin tamamı guard dosyasındadır. */
-const DOCTOR_PORTAL_ROUTE_PATTERN = /^\/(?:[a-z]{2}\/)?doctor(?:\/|$)/;
+// Paket T — dil öneki iki harfli ya da yazı sistemli (`sr-latn`) olabilir (`lib/i18n/locale-code.ts`).
+const DOCTOR_PORTAL_ROUTE_PATTERN = new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?doctor(?:/|$)`);
 /** Yalnızca locale ÖNEKLİ hâli (`/tr/doctor`, `/en/doctor/earnings`) — §3.1 [8]'in 3. satırı. */
-const DOCTOR_PORTAL_PREFIXED_ROUTE_PATTERN = /^\/[a-z]{2}\/doctor(?:\/|$)/;
+const DOCTOR_PORTAL_PREFIXED_ROUTE_PATTERN = new RegExp(`^/${LOCALE_SEGMENT_SOURCE}/doctor(?:/|$)`);
 /** Ana host'ta `/doctor/**` → doktor host'una devrederken locale prefix'ini soymak için (§3.1 [4]). */
-const LEADING_LOCALE_SEGMENT_PATTERN = /^\/[a-z]{2}(?=\/|$)/;
+const LEADING_LOCALE_SEGMENT_PATTERN = new RegExp(`^/${LOCALE_SEGMENT_SOURCE}(?=/|$)`);
 
 /** §3.1 [10] — doktor host'undan dönen HER yanıta (rewrite/next/redirect fark etmez) uygulanır. */
 function withDoctorPortalHeaders(response: NextResponse): NextResponse {

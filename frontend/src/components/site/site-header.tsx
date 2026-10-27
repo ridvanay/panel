@@ -35,6 +35,7 @@ import { navStrings as legacyFallbackNavStrings } from "@/lib/i18n/site-dictiona
 import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 import { cn } from "@/lib/utils";
+import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
@@ -174,7 +175,7 @@ function isNavLinkActive(pathname: string | null, href: string): boolean {
  */
 function isDoctorDetailRoute(pathname: string | null): boolean {
   if (!pathname) return false;
-  return /^\/(?:[a-z]{2}\/)?doctors\/[^/]+\/?$/.test(pathname);
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?doctors/[^/]+/?$`).test(pathname);
 }
 
 /** Mobil menü panelinin `id`'si — hamburger düğmesinin `aria-controls` hedefi. */
