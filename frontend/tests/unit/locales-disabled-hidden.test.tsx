@@ -38,14 +38,16 @@ vi.mock("@/lib/api/server-telehealth", () => ({
 vi.mock("@/lib/api/server-settings", () => ({ fetchSiteSettingsServer: async () => ({ homePageId: null }), DEFAULT_SETTINGS: { homePageId: null } }));
 vi.mock("@/context/locale-alternates-context", () => ({ useLocaleAlternates: () => null, contentKindBasePath: () => "" }));
 
-import sitemap from "@/app/sitemap";
+import { loadSiteContent } from "@/lib/sitemap/load";
+import { SITEMAP_SECTIONS, buildSection } from "@/lib/sitemap/build";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 
 describe("kapalı diller görünmez", () => {
   it("sitemap: kapalı es hiçbir URL/hreflang'de yok, açık ar var", async () => {
-    const entries = await sitemap();
+    const data = await loadSiteContent();
+    const entries = SITEMAP_SECTIONS.flatMap((section) => buildSection(section, data));
     const all = JSON.stringify(entries);
-    expect(all).not.toMatch(/\/es\/|sobre-wm|"es":/);
+    expect(all).not.toMatch(/\/es\/|sobre-wm|"hreflang":"es"/);
     expect(all).toMatch(/\/ar\/about-wm/);
     expect(all).toMatch(/\/ar\/doctors\/vahit-mutlu|\/ar\/specialties\/obesity/);
   });

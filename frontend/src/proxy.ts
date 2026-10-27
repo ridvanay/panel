@@ -78,8 +78,8 @@ import { SITE_LOCALE_COOKIE, SITE_LOCALE_COOKIE_MAX_AGE, resolveAuthLocale } fro
  * kendisi `frontend/public/` altında GERÇEKTEN var olsa bile). Kalıcı çözüm: nokta içeren (dosya
  * uzantılı) TÜM yolları genel bir kuralla hariç tut — böylece gelecekte `public/`'a eklenecek her
  * yeni asset için matcher'ı güncellemeye gerek kalmaz. Sitede uzantılı, locale-rewrite'a ihtiyaç
- * duyan başka bir route YOK (app/ altında yalnızca `robots.ts`/`sitemap.ts`/`api/health` var, hepsi
- * zaten ayrıca hariç).
+ * duyan başka bir route YOK (Paket S: `robots.txt`, `sitemap.xml`, `sitemaps/*.xml`, `llms.txt`,
+ * `llms-full.txt` route'ları ve `public/sitemap.xsl` bu kuralla zaten hariç).
  */
 export const config = {
   matcher: [
