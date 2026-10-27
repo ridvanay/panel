@@ -14,12 +14,14 @@ import { fieldErrorsFrom } from "@/lib/api/friendly-error";
 import { useFriendlyError, useLocalizedFieldErrors } from "@/lib/i18n/use-portal-strings";
 import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
+import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
 
 function RegisterForm() {
   const { register } = useAuth();
   const router = useRouter();
   const next = useSearchParams().get("next");
-  const t = useAuthStrings().register;
+  const authStrings = useAuthStrings();
+  const t = authStrings.register;
   const friendlyErrorMessage = useFriendlyError();
   const localizeFieldErrors = useLocalizedFieldErrors();
 
@@ -49,8 +51,10 @@ function RegisterForm() {
       if (isSafeInternalPath(next)) query.set("next", next);
       router.replace(`/verify-email?${query.toString()}`);
     } catch (err) {
-      setFieldErrors(localizeFieldErrors(fieldErrorsFrom(err)));
-      setError(friendlyErrorMessage(err));
+      // Paket S — şifre politikası ihlali: sunucunun kural kodları aktif dilde.
+      const policy = passwordPolicyMessage(err, authStrings.passwordRules);
+      setFieldErrors(policy ? { password: policy } : localizeFieldErrors(fieldErrorsFrom(err)));
+      setError(policy ? null : friendlyErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -79,19 +83,17 @@ function RegisterForm() {
         )}
       </Field>
 
-      <Field id="password" label={t.password} error={fieldErrors.password} hint={t.passwordHint} required>
-        {(inputProps) => (
-          <Input
-            {...inputProps}
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        )}
-      </Field>
+      <PasswordField
+        id="password"
+        label={t.password}
+        error={fieldErrors.password}
+        hint={t.passwordHint}
+        required
+        value={password}
+        context={{ email, name }}
+        strings={authStrings.passwordRules}
+        inputProps={{ value: password, onChange: (e) => setPassword(e.target.value) }}
+      />
 
       <Button type="submit" className="w-full" loading={submitting}>
         {t.submit}

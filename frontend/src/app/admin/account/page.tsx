@@ -1,9 +1,12 @@
 "use client";
 
+import { authStrings as trAuthStrings } from "@/lib/i18n/site-dictionaries/tr/auth";
+import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
+import { PASSWORD_MAX_LENGTH } from "@/lib/password-policy";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, User } from "lucide-react";
@@ -30,7 +33,6 @@ const roleLabels: Record<SiteRole, string> = {
   USER: "Standart Üye",
 };
 
-const MIN_PASSWORD_LENGTH = 8;
 
 // `usersApi.updateMe` gövdesini yansıtan istemci tarafı zod şeması. `name` görsel olarak
 // "required" işaretli — mevcut davranışta bu client-side kontrol YOKTU (form `noValidate`
@@ -49,7 +51,8 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 // tek-Alert UX'ini birebir korumak için `onSubmit` içinde imzalı biçimde bırakıldı (bkz. altta).
 const passwordFormSchema = z.object({
   currentPassword: z.string().min(1, "Mevcut şifre gerekli."),
-  newPassword: z.string().min(MIN_PASSWORD_LENGTH, "Şifre en az 8 karakter olmalı."),
+  // Paket S — asıl kurallar sunucuda (`lib/password-policy.ts`); burada yalnızca boş olmama + üst sınır.
+  newPassword: z.string().min(1, "Yeni şifre gerekli.").max(PASSWORD_MAX_LENGTH, `Şifre en fazla ${PASSWORD_MAX_LENGTH} karakter olabilir.`),
   newPasswordConfirm: z.string().min(1, "Yeni şifre tekrarını girin."),
 });
 
@@ -74,11 +77,13 @@ export default function AccountPage() {
   });
 
   // Bölüm 3: Şifre değiştir (ayrı submit butonu → ayrı useForm instance'ı).
+  const passwordStrings = trAuthStrings.passwordRules;
   const {
     register: registerPassword,
     handleSubmit: handlePasswordFormSubmit,
     reset: resetPasswordForm,
     setError: setPasswordFormError,
+    control: passwordControl,
     formState: { errors: passwordErrors, isSubmitting: passwordSaving },
   } = useForm<PasswordFormValues>({
     resolver: zodResolver(passwordFormSchema),
@@ -88,6 +93,7 @@ export default function AccountPage() {
       newPasswordConfirm: "",
     },
   });
+  const newPasswordValue = useWatch({ control: passwordControl, name: "newPassword" }) ?? "";
 
   // Paket G — isteğe bağlı "Diğer cihazlardaki oturumları hemen kapat".
   const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
@@ -129,6 +135,12 @@ export default function AccountPage() {
       toast.success(passwordChangedMessage(revokeOtherSessions));
       setRevokeOtherSessions(false);
     } catch (err) {
+      // Paket S — şifre politikası ihlali alanın altında, kural kodlarından.
+      const policy = passwordPolicyMessage(err, passwordStrings);
+      if (policy) {
+        setPasswordFormError("newPassword", { message: policy });
+        return;
+      }
       const message = friendlyErrorMessage(err);
       setPasswordFormError("root", { message });
       toast.error(message);
@@ -232,11 +244,16 @@ export default function AccountPage() {
               )}
             </Field>
 
-            <Field id="newPassword" label="Yeni Şifre" error={passwordErrors.newPassword?.message} required>
-              {(inputProps) => (
-                <Input {...inputProps} type="password" autoComplete="new-password" {...registerPassword("newPassword")} />
-              )}
-            </Field>
+            <PasswordField
+              id="newPassword"
+              label="Yeni Şifre"
+              error={passwordErrors.newPassword?.message}
+              required
+              value={newPasswordValue}
+              context={{ email: user?.email, name: user?.name }}
+              strings={passwordStrings}
+              inputProps={registerPassword("newPassword")}
+            />
 
             <Field
               id="newPasswordConfirm"

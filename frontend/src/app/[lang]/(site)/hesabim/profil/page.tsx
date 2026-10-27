@@ -1,9 +1,12 @@
 "use client";
 
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
+import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
+import { PASSWORD_MAX_LENGTH } from "@/lib/password-policy";
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
@@ -46,11 +49,11 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-const MIN_PASSWORD_LENGTH = 8;
 
 const passwordFormSchema = z.object({
   currentPassword: z.string().min(1, "Mevcut şifre gerekli."),
-  newPassword: z.string().min(MIN_PASSWORD_LENGTH, "Şifre en az 8 karakter olmalı."),
+  // Paket S — asıl kurallar sunucuda (`lib/password-policy.ts`); burada yalnızca boş olmama + üst sınır.
+  newPassword: z.string().min(1, "Yeni şifre gerekli.").max(PASSWORD_MAX_LENGTH, `Şifre en fazla ${PASSWORD_MAX_LENGTH} karakter olabilir.`),
   newPasswordConfirm: z.string().min(1, "Yeni şifre tekrarını girin."),
 });
 
@@ -135,16 +138,19 @@ export default function AccountProfilePage() {
     if (user) resetProfileForm({ name: user.name, avatarUrl: user.avatarUrl ?? "" });
   }, [user, resetProfileForm]);
 
+  const passwordStrings = useAuthStrings().passwordRules;
   const {
     register: registerPassword,
     handleSubmit: handlePasswordFormSubmit,
     reset: resetPasswordForm,
     setError: setPasswordFormError,
+    control: passwordControl,
     formState: { errors: passwordErrors, isSubmitting: passwordSaving },
   } = useForm<PasswordFormValues>({
     resolver: zodResolver(passwordFormSchema),
     defaultValues: { currentPassword: "", newPassword: "", newPasswordConfirm: "" },
   });
+  const newPasswordValue = useWatch({ control: passwordControl, name: "newPassword" }) ?? "";
 
   // İki faktörlü doğrulama akışı — `app/admin/settings/security/page.tsx` ile BİREBİR aynı mantık.
   const [setupOpen, setSetupOpen] = useState(false);
@@ -227,6 +233,12 @@ export default function AccountProfilePage() {
       toast.success(passwordChangedMessage(revokeOtherSessions));
       setRevokeOtherSessions(false);
     } catch (err) {
+      // Paket S — şifre politikası ihlali alanın altında, kural kodlarından.
+      const policy = passwordPolicyMessage(err, passwordStrings);
+      if (policy) {
+        setPasswordFormError("newPassword", { message: policy });
+        return;
+      }
       const message = friendlyErrorMessage(err);
       setPasswordFormError("root", { message });
       toast.error(message);
@@ -416,11 +428,16 @@ export default function AccountProfilePage() {
               )}
             </Field>
 
-            <Field id="newPassword" label="Yeni Şifre" error={passwordErrors.newPassword?.message} required>
-              {(inputProps) => (
-                <Input {...inputProps} type="password" autoComplete="new-password" {...registerPassword("newPassword")} />
-              )}
-            </Field>
+            <PasswordField
+              id="newPassword"
+              label="Yeni Şifre"
+              error={passwordErrors.newPassword?.message}
+              required
+              value={newPasswordValue}
+              context={{ email: user?.email, name: user?.name }}
+              strings={passwordStrings}
+              inputProps={registerPassword("newPassword")}
+            />
 
             <Field id="newPasswordConfirm" label="Yeni Şifre (Tekrar)" error={passwordErrors.newPasswordConfirm?.message} required>
               {(inputProps) => (

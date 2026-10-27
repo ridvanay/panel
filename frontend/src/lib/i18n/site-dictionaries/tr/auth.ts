@@ -1,6 +1,21 @@
 import type { AuthStrings } from "../en/auth";
 
 export const authStrings: AuthStrings = {
+  /** Paket S — şifre politikası: canlı kural listesi, güç göstergesi, sunucu hata kodlarının çevirisi. */
+  passwordRules: {
+    rulesTitle: "Şifreniz:",
+    length: "10–128 karakter olmalı",
+    groups: "Küçük harf, büyük harf, rakam ve sembolden en az üçünü içermeli",
+    notDigitsOnly: "Yalnızca rakamlardan oluşmamalı",
+    noSequence: "Çoğu ardışık ya da tekrarlı olmamalı (123456, abcdef, qwerty, aaaaaa)",
+    notCommon: "Yaygın bir şifre olmamalı",
+    notPersonal: "E-posta adresinizi ya da adınızı içermemeli",
+    strength: "Güç",
+    levels: ["Çok zayıf", "Zayıf", "Orta", "İyi", "Güçlü"],
+    show: "Şifreyi göster",
+    hide: "Şifreyi gizle",
+    serverInvalid: "Lütfen daha güçlü bir şifre seçin: {rules}",
+  },
   login: {
     title: "Giriş yap",
     subtitle: "Hesabınıza erişmek için bilgilerinizi girin.",
@@ -29,7 +44,7 @@ export const authStrings: AuthStrings = {
     name: "Ad Soyad",
     email: "E-posta",
     password: "Şifre",
-    passwordHint: "En az 8 karakter.",
+    passwordHint: "En az 10 karakter; harf, rakam ve sembol karışık olsun.",
     submit: "Hesap oluştur",
   },
   forgot: {
@@ -44,7 +59,7 @@ export const authStrings: AuthStrings = {
     title: "Yeni şifre belirle",
     invalidLink: "Bağlantı geçersiz. Sıfırlama e-postasındaki bağlantıyı tekrar kullanın.",
     newPassword: "Yeni şifre",
-    passwordHint: "En az 8 karakter.",
+    passwordHint: "En az 10 karakter; harf, rakam ve sembol karışık olsun.",
     submit: "Şifreyi güncelle",
     backToLogin: "Girişe dön",
   },

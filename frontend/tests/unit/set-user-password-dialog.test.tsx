@@ -48,15 +48,13 @@ function renderDialog(overrides: { onOpenChange?: (open: boolean) => void; user?
 }
 
 describe("SetUserPasswordDialog — doğrulama", () => {
-  it("kısa şifre girildiğinde gönderim engellenir ve hata mesajı gösterilir", async () => {
+  it("Paket S — kısa/zayıf şifrede canlı kural listesi ve güç göstergesi uyarır (asıl kontrol sunucuda)", async () => {
     const user = userEvent.setup();
     renderDialog();
 
     await user.type(screen.getByLabelText(/^Yeni Şifre/), "kisa1");
-    await user.type(screen.getByLabelText(/^Şifreyi Onayla/), "kisa1");
-    await user.click(screen.getByRole("button", { name: "Şifreyi Değiştir" }));
-
-    expect(await screen.findByText("Şifre en az 8 karakter olmalı.")).toBeInTheDocument();
+    expect(document.querySelector('[data-rule="length"]')).toHaveAttribute("data-ok", "false");
+    expect(screen.getByTestId("password-strength")).toHaveTextContent("Güç: Zayıf");
     expect(usersAdminApi.setAdminUserPassword).not.toHaveBeenCalled();
   });
 
@@ -88,24 +86,24 @@ describe("SetUserPasswordDialog — doğrulama", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("backend 422 (kısa şifre) hatası `password` alanına yansır", async () => {
+  it("Paket S — backend şifre politikası hatası (kural kodları) `password` alanına Türkçe yansır", async () => {
     vi.mocked(usersAdminApi.setAdminUserPassword).mockRejectedValueOnce(
       new ApiClientError(422, {
         code: "VALIDATION_ERROR",
         message: "Girdi doğrulama hatası.",
-        details: { password: ["Şifre en az 8 karakter olmalı."] },
+        details: { password: ["Şifre 10–128 karakter olmalı."], passwordRules: ["length", "notDigitsOnly"] },
       })
     );
     const user = userEvent.setup();
     renderDialog();
 
-    // zod min(8) istemci tarafını atlatmak için tam 8+ karakterli ama backend'in reddettiği bir
-    // değer kullanıyoruz (senaryo: istemci/backend kuralları arasında olası bir tutarsızlık).
     await user.type(screen.getByLabelText(/^Yeni Şifre/), "12345678");
     await user.type(screen.getByLabelText(/^Şifreyi Onayla/), "12345678");
     await user.click(screen.getByRole("button", { name: "Şifreyi Değiştir" }));
 
-    expect(await screen.findByText("Şifre en az 8 karakter olmalı.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Lütfen daha güçlü bir şifre seçin: 10–128 karakter olmalı; yalnızca rakamlardan oluşmamalı")
+    ).toBeInTheDocument();
   });
 
   it("backend genel bir hata döndüğünde (örn. 403) üst seviye Alert'te gösterilir", async () => {

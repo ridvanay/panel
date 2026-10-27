@@ -1,6 +1,21 @@
 import type { AuthStrings } from "../en/auth";
 
 export const authStrings: AuthStrings = {
+  /** Paket S — şifre politikası: canlı kural listesi, güç göstergesi, sunucu hata kodlarının çevirisi. */
+  passwordRules: {
+    rulesTitle: "Пароль должен:",
+    length: "Содержать от 10 до 128 символов",
+    groups: "Включать минимум 3 из: строчная буква, заглавная буква, цифра, символ",
+    notDigitsOnly: "Не состоять только из цифр",
+    noSequence: "Не состоять в основном из последовательностей или повторов (123456, abcdef, qwerty, aaaaaa)",
+    notCommon: "Не быть распространённым паролем",
+    notPersonal: "Не содержать имя из вашего email или ваше имя",
+    strength: "Надёжность",
+    levels: ["Очень слабый", "Слабый", "Средний", "Хороший", "Надёжный"],
+    show: "Показать пароль",
+    hide: "Скрыть пароль",
+    serverInvalid: "Выберите более надёжный пароль: {rules}",
+  },
   login: {
     title: "Вход",
     subtitle: "Введите свои данные, чтобы войти в аккаунт.",
@@ -29,7 +44,7 @@ export const authStrings: AuthStrings = {
     name: "Имя и фамилия",
     email: "Электронная почта",
     password: "Пароль",
-    passwordHint: "Не менее 8 символов.",
+    passwordHint: "Не менее 10 символов: буквы, цифры и символы вперемешку.",
     submit: "Создать аккаунт",
   },
   forgot: {
@@ -44,7 +59,7 @@ export const authStrings: AuthStrings = {
     title: "Новый пароль",
     invalidLink: "Ссылка недействительна. Воспользуйтесь ссылкой из письма для сброса ещё раз.",
     newPassword: "Новый пароль",
-    passwordHint: "Не менее 8 символов.",
+    passwordHint: "Не менее 10 символов: буквы, цифры и символы вперемешку.",
     submit: "Обновить пароль",
     backToLogin: "Вернуться ко входу",
   },

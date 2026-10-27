@@ -1,5 +1,7 @@
 "use client";
 
+import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -34,6 +36,7 @@ function ActivateAccountForm() {
   const router = useRouter();
   const localize = useLocalizePath();
   const email = useSearchParams().get("email");
+  const passwordStrings = useAuthStrings().passwordRules;
 
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -61,7 +64,8 @@ function ActivateAccountForm() {
       // ettiğini orada (randevusunu) görür. Portal kodu bu görevde DEĞİŞTİRİLMEZ.
       router.replace(localize("/patient/bookings"));
     } catch (err) {
-      setError(activateAccountErrorMessage(err));
+      // Paket S — şifre politikası ihlali: sunucunun kural kodları aktif dilde.
+      setError(passwordPolicyMessage(err, passwordStrings) ?? activateAccountErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -94,19 +98,15 @@ function ActivateAccountForm() {
         )}
       </Field>
 
-      <Field id="password" label="Yeni şifre" hint="En az 8 karakter." required>
-        {(inputProps) => (
-          <Input
-            {...inputProps}
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        )}
-      </Field>
+      <PasswordField
+        id="password"
+        label="Yeni şifre"
+        required
+        value={password}
+        context={{ email }}
+        strings={passwordStrings}
+        inputProps={{ value: password, onChange: (e) => setPassword(e.target.value) }}
+      />
 
       <Field id="passwordConfirm" label="Yeni şifre (tekrar)" required>
         {(inputProps) => (
@@ -114,7 +114,6 @@ function ActivateAccountForm() {
             {...inputProps}
             type="password"
             autoComplete="new-password"
-            minLength={8}
             required
             value={passwordConfirm}
             onChange={(e) => setPasswordConfirm(e.target.value)}

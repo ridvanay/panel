@@ -1,6 +1,21 @@
 import type { AuthStrings } from "../en/auth";
 
 export const authStrings: AuthStrings = {
+  /** Paket S — şifre politikası: canlı kural listesi, güç göstergesi, sunucu hata kodlarının çevirisi. */
+  passwordRules: {
+    rulesTitle: "Ihr Passwort muss:",
+    length: "10–128 Zeichen lang sein",
+    groups: "Mindestens 3 davon enthalten: Kleinbuchstaben, Großbuchstaben, Zahl, Sonderzeichen",
+    notDigitsOnly: "Nicht nur aus Zahlen bestehen",
+    noSequence: "Nicht überwiegend aus Folgen oder Wiederholungen bestehen (123456, abcdef, qwerty, aaaaaa)",
+    notCommon: "Kein gängiges Passwort sein",
+    notPersonal: "Weder Ihren E-Mail-Namen noch Ihren Namen enthalten",
+    strength: "Stärke",
+    levels: ["Sehr schwach", "Schwach", "Mittel", "Gut", "Stark"],
+    show: "Passwort anzeigen",
+    hide: "Passwort verbergen",
+    serverInvalid: "Bitte wählen Sie ein stärkeres Passwort: {rules}",
+  },
   login: {
     title: "Anmelden",
     subtitle: "Geben Sie Ihre Daten ein, um auf Ihr Konto zuzugreifen.",
@@ -29,7 +44,7 @@ export const authStrings: AuthStrings = {
     name: "Vor- und Nachname",
     email: "E-Mail",
     password: "Passwort",
-    passwordHint: "Mindestens 8 Zeichen.",
+    passwordHint: "Mindestens 10 Zeichen, gemischt aus Buchstaben, Zahlen und Sonderzeichen.",
     submit: "Konto erstellen",
   },
   forgot: {
@@ -44,7 +59,7 @@ export const authStrings: AuthStrings = {
     title: "Neues Passwort festlegen",
     invalidLink: "Der Link ist ungültig. Bitte verwenden Sie erneut den Link aus der E-Mail.",
     newPassword: "Neues Passwort",
-    passwordHint: "Mindestens 8 Zeichen.",
+    passwordHint: "Mindestens 10 Zeichen, gemischt aus Buchstaben, Zahlen und Sonderzeichen.",
     submit: "Passwort aktualisieren",
     backToLogin: "Zurück zur Anmeldung",
   },

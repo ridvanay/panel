@@ -4,6 +4,21 @@
  * varsayılan). `{name}` yer tutucuları `fmt()` ya da `splitTemplate()` ile doldurulur.
  */
 export const authStrings = {
+  /** Paket S — şifre politikası: canlı kural listesi, güç göstergesi, sunucu hata kodlarının çevirisi. */
+  passwordRules: {
+    rulesTitle: "Your password must:",
+    length: "Be 10–128 characters long",
+    groups: "Contain at least 3 of: lowercase, uppercase, number, symbol",
+    notDigitsOnly: "Not consist of numbers only",
+    noSequence: "Not be mostly sequences or repeats (123456, abcdef, qwerty, aaaaaa)",
+    notCommon: "Not be a common password",
+    notPersonal: "Not contain your email name or your name",
+    strength: "Strength",
+    levels: ["Very weak", "Weak", "Fair", "Good", "Strong"],
+    show: "Show password",
+    hide: "Hide password",
+    serverInvalid: "Please choose a stronger password: {rules}",
+  },
   login: {
     title: "Sign in",
     subtitle: "Enter your details to access your account.",
@@ -32,7 +47,7 @@ export const authStrings = {
     name: "Full name",
     email: "Email",
     password: "Password",
-    passwordHint: "At least 8 characters.",
+    passwordHint: "At least 10 characters, mixing letters, numbers and symbols.",
     submit: "Create account",
   },
   forgot: {
@@ -47,7 +62,7 @@ export const authStrings = {
     title: "Set a new password",
     invalidLink: "The link is invalid. Please use the link in the reset email again.",
     newPassword: "New password",
-    passwordHint: "At least 8 characters.",
+    passwordHint: "At least 10 characters, mixing letters, numbers and symbols.",
     submit: "Update password",
     backToLogin: "Back to sign in",
   },

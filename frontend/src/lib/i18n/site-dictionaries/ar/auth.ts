@@ -1,6 +1,21 @@
 import type { AuthStrings } from "../en/auth";
 
 export const authStrings: AuthStrings = {
+  /** Paket S — şifre politikası: canlı kural listesi, güç göstergesi, sunucu hata kodlarının çevirisi. */
+  passwordRules: {
+    rulesTitle: "يجب أن تكون كلمة المرور:",
+    length: "بطول 10–128 حرفًا",
+    groups: "تحتوي على 3 على الأقل من: حرف صغير، حرف كبير، رقم، رمز",
+    notDigitsOnly: "ليست أرقامًا فقط",
+    noSequence: "ليست في معظمها تسلسلات أو تكرارات (123456، abcdef، qwerty، aaaaaa)",
+    notCommon: "ليست كلمة مرور شائعة",
+    notPersonal: "لا تحتوي على اسم بريدك الإلكتروني أو اسمك",
+    strength: "القوة",
+    levels: ["ضعيفة جدًا", "ضعيفة", "متوسطة", "جيدة", "قوية"],
+    show: "إظهار كلمة المرور",
+    hide: "إخفاء كلمة المرور",
+    serverInvalid: "يرجى اختيار كلمة مرور أقوى: {rules}",
+  },
   login: {
     title: "تسجيل الدخول",
     subtitle: "أدخل بياناتك للوصول إلى حسابك.",
@@ -29,7 +44,7 @@ export const authStrings: AuthStrings = {
     name: "الاسم الكامل",
     email: "البريد الإلكتروني",
     password: "كلمة المرور",
-    passwordHint: "8 أحرف على الأقل.",
+    passwordHint: "10 أحرف على الأقل، مع مزيج من الحروف والأرقام والرموز.",
     submit: "إنشاء الحساب",
   },
   forgot: {
@@ -44,7 +59,7 @@ export const authStrings: AuthStrings = {
     title: "تعيين كلمة مرور جديدة",
     invalidLink: "الرابط غير صالح. يُرجى استخدام الرابط الوارد في رسالة إعادة التعيين مرة أخرى.",
     newPassword: "كلمة المرور الجديدة",
-    passwordHint: "8 أحرف على الأقل.",
+    passwordHint: "10 أحرف على الأقل، مع مزيج من الحروف والأرقام والرموز.",
     submit: "تحديث كلمة المرور",
     backToLogin: "العودة إلى تسجيل الدخول",
   },

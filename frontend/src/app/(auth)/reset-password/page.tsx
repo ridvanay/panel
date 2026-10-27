@@ -5,18 +5,18 @@ import { AuthLink } from "@/components/auth/auth-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as authApi from "@/lib/api/auth";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { useFriendlyError } from "@/lib/i18n/use-portal-strings";
 import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
+import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
 
 function ResetPasswordForm() {
   const router = useRouter();
   const token = useSearchParams().get("token") ?? "";
-  const t = useAuthStrings().reset;
+  const authStrings = useAuthStrings();
+  const t = authStrings.reset;
   const friendlyErrorMessage = useFriendlyError();
 
   const [password, setPassword] = useState("");
@@ -31,7 +31,8 @@ function ResetPasswordForm() {
       await authApi.resetPassword(token, password);
       router.replace("/login");
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      // Paket S — şifre politikası ihlali: sunucunun kural kodları aktif dilde.
+      setError(passwordPolicyMessage(err, authStrings.passwordRules) ?? friendlyErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -44,19 +45,15 @@ function ResetPasswordForm() {
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
       {error && <Alert variant="error">{error}</Alert>}
-      <Field id="password" label={t.newPassword} hint={t.passwordHint} required>
-        {(inputProps) => (
-          <Input
-            {...inputProps}
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        )}
-      </Field>
+      <PasswordField
+        id="password"
+        label={t.newPassword}
+        hint={t.passwordHint}
+        required
+        value={password}
+        strings={authStrings.passwordRules}
+        inputProps={{ value: password, onChange: (e) => setPassword(e.target.value) }}
+      />
       <Button type="submit" className="w-full" loading={submitting}>
         {t.submit}
       </Button>

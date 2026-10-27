@@ -1,6 +1,21 @@
 import type { AuthStrings } from "../en/auth";
 
 export const authStrings: AuthStrings = {
+  /** Paket S — şifre politikası: canlı kural listesi, güç göstergesi, sunucu hata kodlarının çevirisi. */
+  passwordRules: {
+    rulesTitle: "Su contraseña debe:",
+    length: "Tener entre 10 y 128 caracteres",
+    groups: "Incluir al menos 3 de: minúscula, mayúscula, número, símbolo",
+    notDigitsOnly: "No estar formada solo por números",
+    noSequence: "No ser en su mayoría secuencias o repeticiones (123456, abcdef, qwerty, aaaaaa)",
+    notCommon: "No ser una contraseña común",
+    notPersonal: "No contener el nombre de su correo ni su nombre",
+    strength: "Seguridad",
+    levels: ["Muy débil", "Débil", "Aceptable", "Buena", "Fuerte"],
+    show: "Mostrar contraseña",
+    hide: "Ocultar contraseña",
+    serverInvalid: "Elija una contraseña más segura: {rules}",
+  },
   login: {
     title: "Iniciar sesión",
     subtitle: "Introduzca sus datos para acceder a su cuenta.",
@@ -29,7 +44,7 @@ export const authStrings: AuthStrings = {
     name: "Nombre y apellidos",
     email: "Correo electrónico",
     password: "Contraseña",
-    passwordHint: "Al menos 8 caracteres.",
+    passwordHint: "Al menos 10 caracteres, combinando letras, números y símbolos.",
     submit: "Crear cuenta",
   },
   forgot: {
@@ -44,7 +59,7 @@ export const authStrings: AuthStrings = {
     title: "Establecer una nueva contraseña",
     invalidLink: "El enlace no es válido. Vuelva a usar el enlace del correo de restablecimiento.",
     newPassword: "Nueva contraseña",
-    passwordHint: "Al menos 8 caracteres.",
+    passwordHint: "Al menos 10 caracteres, combinando letras, números y símbolos.",
     submit: "Actualizar contraseña",
     backToLogin: "Volver al inicio de sesión",
   },

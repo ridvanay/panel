@@ -1,8 +1,11 @@
 "use client";
 
+import { authStrings as trAuthStrings } from "@/lib/i18n/site-dictionaries/tr/auth";
+import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
+import { PASSWORD_MAX_LENGTH } from "@/lib/password-policy";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { KeyRound } from "lucide-react";
@@ -22,8 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_PASSWORD_LENGTH = 200;
+const passwordStrings = trAuthStrings.passwordRules;
 
 /**
  * Backend `PATCH /admin/users/{userId}/password` gövdesini yansıtan istemci tarafı zod şeması —
@@ -33,10 +35,8 @@ const MAX_PASSWORD_LENGTH = 200;
  */
 const setPasswordFormSchema = z
   .object({
-    password: z
-      .string()
-      .min(MIN_PASSWORD_LENGTH, "Şifre en az 8 karakter olmalı.")
-      .max(MAX_PASSWORD_LENGTH, "Şifre en fazla 200 karakter olabilir."),
+    // Paket S — asıl kurallar sunucuda (`lib/password-policy.ts`); burada yalnızca boş olmama + üst sınır.
+    password: z.string().min(1, "Yeni şifre gerekli.").max(PASSWORD_MAX_LENGTH, `Şifre en fazla ${PASSWORD_MAX_LENGTH} karakter olabilir.`),
     passwordConfirm: z.string().min(1, "Şifre tekrarını girin."),
   })
   .refine((v) => v.password === v.passwordConfirm, {
@@ -65,11 +65,13 @@ export function SetUserPasswordDialog({ open, onOpenChange, user }: SetUserPassw
     handleSubmit,
     reset,
     setError,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<SetPasswordFormValues>({
     resolver: zodResolver(setPasswordFormSchema),
     defaultValues: { password: "", passwordConfirm: "" },
   });
+  const passwordValue = useWatch({ control: control, name: "password" }) ?? "";
 
   // Dialog her açılışta (farklı bir kullanıcı için yeniden açılsa dahi) temiz bir formla başlar —
   // önceki kullanıcı için girilmiş bir şifrenin YANLIŞLIKLA başka bir kullanıcıya gönderilmesi
@@ -87,7 +89,12 @@ export function SetUserPasswordDialog({ open, onOpenChange, user }: SetUserPassw
     try {
       await usersAdminApi.setAdminUserPassword(user.id, values.password);
     } catch (err) {
-      // 422 (kısa şifre vb.) `password` alanına yansır; aksi halde genel bir form hatası gösterilir.
+      // Paket S — şifre politikası ihlali kural kodlarından; diğer 422'ler `password` alanına, gerisi genel hata.
+      const policy = passwordPolicyMessage(err, passwordStrings);
+      if (policy) {
+        setError("password", { message: policy });
+        return;
+      }
       const fieldErrors = fieldErrorsFrom(err);
       if (fieldErrors.password) {
         setError("password", { message: fieldErrors.password });
@@ -120,11 +127,16 @@ export function SetUserPasswordDialog({ open, onOpenChange, user }: SetUserPassw
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           {errors.root?.message && <Alert variant="error">{errors.root.message}</Alert>}
 
-          <Field id="set-user-password" label="Yeni Şifre" error={errors.password?.message} required>
-            {(inputProps) => (
-              <Input {...inputProps} type="password" autoComplete="new-password" {...register("password")} />
-            )}
-          </Field>
+          <PasswordField
+            id="set-user-password"
+            label="Yeni Şifre"
+            error={errors.password?.message}
+            required
+            value={passwordValue}
+            context={{ email: user?.email, name: user?.name }}
+            strings={passwordStrings}
+            inputProps={register("password")}
+          />
 
           <Field id="set-user-password-confirm" label="Şifreyi Onayla" error={errors.passwordConfirm?.message} required>
             {(inputProps) => (
