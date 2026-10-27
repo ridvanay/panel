@@ -217,6 +217,8 @@ export async function buildInputFromCsv(
     const doctor = doctors.find((d) => d.id === entry.doctorId)!;
     if (entry.rules.length > MAX_WEEKLY_RULES) {
       errors.push({ row: entry.rules[MAX_WEEKLY_RULES]!.row, message: `${doctorLabel(doctor)}: bir doktor için en fazla ${MAX_WEEKLY_RULES} CALISMA satırı olabilir.` });
+      // Plana girmez: aynı satırlar için ikinci kez (tekrarlı başlangıç vb.) hata üretilmesin.
+      weekly.delete(entry.doctorId);
       continue;
     }
     errors.push(...weeklyOverlapErrors(entry, doctorLabel(doctor)));
