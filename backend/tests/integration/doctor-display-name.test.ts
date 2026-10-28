@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
@@ -73,6 +74,61 @@ describe("doktor görünen adı (Paket U, C)", () => {
         expect(detail.publicName).toBeUndefined();
       }
     }
+  });
+
+  it("hasta portalı rezervasyon listesi kısaltılmış ad; doktorun kendi portalı tam ad (güvenlik incelemesi bulgusu)", async () => {
+    const patient = await registerTestUser(app, { email: `hasta-${crypto.randomUUID()}@example.com` });
+    const doctorUser = await registerTestUser(app, { email: `doktor-${crypto.randomUUID()}@example.com` });
+    await app.prisma.user.update({ where: { id: doctorUser.userId }, data: { twoFactorEnabled: true } });
+    const doctorId = ids["Kamil ÖZDİL"]!;
+    await app.prisma.doctorProfile.update({ where: { id: doctorId }, data: { userId: doctorUser.userId } });
+    const startsAt = new Date(Date.now() + 3 * 24 * 3600_000);
+    const booking = await app.prisma.appointmentBooking.create({
+      data: {
+        bookingNumber: `DN-${crypto.randomUUID().slice(0, 8)}`,
+        doctorId,
+        patientUserId: patient.userId,
+        patientName: "Test Hasta",
+        patientEmail: `hasta-${crypto.randomUUID()}@example.com`,
+        slotCount: 1,
+        unitPriceCents: 50000,
+        subtotalCents: 50000,
+        totalCents: 50000,
+        currency: "EUR",
+        paymentStatus: "PAID",
+        paidAt: new Date(),
+        expiresAt: new Date(startsAt.getTime() - 3600_000),
+        meetingRoomName: `room_${crypto.randomBytes(16).toString("hex")}`,
+        accessTokenHash: crypto.randomBytes(32).toString("hex"),
+        consentAt: new Date(),
+        consentVersion: "test",
+      },
+    });
+    await app.prisma.appointment.create({
+      data: {
+        doctorId,
+        patientUserId: patient.userId,
+        patientName: "Test Hasta",
+        patientEmail: booking.patientEmail,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+        status: "SCHEDULED",
+        priceCents: 50000,
+        currency: "EUR",
+        meetingRoomName: `room_${crypto.randomBytes(16).toString("hex")}`,
+        accessTokenHash: crypto.randomBytes(32).toString("hex"),
+        bookingId: booking.id,
+      },
+    });
+
+    const patientRes = await app.inject({ method: "GET", url: "/api/v1/patient/bookings", headers: { authorization: `Bearer ${patient.accessToken}` } });
+    expect(patientRes.statusCode, patientRes.body).toBe(200);
+    expect(patientRes.json().data[0].doctor).toMatchObject({ fullName: "K. Özdil", displayName: "K. Özdil" });
+    expect(patientRes.body).not.toMatch(/Kamil/);
+
+    const doctorRes = await app.inject({ method: "GET", url: "/api/v1/doctor/bookings", headers: { authorization: `Bearer ${doctorUser.accessToken}` } });
+    expect(doctorRes.statusCode, doctorRes.body).toBe(200);
+    expect(doctorRes.json().data[0].doctor.fullName).toBe("Kamil ÖZDİL");
   });
 
   it("admin uçları tam adı verir; publicName yazılır, public'te otomatik kısaltmanın yerine geçer, boş metin geri alır", async () => {

@@ -47,7 +47,8 @@ const WITH_DOCTOR_RELATIONS = {
   additionalSpecialties: { include: { specialty: true } },
 } as const;
 const WITH_BOOKING_RELATIONS = {
-  doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+  // Paket U — `isFounder`/`publicName` hasta portalında görünen ad içindir.
+  doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } },
   // `startsAt asc` — `telehealth.routes.ts::WITH_BOOKING_RELATIONS` İLE AYNI disiplin (ilişki
   // sırası Prisma/Postgres tarafından GARANTİLİ DEĞİLDİR, `appointments[0]`'a dayanan mantık
   // deterministik sıra GEREKTİRİR).
@@ -258,6 +259,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
 
       return reply.send(
         ok(
+          // Paket U — doktorun KENDİ portalı: kendi adını tam görür.
           rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }), "internal")),
           buildPageMeta(rows, limit)
         )
@@ -630,7 +632,8 @@ export async function telehealthPatientPortalRoutes(app: FastifyInstance) {
 
       return reply.send(
         ok(
-          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }), "internal")),
+          // Paket U — HASTA portalı: doktor adı ziyaretçi kuralıyla (kurucu dışında kısaltılmış).
+          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }))),
           buildPageMetaWithCounts(rows, limit, counts)
         )
       );

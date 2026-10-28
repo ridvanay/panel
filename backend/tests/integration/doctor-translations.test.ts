@@ -67,7 +67,7 @@ describe("doktor çevirileri (Paket L)", () => {
 
   it("es: çevrilmiş alanlar döner, boş çeviri (subSpecialty) kanoniğe düşer, aboutHtml sanitize edilir", async () => {
     const doctor = await getDoctor("?locale=es");
-    expect(doctor).toMatchObject({ title: "Prof. Asoc. Dr.", bio: "Cirujano general.", subSpecialty: "Bariatric Surgery", fullName: "Vahit Mutlu" });
+    expect(doctor).toMatchObject({ title: "Prof. Asoc. Dr.", bio: "Cirujano general.", subSpecialty: "Bariatric Surgery", fullName: "V. Mutlu" }); // Paket U — fixture kurucu değil: ziyaretçi yanıtında kısaltılmış ad
     expect(doctor.aboutHtml).toContain("Biografía");
     expect(doctor.aboutHtml).not.toContain("<script");
     expect(doctor).not.toHaveProperty("translations");
