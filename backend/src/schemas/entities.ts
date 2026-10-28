@@ -1281,12 +1281,18 @@ export type ContactSubmissionDto = z.infer<typeof ContactSubmissionSchema>;
 
 /** PUBLIC — `notifyEmail`/`notificationTemplateId`/`retentionDays` BİLİNÇLİ OLARAK YOK (§10.16.8). */
 export const PublicContactFormSchema = z.object({
+  /** Paket U (B1) — görünen metinlerin dili (`?locale=`; bilinmeyen → `en`). */
+  locale: z.string(),
   title: z.string(),
   description: z.string().nullable(),
   submitLabel: z.string(),
   consentRequired: z.boolean(),
+  /** Admin ön metni (dile göre; boş olabilir). */
   consentText: z.string(),
-  consentLegalPage: z.object({ title: z.string(), slug: z.string() }).nullable(),
+  /** Sunucudaki onay cümlesi; `privacyLinkLabel` cümlede AYNEN geçer (istemci bağlantıya çevirir). */
+  consentSentence: z.string(),
+  privacyLinkLabel: z.string(),
+  consentLegalPage: z.object({ title: z.string(), slug: z.string(), localizedSlugs: z.record(z.string()) }).nullable(),
   fields: z.array(ContactFormFieldSchema),
 });
 export type PublicContactFormDto = z.infer<typeof PublicContactFormSchema>;

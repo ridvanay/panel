@@ -99,7 +99,7 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: Block
     case "latest-posts":
       return <LatestPostsBlockView block={node} chrome={chrome} />;
     case "contact-form":
-      return <ContactFormBlockView block={node} chrome={chrome} />;
+      return <ContactFormBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "custom-html":
       return <CustomHtmlBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "before-after-slider":

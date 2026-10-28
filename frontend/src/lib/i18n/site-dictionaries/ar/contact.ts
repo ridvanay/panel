@@ -55,6 +55,9 @@ export const contactStrings: ContactStrings = {
   errorNoticeRequired: "يُرجى تأكيد أنك قرأت إشعار الخصوصية.",
   errorExplicitConsentRequired: "لمشاركة مجال العلاج، يُرجى منح موافقتك الصريحة — أو ترك حقل العلاج فارغًا.",
   errorInvalidTreatment: "اختر علاجًا من القائمة.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "يرجى تحديد المربع للمتابعة.",
+  selectPlaceholder: "اختر…",
 
   contactDetailsTitle: "بيانات التواصل",
   phoneRowLabel: "الهاتف",

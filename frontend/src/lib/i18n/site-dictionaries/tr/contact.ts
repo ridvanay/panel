@@ -56,6 +56,9 @@ export const contactStrings: ContactStrings = {
   errorNoticeRequired: "Lütfen Aydınlatma Metni'ni okuduğunuzu onaylayın.",
   errorExplicitConsentRequired: "Tedavi alanını paylaşmak için açık rızanızı verin — ya da tedaviyi boş bırakın.",
   errorInvalidTreatment: "Listeden bir tedavi seçin.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Devam etmek için onay kutusunu işaretleyin.",
+  selectPlaceholder: "Seçiniz",
 
   contactDetailsTitle: "İletişim bilgileri",
   phoneRowLabel: "Telefon",

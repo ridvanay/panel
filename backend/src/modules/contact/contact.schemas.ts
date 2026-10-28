@@ -92,4 +92,6 @@ export const CreateContactSubmissionRequestSchema = z.object({
   values: z.record(z.string(), z.string()),
   consent: z.boolean().optional(),
   website: z.string().max(2000).optional(),
+  /** Paket U — formun gösterildiği dil; onay kanıtı ve başarı mesajı bu dilde (bilinmeyen → en). */
+  locale: z.string().max(10).optional(),
 });

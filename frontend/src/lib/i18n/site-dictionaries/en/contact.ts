@@ -63,6 +63,9 @@ export const contactStrings = {
   errorNoticeRequired: "Please confirm that you have read the Privacy Notice.",
   errorExplicitConsentRequired: "To share a treatment area, please give your explicit consent — or leave the treatment blank.",
   errorInvalidTreatment: "Select a treatment from the list.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Please tick the box to continue.",
+  selectPlaceholder: "Select…",
 
   // --- Details column ---
   contactDetailsTitle: "Contact details",

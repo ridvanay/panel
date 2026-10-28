@@ -184,6 +184,7 @@ import { resolveUnitPriceCents } from "../lib/product-pricing";
 import { computeShipping, type ShippingSettingsInput } from "../lib/shipping";
 import { buildVariantLabel } from "../modules/products/lib/variants";
 import { getBookingJoinWindow } from "../modules/telehealth/lib/booking";
+import { localizeContactForm } from "../modules/contact/contact-i18n";
 
 // [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto` artık `doctorProfile` İLİŞKİSİNİ
 // GEREKTİRİR (BİLİNÇLİ breaking tip değişikliği): alan opsiyonel BIRAKILMAZ ki TypeScript her çağrı
@@ -1218,16 +1219,22 @@ export function toContactFormDto(form: ContactFormWithFields): ContactFormDto {
 /** PUBLIC — `notifyEmail`/`notificationTemplateId`/`retentionDays` BİLİNÇLİ OLARAK YOK (§10.16.8). */
 export function toPublicContactFormDto(
   form: ContactFormWithFields,
-  consentLegalPage: { title: string; slug: string } | null
+  consentLegalPage: PublicContactFormDto["consentLegalPage"],
+  locale?: string
 ): PublicContactFormDto {
+  // Paket U (B1) — görünen metinler dile göre (çeviri → EN kanonik → dil varsayılanı).
+  const localized = localizeContactForm(form, form.fields.map(toContactFormFieldDto), locale);
   return {
-    title: form.title,
-    description: form.description,
-    submitLabel: form.submitLabel,
+    locale: localized.locale,
+    title: localized.title,
+    description: localized.description,
+    submitLabel: localized.submitLabel,
     consentRequired: form.consentRequired,
-    consentText: form.consentText,
+    consentText: localized.consentText,
+    consentSentence: localized.consentSentence,
+    privacyLinkLabel: localized.privacyLinkLabel,
     consentLegalPage,
-    fields: form.fields.map(toContactFormFieldDto),
+    fields: localized.fields,
   };
 }
 

@@ -55,6 +55,9 @@ export const contactStrings: ContactStrings = {
   errorNoticeRequired: "Confirme que ha leído el Aviso de privacidad.",
   errorExplicitConsentRequired: "Para indicar un área de tratamiento, otorgue su consentimiento expreso o deje el tratamiento en blanco.",
   errorInvalidTreatment: "Seleccione un tratamiento de la lista.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Marque la casilla para continuar.",
+  selectPlaceholder: "Seleccione…",
 
   contactDetailsTitle: "Datos de contacto",
   phoneRowLabel: "Teléfono",

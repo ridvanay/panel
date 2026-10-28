@@ -55,6 +55,9 @@ export const contactStrings: ContactStrings = {
   errorNoticeRequired: "Подтвердите, что вы ознакомились с Уведомлением о конфиденциальности.",
   errorExplicitConsentRequired: "Чтобы указать направление лечения, дайте явное согласие — или оставьте поле лечения пустым.",
   errorInvalidTreatment: "Выберите лечение из списка.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Отметьте флажок, чтобы продолжить.",
+  selectPlaceholder: "Выберите…",
 
   contactDetailsTitle: "Контактные данные",
   phoneRowLabel: "Телефон",

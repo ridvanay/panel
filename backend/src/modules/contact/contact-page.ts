@@ -23,6 +23,7 @@ import { COUNTRY_CODES, dialCodeFor } from "../../lib/country-codes";
 import { ApiError, NotFoundError, ValidationError } from "../../lib/errors";
 import { CONTACT_FORM_ID } from "./contact.constants";
 import { sendNotificationBestEffort } from "./contact.service";
+import { CONTACT_CONSENT_TEXTS, CONTACT_LOCALES, type ContactLocale } from "./contact-i18n";
 
 // ---------------------------------------------------------------------------
 // Onay metinleri (compliance-agent onaylı) — gösterilen metin = saklanan metin.
@@ -31,23 +32,16 @@ import { sendNotificationBestEffort } from "./contact.service";
 export const CONTACT_PAGE_LOCALES = ["en", "tr"] as const;
 export type ContactPageLocale = (typeof CONTACT_PAGE_LOCALES)[number];
 
-export const CONTACT_PAGE_CONSENT_TEXTS: Record<
-  ContactPageLocale,
-  { notice: string; explicit: string; privacyLinkLabel: string }
-> = {
-  en: {
-    notice: "I have read the Privacy Notice describing how my personal data will be processed to respond to this enquiry.",
-    explicit:
-      "I explicitly consent to the processing of the treatment area I selected, which may reveal information about my health, solely to direct and respond to my request. I know I can leave this field blank and withdraw my consent at any time (see Privacy Notice).",
-    privacyLinkLabel: "Privacy Notice",
-  },
-  tr: {
-    notice: "Talebimi yanıtlamak amacıyla kişisel verilerimin nasıl işleneceğini açıklayan Aydınlatma Metni'ni okudum.",
-    explicit:
-      "Seçtiğim tedavi alanının sağlığımla ilgili bilgi içerebileceğini bilerek, yalnızca talebimin yönlendirilmesi ve yanıtlanması amacıyla işlenmesine açıkça rıza veriyorum. Bu alanı boş bırakabileceğimi ve rızamı dilediğim zaman geri alabileceğimi biliyorum (bkz. Aydınlatma Metni).",
-    privacyLinkLabel: "Aydınlatma Metni",
-  },
-};
+/**
+ * Paket U (B1) — onay metinleri 9 dilde (`contact-i18n.ts`); sayfa İÇERİĞİ (admin) yalnızca en/tr
+ * tutulur, diğer dillerde EN içeriğe düşer.
+ */
+export const CONTACT_PAGE_CONSENT_TEXTS: Record<ContactLocale, { notice: string; explicit: string; privacyLinkLabel: string }> = Object.fromEntries(
+  CONTACT_LOCALES.map((locale) => {
+    const { notice, explicit, privacyLinkLabel } = CONTACT_CONSENT_TEXTS[locale];
+    return [locale, { notice, explicit, privacyLinkLabel }];
+  })
+) as Record<ContactLocale, { notice: string; explicit: string; privacyLinkLabel: string }>;
 
 /** "Henüz emin değilim" — sağlık verisi DEĞİL, açık rıza gerektirmez. */
 export const TREATMENT_NOT_SURE = "not_sure";
@@ -219,7 +213,8 @@ const PHONE_NUMBER_PATTERN = /^[0-9 ()-]{4,20}$/;
 /** Sıkı şema — hata anahtarları form alan adlarıdır (istemci alanın altında gösterir). */
 export const ContactPageSubmissionSchema = z
   .object({
-    locale: z.enum(CONTACT_PAGE_LOCALES),
+    // Paket U — onay metni dili 9 site dilinden biri (gösterilen = saklanan metin).
+    locale: z.enum(CONTACT_LOCALES),
     fullName: z.string().trim().min(2, "required").max(120, "too_long"),
     email: z.string().trim().max(254, "too_long").regex(EMAIL_PATTERN, "invalid_email"),
     phoneCountry: z

@@ -60,7 +60,7 @@ async function main() {
       return;
     }
     const result = await applyImportPlan(prisma, plan, { ...operatorInfo, confirm, backupDir, sourceFile: file, revalidate });
-    console.log(`\nYazıldı: ${result.pages} sayfa, ${result.doctors} doktor, ${result.entities} uzmanlık/menü/footer çevirisi.`);
+    console.log(`\nYazıldı: ${result.pages} sayfa, ${result.doctors} doktor, ${result.entities} uzmanlık/menü/footer, ${result.contactForm} iletişim formu çevirisi.`);
     console.log(`Yedek: ${result.backupFile}`);
     console.log(`Geri dönüş: npx tsx scripts/import-translations.ts --restore=${result.backupFile} --confirm=${RESTORE_CONFIRM_KEY} --operator="..."`);
   } catch (err) {

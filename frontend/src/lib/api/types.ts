@@ -2434,12 +2434,18 @@ export interface UpdateContactSubmissionRequest {
 
 /** PUBLIC — `notifyEmail`/`notificationTemplateId`/`retentionDays` BİLİNÇLİ OLARAK YOK. */
 export interface PublicContactForm {
+  /** Paket U — görünen metinlerin dili (`?locale=`; bilinmeyen → `en`). */
+  locale: string;
   title: string;
   description: string | null;
   submitLabel: string;
   consentRequired: boolean;
+  /** Admin ön metni (dile göre; boş olabilir). */
   consentText: string;
-  consentLegalPage: { title: string; slug: string } | null;
+  /** Sunucudaki onay cümlesi; `privacyLinkLabel` cümlede AYNEN geçer ve bağlantıya çevrilir. */
+  consentSentence: string;
+  privacyLinkLabel: string;
+  consentLegalPage: { title: string; slug: string; localizedSlugs: Record<string, string> } | null;
   fields: ContactFormField[];
 }
 
@@ -2449,6 +2455,8 @@ export interface CreateContactSubmissionRequest {
   consent?: boolean;
   /** HONEYPOT — CSS ile gizli, tabindex=-1, autocomplete=off. Dolu gelirse yanıt yine 201. */
   website?: string;
+  /** Paket U — formun gösterildiği dil; sunucu onay kanıtını ve başarı mesajını bu dilde üretir. */
+  locale?: string;
 }
 
 export interface CreateContactSubmissionResponse {
@@ -4749,6 +4757,8 @@ export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeS
 // ---------------------------------------------------------------------------
 
 export type ContactPageLocale = "en" | "tr";
+/** Paket U (B1) — onay metinlerinin dili (sunucuda 9 dil); sayfa içeriği yalnızca en/tr tutulur. */
+export type ContactConsentLocale = "en" | "tr" | "es" | "de" | "ar" | "ru" | "ro" | "fr" | "sr-latn";
 
 export interface ContactPageHoursRow {
   label: string;
@@ -4775,7 +4785,7 @@ export interface ContactPageContent {
 
 /** `GET /contact/page?locale=` */
 export interface PublicContactPage {
-  locale: ContactPageLocale;
+  locale: ContactConsentLocale;
   content: ContactPageLocaleContent;
   whatsappDigits: string;
   mapImageUrl: string | null;
@@ -4798,7 +4808,7 @@ export type ContactMethod = "email" | "phone" | "whatsapp";
 export interface ContactPageSubmissionRequest {
   token: string;
   website: string;
-  locale: ContactPageLocale;
+  locale: ContactConsentLocale;
   fullName: string;
   email: string;
   phoneCountry?: string;

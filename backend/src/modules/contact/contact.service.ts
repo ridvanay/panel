@@ -10,6 +10,7 @@ import { NotFoundError, PayloadTooLargeError, ValidationError } from "../../lib/
 import { env } from "../../config/env";
 import { sendEmailUsingTemplateRow } from "../email-templates/email-templates.service";
 import { CONTACT_FORM_ID, CONTACT_SUBMISSION_VALUES_MAX_BYTES } from "./contact.constants";
+import { consentSnapshotFor, localizeContactForm } from "./contact-i18n";
 
 const EMAIL_FORMAT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -18,6 +19,8 @@ export interface SubmitContactFormInput {
   consent?: boolean;
   /** Honeypot — bkz. §10.16.9. Doluysa istek SPAM olarak işaretlenir, e-posta gönderilmez. */
   website?: string;
+  /** Paket U — formun gösterildiği dil (onay kanıtı + başarı mesajı). */
+  locale?: string;
   ipAddress: string | null;
   userAgent: string | null;
 }
@@ -161,6 +164,8 @@ export async function submitContactForm(app: FastifyInstance, input: SubmitConta
     data = validateAndCollectFieldValues(form.fields, input.values ?? {});
   }
 
+  // Paket U — saklanan onay kanıtı ziyaretçinin gördüğü (dile göre) metindir.
+  const localized = localizeContactForm(form, [], input.locale);
   const submission = await app.prisma.contactSubmission.create({
     data: {
       formId: form.id,
@@ -169,7 +174,7 @@ export async function submitContactForm(app: FastifyInstance, input: SubmitConta
       data: data as Prisma.InputJsonValue,
       status: isSpam ? "SPAM" : "NEW",
       consentAt: !isSpam && form.consentRequired ? new Date() : null,
-      consentTextSnapshot: !isSpam && form.consentRequired ? form.consentText : null,
+      consentTextSnapshot: !isSpam && form.consentRequired ? consentSnapshotFor(localized) : null,
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
     },
@@ -179,5 +184,5 @@ export async function submitContactForm(app: FastifyInstance, input: SubmitConta
     await sendNotificationBestEffort(app, form, submission);
   }
 
-  return { id: submission.id, message: form.successMessage };
+  return { id: submission.id, message: localized.successMessage };
 }

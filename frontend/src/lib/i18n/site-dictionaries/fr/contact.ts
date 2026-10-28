@@ -60,6 +60,9 @@ export const contactStrings: ContactStrings = {
   errorExplicitConsentRequired:
     "Pour indiquer un domaine de traitement, veuillez donner votre consentement explicite — ou laissez le champ traitement vide.",
   errorInvalidTreatment: "Sélectionnez un traitement dans la liste.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Veuillez cocher la case pour continuer.",
+  selectPlaceholder: "Sélectionnez…",
 
   // --- Details column ---
   contactDetailsTitle: "Coordonnées",

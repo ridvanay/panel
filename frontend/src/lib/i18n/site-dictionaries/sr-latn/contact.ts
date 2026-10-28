@@ -58,6 +58,9 @@ export const contactStrings: ContactStrings = {
   errorExplicitConsentRequired:
     "Da biste naveli oblast lečenja, dajte svoj izričit pristanak — ili ostavite polje za lečenje prazno.",
   errorInvalidTreatment: "Izaberite lečenje sa liste.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Označite polje da biste nastavili.",
+  selectPlaceholder: "Izaberite…",
 
   contactDetailsTitle: "Kontakt podaci",
   phoneRowLabel: "Telefon",

@@ -15,13 +15,15 @@ import { ContactPageForm } from "@/components/site/contact/contact-page-form";
 import { Eyebrow } from "@/components/site/about/eyebrow";
 import { aboutSerif } from "@/components/site/about/about-fonts";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
-import type { ContactPageLocale } from "@/lib/api/types";
+import type { ContactConsentLocale } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 type PageProps = { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
-function contactLocale(lang: string): ContactPageLocale {
-  return lang === "tr" ? "tr" : "en";
+/** Paket U (B1) — onay metinleri 9 dilde sunucudan; sayfa içeriği en/tr dışında sunucuda EN'e düşer. */
+const CONSENT_LOCALES: readonly ContactConsentLocale[] = ["en", "tr", "es", "de", "ar", "ru", "ro", "fr", "sr-latn"];
+function contactLocale(lang: string): ContactConsentLocale {
+  return (CONSENT_LOCALES as readonly string[]).includes(lang) ? (lang as ContactConsentLocale) : "en";
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {

@@ -55,6 +55,9 @@ export const contactStrings: ContactStrings = {
   errorNoticeRequired: "Bitte bestätigen Sie, dass Sie die Datenschutzhinweise gelesen haben.",
   errorExplicitConsentRequired: "Um einen Behandlungsbereich anzugeben, erteilen Sie bitte Ihre ausdrückliche Einwilligung – oder lassen Sie die Behandlung leer.",
   errorInvalidTreatment: "Wählen Sie eine Behandlung aus der Liste.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Bitte setzen Sie das Häkchen, um fortzufahren.",
+  selectPlaceholder: "Bitte wählen…",
 
   contactDetailsTitle: "Kontaktdaten",
   phoneRowLabel: "Telefon",

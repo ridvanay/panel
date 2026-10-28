@@ -25,6 +25,13 @@
  *  - Uzmanlık (`name`, `description`), menü öğesi (`label`), footer sütunu (`title`) ve bağlantısı
  *    (`label`) içe aktarılabilir.
  *
+ * Paket U (2026-10-28):
+ *  - İletişim formu (`contactForm`) içe aktarılabilir: başlık, açıklama, düğme, başarı mesajı, onay ön
+ *    metni ve alan etiket/ipucu/seçenek etiketleri. Çeviri kolonu yok; MEVCUT `contact_forms.pageContent`
+ *    JSON'unda `formTranslations.<dil>` altında tutulur (migration yok). Onay CÜMLESİ çevrilmez —
+ *    sunucudaki onaylı metinlerden gelir (`modules/contact/contact-i18n.ts`).
+ *  - `instructions` metni dosyanın gerçek hedef dillerini listeler.
+ *
  * Bayatlık (2026-10-24): `updatedAt` KULLANILMAZ — sayfa görüntüleme sayacı (`POST /pages/:slug/view`
  * → `viewCount` artışı) `Page.updatedAt`'i her ziyarette değiştirir. Bunun yerine export'taki
  * kanonik alanlar (`fields`) ile kaydın şimdiki kanonik alanları, anahtar sırasından bağımsız
@@ -40,6 +47,8 @@ import { syncContentSlugs } from "./localization";
 import { CACHE_TAGS, triggerPublicPageRevalidation, triggerTagRevalidation } from "./revalidate";
 import { sanitizePageBlocks } from "../modules/pages/lib/sanitize-blocks";
 import { PageBlockListSchema } from "../modules/pages/pages.schemas";
+import { ContactFormTranslationSchema, FORM_TRANSLATIONS_KEY } from "../modules/contact/contact-i18n";
+import { CONTACT_FORM_ID } from "../modules/contact/contact.constants";
 
 // Paket T (2026-10-27) — ro/fr/sr-latn (Sırpça Latin) eklendi.
 export const TARGET_LOCALES = ["es", "de", "ar", "ru", "ro", "fr", "sr-latn"] as const;
@@ -57,7 +66,7 @@ export const RESTORE_AUDIT_ACTION = "content.translations.restored";
 
 export class TranslationImportError extends Error {}
 
-type ItemType = "page" | "doctor" | "specialty" | "navigationItem" | "footerColumn" | "footerLink" | "siteSettings";
+type ItemType = "page" | "doctor" | "specialty" | "navigationItem" | "footerColumn" | "footerLink" | "siteSettings" | "contactForm";
 
 export interface ExportItem {
   type: ItemType;
@@ -93,6 +102,7 @@ type Db = Pick<
   | "footerColumn"
   | "footerLink"
   | "siteSettings"
+  | "contactForm"
   | "locale"
   | "contentSlug"
   | "auditLog"
@@ -177,11 +187,95 @@ async function updateEntityTranslations(tx: Prisma.TransactionClient, type: Enti
 
 const entityKey = (type: string, id: string) => `${type}:${id}`;
 
-const INSTRUCTIONS =
-  "Her kalemde `fields` kanonik (EN) metindir. Çeviriyi aynı alan adlarıyla `translations.<tr|es|de|ar|ru>` içine yazın. " +
-  "`translations.tr` yalnızca hedefte TR çevirisi yoksa (ya da --overwrite-locale=tr ile) yazılır; `existingLocales` mevcut çevirileri gösterir. " +
-  "Sayfa `blocks` ağacında YALNIZCA görünen metinleri çevirin: yapı, id/type, bağlantı (href/url), görsel, renk ve sayı değerleri aynen kalmalıdır. " +
-  "`importable: false` kalemler bilgi amaçlıdır, içe aktarılmaz. Boş bırakılan (null) dil yazılmaz.";
+/* ------------------------------------------------------------------ */
+/* Paket U — iletişim formu (singleton). Çeviriler `pageContent.formTranslations.<dil>` altında.     */
+/* ------------------------------------------------------------------ */
+
+type ContactFormRow = Prisma.ContactFormGetPayload<{ include: { fields: true } }>;
+
+async function findContactForm(db: Pick<Db, "contactForm">): Promise<ContactFormRow | null> {
+  return db.contactForm.findUnique({ where: { id: CONTACT_FORM_ID }, include: { fields: { orderBy: { order: "asc" } } } });
+}
+
+/** Çevrilecek kanonik (EN) metinler: form metinleri + alan etiket/yer tutucu/ipucu/seçenek etiketleri (anahtar → metin). */
+export function contactFormCanonical(form: ContactFormRow): Record<string, unknown> {
+  return {
+    title: form.title,
+    description: form.description ?? null,
+    submitLabel: form.submitLabel,
+    successMessage: form.successMessage,
+    consentText: form.consentText || null,
+    fields: Object.fromEntries(
+      form.fields.map((f) => {
+        const options = Array.isArray(f.options)
+          ? (f.options as { value?: unknown; label?: unknown }[]).filter((o) => typeof o?.value === "string" && typeof o?.label === "string")
+          : [];
+        return [
+          f.key,
+          {
+            label: f.label,
+            placeholder: f.placeholder ?? null,
+            helpText: f.helpText ?? null,
+            ...(options.length ? { options: Object.fromEntries(options.map((o) => [o.value as string, o.label as string])) } : {}),
+          },
+        ];
+      })
+    ),
+  };
+}
+
+function formTranslationsOf(pageContent: unknown): Record<string, unknown> {
+  const raw = pageContent && typeof pageContent === "object" && !Array.isArray(pageContent) ? (pageContent as Record<string, unknown>)[FORM_TRANSLATIONS_KEY] : null;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+}
+
+function pageContentObject(pageContent: unknown): Record<string, unknown> {
+  return pageContent && typeof pageContent === "object" && !Array.isArray(pageContent) ? (pageContent as Record<string, unknown>) : {};
+}
+
+/** Boş/null değerler atılır; alan anahtarı ve seçenek değeri kanonik formda olmalı; HTML yok (şema). */
+export function prepareContactFormTranslation(canonical: Record<string, unknown>, input: Record<string, unknown>): Record<string, unknown> {
+  const prune = (v: unknown): unknown => {
+    if (v === null || v === undefined) return undefined;
+    if (typeof v === "string") return v.trim() === "" ? undefined : v.trim();
+    if (typeof v === "object" && !Array.isArray(v)) {
+      const entries = Object.entries(v as Record<string, unknown>)
+        .map(([k, x]) => [k, prune(x)] as const)
+        .filter(([, x]) => x !== undefined && !(x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 0));
+      return Object.fromEntries(entries);
+    }
+    return v;
+  };
+  const value = (prune(input) ?? {}) as Record<string, unknown>;
+  if (value.fields !== undefined && (typeof value.fields !== "object" || Array.isArray(value.fields))) throw new TranslationImportError("fields nesne olmalı.");
+  const canonicalFields = (canonical.fields ?? {}) as Record<string, { options?: Record<string, string> }>;
+  for (const [key, ft] of Object.entries((value.fields ?? {}) as Record<string, { options?: Record<string, string> }>)) {
+    if (!(key in canonicalFields)) throw new TranslationImportError(`Formda olmayan alan: ${key}`);
+    for (const optionValue of Object.keys(ft?.options ?? {})) {
+      if (!(optionValue in (canonicalFields[key]!.options ?? {}))) throw new TranslationImportError(`"${key}" alanında olmayan seçenek: ${optionValue}`);
+    }
+  }
+  const parsed = ContactFormTranslationSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new TranslationImportError(`İletişim formu çevirisi geçersiz: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  }
+  if (Object.keys(parsed.data).length === 0) throw new TranslationImportError("İletişim formu çevirisi boş.");
+  return parsed.data;
+}
+
+/** Paket U (B3) — talimat metni dosyanın GERÇEK hedef dillerini listeler. */
+export function buildInstructions(locales: readonly string[]): string {
+  const trNote = locales.includes("tr")
+    ? "`translations.tr` yalnızca hedefte TR çevirisi yoksa (ya da --overwrite-locale=tr ile) yazılır; `existingLocales` mevcut çevirileri gösterir. "
+    : "`existingLocales` kayıtta zaten dolu olan çevirileri gösterir. ";
+  return (
+    `Her kalemde \`fields\` kanonik (EN) metindir. Çeviriyi aynı alan adlarıyla \`translations.<${locales.join("|")}>\` içine yazın. ` +
+    trNote +
+    "Sayfa `blocks` ağacında YALNIZCA görünen metinleri çevirin: yapı, id/type, bağlantı (href/url), görsel, renk ve sayı değerleri aynen kalmalıdır. " +
+    "İletişim formunda (`contactForm`) `fields` altındaki alan anahtarları ve seçenek değerleri aynen kalır, yalnızca etiketler çevrilir. " +
+    "`importable: false` kalemler bilgi amaçlıdır, içe aktarılmaz. Boş bırakılan (null) dil yazılmaz."
+  );
+}
 
 /** Kayıttaki `translations` JSON'unda dolu olan diller (export'ta çevirmene bilgi). */
 function filledLocales(translations: unknown): string[] {
@@ -296,6 +390,21 @@ export async function buildTranslationExport(
     });
   }
 
+  const contactForm = await findContactForm(db);
+  if (contactForm) {
+    items.push({
+      type: "contactForm",
+      id: contactForm.id,
+      ref: "contact-form",
+      importable: true,
+      note: "Onay cümlesi çevrilmez (sunucudaki onaylı metinler). `fields` anahtarları ve seçenek değerleri aynen kalır; yalnızca metinler çevrilir.",
+      updatedAt: contactForm.updatedAt.toISOString(),
+      fields: contactFormCanonical(contactForm),
+      translations: emptyTranslations(),
+      existingLocales: filledLocales(formTranslationsOf(contactForm.pageContent)),
+    });
+  }
+
   let selected = items;
   if (options.only?.length) {
     const filtered = filterExportItems(items, options.only);
@@ -309,7 +418,7 @@ export async function buildTranslationExport(
     exportedAt: now.toISOString(),
     canonicalLocale: defaultLocale,
     targetLocales: locales,
-    instructions: INSTRUCTIONS,
+    instructions: buildInstructions(locales),
     items: selected,
   };
 }
@@ -412,13 +521,21 @@ export interface ImportPlan {
   pages: PreparedPage[];
   doctors: PreparedDoctor[];
   entities: PreparedEntity[];
+  /** Paket U — iletişim formu çevirileri (dil başına bir kayıt). */
+  contactForm: { locale: TargetLocale; value: Record<string, unknown> }[];
   skipped: { type: string; ref: string; locale?: string; reason: string }[];
   /** Plan anındaki `translations` damgaları — yazma sırasında eşzamanlı değişiklik kontrolü. */
   /**
    * Plan anındaki damgalar — yazma sırasında eşzamanlı değişiklik kontrolü: `translations` (çeviriler
    * değişmiş mi) ve `canonical` (kanonik metin değişmiş mi; `updatedAt` DEĞİL — sayaç onu da değiştirir).
    */
-  stamps: { pages: Record<string, string>; doctors: Record<string, string>; canonical: Record<string, string>; entities: Record<string, string> };
+  stamps: {
+    pages: Record<string, string>;
+    doctors: Record<string, string>;
+    canonical: Record<string, string>;
+    entities: Record<string, string>;
+    contactForm?: string;
+  };
 }
 
 export function prepareEntityTranslation(type: EntityType, input: Record<string, unknown>): Record<string, string> {
@@ -480,7 +597,7 @@ function guardLocales(
 }
 
 export async function buildImportPlan(db: Db, data: TranslationExport, options: ImportPlanOptions = {}): Promise<ImportPlan> {
-  const plan: ImportPlan = { pages: [], doctors: [], entities: [], skipped: [], stamps: { pages: {}, doctors: {}, canonical: {}, entities: {} } };
+  const plan: ImportPlan = { pages: [], doctors: [], entities: [], contactForm: [], skipped: [], stamps: { pages: {}, doctors: {}, canonical: {}, entities: {} } };
 
   for (const item of data.items) {
     const filled = IMPORT_LOCALES.filter((l) => item.translations?.[l]);
@@ -503,6 +620,29 @@ export async function buildImportPlan(db: Db, data: TranslationExport, options: 
           plan.entities.push({ type, id: row.id, ref: item.ref, locale, value: prepareEntityTranslation(type, item.translations[locale]!) });
         } catch (err) {
           plan.skipped.push({ type, ref: item.ref, locale, reason: (err as Error).message });
+        }
+      }
+      continue;
+    }
+    if (item.type === "contactForm") {
+      const form = await findContactForm(db);
+      if (!form) {
+        plan.skipped.push({ type: item.type, ref: item.ref, reason: "İletişim formu bulunamadı." });
+        continue;
+      }
+      const canonical = contactFormCanonical(form);
+      if (canonicalHash(canonical) !== canonicalHash(item.fields)) {
+        plan.skipped.push({ type: item.type, ref: item.ref, reason: STALE_REASON });
+        continue;
+      }
+      const current = formTranslationsOf(form.pageContent);
+      plan.stamps.contactForm = stableStringify(current);
+      plan.stamps.canonical[entityKey("contactForm", form.id)] = canonicalHash(canonical);
+      for (const locale of guardLocales(plan, item, filled, current, options)) {
+        try {
+          plan.contactForm.push({ locale, value: prepareContactFormTranslation(canonical, item.translations[locale]!) });
+        } catch (err) {
+          plan.skipped.push({ type: item.type, ref: item.ref, locale, reason: (err as Error).message });
         }
       }
       continue;
@@ -599,6 +739,7 @@ export function formatImportPlan(plan: ImportPlan): string {
     `Sayfa çevirileri: ${plan.pages.length} (${count(plan.pages)})`,
     `Doktor çevirileri: ${plan.doctors.length} (${count(plan.doctors)})`,
     `Uzmanlık/menü/footer çevirileri: ${plan.entities.length} (${count(plan.entities)})`,
+    `İletişim formu çevirileri: ${plan.contactForm.length} (${count(plan.contactForm)})`,
   ];
   if (plan.skipped.length) {
     lines.push(`Atlanan (${plan.skipped.length}):`);
@@ -627,6 +768,8 @@ export interface TranslationsBackup {
   doctors: { id: string; translations: unknown }[];
   /** Paket O — uzmanlık/menü/footer (eski yedeklerde yok). */
   entities?: { type: EntityType; id: string; translations: unknown }[];
+  /** Paket U — iletişim formu çevirileri (`pageContent.formTranslations`); eski yedeklerde yok. */
+  contactForm?: { translations: unknown };
 }
 
 function assertOperator(info: OperatorInfo) {
@@ -644,7 +787,8 @@ async function writeBackup(
   doctorIds: string[],
   now: Date,
   locales: string[],
-  entityRefs: { type: EntityType; id: string }[] = []
+  entityRefs: { type: EntityType; id: string }[] = [],
+  includeContactForm = false
 ): Promise<string> {
   const pages = await db.page.findMany({ where: { id: { in: pageIds } }, select: { id: true, translations: true } });
   const doctors = await db.doctorProfile.findMany({ where: { id: { in: doctorIds } }, select: { id: true, translations: true } });
@@ -653,7 +797,16 @@ async function writeBackup(
     const row = await findEntity(db, ref.type, ref.id);
     if (row) entities.push({ type: ref.type, id: row.id, translations: row.translations ?? {} });
   }
-  const backup: TranslationsBackup = { kind: "content-translations-backup", createdAt: now.toISOString(), locales, pages, doctors, entities };
+  const contactFormRow = includeContactForm ? await findContactForm(db) : null;
+  const backup: TranslationsBackup = {
+    kind: "content-translations-backup",
+    createdAt: now.toISOString(),
+    locales,
+    pages,
+    doctors,
+    entities,
+    ...(contactFormRow ? { contactForm: { translations: formTranslationsOf(contactFormRow.pageContent) } } : {}),
+  };
   await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
   const file = path.join(backupDir, `translations-${now.toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.writeFile(file, JSON.stringify(backup, null, 2), { encoding: "utf8", mode: 0o600 });
@@ -692,18 +845,18 @@ export async function applyImportPlan(
   db: Db,
   plan: ImportPlan,
   options: OperatorInfo & { confirm?: string; backupDir: string; sourceFile: string; now?: Date; revalidate?: boolean }
-): Promise<{ backupFile: string; pages: number; doctors: number; entities: number }> {
+): Promise<{ backupFile: string; pages: number; doctors: number; entities: number; contactForm: number }> {
   if (options.confirm !== IMPORT_CONFIRM_KEY) throw new TranslationImportError(`Gerçek yazma için --confirm=${IMPORT_CONFIRM_KEY} gerekir.`);
   assertOperator(options);
   const pageIds = [...new Set(plan.pages.map((p) => p.id))];
   const doctorIds = [...new Set(plan.doctors.map((d) => d.id))];
   const entityRefs = [...new Map(plan.entities.map((e) => [entityKey(e.type, e.id), { type: e.type, id: e.id }])).values()];
-  if (pageIds.length + doctorIds.length + entityRefs.length === 0) throw new TranslationImportError("Yazılacak çeviri yok.");
+  if (pageIds.length + doctorIds.length + entityRefs.length + plan.contactForm.length === 0) throw new TranslationImportError("Yazılacak çeviri yok.");
   const now = options.now ?? new Date();
-  const writtenLocales = IMPORT_LOCALES.filter((l) => [...plan.pages, ...plan.doctors, ...plan.entities].some((x) => x.locale === l));
+  const writtenLocales = IMPORT_LOCALES.filter((l) => [...plan.pages, ...plan.doctors, ...plan.entities, ...plan.contactForm].some((x) => x.locale === l));
   // Yedek her zaman hedef dilleri kapsar (eski davranış); TR yalnızca bu import TR yazdıysa.
   const backupLocales = [...new Set<string>([...TARGET_LOCALES, ...writtenLocales])];
-  const backupFile = await writeBackup(db, options.backupDir, pageIds, doctorIds, now, backupLocales, entityRefs);
+  const backupFile = await writeBackup(db, options.backupDir, pageIds, doctorIds, now, backupLocales, entityRefs, plan.contactForm.length > 0);
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
   await db.$transaction(async (tx) => {
@@ -753,6 +906,21 @@ export async function applyImportPlan(
       );
       await updateEntityTranslations(tx, ref.type, ref.id, translations as Prisma.InputJsonValue);
     }
+    if (plan.contactForm.length) {
+      const current = await findContactForm(tx as unknown as Db);
+      if (
+        !current ||
+        stableStringify(formTranslationsOf(current.pageContent)) !== plan.stamps.contactForm ||
+        canonicalHash(contactFormCanonical(current)) !== plan.stamps.canonical[entityKey("contactForm", current.id)]
+      ) {
+        throw new TranslationImportError("İletişim formu çevirileri plan sonrası değişmiş; işlem geri alındı.");
+      }
+      const next = mergeTargetLocales(formTranslationsOf(current.pageContent), plan.contactForm);
+      await tx.contactForm.update({
+        where: { id: current.id },
+        data: { pageContent: { ...pageContentObject(current.pageContent), [FORM_TRANSLATIONS_KEY]: next } as Prisma.InputJsonObject },
+      });
+    }
     await tx.auditLog.create({
       data: {
         actorId: null,
@@ -769,13 +937,14 @@ export async function applyImportPlan(
           pages: plan.pages.length,
           doctors: plan.doctors.length,
           entities: plan.entities.length,
+          contactForm: plan.contactForm.length,
         },
       },
     });
   });
 
   if (options.revalidate !== false) await revalidateAll(db, pageIds, doctorIds.length > 0, entityRefs.map((r) => r.type));
-  return { backupFile, pages: plan.pages.length, doctors: plan.doctors.length, entities: plan.entities.length };
+  return { backupFile, pages: plan.pages.length, doctors: plan.doctors.length, entities: plan.entities.length, contactForm: plan.contactForm.length };
 }
 
 export async function readTranslationsBackup(file: string): Promise<TranslationsBackup> {
@@ -790,6 +959,7 @@ export async function readTranslationsBackup(file: string): Promise<Translations
   for (const row of [...parsed.pages, ...parsed.doctors, ...(parsed.entities ?? [])]) {
     if (typeof row?.id !== "string" || !isMap(row.translations)) throw new TranslationImportError("Yedekte geçersiz kayıt var.");
   }
+  if (parsed.contactForm !== undefined && !isMap(parsed.contactForm?.translations)) throw new TranslationImportError("Yedekteki iletişim formu çevirileri geçersiz.");
   if (parsed.entities !== undefined && (!Array.isArray(parsed.entities) || parsed.entities.some((e) => !isEntityType(e?.type)))) {
     throw new TranslationImportError("Yedekte geçersiz kayıt türü var.");
   }
@@ -814,7 +984,7 @@ export async function restoreTranslations(
   // Geri dönülecek diller: yedeğin kaydettiği import dilleri (eski yedek → yalnızca hedef diller). `en` asla.
   const restoreLocales = (backup.locales ?? [...TARGET_LOCALES]).filter((l): l is TargetLocale => (IMPORT_LOCALES as readonly string[]).includes(l));
   const entityRefs = (backup.entities ?? []).map((e) => ({ type: e.type, id: e.id }));
-  const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date(), restoreLocales, entityRefs);
+  const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date(), restoreLocales, entityRefs, backup.contactForm !== undefined);
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
   /** Yalnızca hedef diller; her girdi beklenen alanlara indirgenir ve doğrulanır (yedek operatör girdisidir). */
@@ -863,6 +1033,16 @@ export async function restoreTranslations(
       if (!current) throw new TranslationImportError(`Yedekteki doktor bulunamadı (id=${row.id}).`);
       const next = restoreTargets(current.translations, row.translations, cleanDoctor);
       await tx.doctorProfile.update({ where: { id: row.id }, data: { translations: next as Prisma.InputJsonValue } });
+    }
+    if (backup.contactForm) {
+      const current = await findContactForm(tx as unknown as Db);
+      if (!current) throw new TranslationImportError("Yedekteki iletişim formu bulunamadı.");
+      const canonical = contactFormCanonical(current);
+      const next = restoreTargets(formTranslationsOf(current.pageContent), backup.contactForm.translations, (entry) => prepareContactFormTranslation(canonical, entry));
+      await tx.contactForm.update({
+        where: { id: current.id },
+        data: { pageContent: { ...pageContentObject(current.pageContent), [FORM_TRANSLATIONS_KEY]: next } as Prisma.InputJsonObject },
+      });
     }
     for (const row of backup.entities ?? []) {
       const current = await findEntity(tx as unknown as Db, row.type, row.id);

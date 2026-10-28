@@ -298,22 +298,36 @@ export async function adminContactRoutes(app: FastifyInstance) {
 export async function publicContactRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
-  server.get("/form", { schema: { response: { 200: ApiSuccessSchema(PublicContactFormSchema) } } }, async (_request, reply) => {
+  server.get(
+    "/form",
+    { schema: { querystring: z.object({ locale: z.string().max(10).optional() }), response: { 200: ApiSuccessSchema(PublicContactFormSchema) } } },
+    async (request, reply) => {
     const row = await readContactFormRow(app);
     // `isEnabled=false` (ya da hiç yapılandırılmamışsa varsayılan `true` olsa da satır YOKSA form
     // fiilen kullanılamaz) → 404. İç yapılandırma (`notifyEmail`/`notificationTemplateId`/
     // `retentionDays`) YANITTA YOKTUR (bkz. `toPublicContactFormDto`).
     if (!row || !row.isEnabled) throw new NotFoundError("İletişim formu bulunamadı.");
 
-    const consentLegalPage = row.consentLegalPageId
+    const legalPage = row.consentLegalPageId
       ? await app.prisma.page.findFirst({
           where: { id: row.consentLegalPageId, status: "PUBLISHED", deletedAt: null },
-          select: { title: true, slug: true },
+          select: { id: true, title: true, slug: true },
         })
       : null;
+    // Paket U — bağlantı aktif dildeki yasal sayfaya gider (dil slug'ı varsa).
+    const consentLegalPage = legalPage
+      ? {
+          title: legalPage.title,
+          slug: legalPage.slug,
+          localizedSlugs: Object.fromEntries(
+            (await app.prisma.contentSlug.findMany({ where: { entityType: "PAGE", entityId: legalPage.id }, select: { locale: true, slug: true } })).map((s) => [s.locale, s.slug])
+          ),
+        }
+      : null;
 
-    return reply.send(ok(toPublicContactFormDto(row, consentLegalPage)));
-  });
+    return reply.send(ok(toPublicContactFormDto(row, consentLegalPage, request.query.locale)));
+    }
+  );
 
   server.post(
     "/submissions",
@@ -326,6 +340,7 @@ export async function publicContactRoutes(app: FastifyInstance) {
         values: request.body.values,
         consent: request.body.consent,
         website: request.body.website,
+        locale: request.body.locale,
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? null,
       });

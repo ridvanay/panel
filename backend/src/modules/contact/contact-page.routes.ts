@@ -14,9 +14,9 @@ import { CONTACT_SUBMIT_RATE_LIMIT } from "../../lib/rate-limit";
 import { absolutizeMediaUrl } from "../../mappers";
 import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { CONTACT_FORM_ID } from "./contact.constants";
+import { CONTACT_LOCALES, FORM_TRANSLATIONS_KEY, resolveContactLocale } from "./contact-i18n";
 import {
   CONTACT_PAGE_CONSENT_TEXTS,
-  CONTACT_PAGE_LOCALES,
   ContactPageContentSchema,
   ContactPageLocaleContentSchema,
   ContactPageSubmissionBodySchema,
@@ -30,7 +30,8 @@ import {
 } from "./contact-page";
 
 const PublicContactPageSchema = z.object({
-  locale: z.enum(CONTACT_PAGE_LOCALES),
+  /** Paket U — onay metinlerinin dili (9 dil); sayfa içeriği en/tr dışında EN'e düşer. */
+  locale: z.enum(CONTACT_LOCALES),
   content: ContactPageLocaleContentSchema,
   /** Yalnızca rakamlar — `https://wa.me/<whatsappDigits>`. Boşsa WhatsApp gösterilmez. */
   whatsappDigits: z.string(),
@@ -77,9 +78,9 @@ export async function publicContactPageRoutes(app: FastifyInstance) {
       });
       if (!row || !row.isEnabled) throw new NotFoundError("İletişim formu bulunamadı.");
 
-      const locale = request.query.locale === "tr" ? "tr" : "en";
+      const locale = resolveContactLocale(request.query.locale);
       const content = parseContactPageContent(row.pageContent);
-      const localized = localeContent(content, locale);
+      const localized = localeContent(content, locale === "tr" ? "tr" : "en");
 
       let privacyPage: z.infer<typeof PublicContactPageSchema>["privacyPage"] = null;
       if (row.consentLegalPageId) {
@@ -173,10 +174,18 @@ export async function adminContactPageRoutes(app: FastifyInstance) {
         }
       }
 
+      // Paket U — aynı JSON'daki form çevirileri (`formTranslations`, çeviri import'u yazar) bu
+      // formun parçası değildir; kaydederken KORUNUR.
+      const existing = await app.prisma.contactForm.findUnique({ where: { id: CONTACT_FORM_ID }, select: { pageContent: true } });
+      const existingRaw = existing?.pageContent && typeof existing.pageContent === "object" && !Array.isArray(existing.pageContent) ? (existing.pageContent as Record<string, unknown>) : {};
+      const pageContent = {
+        ...content,
+        ...(existingRaw[FORM_TRANSLATIONS_KEY] !== undefined ? { [FORM_TRANSLATIONS_KEY]: existingRaw[FORM_TRANSLATIONS_KEY] } : {}),
+      } as Prisma.InputJsonObject;
       await app.prisma.contactForm.upsert({
         where: { id: CONTACT_FORM_ID },
-        create: { id: CONTACT_FORM_ID, pageContent: content as Prisma.InputJsonObject, updatedById: request.user!.id },
-        update: { pageContent: content as Prisma.InputJsonObject, updatedById: request.user!.id },
+        create: { id: CONTACT_FORM_ID, pageContent, updatedById: request.user!.id },
+        update: { pageContent, updatedById: request.user!.id },
       });
 
       await logAudit(app, {

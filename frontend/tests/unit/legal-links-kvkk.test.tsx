@@ -17,7 +17,7 @@ vi.mock("@/lib/legal-pages", async (importOriginal) => {
 vi.mock("@/lib/api/contact", () => ({ submitContactForm: vi.fn() }));
 
 import { resolveKvkkNoticePage } from "@/lib/legal-pages";
-import { ContactFormClient } from "@/components/site/contact-form";
+import { ContactFormClient, type ContactFormStrings } from "@/components/site/contact-form";
 
 function page(slug: string, title: string, isLegalDocument = true): SitePage {
   return { id: slug, slug, title, isLegalDocument, status: "PUBLISHED" } as unknown as SitePage;
@@ -49,9 +49,30 @@ describe("resolveKvkkNoticePage", () => {
   });
 });
 
-function makeForm(consentLegalPage: PublicContactForm["consentLegalPage"]): PublicContactForm {
-  return { title: "İletişim", description: null, submitLabel: "Gönder", consentRequired: true, consentText: "", consentLegalPage, fields: [] };
+function makeForm(consentLegalPage: { title: string; slug: string } | null, overrides: Partial<PublicContactForm> = {}): PublicContactForm {
+  return {
+    locale: "tr",
+    title: "İletişim",
+    description: null,
+    submitLabel: "Gönder",
+    consentRequired: true,
+    consentText: "",
+    consentSentence: "Aydınlatma Metni'ni okudum, onaylıyorum.",
+    privacyLinkLabel: "Aydınlatma Metni",
+    consentLegalPage: consentLegalPage ? { ...consentLegalPage, localizedSlugs: {} } : null,
+    fields: [],
+    ...overrides,
+  };
 }
+
+const STRINGS: ContactFormStrings = {
+  required: "Bu alan zorunludur.",
+  invalidEmail: "Geçerli bir e-posta adresi girin.",
+  tooLong: "Çok uzun.",
+  consentRequired: "Devam etmek için onay kutusunu işaretleyin.",
+  selectPlaceholder: "Seçiniz",
+  sending: "Gönderiliyor…",
+};
 
 describe("İletişim formu — Aydınlatma Metni linki", () => {
   beforeEach(() => {
@@ -60,22 +81,55 @@ describe("İletişim formu — Aydınlatma Metni linki", () => {
 
   it("admin mesafeli sözleşmeyi seçmişse link KVKK aydınlatma sayfasına gider", async () => {
     fetchLegalPagesClient.mockResolvedValue([DISTANCE, ACIK_RIZA, KVKK]);
-    render(<ContactFormClient form={makeForm({ title: DISTANCE.title, slug: DISTANCE.slug })} />);
+    render(<ContactFormClient form={makeForm({ title: DISTANCE.title, slug: DISTANCE.slug })} strings={STRINGS} />);
     const link = await screen.findByRole("link", { name: "Aydınlatma Metni" });
     expect(link).toHaveAttribute("href", "/kvkk-aydinlatma-metni-2");
   });
 
   it("admin KVKK sayfasını seçmişse o kullanılır (ek istek atılmaz)", () => {
-    render(<ContactFormClient form={makeForm({ title: KVKK.title, slug: KVKK.slug })} />);
+    render(<ContactFormClient form={makeForm({ title: KVKK.title, slug: KVKK.slug })} strings={STRINGS} />);
     expect(screen.getByRole("link", { name: "Aydınlatma Metni" })).toHaveAttribute("href", "/kvkk-aydinlatma-metni-2");
     expect(fetchLegalPagesClient).not.toHaveBeenCalled();
   });
 
   it("KVKK sayfası bulunamazsa link gösterilmez (mesafeli sözleşmeye düşmez)", async () => {
     fetchLegalPagesClient.mockResolvedValue([DISTANCE, ACIK_RIZA]);
-    render(<ContactFormClient form={makeForm({ title: DISTANCE.title, slug: DISTANCE.slug })} />);
+    render(<ContactFormClient form={makeForm({ title: DISTANCE.title, slug: DISTANCE.slug })} strings={STRINGS} />);
     await waitFor(() => expect(fetchLegalPagesClient).toHaveBeenCalled());
     expect(screen.queryByRole("link", { name: "Aydınlatma Metni" })).not.toBeInTheDocument();
     expect(screen.getByText(/ni okudum, onaylıyorum/)).toBeInTheDocument();
+  });
+});
+
+describe("İletişim formu — dil (Paket U, B1)", () => {
+  beforeEach(() => {
+    fetchLegalPagesClient.mockReset();
+  });
+
+  it("sr-latn: onay cümlesi ve bağlantı etiketi sunucudan; bağlantı aktif dil önekiyle; Türkçe kalıntı yok", () => {
+    const form = makeForm(
+      { title: KVKK.title, slug: KVKK.slug },
+      {
+        locale: "sr-latn",
+        title: "Kontaktirajte nas",
+        submitLabel: "Pošalji",
+        consentSentence: "Pročitao/la sam Obaveštenje o privatnosti i prihvatam ga.",
+        privacyLinkLabel: "Obaveštenje o privatnosti",
+      }
+    );
+    const { container } = render(<ContactFormClient form={form} strings={{ ...STRINGS, required: "Ovo polje je obavezno." }} lang="sr-latn" defaultLocaleCode="en" />);
+    expect(screen.getByRole("link", { name: "Obaveštenje o privatnosti" })).toHaveAttribute("href", "/sr-latn/kvkk-aydinlatma-metni-2");
+    expect(screen.getByRole("button", { name: "Pošalji" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/okudum|onaylıyorum|Aydınlatma Metni/);
+  });
+
+  it("yerelleştirilmiş yasal sayfa slug'ı varsa o dilin slug'ı kullanılır; varsayılan dilde önek yok", () => {
+    const form = makeForm({ title: KVKK.title, slug: KVKK.slug });
+    form.consentLegalPage!.localizedSlugs = { tr: "aydinlatma-metni" };
+    const { unmount } = render(<ContactFormClient form={form} strings={STRINGS} lang="tr" defaultLocaleCode="en" />);
+    expect(screen.getByRole("link", { name: "Aydınlatma Metni" })).toHaveAttribute("href", "/tr/aydinlatma-metni");
+    unmount();
+    render(<ContactFormClient form={{ ...form, locale: "en", consentSentence: "I have read and accept the Privacy Notice.", privacyLinkLabel: "Privacy Notice" }} strings={STRINGS} lang="en" defaultLocaleCode="en" />);
+    expect(screen.getByRole("link", { name: "Privacy Notice" })).toHaveAttribute("href", "/kvkk-aydinlatma-metni-2");
   });
 });

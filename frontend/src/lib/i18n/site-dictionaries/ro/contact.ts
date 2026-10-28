@@ -57,6 +57,9 @@ export const contactStrings: ContactStrings = {
   errorExplicitConsentRequired:
     "Pentru a ne comunica domeniul de tratament, vă rugăm să vă dați consimțământul explicit — sau lăsați câmpul pentru tratament necompletat.",
   errorInvalidTreatment: "Selectați un tratament din listă.",
+  // Paket U — sayfa-oluşturucu iletişim formu bloğu.
+  errorConsentRequired: "Bifați caseta pentru a continua.",
+  selectPlaceholder: "Selectați…",
 
   contactDetailsTitle: "Date de contact",
   phoneRowLabel: "Telefon",

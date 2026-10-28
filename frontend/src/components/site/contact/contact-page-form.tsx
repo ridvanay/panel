@@ -6,7 +6,7 @@ import { CheckCircle2 } from "lucide-react";
 import * as contactApi from "@/lib/api/contact";
 import { ApiClientError } from "@/lib/api/error";
 import { COUNTRY_DIAL_CODES, COUNTRY_CODES } from "@/lib/country-codes";
-import type { ContactMethod, ContactPageLocale, ContactPageSubmissionRequest } from "@/lib/api/types";
+import type { ContactConsentLocale, ContactMethod, ContactPageSubmissionRequest } from "@/lib/api/types";
 import type { ContactStrings } from "@/lib/i18n/site-dictionaries";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +67,7 @@ interface FormValues {
 
 export interface ContactPageFormProps {
   dict: ContactStrings;
-  locale: ContactPageLocale;
+  locale: ContactConsentLocale;
   /** Intl ülke adları için dil (ör. "tr", "en"). */
   displayLocale: string;
   consent: { notice: string; explicit: string; privacyLinkLabel: string };
