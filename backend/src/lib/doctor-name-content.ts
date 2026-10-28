@@ -77,8 +77,30 @@ const CYRILLIC: Record<string, string> = {
 };
 const CYRILLIC_ALT: Record<string, string> = { ı: "[ыи]", ö: "[ёоэ]", ü: "[юу]", ğ: "г?", e: "[еэ]", c: "(дж|ж)" };
 
-function cyrillicPattern(word: string): string {
-  return [...word.toLocaleLowerCase("tr")].map((c) => CYRILLIC_ALT[c] ?? CYRILLIC[c] ?? "").join("");
+/** Harf başına transliterasyon birimi — grup/küme bütün kalır; kısaltma birim bazında yapılır, desen ortadan kesilmez. */
+/** "y" + ünlü tek Kiril harfine de yazılabilir (Kaya → Кая, Yusuf → Юсуф). */
+const CYRILLIC_Y_DIGRAPH: Record<string, string> = { a: "(?:я|йа)", u: "(?:ю|йу)", ü: "(?:ю|йу)", o: "(?:ё|йо)", ö: "(?:ё|йо)", e: "(?:е|йе)" };
+
+function cyrillicUnits(word: string): string[] {
+  const letters = [...word.toLocaleLowerCase("tr")];
+  const units: string[] = [];
+  for (let i = 0; i < letters.length; i++) {
+    const c = letters[i]!;
+    const next = letters[i + 1];
+    if (c === "y" && next && CYRILLIC_Y_DIGRAPH[next]) {
+      units.push(CYRILLIC_Y_DIGRAPH[next]!);
+      i++;
+      continue;
+    }
+    const unit = CYRILLIC_ALT[c] ?? CYRILLIC[c] ?? "";
+    if (unit) units.push(unit);
+  }
+  return units;
+}
+
+function cyrillicPattern(word: string, maxLetters?: number): string {
+  const units = cyrillicUnits(word);
+  return (maxLetters ? units.slice(0, maxLetters) : units).join("");
 }
 
 const ARABIC: Record<string, string> = {
@@ -89,22 +111,42 @@ const ARABIC: Record<string, string> = {
 /** Arapça iskelet: ünsüzler sırayla, ünlüler isteğe bağlı (ا/ي/و/ى). */
 function arabicPattern(word: string): string {
   return [...word.toLocaleLowerCase("tr")]
-    .map((c) => ("aâeıiîoöuüû".includes(c) ? "[اأإيوىَ]?" : ARABIC[c] ?? ""))
+    .map((c) => ("aâeıiîoöuüû".includes(c) ? "[اأإيوىعَ]?" : ARABIC[c] ?? ""))
     .join("");
 }
 
 /** Rusça/Arapça metinde ad + soyadın başka alfabedeki yazımı (ör. "Хакан Софу") — otomatik değiştirilmez. */
 export function findOtherScriptCandidates(content: string, fullName: string): string[] {
+  const { patterns, errors } = buildOtherScriptPatterns(fullName);
+  const text = content.replace(/<[^>]*>/g, " ");
+  const out: string[] = errors.map((e) => `(${e})`);
+  for (const re of patterns) for (const m of text.matchAll(re)) out.push(m[0]);
+  return out;
+}
+
+/**
+ * Kiril ve Arapça aday desenleri. Kurulamayan desen script'i ÇÖKERTMEZ: hata mesajı döner ve aday
+ * listesine "desen kurulamadı" notu olarak düşer. Kiril soyad toleranslı (ilk 4 harfin birimleri).
+ */
+export function buildOtherScriptPatterns(fullName: string): { patterns: RegExp[]; errors: string[] } {
   const words = fullName.trim().split(/\s+/);
-  if (words.length < 2) return [];
+  if (words.length < 2) return { patterns: [], errors: [] };
   const first = words[0]!;
   const last = words[words.length - 1]!;
-  const text = content.replace(/<[^>]*>/g, " ");
-  const out: string[] = [];
-  const cyr = new RegExp(`(?<![\\p{L}])${cyrillicPattern(first)}[\\p{L}]*\\s+(?:[\\p{L}.-]+\\s+){0,2}${cyrillicPattern(last).slice(0, 6)}[\\p{L}]*`, "giu");
-  const ara = new RegExp(`${arabicPattern(first)}\\s+(?:[\\p{L}]+\\s+){0,2}${arabicPattern(last)}`, "gu");
-  for (const re of [cyr, ara]) for (const m of text.matchAll(re)) out.push(m[0]);
-  return out;
+  const sources: [string, string, string][] = [
+    ["Kiril", `(?<![\\p{L}])${cyrillicPattern(first)}[\\p{L}]*\\s+(?:[\\p{L}.-]+\\s+){0,2}${cyrillicPattern(last, 4)}[\\p{L}]*`, "giu"],
+    ["Arapça", `(?<![\\p{L}])${arabicPattern(first)}\\s+(?:[\\p{L}]+\\s+){0,2}${arabicPattern(last)}`, "gu"],
+  ];
+  const patterns: RegExp[] = [];
+  const errors: string[] = [];
+  for (const [label, source, flags] of sources) {
+    try {
+      patterns.push(new RegExp(source, flags));
+    } catch (err) {
+      errors.push(`${label} desen kurulamadı: ${(err as Error).message}`);
+    }
+  }
+  return { patterns, errors };
 }
 
 /** Önce/sonra örneği: ilk eşleşmenin çevresi (HTML'siz). */
@@ -145,7 +187,7 @@ export interface ShortenPlan {
   changes: FieldChange[];
   otherScriptCandidates: { slug: string; locale: string; field: ContentField; text: string }[];
   /** Görünen adı tam adı zaten içeren doktorlar (ör. `publicName` = "Hakan Sofu") — değiştirilmez (yineleme önlenir). */
-  skipped: { slug: string; displayName: string }[];
+  skipped: { slug: string; displayName: string; reason?: string }[];
 }
 
 function asTranslations(value: unknown): Record<string, Record<string, unknown>> {
@@ -159,6 +201,13 @@ export async function buildShortenPlan(db: Pick<PrismaClient, "doctorProfile">):
     const displayName = doctorDisplayName(d);
     const fullName = d.fullName.trim().replace(/\s+/g, " ");
     if (displayName === fullName) continue;
+    // Dinamik ad deseni kurulamazsa (beklenmeyen karakter) bu doktor atlanır; script çökmez.
+    try {
+      fullNamePattern(fullName);
+    } catch (err) {
+      plan.skipped.push({ slug: d.slug, displayName, reason: `ad deseni kurulamadı: ${(err as Error).message}` });
+      continue;
+    }
     // Görünen ad tam adı içeriyorsa (elle `publicName`) değiştirme hem anlamsız hem tekrar çalıştırmada birikir.
     if (fullNamePattern(fullName).test(displayName)) {
       plan.skipped.push({ slug: d.slug, displayName });
@@ -219,7 +268,7 @@ export function formatShortenPlan(plan: ShortenPlan): string {
     lines.push(`Başka alfabeyle yazılmış ad adayları (OTOMATİK DEĞİŞTİRİLMEZ, elle kontrol edin) — ${plan.otherScriptCandidates.length}:`);
     for (const c of plan.otherScriptCandidates) lines.push(`  - ${c.slug} [${c.locale}] ${c.field}: "${c.text}"`);
   }
-  for (const s of plan.skipped) lines.push(`Atlandı: ${s.slug} — görünen ad ("${s.displayName}") tam adı zaten içeriyor.`);
+  for (const s of plan.skipped) lines.push(`Atlandı: ${s.slug} — ${s.reason ?? `görünen ad ("${s.displayName}") tam adı zaten içeriyor.`}`);
   lines.push("Kurucu doktor ve tek başına geçen ad/soyad değiştirilmez; HTML etiket/öznitelik içlerine dokunulmaz.");
   return lines.join("\n");
 }

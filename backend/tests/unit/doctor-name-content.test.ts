@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findOtherScriptCandidates, replaceNameInContent } from "../../src/lib/doctor-name-content";
+import { buildOtherScriptPatterns, findOtherScriptCandidates, fullNamePattern, replaceNameInContent } from "../../src/lib/doctor-name-content";
 
 /**
  * Metin içi tam ad kısaltma kuralları: büyük/küçük harf ve Türkçe karakter duyarsız eşleşme, ekler,
@@ -49,5 +49,27 @@ describe("başka alfabe adayları (yalnızca rapor)", () => {
     expect(findOtherScriptCandidates("<p>Доктор Али Фырат</p>", "Ali FIRAT")).toEqual(["Али Фырат"]);
     expect(findOtherScriptCandidates("أ. د. هاكان صوفو طبيب", "Hakan SOFU")).toEqual(["هاكان صوفو"]);
     expect(findOtherScriptCandidates("Prof. Dr. Hakan Sofu", "Hakan SOFU")).toEqual([]);
+  });
+});
+
+describe("canlıdaki adlarla aday desenleri (regresyon: Kiril soyad kısaltması grubu ortadan kesiyordu)", () => {
+  const NAMES = ["Kadir KOLCUOĞLU", "Ali FIRAT", "Hakan SOFU", "Doğukan YILDIRIM", "Kamil ÖZDİL", "Ayşe Zehra ÖZDEMİR KAYA", "Hasan Tuna Türkmen", "Vahit MUTLU"];
+
+  it.each(NAMES)("%s: Kiril ve Arapça desenler hatasız kurulur; tam ad deseni kurulur", (name) => {
+    const { patterns, errors } = buildOtherScriptPatterns(name);
+    expect(errors).toEqual([]);
+    expect(patterns).toHaveLength(2);
+    expect(() => fullNamePattern(name)).not.toThrow();
+    // Desenler gerçekten çalışır (çökmez) ve Latin metinde aday üretmez.
+    expect(findOtherScriptCandidates(`Prof. Dr. ${name} — Проф. д-р текст — أ. د. نص`, name)).toEqual([]);
+  });
+
+  it("ğ/ç/ş/ı/ö/ü içeren soyadlar Kiril ve Arapça yazımda aday olarak bulunur", () => {
+    expect(findOtherScriptCandidates("Ортодонт д-р Кадир Колджуоглу", "Kadir KOLCUOĞLU")).toEqual(["Кадир Колджуоглу"]);
+    expect(findOtherScriptCandidates("Проф. д-р Догукан Йылдырым", "Doğukan YILDIRIM")).toEqual(["Догукан Йылдырым"]);
+    expect(findOtherScriptCandidates("Проф. д-р Камиль Озкан", "Kamil ÖZDİL")).toEqual([]);
+    expect(findOtherScriptCandidates("Доц. д-р Айше Захра Оздемир Кая", "Ayşe Zehra ÖZDEMİR KAYA")).toEqual(["Айше Захра Оздемир Кая"]);
+    expect(findOtherScriptCandidates("د. كادير كولجو أوغلو", "Kadir KOLCUOĞLU")).toEqual([]);
+    expect(findOtherScriptCandidates("أ. د. علي فرات", "Ali FIRAT")).toEqual(["علي فرات"]);
   });
 });
