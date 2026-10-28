@@ -3946,6 +3946,10 @@ export interface DoctorProfile {
   /** [DPI] — alt branş/bağlı merkez, serbest metin (`title` İLE AYNI gerekçe). Filtreye/aramaya girmez. */
   subSpecialty: string | null;
   fullName: string;
+  /** Paket U (C) — sitede görünen ad (kurucu tam ad; `publicName` doluysa o; diğerleri "H. Sofu"). */
+  displayName?: string;
+  /** Paket U (C2) — elle düzeltme; yalnızca admin yanıtlarında. */
+  publicName?: string | null;
   slug: string;
   /** KISA özet — doktor kartı/liste/meta description kaynağı. DEĞİŞMEDİ. Uzun biyografi `aboutHtml`'dir. */
   bio: string;
@@ -3999,6 +4003,8 @@ export interface CreateDoctorRequest {
   title: string;
   subSpecialty?: string | null;
   fullName: string;
+  /** Paket U (C2) — sitede görünen ad; `null` = otomatik kısaltma. */
+  publicName?: string | null;
   slug?: string;
   bio: string;
   aboutHtml?: string | null;
@@ -4070,7 +4076,10 @@ export interface AvailabilitySlot {
 export interface DoctorSummary {
   id: string;
   title: string;
+  /** Paket U — ziyaretçi/hasta yanıtlarında sitede görünen (kısaltılmış) ad; admin/doktor portalında tam ad. */
   fullName: string;
+  /** Paket U — sitede görünen ad ("H. Sofu"; kurucu tam ad). */
+  displayName?: string;
   slug: string;
 }
 

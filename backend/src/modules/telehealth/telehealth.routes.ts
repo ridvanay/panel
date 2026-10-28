@@ -98,8 +98,9 @@ const WITH_DOCTOR_RELATIONS = {
   availability: true,
   additionalSpecialties: { include: { specialty: true } },
 } as const;
-const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true } } } as const;
-const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true } as const;
+// Paket U — `isFounder`/`publicName` sitede görünen ad içindir (bkz. mappers `doctorDisplayName`).
+const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true, isFounder: true, publicName: true } } } as const;
+const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: WITH_BOOKING_DOCTOR },
   // `startsAt asc` — ilişki sırası Prisma/Postgres tarafından GARANTİLİ DEĞİLDİR (bkz. satır
@@ -441,7 +442,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           ...WITH_APPOINTMENT_RELATIONS,
-          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } },
           booking: { select: { accessTokenHash: true } },
         },
       });
@@ -474,7 +475,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       const appointment = await app.prisma.appointment.findUnique({
         where: { id: request.params.id },
         include: {
-          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } },
           booking: { select: { accessTokenHash: true } },
         },
       });

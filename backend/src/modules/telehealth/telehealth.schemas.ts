@@ -310,6 +310,17 @@ const DoctorRequestBaseSchema = z.object({
   // [DPI] §1.1 — alt branş/bağlı merkez, serbest metin, enum DEĞİL.
   subSpecialty: z.string().trim().min(1).max(120).nullable().optional(),
   fullName: z.string().trim().min(1).max(120),
+  /** Paket U (C2) — sitede görünen ad (elle düzeltme). Boş metin `null`a çevrilir (otomatik kısaltmaya döner). */
+  publicName: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    z
+      .string()
+      .trim()
+      .max(120)
+      .refine((value) => !/<\s*[a-z!/?]/i.test(value), "HTML kullanılamaz.")
+      .nullable()
+      .optional()
+  ),
   slug: z.string().trim().min(1).max(80).optional(),
   bio: z.string().trim().min(1).max(5000),
   // [DPI] §1.1/§1.2 — `lib/html-sanitize.ts`'ten GEÇİRİLİR (route katmanında); temizlik sonrası

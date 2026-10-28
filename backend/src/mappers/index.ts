@@ -185,6 +185,7 @@ import { computeShipping, type ShippingSettingsInput } from "../lib/shipping";
 import { buildVariantLabel } from "../modules/products/lib/variants";
 import { getBookingJoinWindow } from "../modules/telehealth/lib/booking";
 import { localizeContactForm } from "../modules/contact/contact-i18n";
+import { doctorDisplayName } from "../lib/doctor-display-name";
 
 // [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto` artık `doctorProfile` İLİŞKİSİNİ
 // GEREKTİRİR (BİLİNÇLİ breaking tip değişikliği): alan opsiyonel BIRAKILMAZ ki TypeScript her çağrı
@@ -1741,7 +1742,16 @@ function deriveExperienceYears(practiceStartYear: number | null): number | null 
   return Math.max(currentYear - practiceStartYear, 0);
 }
 
-export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorProfileDto {
+/**
+ * Paket U (C) — ad gösterimi kimin için: `public` (ziyaretçi/hasta; VARSAYILAN, gizlilik öncelikli)
+ * kurucu dışındaki doktorlarda kısaltılmış adı (`doctorDisplayName`) `fullName` alanında da taşır —
+ * ziyaretçiye giden hiçbir yanıtta tam ad bulunmaz. `internal` (admin, doktorun kendi portalı) tam adı verir.
+ */
+export type DoctorNameAudience = "public" | "internal";
+
+export function toDoctorProfileDto(doctor: DoctorProfileWithRelations, audience: DoctorNameAudience = "public"): DoctorProfileDto {
+  const displayName = doctorDisplayName(doctor);
+  const internal = audience === "internal";
   return {
     id: doctor.id,
     isFounder: doctor.isFounder,
@@ -1751,7 +1761,9 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorPr
     specialty: doctor.specialty ? toSpecialtyDto(doctor.specialty) : null,
     title: doctor.title,
     subSpecialty: doctor.subSpecialty,
-    fullName: doctor.fullName,
+    fullName: internal ? doctor.fullName : displayName,
+    displayName,
+    ...(internal ? { publicName: doctor.publicName ?? null } : {}),
     slug: doctor.slug,
     bio: doctor.bio,
     aboutHtml: doctor.aboutHtml,
@@ -1786,12 +1798,16 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorPr
   };
 }
 
-export function toDoctorSummaryDto(doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug">): DoctorSummaryDto {
-  return { id: doctor.id, title: doctor.title, fullName: doctor.fullName, slug: doctor.slug };
+/** `isFounder`/`publicName` seçilmemişse kısaltma yine uygulanır (gizlilik öncelikli varsayılan). */
+type DoctorSummarySource = Pick<DoctorProfile, "id" | "title" | "fullName" | "slug"> & Partial<Pick<DoctorProfile, "isFounder" | "publicName">>;
+
+export function toDoctorSummaryDto(doctor: DoctorSummarySource, audience: DoctorNameAudience = "public"): DoctorSummaryDto {
+  const displayName = doctorDisplayName(doctor);
+  return { id: doctor.id, title: doctor.title, fullName: audience === "internal" ? doctor.fullName : displayName, displayName, slug: doctor.slug };
 }
 
 type AppointmentWithDoctor = Appointment & {
-  doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug">;
+  doctor: DoctorSummarySource;
   /** Paket P — yalnızca dahil edildiğinde (admin listesi) `patientTimeZone` doldurulur. */
   booking?: { patientTimeZone?: string | null; [key: string]: unknown } | null;
 };
@@ -1800,11 +1816,11 @@ type AppointmentWithDoctor = Appointment & {
  * `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK bu DTO'ya DAHİL EDİLMEZ (bkz.
  * schemas/entities.ts::AppointmentSchema yorumu — minimum ifşa, §8.5).
  */
-export function toAppointmentDto(appointment: AppointmentWithDoctor): AppointmentDto {
+export function toAppointmentDto(appointment: AppointmentWithDoctor, audience: DoctorNameAudience = "public"): AppointmentDto {
   return {
     id: appointment.id,
     doctorId: appointment.doctorId,
-    doctor: toDoctorSummaryDto(appointment.doctor),
+    doctor: toDoctorSummaryDto(appointment.doctor, audience),
     patientUserId: appointment.patientUserId,
     patientName: appointment.patientName,
     patientEmail: appointment.patientEmail,
@@ -1870,13 +1886,17 @@ export function toBookingIdentitySummaryDto(
  * (§9.7.6 madde 4 — ödenmemiş görüşme "katılınabilir" GÖRÜNMEZ). `hasHealthDataAccess` çağıran
  * tarafça (`canAccessBookingHealthData`) ÖNCEDEN hesaplanıp geçirilir — [DPI] §2.7.
  */
-export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations, hasHealthDataAccess: boolean): AppointmentBookingDto {
+export function toAppointmentBookingDto(
+  booking: AppointmentBookingWithRelations,
+  hasHealthDataAccess: boolean,
+  audience: DoctorNameAudience = "public"
+): AppointmentBookingDto {
   const { joinableFrom, joinableUntil } = getBookingJoinWindow(booking.appointments, booking.paymentStatus);
   return {
     id: booking.id,
     bookingNumber: booking.bookingNumber,
     doctorId: booking.doctorId,
-    doctor: toDoctorSummaryDto(booking.doctor),
+    doctor: toDoctorSummaryDto(booking.doctor, audience),
     patientUserId: booking.patientUserId,
     patientName: booking.patientName,
     patientEmail: booking.patientEmail,
@@ -1892,7 +1912,7 @@ export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations
     paidBy: booking.paidBy,
     expiresAt: booking.expiresAt.toISOString(),
     errorSummary: booking.errorSummary,
-    appointments: booking.appointments.map((appointment) => toAppointmentDto({ ...appointment, doctor: booking.doctor })),
+    appointments: booking.appointments.map((appointment) => toAppointmentDto({ ...appointment, doctor: booking.doctor }, audience)),
     hasIntakeNote: Boolean(booking.intake),
     // Adım 4 — kanonik randevu (§9.7.6 konvansiyonu: epikriz/reçete HER ZAMAN İLK randevuya
     // yazılır, bkz. telehealth.livekit.routes.ts::/complete) üzerinden VARLIK bilgisi; İÇERİK

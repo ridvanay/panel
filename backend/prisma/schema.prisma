@@ -2238,6 +2238,10 @@ model DoctorProfile {
   title             String
   /// `User.name`'den BAĞIMSIZ: profil hesap olmadan da tam bir kayıttır (§2.5).
   fullName          String
+  /// Paket U (C2) — sitede görünen ad için elle düzeltme. Doluysa otomatik kısaltma ("H. Sofu")
+  /// yerine bu gösterilir; boşsa kurucu dışındaki doktorlarda ad baş harfi + soyad üretilir
+  /// (`lib/doctor-display-name.ts`). `fullName` DEĞİŞMEZ (admin/CRM/doktor portalı tam adı görür).
+  publicName        String?
   slug              String   @unique
   bio               String
   /// [DPI] §1.1 — doktorun alt uzmanlık alanı (ör. "Pediatrik Kardiyoloji"). `title` ile AYNI

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
 import { cn } from "@/lib/utils";
+import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /**
  * `.claude/design-notes-telehealth.md` §2 — doktor kartı. Izgara (`/doctors`) VE profil sayfasının
@@ -97,7 +98,7 @@ export function DoctorCard({
           {badge && <div className="mb-1">{badge}</div>}
           <Link href={href} className="hover:underline">
             <h3 className={cn("truncate font-semibold text-foreground", size === "lg" ? "text-2xl sm:text-3xl" : "text-sm")}>
-              {doctor.title} {doctor.fullName}
+              {doctor.title} {publicDoctorName(doctor)}
             </h3>
           </Link>
           <p className="text-sm text-foreground/60">{doctor.specialty?.name ?? dict.generalSpecialty}</p>

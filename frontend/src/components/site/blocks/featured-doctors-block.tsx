@@ -15,6 +15,7 @@ import type {
 import { featuredDoctorsMax } from "@/lib/page-builder/types";
 import type { BlockSiteContext } from "./index";
 import { FeaturedDoctorsCarousel } from "./featured-doctors-carousel";
+import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /** Mobil 1, tablet (sm) 2 SABİT; masaüstü (lg) blok ayarından. Tailwind tam sınıf adları (JIT). */
 const DESKTOP_COLUMNS_CLASS: Record<FeaturedDoctorsColumns, string> = {
@@ -194,7 +195,7 @@ export async function FeaturedDoctorsBlockView({
  * uzmanlıklar ve `bio`'nun ilk cümlesi. Sade; organizasyon şeması değil.
  */
 function FounderCard({ doctor, href, badge }: { doctor: DoctorProfile; href: string; badge: string }) {
-  const displayName = `${doctor.title} ${doctor.fullName}`.trim();
+  const displayName = `${doctor.title} ${publicDoctorName(doctor)}`.trim();
   const specialties = [doctor.specialty?.name, ...(doctor.additionalSpecialties ?? []).map((s) => s.name)].filter(Boolean).join(" · ");
   const intro = firstSentence(doctor.bio);
   return (
@@ -224,7 +225,7 @@ function FounderCard({ doctor, href, badge }: { doctor: DoctorProfile; href: str
  * sabit iki satırlık `min-h` ile tek satırlık metinler de aynı yeri kaplar, alt satırlar hizalı başlar.
  */
 function FeaturedDoctorCard({ doctor, href, shape }: { doctor: DoctorProfile; href: string; shape: FeaturedDoctorsImageShape }) {
-  const displayName = `${doctor.title} ${doctor.fullName}`.trim();
+  const displayName = `${doctor.title} ${publicDoctorName(doctor)}`.trim();
   const specialtyText = featuredDoctorSpecialtyText(doctor);
 
   return (

@@ -39,12 +39,15 @@ import {
   type DoctorCvFormValue,
 } from "@/components/site/telehealth/doctor-cv-fields";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { DoctorPublicNameField } from "@/components/admin/telehealth/doctor-public-name-field";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
 const formSchema = z.object({
   title: z.string().min(1, "Unvan gerekli.").max(40),
   fullName: z.string().min(1, "Ad soyad gerekli.").max(120),
+  // Paket U (C2) — sitede görünen ad (boş = otomatik kısaltma).
+  publicName: z.string().max(120),
   slug: z.string().min(1, "Slug gerekli.").max(80),
   bio: z.string().min(1, "Kısa özet gerekli.").max(5000),
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
@@ -95,6 +98,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
   } = useForm<FormValues>({ resolver: zodResolver(formSchema) });
 
   const hasFee = useWatch({ control, name: "hasFee" });
+  const [watchTitle, watchFullName, watchPublicName, watchIsFounder] = useWatch({ control, name: ["title", "fullName", "publicName", "isFounder"] });
   const specialtyId = useWatch({ control, name: "specialtyId" });
 
   // Birincil uzmanlık değişip yeni değer o an ek-uzmanlık listesinde seçiliyse, çakışma
@@ -122,6 +126,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
       reset({
         title: doc.title,
         fullName: doc.fullName,
+        publicName: doc.publicName ?? "",
         slug: doc.slug,
         bio: doc.bio,
         languages: doc.languages,
@@ -157,6 +162,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         ...toDoctorCvPayload(cv),
         title: values.title,
         fullName: values.fullName,
+        publicName: values.publicName.trim() || null,
         slug: values.slug,
         bio: values.bio,
         languages: values.languages,
@@ -306,6 +312,15 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                   {(inputProps) => <Input {...inputProps} {...register("fullName")} />}
                 </Field>
               </div>
+
+              <DoctorPublicNameField
+                registration={register("publicName")}
+                title={watchTitle ?? ""}
+                fullName={watchFullName ?? ""}
+                publicName={watchPublicName ?? ""}
+                isFounder={Boolean(watchIsFounder)}
+                error={errors.publicName?.message}
+              />
 
               <Field id="slug" label="Slug (URL)" error={errors.slug?.message} required>
                 {(inputProps) => <Input {...inputProps} {...register("slug")} />}

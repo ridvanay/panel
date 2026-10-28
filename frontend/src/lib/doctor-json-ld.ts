@@ -1,6 +1,7 @@
 import type { DoctorProfile } from "@/lib/api/types";
 import { safeJsonLdString } from "@/lib/page-builder/structured-data";
 import { toPublicMediaUrl } from "@/lib/env";
+import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.5 — `/doctors/[slug]` `schema.org/Physician`
@@ -15,7 +16,8 @@ import { toPublicMediaUrl } from "@/lib/env";
  * alanları (ad, unvan, uzmanlık, konuşulan diller, biyografi, avatar) taşınır.
  */
 export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string): string {
-  const name = `${doctor.title} ${doctor.fullName}`.trim();
+  // Paket U (C) — ziyaretçiye görünen ad (kurucu dışında kısaltılmış; tam ad JSON-LD'de yer almaz).
+  const name = `${doctor.title} ${publicDoctorName(doctor)}`.trim();
   // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `doctor.avatarMedia.url`, `server-
   // telehealth.ts::toInternalMediaUrl` tarafından (Docker'da) `INTERNAL_MEDIA_ORIGIN`'e çevrilmiş
   // olabilir — JSON-LD `image` alanı arama motoru bot'larının DOĞRUDAN erişmesi gereken, GERÇEK

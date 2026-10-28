@@ -2528,7 +2528,12 @@ export const DoctorProfileSchema = z.object({
   title: z.string(),
   // [DPI] §1.1 — alt branş/bağlı merkez, serbest metin, enum DEĞİL.
   subSpecialty: z.string().nullable(),
+  /** Paket U (C) — ziyaretçi yanıtlarında sitede görünen (kısaltılmış) ad; admin/doktor portalında tam ad. */
   fullName: z.string(),
+  /** Paket U (C) — sitede görünen ad (`lib/doctor-display-name.ts`). */
+  displayName: z.string().optional(),
+  /** Paket U (C2) — elle düzeltme; yalnızca admin yanıtlarında. */
+  publicName: z.string().nullable().optional(),
   slug: z.string(),
   bio: z.string(),
   // [DPI] §1.1/§1.2 — uzun biyografi, `lib/html-sanitize.ts`'ten geçirilmiş HTML.
@@ -2575,7 +2580,10 @@ export type DoctorProfileDto = z.infer<typeof DoctorProfileSchema>;
 export const DoctorSummarySchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
+  /** Paket U — ziyaretçi/hasta yanıtlarında kısaltılmış ad (bkz. `DoctorNameAudience`); admin/doktor portalında tam ad. */
   fullName: z.string(),
+  /** Paket U — sitede görünen ad (kurucu: tam ad; `publicName` doluysa o; diğerleri "H. Sofu"). */
+  displayName: z.string().optional(),
   slug: z.string(),
 });
 export type DoctorSummaryDto = z.infer<typeof DoctorSummarySchema>;

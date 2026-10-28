@@ -34,6 +34,7 @@ import {
   type DoctorCvFormValue,
 } from "@/components/site/telehealth/doctor-cv-fields";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { DoctorPublicNameField } from "@/components/admin/telehealth/doctor-public-name-field";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
@@ -55,6 +56,8 @@ function slugify(input: string): string {
 const formSchema = z.object({
   title: z.string().min(1, "Unvan gerekli.").max(40),
   fullName: z.string().min(1, "Ad soyad gerekli.").max(120),
+  // Paket U (C2) — sitede görünen ad (boş = otomatik kısaltma).
+  publicName: z.string().max(120),
   slug: z.string().max(80).optional(),
   bio: z.string().min(1, "Kısa özet gerekli.").max(5000),
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
@@ -93,6 +96,7 @@ export default function NewDoctorPage() {
     defaultValues: {
       title: "Dr.",
       fullName: "",
+      publicName: "",
       slug: "",
       bio: "",
       languages: ["tr"],
@@ -107,6 +111,7 @@ export default function NewDoctorPage() {
   });
 
   const fullName = useWatch({ control, name: "fullName" });
+  const [watchTitle, watchPublicName] = useWatch({ control, name: ["title", "publicName"] });
   const hasFee = useWatch({ control, name: "hasFee" });
   const specialtyId = useWatch({ control, name: "specialtyId" });
 
@@ -141,6 +146,7 @@ export default function NewDoctorPage() {
         ...toDoctorCvPayload(cv),
         title: values.title,
         fullName: values.fullName,
+        publicName: values.publicName.trim() || null,
         slug: values.slug || undefined,
         bio: values.bio,
         languages: values.languages,
@@ -207,6 +213,15 @@ export default function NewDoctorPage() {
                 )}
               </Field>
             </div>
+
+            <DoctorPublicNameField
+              registration={register("publicName")}
+              title={watchTitle ?? ""}
+              fullName={fullName ?? ""}
+              publicName={watchPublicName ?? ""}
+              isFounder={false}
+              error={errors.publicName?.message}
+            />
 
             <Field id="slug" label="Slug (URL)" hint="Boş bırakılırsa addan otomatik oluşturulur.">
               {(inputProps) => <Input {...inputProps} {...register("slug", { onChange: () => setSlugManuallyEdited(true) })} />}

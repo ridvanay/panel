@@ -1,6 +1,7 @@
 import type { DoctorProfile, Locale, SitePage, Specialty } from "@/lib/api/types";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { isHomepageDuplicate, type SitemapData } from "@/lib/sitemap/build";
+import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /**
  * Paket S — `/llms.txt` ve `/llms-full.txt` (llmstxt.org biçimi, Markdown, kanonik dil EN). Yapay zekâ
@@ -76,7 +77,7 @@ function legalPages(data: LlmsData): SitePage[] {
 }
 
 function doctorLine(data: LlmsData, d: DoctorProfile): string {
-  const name = `${d.title} ${d.fullName}`.trim();
+  const name = `${d.title} ${publicDoctorName(d)}`.trim();
   const parts = [d.specialty?.name, d.subSpecialty].filter(Boolean).join(" — ");
   return `- [${name}](${url(data, `/doctors/${d.slug}`)})${d.isFounder ? " (founder)" : ""}${parts ? `: ${parts}` : ""}`;
 }
@@ -94,7 +95,7 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
   out.push(
     `> Istanbul-based platform for online video consultations with specialist doctors, built for international patients. ` +
       `Consultations and the website are available in ${languages.join(", ")}.` +
-      (founder ? ` Founded by ${`${founder.title} ${founder.fullName}`.trim()}.` : "") +
+      (founder ? ` Founded by ${`${founder.title} ${publicDoctorName(founder)}`.trim()}.` : "") +
       ` ${LLMS_EMERGENCY_NOTE}`,
     ""
   );

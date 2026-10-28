@@ -335,7 +335,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         include: WITH_DOCTOR_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toDoctorProfileDto), buildPageMeta(rows, limit)));
+      return reply.send(ok(rows.map((row) => toDoctorProfileDto(row, "internal")), buildPageMeta(rows, limit)));
     }
   );
 
@@ -357,6 +357,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           title: body.title,
           subSpecialty: body.subSpecialty ?? null,
           fullName: body.fullName,
+          publicName: body.publicName ?? null,
           slug: body.slug ? slugify(body.slug) : slugify(body.fullName),
           bio: body.bio,
           aboutHtml: sanitizeAboutHtml(body.aboutHtml) ?? null,
@@ -422,7 +423,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         });
       }
 
-      return reply.code(201).send(ok(toDoctorProfileDto(doctorWithRelations)));
+      return reply.code(201).send(ok(toDoctorProfileDto(doctorWithRelations, "internal")));
     }
   );
 
@@ -435,7 +436,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         include: WITH_DOCTOR_RELATIONS,
       });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
-      return reply.send(ok(toDoctorProfileDto(doctor)));
+      return reply.send(ok(toDoctorProfileDto(doctor, "internal")));
     }
   );
 
@@ -537,7 +538,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         });
       }
 
-      return reply.send(ok(toDoctorProfileDto(doctor)));
+      return reply.send(ok(toDoctorProfileDto(doctor, "internal")));
     }
   );
 
@@ -619,7 +620,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.send(ok(toDoctorProfileDto(doctor)));
+      return reply.send(ok(toDoctorProfileDto(doctor, "internal")));
     }
   );
 
@@ -650,7 +651,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.send(ok(toDoctorProfileDto(doctor)));
+      return reply.send(ok(toDoctorProfileDto(doctor, "internal")));
     }
   );
 
@@ -741,7 +742,7 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
         include: WITH_APPOINTMENT_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toAppointmentDto), buildPageMeta(rows, limit)));
+      return reply.send(ok(rows.map((row) => toAppointmentDto(row, "internal")), buildPageMeta(rows, limit)));
     }
   );
 
@@ -851,7 +852,7 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
         reason: request.body.reason ?? null,
       });
 
-      return reply.send(ok(toAppointmentDto(updated)));
+      return reply.send(ok(toAppointmentDto(updated, "internal")));
     }
   );
 
@@ -979,7 +980,7 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       // için doldurulur: `ADMIN` ✓, `MANAGER` ✗ (booking'in kendisi görünür, kimliği GÖREMEZ).
       return reply.send(
         ok(
-          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }))),
+          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }), "internal")),
           buildPageMeta(rows, limit)
         )
       );
@@ -1034,7 +1035,7 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       });
       // Bu uç yalnızca `ROLES_ADMIN` içindir (mark-paid preHandler) — `canAccessBookingHealthData`
       // ADMIN için her zaman `true` döner, ama tek kaynak disiplini için yine de çağrılır.
-      return reply.send(ok(toAppointmentBookingDto(withRelations, canAccessBookingHealthData(withRelations, { user: request.user }))));
+      return reply.send(ok(toAppointmentBookingDto(withRelations, canAccessBookingHealthData(withRelations, { user: request.user }), "internal")));
     }
   );
 
@@ -1088,7 +1089,7 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.send(ok(toAppointmentBookingDto(booking, canAccessBookingHealthData(booking, { user: request.user }))));
+      return reply.send(ok(toAppointmentBookingDto(booking, canAccessBookingHealthData(booking, { user: request.user }), "internal")));
     }
   );
 
@@ -1118,7 +1119,7 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.send(ok(toAppointmentBookingDto(booking, canAccessBookingHealthData(booking, { user: request.user }))));
+      return reply.send(ok(toAppointmentBookingDto(booking, canAccessBookingHealthData(booking, { user: request.user }), "internal")));
     }
   );
 }

@@ -6,6 +6,7 @@ import { DoctorSocialLinks } from "@/components/site/telehealth/doctor-social-li
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
+import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /**
  * `.claude/design-notes-doctor-portfolio-console.md` §1.1 — koyu lacivert kurumsal başlık bandı,
@@ -79,7 +80,7 @@ export function DoctorProfileHero({ doctor, dict, lang }: { doctor: DoctorProfil
         )}
 
         <h1 className="mt-3 break-words text-2xl font-semibold tracking-tight text-white lg:text-3xl">
-          {doctor.title} {doctor.fullName}
+          {doctor.title} {publicDoctorName(doctor)}
         </h1>
 
         {/* Uzmanlık — koyu zeminde teal DÜZ METİN YASAK, opak teal rozet kullanılır. */}

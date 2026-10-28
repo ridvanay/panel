@@ -9,6 +9,7 @@ import { renderTemplate } from "../../../lib/template-render";
 import { renderComplianceFooterFragment } from "../../../lib/email-renderer";
 import { sendTemplateEmail, buildEmailRenderContext } from "../../email-templates/email-templates.service";
 import { formatDoctorSlots, formatPatientRanges } from "../../../lib/dual-time";
+import { doctorDisplayName } from "../../../lib/doctor-display-name";
 
 /**
  * 2026-09-19 (kullanıcı talebi) — `sendTemplateEmail`'in `APPOINTMENT_CONFIRMATION` için
@@ -262,11 +263,14 @@ export async function triggerAppointmentReminderEmail(
     doctorTimeZone: string;
     doctorTitle: string;
     doctorFullName: string;
+    /** Paket U — hastaya giden e-postada görünen ad (kurucu dışında "H. Sofu"); verilmezse kısaltılır. */
+    doctorDisplayName?: string;
     doctorUserId: string | null;
     kind: "60m" | "30m";
   }
 ): Promise<boolean> {
   const { appointment, doctorTimeZone, doctorTitle, doctorFullName, doctorUserId, kind } = input;
+  const patientFacingDoctorName = `${doctorTitle} ${input.doctorDisplayName ?? doctorDisplayName({ fullName: doctorFullName })}`.trim();
   try {
     let bookingNumber: string;
     let patientName: string;
@@ -307,7 +311,7 @@ export async function triggerAppointmentReminderEmail(
     await sendTemplateEmail(app, purpose, patientEmail, {
       recipient_name: patientName,
       booking_number: bookingNumber,
-      doctor_name: doctorNameFormatted,
+      doctor_name: patientFacingDoctorName,
       slot_summary: slotSummary,
       ...(patientJoinLink ? { join_link: patientJoinLink } : {}),
     });

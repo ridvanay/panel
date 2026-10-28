@@ -24,6 +24,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { triggerAppointmentReminderEmail } from "../modules/telehealth/lib/notifications";
+import { doctorDisplayName } from "./doctor-display-name";
 
 export const APPOINTMENT_REMINDER_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -53,7 +54,7 @@ export interface AppointmentReminderSweepResult {
 }
 
 const WITH_DOCTOR_AND_BOOKING = {
-  doctor: { select: { timeZone: true, title: true, fullName: true, userId: true } },
+  doctor: { select: { timeZone: true, title: true, fullName: true, userId: true, isFounder: true, publicName: true } },
   booking: { select: { paymentStatus: true } },
 } as const;
 
@@ -129,6 +130,7 @@ async function processKind(app: FastifyInstance, kind: ReminderKind, now: Date):
       doctorTimeZone: appointment.doctor.timeZone,
       doctorTitle: appointment.doctor.title,
       doctorFullName: appointment.doctor.fullName,
+      doctorDisplayName: doctorDisplayName(appointment.doctor),
       doctorUserId: appointment.doctor.userId,
       kind,
     });

@@ -27,7 +27,8 @@ import { AccessTokenQuerySchema, BookingIdentityInputSchema, BookingIdParamSchem
  * public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +
  * `authenticateOptional` hook'unu KENDİSİ taşır.
  */
-const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true } as const;
+// Paket U — `isFounder`/`publicName` sitede görünen ad içindir.
+const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } as const;
 const WITH_ACCESS_CHECK_RELATIONS = {
   doctor: { select: WITH_BOOKING_DOCTOR },
   appointments: { select: { endsAt: true } },

@@ -258,7 +258,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
 
       return reply.send(
         ok(
-          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }))),
+          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }), "internal")),
           buildPageMeta(rows, limit)
         )
       );
@@ -630,7 +630,7 @@ export async function telehealthPatientPortalRoutes(app: FastifyInstance) {
 
       return reply.send(
         ok(
-          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }))),
+          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }), "internal")),
           buildPageMetaWithCounts(rows, limit, counts)
         )
       );

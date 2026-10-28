@@ -21,6 +21,7 @@ import { buildDoctorJsonLd } from "@/lib/doctor-json-ld";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL, toPublicMediaUrl } from "@/lib/env";
 import type { Locale } from "@/lib/api/types";
+import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2/§9.5 — doktor profili + saat dilimi
@@ -83,7 +84,7 @@ export async function generateMetadata({ params }: DoctorDetailPageProps): Promi
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const canonical = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
-  const title = `${doctor.title} ${doctor.fullName}${doctor.specialty ? ` | ${doctor.specialty.name}` : ""}`.trim();
+  const title = `${doctor.title} ${publicDoctorName(doctor)}${doctor.specialty ? ` | ${doctor.specialty.name}` : ""}`.trim();
   const description = truncateForDescription(doctor.bio);
   // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `fetchDoctorBySlugServer` Docker'da
   // `toInternalMediaUrl` uyguladığından `doctor.avatarMedia.url` internal (`backend:4000` gibi)
