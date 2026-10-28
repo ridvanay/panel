@@ -95,7 +95,7 @@ export async function telehealthDemoPaymentRoutes(app: FastifyInstance) {
 
       const booking = await app.prisma.appointmentBooking.findUnique({
         where: { id: request.params.bookingId },
-        include: { doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } }, appointments: { select: { endsAt: true } } },
+        include: { doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } }, appointments: { select: { endsAt: true } } },
       });
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
@@ -144,7 +144,7 @@ export async function telehealthDemoPaymentRoutes(app: FastifyInstance) {
       const withRelations = await app.prisma.appointmentBooking.findUniqueOrThrow({
         where: { id: paidBooking.id },
         include: {
-          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } },
           appointments: { orderBy: { startsAt: "asc" } },
           intake: { select: { id: true } },
           documents: { where: { deletedAt: null }, select: { id: true } },

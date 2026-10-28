@@ -22,7 +22,7 @@ import { getLocaleSet } from "../../lib/localization";
  * ZATEN hesaplanmış `unitPriceCents`/`slotCount`/`totalCents`'i Stripe'a taşır.
  */
 
-const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true } as const;
+const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } as const;
 
 /**
  * Stripe, `expires_at` için oturum OLUŞTURULMA anından itibaren EN AZ 30 dakika ister

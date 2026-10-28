@@ -24,7 +24,7 @@ import { sanitizeRichHtml } from "../../lib/html-sanitize";
  */
 
 const WITH_APPOINTMENT_DOCTOR = {
-  doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+  doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } },
 } as const;
 
 const MeetingTokenResponseSchema = z.object({
@@ -247,7 +247,7 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
             ? { consultationNoteCiphertext: encryptSecret(sanitizedNote), consultationNoteUpdatedAt: new Date() }
             : {}),
         },
-        include: { doctor: { select: { id: true, title: true, fullName: true, slug: true } } },
+        include: { doctor: { select: { id: true, title: true, fullName: true, slug: true, isFounder: true, publicName: true } } },
       });
 
       if (hasNote) {

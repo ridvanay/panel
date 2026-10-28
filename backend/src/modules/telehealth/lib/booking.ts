@@ -112,7 +112,7 @@ export interface CreateBookingInput {
 
 export interface CreateBookingResult {
   booking: AppointmentBooking;
-  doctor: { id: string; title: string; fullName: string; slug: string };
+  doctor: { id: string; title: string; fullName: string; slug: string; isFounder: boolean; publicName: string | null };
   appointments: Appointment[];
   /** Booking'in KENDİ magic-link token'ı — `POST /appointments/bookings` yanıtında BİR KEZ döner. */
   rawAccessToken: string;
@@ -296,7 +296,7 @@ export async function createBooking(app: FastifyInstance, input: CreateBookingIn
 
       return {
         booking: createdBooking,
-        doctor: { id: doctor.id, title: doctor.title, fullName: doctor.fullName, slug: doctor.slug },
+        doctor: { id: doctor.id, title: doctor.title, fullName: doctor.fullName, slug: doctor.slug, isFounder: doctor.isFounder, publicName: doctor.publicName },
         appointments: createdAppointments,
       };
     });
