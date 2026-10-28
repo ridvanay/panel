@@ -79,6 +79,39 @@ describe("doktor içerik metinlerinde tam ad kısaltma", () => {
     expect(await app.prisma.auditLog.count()).toBe(0);
   });
 
+  it("kuru çalıştırma: sabit eşleme ve tekrarlayan parantez önce/sonra görünür; eşlenen adlar aday listesine düşmez", async () => {
+    await app.prisma.doctorProfile.create({
+      data: {
+        ...base,
+        title: "Prof. Dr.",
+        fullName: "Doğukan YILDIRIM",
+        slug: "dogukan-yildirim",
+        bio: "Prof. Dr. Doğukan Yıldırım (Dogukan Yildirim) is a gynecologic oncologist.",
+        translations: {
+          ru: { bio: "Проф. д-р Догукан Йылдырым (Doğukan Yıldırım) — гинеколог-онколог." },
+          ar: { bio: "أ. د. دوغوكان يلدريم (Doğukan Yıldırım) طبيب." },
+        },
+      },
+    });
+    const plan = await buildShortenPlan(app.prisma);
+    const text = formatShortenPlan(plan);
+    expect(text).toContain("sonra: …Prof. Dr. D. Yıldırım is a gynecologic oncologist.");
+    expect(text).toContain("önce:  …Проф. д-р Догукан Йылдырым (Doğukan Yıldırım) — гинеколог-онколог.");
+    expect(text).toContain("sonra: …Проф. д-р Д. Йылдырым — гинеколог-онколог.");
+    expect(text).toContain("sonra: …أ. د. يلدريم طبيب.");
+    expect(plan.otherScriptCandidates.filter((c) => c.slug === "dogukan-yildirim")).toEqual([]);
+    // Eşlemede olmayan aday (Хакан Софу) eskisi gibi yalnızca listelenir.
+    expect(plan.otherScriptCandidates).toContainEqual({ slug: "hakan-sofu", locale: "ru", field: "bio", text: "Хакан Софу" });
+
+    await applyShortenPlan(app.prisma, plan, { ...OP, confirm: SHORTEN_CONFIRM_KEY, backupDir, revalidate: false });
+    const row = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { slug: "dogukan-yildirim" } });
+    expect(row.bio).toBe("Prof. Dr. D. Yıldırım is a gynecologic oncologist.");
+    expect(row.translations).toEqual({
+      ru: { bio: "Проф. д-р Д. Йылдырым — гинеколог-онколог." },
+      ar: { bio: "أ. د. يلدريم طبيب." },
+    });
+  });
+
   it("görünen ad tam adı içeriyorsa (publicName = tam ad) doktor atlanır ve tekrar çalıştırmada birikmez", async () => {
     await app.prisma.doctorProfile.update({ where: { slug: "kamil-ozdil" }, data: { publicName: "Kamil Özdil" } });
     const plan = await buildShortenPlan(app.prisma);

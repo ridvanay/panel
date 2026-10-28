@@ -53,14 +53,67 @@ export function fullNamePattern(fullName: string): RegExp {
 }
 
 /** Yalnızca metin düğümlerinde değiştirir; `<...>` etiketleri (öznitelikler dahil) olduğu gibi kalır. */
-export function replaceNameInContent(content: string, fullName: string, displayName: string): { value: string; count: number } {
+/**
+ * Başka alfabedeki adlar için ELLE ONAYLANMIŞ sabit eşleme — regex adaylarına dayanılmaz; yalnızca bu
+ * tam yazımlar değişir (doktor Latin tam adıyla bağlanır). Tabloda olmayan adaylar yalnızca listelenir.
+ */
+export const OTHER_SCRIPT_NAME_MAP: { doctor: string; from: string; to: string }[] = [
+  { doctor: "Doğukan YILDIRIM", from: "Догукан Йылдырым", to: "Д. Йылдырым" },
+  { doctor: "Kamil ÖZDİL", from: "Камиль Оздиль", to: "К. Оздиль" },
+  { doctor: "Ayşe Zehra ÖZDEMİR KAYA", from: "Айше Зехра Оздемир Кая", to: "А. З. Оздемир Кая" },
+  { doctor: "Doğukan YILDIRIM", from: "دوغوكان يلدريم", to: "يلدريم" },
+  { doctor: "Kamil ÖZDİL", from: "كامل أوزديل", to: "أوزديل" },
+  { doctor: "Ayşe Zehra ÖZDEMİR KAYA", from: "عائشة زهراء أوزدمير كايا", to: "أوزدمير كايا" },
+];
+
+/** Bu doktora ait sabit eşlemeler (Latin tam ad, büyük/küçük harf ve Türkçe karakter duyarsız karşılaştırılır). */
+export function otherScriptMappingsFor(fullName: string): { from: string; to: string }[] {
+  const normalized = fullName.trim().replace(/\s+/g, " ");
+  return OTHER_SCRIPT_NAME_MAP.filter((m) => {
+    const re = fullNamePattern(m.doctor);
+    const hit = re.exec(normalized);
+    return hit !== null && hit[0].length === normalized.length;
+  }).map(({ from, to }) => ({ from, to }));
+}
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Yalnızca metin düğümlerinde (etiket/öznitelik içleri korunur):
+ *  1) sabit eşlemedeki başka alfabe adı (+ hemen arkasındaki Latin tam ad ya da görünen ad parantezi) → eşleme hedefi;
+ *  2) Latin tam ad → görünen ad;
+ *  3) kısaltma sonrası oluşan tekrar "X (X)" → "X".
+ */
+export function replaceNameInContent(
+  content: string,
+  fullName: string,
+  displayName: string,
+  mappings: { from: string; to: string }[] = []
+): { value: string; count: number } {
+  const latinAlternatives = `(?:${fullNamePattern(fullName).source}|${escapeRegex(displayName)})`;
+  const mappingPatterns = mappings.map(({ from, to }) => ({
+    re: new RegExp(`(?<![\\p{L}])${escapeRegex(from)}(?![\\p{L}])(?:\\s*\\(\\s*${latinAlternatives}\\s*\\))?`, "gu"),
+    to,
+  }));
   const pattern = fullNamePattern(fullName);
+  const duplicate = new RegExp(`(?<![\\p{L}])${escapeRegex(displayName)}\\s*\\(\\s*${escapeRegex(displayName)}\\s*\\)`, "gu");
   let count = 0;
   const value = content
     .split(/(<[^>]*>)/)
     .map((part) => {
       if (part.startsWith("<") && part.endsWith(">")) return part;
-      return part.replace(pattern, () => {
+      let text = part;
+      for (const { re, to } of mappingPatterns) {
+        text = text.replace(re, () => {
+          count++;
+          return to;
+        });
+      }
+      text = text.replace(pattern, () => {
+        count++;
+        return displayName;
+      });
+      return text.replace(duplicate, () => {
         count++;
         return displayName;
       });
@@ -170,14 +223,17 @@ export function buildOtherScriptPatterns(fullName: string): { patterns: RegExp[]
 }
 
 /** Önce/sonra örneği: ilk eşleşmenin çevresi (HTML'siz). */
-function sampleAround(content: string, fullName: string, displayName: string): { before: string; after: string } | null {
-  const text = content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
-  const m = fullNamePattern(fullName).exec(text);
-  if (!m) return null;
-  const start = Math.max(0, m.index - 50);
-  const end = Math.min(text.length, m.index + m[0].length + 50);
-  const before = text.slice(start, end);
-  return { before, after: before.replace(fullNamePattern(fullName), displayName) };
+/** Önce/sonra örneği: ilk değişen bölgenin çevresi (HTML'siz) — sabit eşleme ve parantez temizliği de görünür. */
+function sampleDiff(beforeContent: string, afterContent: string): { before: string; after: string } | null {
+  const a = beforeContent.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  const b = afterContent.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  if (a === b) return null;
+  let prefix = 0;
+  while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix++;
+  let suffix = 0;
+  while (suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix++;
+  const start = Math.max(0, prefix - 50);
+  return { before: a.slice(start, Math.min(a.length, a.length - suffix + 50)), after: b.slice(start, Math.min(b.length, b.length - suffix + 50)) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -235,13 +291,18 @@ export async function buildShortenPlan(db: Pick<PrismaClient, "doctorProfile">):
     }
     const changesForDoctor: FieldChange[] = [];
 
+    const mappings = otherScriptMappingsFor(fullName);
     const apply = (locale: string, field: ContentField, value: unknown): unknown => {
       if (typeof value !== "string" || !value) return value;
+      const { value: next, count } = replaceNameInContent(value, fullName, displayName, mappings);
       if (locale === "ru" || locale === "ar") {
-        for (const text of findOtherScriptCandidates(value, fullName)) plan.otherScriptCandidates.push({ slug: d.slug, locale, field, text });
+        // Adaylar değiştirilmiş metinde aranır: sabit eşlemeyle değişenler (ve hedefleri) listeye düşmez.
+        for (const text of findOtherScriptCandidates(next, fullName)) {
+          if (mappings.some((m) => m.to.includes(text))) continue;
+          plan.otherScriptCandidates.push({ slug: d.slug, locale, field, text });
+        }
       }
-      const { value: next, count } = replaceNameInContent(value, fullName, displayName);
-      if (count > 0) changesForDoctor.push({ doctorId: d.id, slug: d.slug, locale, field, count, sample: sampleAround(value, fullName, displayName) });
+      if (count > 0) changesForDoctor.push({ doctorId: d.id, slug: d.slug, locale, field, count, sample: sampleDiff(value, next) });
       return next;
     };
 

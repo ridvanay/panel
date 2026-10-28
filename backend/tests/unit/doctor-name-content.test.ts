@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOtherScriptPatterns, findOtherScriptCandidates, fullNamePattern, replaceNameInContent } from "../../src/lib/doctor-name-content";
+import { buildOtherScriptPatterns, findOtherScriptCandidates, fullNamePattern, otherScriptMappingsFor, replaceNameInContent } from "../../src/lib/doctor-name-content";
 
 /**
  * Metin içi tam ad kısaltma kuralları: büyük/küçük harf ve Türkçe karakter duyarsız eşleşme, ekler,
@@ -23,8 +23,9 @@ describe("replaceNameInContent", () => {
 
   it("Türkçe karakter duyarsız: Dogukan Yildirim = Doğukan YILDIRIM", () => {
     const { value, count } = r("Prof. Dr. Doğukan Yıldırım (Dogukan Yildirim) is …", "Doğukan YILDIRIM", "D. Yıldırım");
-    expect(value).toBe("Prof. Dr. D. Yıldırım (D. Yıldırım) is …");
-    expect(count).toBe(2);
+    // Kısaltma sonrası tekrar eden parantez ("D. Yıldırım (D. Yıldırım)") kaldırılır: 2 ad + 1 temizlik.
+    expect(value).toBe("Prof. Dr. D. Yıldırım is …");
+    expect(count).toBe(3);
     expect(r("Ali Firat", "Ali FIRAT", "A. Fırat").value).toBe("A. Fırat");
     expect(r("Ayşe Zehra Özdemir Kaya began", "Ayşe Zehra ÖZDEMİR KAYA", "A. Z. Özdemir Kaya").value).toBe("A. Z. Özdemir Kaya began");
   });
@@ -97,5 +98,46 @@ describe("canlıdaki adlarla aday desenleri (regresyon: Kiril soyad kısaltması
     // Mantıksal sıra: ع (U+0639) ل (U+0644) ي (U+064A) — ters dizilim ("يلع") eşleşmez.
     expect([..."علي"].map((c) => c.codePointAt(0))).toEqual([0x0639, 0x0644, 0x064a]);
     expect(findOtherScriptCandidates("يلع تارف", "Ali FIRAT")).toEqual([]);
+  });
+});
+
+describe("tekrarlayan parantez ve başka alfabe için sabit eşleme", () => {
+  const dogukan = (text: string) => replaceNameInContent(text, "Doğukan YILDIRIM", "D. Yıldırım", otherScriptMappingsFor("Doğukan YILDIRIM"));
+
+  it("X (X) → X: parantez içi önündeki adla aynıysa kaldırılır; farklı parantez kalır", () => {
+    expect(dogukan("Prof. Dr. Doğukan Yıldırım (Dogukan Yildirim) is …").value).toBe("Prof. Dr. D. Yıldırım is …");
+    expect(dogukan("Prof. Dr. D. Yıldırım (D. Yıldırım)").value).toBe("Prof. Dr. D. Yıldırım");
+    expect(dogukan("Prof. Dr. Doğukan Yıldırım (Memorial Ataşehir)").value).toBe("Prof. Dr. D. Yıldırım (Memorial Ataşehir)");
+  });
+
+  it("Rusça ve Arapça ad + arkasındaki Latin parantez eşlemeye göre değişir", () => {
+    expect(dogukan("Проф. д-р Догукан Йылдырым (Doğukan Yıldırım) — гинеколог").value).toBe("Проф. д-р Д. Йылдырым — гинеколог");
+    expect(dogukan("أ. د. دوغوكان يلدريم (Doğukan Yıldırım) طبيب").value).toBe("أ. د. يلدريم طبيب");
+    // Parantezsiz yazım da değişir; Latin kısmı zaten kısaltılmış parantez de kaldırılır.
+    expect(dogukan("Догукан Йылдырым").value).toBe("Д. Йылдырым");
+    expect(dogukan("دوغوكان يلدريم (D. Yıldırım)").value).toBe("يلدريم");
+  });
+
+  it("Kamil Özdil ve Ayşe Zehra Özdemir Kaya eşlemeleri; yalnızca tam yazım değişir", () => {
+    const kamil = (t: string) => replaceNameInContent(t, "Kamil ÖZDİL", "K. Özdil", otherScriptMappingsFor("Kamil ÖZDİL")).value;
+    expect(kamil("Проф. д-р Камиль Оздиль")).toBe("Проф. д-р К. Оздиль");
+    expect(kamil("أ. د. كامل أوزديل")).toBe("أ. د. أوزديل");
+    expect(kamil("Камиль Оздилев")).toBe("Камиль Оздилев");
+    const ayse = (t: string) => replaceNameInContent(t, "Ayşe Zehra ÖZDEMİR KAYA", "A. Z. Özdemir Kaya", otherScriptMappingsFor("Ayşe Zehra ÖZDEMİR KAYA")).value;
+    expect(ayse("Доц. д-р Айше Зехра Оздемир Кая")).toBe("Доц. д-р А. З. Оздемир Кая");
+    expect(ayse("عائشة زهراء أوزدمير كايا (Ayşe Zehra Özdemir Kaya)")).toBe("أوزدمير كايا");
+    // Eşlemedeki yazımdan farklıysa (ق ile) değişmez — yalnızca listelenir.
+    expect(ayse("عائشة زهراء أوزدمير قايا")).toBe("عائشة زهراء أوزدمير قايا");
+  });
+
+  it("eşleme yalnızca kendi doktoruna uygulanır; eşlemede olmayan adlar değişmez", () => {
+    expect(otherScriptMappingsFor("Doğukan YILDIRIM")).toHaveLength(2);
+    expect(otherScriptMappingsFor("Dogukan Yildirim")).toHaveLength(2);
+    expect(otherScriptMappingsFor("Hakan SOFU")).toEqual([]);
+    expect(replaceNameInContent("Хакан Софу и Догукан Йылдырым", "Hakan SOFU", "H. Sofu", otherScriptMappingsFor("Hakan SOFU")).value).toBe("Хакан Софу и Догукан Йылдырым");
+  });
+
+  it("HTML: eşleme de yalnızca metin düğümlerinde", () => {
+    expect(dogukan('<p title="Догукан Йылдырым">Догукан Йылдырым (Doğukan Yıldırım)</p>').value).toBe('<p title="Догукан Йылдырым">Д. Йылдырым</p>');
   });
 });
