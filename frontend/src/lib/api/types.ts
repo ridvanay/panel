@@ -1973,6 +1973,8 @@ export interface NavigationConfigDto {
   headerCtaLabel: string | null;
   headerCtaHref: string | null;
   footerCopyrightText: string | null;
+  /** Paket U (B2) — yalnızca admin okumasında: slogan/başlık CTA/footer metni çevirileri. */
+  siteTranslations?: TextTranslations;
   navigationItems: NavigationItemDto[];
   socialLinks: SocialLinkDto[];
   footerColumns: FooterColumnDto[];
@@ -1991,6 +1993,8 @@ export interface UpdateNavigationConfigRequest {
   headerCtaLabel?: string | null;
   headerCtaHref?: string | null;
   footerCopyrightText?: string | null;
+  /** Paket U (B2) — slogan/başlık CTA/footer metni çevirileri (tam değiştirme). */
+  siteTranslations?: TextTranslations;
   navigationItems: { id?: string; label: string; href: string; order: number; parentId?: string | null; translations?: TextTranslations }[];
   socialLinks: { platform: SocialPlatform; url: string; order: number }[];
   /** Paket O — footer `id`'leri korunur (çeviri export/import eşleşmesi için) ve dil başına metinler. */

@@ -499,6 +499,7 @@ export function toNavigationConfigDto(
     headerCtaLabel: settings?.headerCtaLabel ?? null,
     headerCtaHref: settings?.headerCtaHref ?? null,
     footerCopyrightText: settings?.footerCopyrightText ?? null,
+    ...(omitTranslations ? {} : { siteTranslations: readTranslations(settings?.translations) }),
     navigationItems: navigationItems.map((item) => ({
       id: item.id,
       label: item.label,

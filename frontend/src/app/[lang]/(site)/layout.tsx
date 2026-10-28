@@ -46,7 +46,7 @@ export default async function SiteLayout({
   if (!activeLocale || activeLocale.enabled === false) notFound();
 
   const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled, dict, crmConfig] = await Promise.all([
-    fetchSiteSettingsServer(),
+    fetchSiteSettingsServer(lang),
     fetchPublishedPagesServer(lang),
     fetchNavigationConfigServer(lang),
     fetchSiteAppearanceServer(),

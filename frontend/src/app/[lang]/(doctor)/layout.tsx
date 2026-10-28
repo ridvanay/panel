@@ -56,7 +56,7 @@ export default async function DoctorScopeLayout({
   if (!activeLocale || activeLocale.enabled === false) notFound();
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
 
-  const [settings, appearance] = await Promise.all([fetchSiteSettingsServer(), fetchSiteAppearanceServer()]);
+  const [settings, appearance] = await Promise.all([fetchSiteSettingsServer(lang), fetchSiteAppearanceServer()]);
 
   return (
     <SiteBrandingProvider

@@ -10,6 +10,10 @@ import { LOCALE_CODE_PATTERN, applyFieldLocalization, resolveDefaultLocaleOverri
 
 const MAX_LOCALES = 20;
 
+/** Paket U (B2) — site ayarlarında çevrilebilen GÖRÜNEN metin alanları (alan → en fazla karakter). */
+export const SITE_SETTINGS_TEXT_FIELDS = { tagline: 200, headerCtaLabel: 60, footerCopyrightText: 200 } as const;
+export type SiteSettingsTextField = keyof typeof SITE_SETTINGS_TEXT_FIELDS;
+
 /**
  * `{ "<dil>": { alan: metin } }` şeması. Bilinmeyen alan reddedilir (strict), metinler kırpılır,
  * boş alanlar ve boş diller atılır (boş = "çeviri yok" → kanonik metne düşer).

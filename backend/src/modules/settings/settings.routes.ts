@@ -16,6 +16,9 @@ import { isDemoPaymentsEnabled } from "../../config/env";
 import { computeDemoPaymentsEnabled } from "../../lib/demo-payments";
 import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
 import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
+import { LocaleQuerySchema } from "../../schemas/common";
+import { getLocaleSet } from "../../lib/localization";
+import { localizeFields, resolveContentLocaleCode } from "../../lib/entity-translations";
 
 export const SETTINGS_ID = "singleton";
 export const DEFAULTS = {
@@ -95,9 +98,20 @@ async function readSettings(app: FastifyInstance) {
 export async function publicSettingsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
-  server.get("/", { schema: { response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } }, async (_request, reply) => {
-    return reply.send(ok(await readSettings(app)));
-  });
+  server.get(
+    "/",
+    { schema: { querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } },
+    async (request, reply) => {
+      const settings = await readSettings(app);
+      const locale = request.query.locale;
+      if (!locale) return reply.send(ok(settings));
+      // Paket U (B2) — slogan aktif dilde (çeviri yoksa kanonik EN). Diğer alanlar dile bağlı değil.
+      const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { tagline: true, translations: true } });
+      if (!row) return reply.send(ok(settings));
+      const localized = localizeFields(row, resolveContentLocaleCode(await getLocaleSet(app), locale), ["tagline"]);
+      return reply.send(ok({ ...settings, tagline: localized.tagline }));
+    }
+  );
 
   // Kök `/` rotası için: seçili ana sayfa yayında değilse veya seçili değilse null döner
   // (frontend bu durumda kendi varsayılan fallback'ini gösterir).

@@ -28,8 +28,10 @@ export const DEFAULT_SETTINGS: SiteSettings = {
 };
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */
-export async function fetchSiteSettingsServer(): Promise<SiteSettings> {
-  const json = await fetchServerJson<{ data: SiteSettings }>("/settings", { tags: [CACHE_TAGS.settings] });
+/** `locale` verilirse (site sayfaları) slogan aktif dilde döner (çeviri yoksa kanonik EN) — Paket U (B2). */
+export async function fetchSiteSettingsServer(locale?: string): Promise<SiteSettings> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: SiteSettings }>(`/settings${query}`, { tags: [CACHE_TAGS.settings] });
   return json?.data ?? DEFAULT_SETTINGS;
 }
 

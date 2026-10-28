@@ -111,6 +111,8 @@ interface LocationsSnapshot {
   headerCtaLabel: string;
   headerCtaHref: string;
   footerCopyrightText: string;
+  /** Paket U (B2) — slogan/başlık CTA/footer metni çevirileri. */
+  siteTranslations: TextTranslations;
   socialLinks: { platform: SocialPlatform; url: string }[];
   footerColumns: { title: string; translations: TextTranslations; links: { label: string; href: string; translations: TextTranslations }[] }[];
 }
@@ -238,6 +240,15 @@ function AdminNavigationPageContent() {
   const translationLocales = useTranslationLocales();
   const [contentLocale, setContentLocale] = useState(CANONICAL_LOCALE_CODE);
   const canonicalLocale = isCanonicalLocale(contentLocale);
+  // Paket U (B2) — slogan, başlık CTA etiketi ve footer metni: EN sekmesinde kanonik alan, diğer
+  // dillerde `siteTranslations.<dil>.<alan>` (boş = sitede kanonik EN metin gösterilir).
+  const [siteTranslations, setSiteTranslations] = useState<TextTranslations>({});
+  const siteText = (field: "tagline" | "headerCtaLabel" | "footerCopyrightText", canonicalValue: string) =>
+    canonicalLocale ? canonicalValue : getTranslation(siteTranslations, contentLocale, field);
+  const setSiteText = (field: "tagline" | "headerCtaLabel" | "footerCopyrightText", value: string, setCanonical: (v: string) => void) => {
+    if (canonicalLocale) setCanonical(value);
+    else setSiteTranslations((prev) => setTranslation(prev, contentLocale, field, value));
+  };
   const [locationsSnapshot, setLocationsSnapshot] = useState<LocationsSnapshot | null>(null);
 
   const load = useCallback(async () => {
@@ -277,6 +288,7 @@ function AdminNavigationPageContent() {
       setHeaderCtaLabel(navConfig.headerCtaLabel ?? "");
       setHeaderCtaHref(navConfig.headerCtaHref ?? "");
       setFooterCopyrightText(navConfig.footerCopyrightText ?? "");
+      setSiteTranslations(navConfig.siteTranslations ?? {});
 
       const loadedNavItems: FlatNavItem[] = [...navConfig.navigationItems]
         .sort((a, b) => a.order - b.order)
@@ -312,6 +324,7 @@ function AdminNavigationPageContent() {
         headerCtaLabel: navConfig.headerCtaLabel ?? "",
         headerCtaHref: navConfig.headerCtaHref ?? "",
         footerCopyrightText: navConfig.footerCopyrightText ?? "",
+        siteTranslations: navConfig.siteTranslations ?? {},
         socialLinks: loadedSocialLinks.map((l) => ({ platform: l.platform, url: l.url })),
         footerColumns: footerSnapshot(loadedFooterColumns),
       });
@@ -346,6 +359,7 @@ function AdminNavigationPageContent() {
       headerCtaLabel,
       headerCtaHref,
       footerCopyrightText,
+      siteTranslations,
       socialLinks: socialLinks.map((l) => ({ platform: l.platform, url: l.url })),
       footerColumns: footerSnapshot(footerColumns),
     };
@@ -361,6 +375,7 @@ function AdminNavigationPageContent() {
     headerCtaLabel,
     headerCtaHref,
     footerCopyrightText,
+    siteTranslations,
     socialLinks,
     footerColumns,
     locationsSnapshot,
@@ -513,6 +528,7 @@ function AdminNavigationPageContent() {
         headerCtaLabel: headerCtaLabel.trim() || null,
         headerCtaHref: headerCtaHref.trim() || null,
         footerCopyrightText: footerCopyrightText.trim() || null,
+        siteTranslations,
         navigationItems: toNavigationItemsPayload(navigationItems),
         socialLinks: socialLinks.map((link, index) => ({ platform: link.platform, url: link.url, order: index })),
         footerColumns: footerColumns.map((col, index) => ({
@@ -556,6 +572,7 @@ function AdminNavigationPageContent() {
         headerCtaLabel,
         headerCtaHref,
         footerCopyrightText,
+        siteTranslations,
         socialLinks: socialLinks.map((l) => ({ platform: l.platform, url: l.url })),
         footerColumns: footerSnapshot(footerColumns),
       });
@@ -840,11 +857,17 @@ function AdminNavigationPageContent() {
                       <label htmlFor="tagline" className="block text-sm font-medium text-foreground">
                         Site Sloganı
                       </label>
+                      <TranslationLocaleTabs
+                        locales={translationLocales}
+                        value={contentLocale}
+                        onValueChange={setContentLocale}
+                        entries={[{ translations: siteTranslations, fields: ["tagline"] }]}
+                      />
                       <Input
                         id="tagline"
-                        value={tagline}
-                        onChange={(e) => setTagline(e.target.value)}
-                        placeholder="ör. Kaliteli ürünler, hızlı teslimat"
+                        value={siteText("tagline", tagline)}
+                        onChange={(e) => setSiteText("tagline", e.target.value, setTagline)}
+                        placeholder={canonicalLocale ? "ör. Kaliteli ürünler, hızlı teslimat" : tagline}
                       />
                       <p className="text-xs text-foreground/60">
                         Footer&apos;da logonun/site adının altında küçük bir metin olarak gösterilir. Boş bırakılırsa hiçbir şey
@@ -858,12 +881,23 @@ function AdminNavigationPageContent() {
               <div className="space-y-6">
                 <GroupHeading>Header</GroupHeading>
                 <SectionCard title="Header CTA" description="Header'da menünün sağında öne çıkan buton (opsiyonel).">
+                  <TranslationLocaleTabs
+                    locales={translationLocales}
+                    value={contentLocale}
+                    onValueChange={setContentLocale}
+                    entries={[{ translations: siteTranslations, fields: ["headerCtaLabel"] }]}
+                  />
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <label htmlFor="ctaLabel" className="block text-sm font-medium text-foreground">
                         Buton metni
                       </label>
-                      <Input id="ctaLabel" value={headerCtaLabel} onChange={(e) => setHeaderCtaLabel(e.target.value)} placeholder="Giriş Yap" />
+                      <Input
+                        id="ctaLabel"
+                        value={siteText("headerCtaLabel", headerCtaLabel)}
+                        onChange={(e) => setSiteText("headerCtaLabel", e.target.value, setHeaderCtaLabel)}
+                        placeholder={canonicalLocale ? "Giriş Yap" : headerCtaLabel}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="ctaHref" className="block text-sm font-medium text-foreground">
@@ -879,15 +913,21 @@ function AdminNavigationPageContent() {
               <div className="space-y-6">
                 <GroupHeading>Footer</GroupHeading>
                 <SectionCard title="Footer" description="Footer'daki telif hakkı metni.">
+                  <TranslationLocaleTabs
+                    locales={translationLocales}
+                    value={contentLocale}
+                    onValueChange={setContentLocale}
+                    entries={[{ translations: siteTranslations, fields: ["footerCopyrightText"] }]}
+                  />
                   <div className="space-y-1.5">
                     <label htmlFor="footerCopyright" className="block text-sm font-medium text-foreground">
                       Telif hakkı metni
                     </label>
                     <Input
                       id="footerCopyright"
-                      value={footerCopyrightText}
-                      onChange={(e) => setFooterCopyrightText(e.target.value)}
-                      placeholder={`© ${new Date().getFullYear()} ${siteName || "Site"}`}
+                      value={siteText("footerCopyrightText", footerCopyrightText)}
+                      onChange={(e) => setSiteText("footerCopyrightText", e.target.value, setFooterCopyrightText)}
+                      placeholder={canonicalLocale ? `© ${new Date().getFullYear()} ${siteName || "Site"}` : footerCopyrightText}
                     />
                     <p className="text-xs text-foreground/60">
                       Boş bırakılırsa © {new Date().getFullYear()} {siteName || "Site"} otomatik gösterilir. Doldurursanız yıl otomatik

@@ -37,7 +37,8 @@ async function readNavigationConfig(app: FastifyInstance, locale?: string) {
   const contentLocale = resolveContentLocaleCode(await getLocaleSet(app), locale);
   return toNavigationConfigDto(
     {
-      settings,
+      // Paket U (B2) — başlık CTA etiketi ve footer metni aktif dilde (çeviri yoksa kanonik EN).
+      settings: settings ? localizeFields(settings, contentLocale, ["headerCtaLabel", "footerCopyrightText"]) : null,
       navigationItems: navigationItems.map((item) => localizeFields(item, contentLocale, ["label"])),
       socialLinks,
       footerColumns: footerColumns.map((column) => ({
@@ -89,6 +90,8 @@ export async function adminNavigationRoutes(app: FastifyInstance) {
         headerCtaLabel: body.headerCtaLabel,
         headerCtaHref: body.headerCtaHref,
         footerCopyrightText: body.footerCopyrightText,
+        // Paket U (B2) — gönderildiyse slogan/CTA/footer metni çevirilerinin tamamı (tam değiştirme).
+        ...(body.siteTranslations !== undefined ? { translations: body.siteTranslations as Prisma.InputJsonValue } : {}),
       };
 
       await app.prisma.$transaction(async (tx) => {

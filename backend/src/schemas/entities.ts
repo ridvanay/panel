@@ -939,6 +939,8 @@ export const NavigationConfigSchema = z.object({
   headerCtaLabel: z.string().nullable(),
   headerCtaHref: z.string().nullable(),
   footerCopyrightText: z.string().nullable(),
+  /** Paket U (B2) — yalnızca admin okumasında: site ayarlarının görünen metin çevirileri (slogan dahil). */
+  siteTranslations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   navigationItems: z.array(NavigationItemSchema),
   socialLinks: z.array(SocialLinkSchema),
   footerColumns: z.array(FooterColumnSchema),

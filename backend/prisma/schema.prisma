@@ -1247,6 +1247,9 @@ model SiteSettings {
   headerCtaLabel             String?
   headerCtaHref              String?
   footerCopyrightText        String?
+  /// Paket U (B2) — görünen metinlerin dil çevirileri: `{ "<dil>": { tagline?, headerCtaLabel?, footerCopyrightText? } }`.
+  /// Kanonik kolonlar EN; aktif dilde çeviri yoksa kanonik metin. Renk/URL/anahtar alanları çevrilmez.
+  translations               Json             @default("{}")
   // §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — mağaza geneli SABİT
   // kargo bedeli. `null` = kargo HİÇ hesaplanmaz, hiçbir yerde gösterilmez (bugünkü davranışın
   // birebir aynısı — geriye dönük uyumluluk). `ShippingRule` tablosu BİLİNÇLİ olarak

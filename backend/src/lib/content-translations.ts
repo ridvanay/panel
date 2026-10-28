@@ -9,8 +9,8 @@
  *  - Yalnızca `translations.es|de|ar|ru` (ve koşullu `tr`, bkz. Paket O) yazılır. Kanonik kolonlara ve
  *    `translations.en`'e ASLA dokunulmaz; dosyada başka bir dil anahtarı varsa işlem reddedilir.
  *  - Yalnızca `translations` kolonu olan içerik yazılabilir: sayfa (`Page`), doktor profili ve
- *    (Paket O'dan itibaren) uzmanlık, menü öğesi, footer sütunu/bağlantısı. Site ayarları hâlâ
- *    "importable: false" (çeviri kolonu yok).
+ *    (Paket O'dan itibaren) uzmanlık, menü öğesi, footer sütunu/bağlantısı; (Paket U) site ayarlarının
+ *    görünen metinleri (slogan, başlık CTA etiketi, footer metni) ve iletişim formu.
  *  - Yasal sayfalar (`isLegalDocument`) export'a girmez, import'ta da reddedilir (yeni dillerde EN'e düşer).
  *  - Sayfa bloklarında çevirmen yalnızca metni değiştirebilir: ağaç yapısı, id/tip, bağlantılar,
  *    URL'ler, renkler ve sayılar kanonikle birebir aynı olmalıdır. HTML sanitize edilir.
@@ -49,6 +49,7 @@ import { sanitizePageBlocks } from "../modules/pages/lib/sanitize-blocks";
 import { PageBlockListSchema } from "../modules/pages/pages.schemas";
 import { ContactFormTranslationSchema, FORM_TRANSLATIONS_KEY } from "../modules/contact/contact-i18n";
 import { CONTACT_FORM_ID } from "../modules/contact/contact.constants";
+import { SITE_SETTINGS_TEXT_FIELDS } from "./entity-translations";
 
 // Paket T (2026-10-27) — ro/fr/sr-latn (Sırpça Latin) eklendi.
 export const TARGET_LOCALES = ["es", "de", "ar", "ru", "ro", "fr", "sr-latn"] as const;
@@ -115,12 +116,14 @@ const NO_COLUMN_NOTE = "Bu modelde çeviri kolonu yok; içe aktarılmaz (ayrı b
  * Paket O — basit (düz metin alanlı) içerik türleri: alan → { en fazla karakter, zorunlu mu }.
  * Kanonik kolon adlarıyla AYNI alan adları `translations.<dil>` altına yazılır.
  */
-type EntityType = "specialty" | "navigationItem" | "footerColumn" | "footerLink";
+type EntityType = "specialty" | "navigationItem" | "footerColumn" | "footerLink" | "siteSettings";
 const ENTITY_FIELDS: Record<EntityType, Record<string, { max: number; required: boolean }>> = {
   specialty: { name: { max: 80, required: true }, description: { max: 500, required: false } },
   navigationItem: { label: { max: 80, required: true } },
   footerColumn: { title: { max: 80, required: true } },
   footerLink: { label: { max: 80, required: true } },
+  // Paket U (B2) — yalnızca GÖRÜNEN metinler (slogan, başlık CTA etiketi, footer metni); renk/URL/anahtar yok.
+  siteSettings: Object.fromEntries(Object.entries(SITE_SETTINGS_TEXT_FIELDS).map(([field, max]) => [field, { max, required: false }])),
 };
 const isEntityType = (type: string): type is EntityType => type in ENTITY_FIELDS;
 
@@ -168,6 +171,8 @@ async function findEntity(db: Db, type: EntityType, id: string): Promise<EntityR
       return db.footerColumn.findUnique({ where: { id } });
     case "footerLink":
       return db.footerLink.findUnique({ where: { id } });
+    case "siteSettings":
+      return db.siteSettings.findUnique({ where: { id } });
   }
 }
 
@@ -182,6 +187,8 @@ async function updateEntityTranslations(tx: Prisma.TransactionClient, type: Enti
       return tx.footerColumn.update(args);
     case "footerLink":
       return tx.footerLink.update(args);
+    case "siteSettings":
+      return tx.siteSettings.update(args);
   }
 }
 
@@ -378,16 +385,8 @@ export async function buildTranslationExport(
   }
   const settings = await db.siteSettings.findFirst();
   if (settings) {
-    items.push({
-      type: "siteSettings",
-      id: settings.id,
-      ref: "site-settings",
-      importable: false,
-      note: NO_COLUMN_NOTE,
-      updatedAt: null,
-      fields: { tagline: settings.tagline, headerCtaLabel: settings.headerCtaLabel, footerCopyrightText: settings.footerCopyrightText },
-      translations: emptyTranslations(),
-    });
+    // Paket U (B2) — içe aktarılabilir; yalnızca görünen metin alanları (bkz. ENTITY_FIELDS.siteSettings).
+    items.push({ ...entityItem("siteSettings", settings, "site-settings", canonicalFieldsOf("siteSettings", settings)), note: "Yalnızca görünen metinler (slogan, başlık düğmesi, footer metni)." });
   }
 
   const contactForm = await findContactForm(db);
@@ -838,6 +837,7 @@ async function revalidateAll(db: Db, pageIds: string[], doctorsChanged: boolean,
   if (doctorsChanged) tags.add(CACHE_TAGS.doctors);
   if (entityTypes.includes("specialty")) [CACHE_TAGS.specialties, CACHE_TAGS.doctors].forEach((t) => tags.add(t));
   if (entityTypes.some((t) => t !== "specialty")) tags.add(CACHE_TAGS.navigation);
+  if (entityTypes.includes("siteSettings")) tags.add(CACHE_TAGS.settings);
   if (tags.size) await triggerTagRevalidation(app, [...tags]);
 }
 

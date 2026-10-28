@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SocialPlatform } from "@prisma/client";
-import { textTranslationsSchema } from "../../lib/entity-translations";
+import { SITE_SETTINGS_TEXT_FIELDS, textTranslationsSchema } from "../../lib/entity-translations";
 
 /** Paket O — dil başına etiket/başlık (kanonik metin EN; boş dil → kanonik). */
 const LabelTranslationsSchema = textTranslationsSchema({ label: 80 });
@@ -150,6 +150,8 @@ export const UpdateNavigationConfigRequestSchema = z.object({
   headerCtaLabel: z.string().max(60).nullable().optional(),
   headerCtaHref: HrefSchema.nullable().optional(),
   footerCopyrightText: z.string().max(200).nullable().optional(),
+  /** Paket U (B2) — site ayarlarının görünen metin çevirileri; yalnızca bu alanlar (renk/URL/anahtar yok). */
+  siteTranslations: textTranslationsSchema(SITE_SETTINGS_TEXT_FIELDS).optional(),
   navigationItems: NavigationItemsArraySchema,
   socialLinks: z.array(SocialLinkInputSchema).max(15),
   footerColumns: FooterColumnsArraySchema,
