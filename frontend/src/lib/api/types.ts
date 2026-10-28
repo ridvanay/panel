@@ -3950,6 +3950,8 @@ export interface DoctorProfile {
   displayName?: string;
   /** Paket U (C2) — elle düzeltme; yalnızca admin yanıtlarında. */
   publicName?: string | null;
+  /** Paket U (SEO kararı) — tam ad; yalnızca public profil detayında, yalnızca JSON-LD `alternateName` için. */
+  alternateName?: string;
   slug: string;
   /** KISA özet — doktor kartı/liste/meta description kaynağı. DEĞİŞMEDİ. Uzun biyografi `aboutHtml`'dir. */
   bio: string;

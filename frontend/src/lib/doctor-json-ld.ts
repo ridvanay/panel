@@ -15,7 +15,7 @@ import { publicDoctorName } from "@/lib/doctor-display-name";
  * Tanı/tedavi/başarı iddiası içeren hiçbir alan doldurulmaz — yalnızca DB'de zaten var olan profil
  * alanları (ad, unvan, uzmanlık, konuşulan diller, biyografi, avatar) taşınır.
  */
-export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string): string {
+export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string, alternateName?: string): string {
   // Paket U (C) — ziyaretçiye görünen ad (kurucu dışında kısaltılmış; tam ad JSON-LD'de yer almaz).
   const name = `${doctor.title} ${publicDoctorName(doctor)}`.trim();
   // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `doctor.avatarMedia.url`, `server-
@@ -28,6 +28,8 @@ export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string): 
     "@context": "https://schema.org",
     "@type": "Physician",
     name,
+    // Paket U (SEO kararı) — tam ad yalnızca burada, arama motorlarının tam adla eşleştirebilmesi için.
+    ...(alternateName && alternateName !== publicDoctorName(doctor) ? { alternateName } : {}),
     ...(doctor.title ? { honorificPrefix: doctor.title } : {}),
     ...(doctor.bio ? { description: doctor.bio } : {}),
     ...(publicAvatarUrl ? { image: publicAvatarUrl } : {}),

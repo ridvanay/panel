@@ -71,6 +71,7 @@ import {
   canAccessBookingHealthData,
 } from "../../lib/telehealth-access";
 import { validateBookingIdentityInput, encryptIdentityNumber, hashIdentityNumber, maskIdentityNumber } from "../../lib/identity";
+import { doctorDisplayName } from "../../lib/doctor-display-name";
 import {
   AccessTokenQuerySchema,
   AppointmentDocumentIdParamSchema,
@@ -253,9 +254,14 @@ export async function telehealthRoutes(app: FastifyInstance) {
       const { locale } = request.query;
       const contentLocale = locale ? resolveContentLocaleCode(await getLocaleSet(app), locale) : undefined;
       const earliest = await computeEarliestAvailability(app, [doctor]);
+      // Paket U (SEO kararı) — tam ad YALNIZCA profil detayında, JSON-LD `alternateName` için ayrı alanda;
+      // görünen ad (`fullName`/`displayName`) kısa kalır. Frontend bu alanı yalnızca JSON-LD'de kullanır.
+      const fullName = doctor.fullName.trim().replace(/\s+/g, " ");
+      const alternateName = doctorDisplayName(doctor) !== fullName ? fullName : undefined;
       return reply.send(
         ok({
           ...toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, contentLocale), contentLocale)),
+          ...(alternateName ? { alternateName } : {}),
           earliestAvailableAt: earliest.get(doctor.id) ?? null,
         })
       );

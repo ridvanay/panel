@@ -70,7 +70,10 @@ describe("doktor görünen adı (Paket U, C)", () => {
       for (const [i, d] of DOCTORS.entries()) {
         const detail = (await app.inject({ method: "GET", url: `/api/v1/doctors/doctor-${i}?locale=${locale}` })).json().data;
         expect([detail.fullName, detail.displayName]).toEqual([d.short, d.short]);
-        expect(JSON.stringify(detail)).not.toMatch(fullNameForms(d.fullName));
+        // SEO kararı — tam ad yalnızca profil detayında, JSON-LD için ayrı `alternateName` alanında.
+        const { alternateName, ...rest } = detail;
+        expect(alternateName).toBe(d.fullName);
+        expect(JSON.stringify(rest)).not.toMatch(fullNameForms(d.fullName));
         expect(detail.publicName).toBeUndefined();
       }
     }

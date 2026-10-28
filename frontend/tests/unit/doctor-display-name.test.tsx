@@ -71,10 +71,13 @@ describe("doktor görünen adı — frontend", () => {
     expect(publicDoctorName({ fullName: "x", displayName: "H. Sofu" })).toBe("H. Sofu");
   });
 
-  it("JSON-LD Physician adı görünen addır", () => {
-    const json = buildDoctorJsonLd(makeDoctor(), "https://example.com/doctors/hakan-sofu");
-    expect(JSON.parse(json).name).toBe("Prof. Dr. H. Sofu");
-    expect(json).not.toContain("Hakan");
+  it("JSON-LD Physician: ad görünen ad, tam ad yalnızca alternateName (SEO kararı)", () => {
+    const json = JSON.parse(buildDoctorJsonLd(makeDoctor(), "https://example.com/doctors/hakan-sofu", "Hakan SOFU"));
+    expect(json.name).toBe("Prof. Dr. H. Sofu");
+    expect(json.alternateName).toBe("Hakan SOFU");
+    // Kurucu / tam adla gösterilen doktorda alternateName eklenmez; verilmezse de yok.
+    expect(JSON.parse(buildDoctorJsonLd(makeDoctor({ fullName: "Vahit MUTLU", displayName: "Vahit MUTLU" }), "https://x", "Vahit MUTLU")).alternateName).toBeUndefined();
+    expect(buildDoctorJsonLd(makeDoctor(), "https://x")).not.toContain("Hakan");
   });
 
   it("doktor kartı Arapça (RTL) ve Sırpça Latin'de adı bozmadan gösterir", async () => {

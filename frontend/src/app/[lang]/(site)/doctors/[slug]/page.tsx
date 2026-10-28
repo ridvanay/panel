@@ -129,7 +129,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const { lang, slug } = await params;
   const { from, to } = defaultSlotRange();
 
-  const [doctor, locales, pages, slots, dict, telehealthSettings] = await Promise.all([
+  const [doctorWithAlternateName, locales, pages, slots, dict, telehealthSettings] = await Promise.all([
     fetchDoctorBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchPublishedPagesServer(lang),
@@ -137,7 +137,10 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
     getSiteDictionary(lang),
     fetchTelehealthThemeServer(),
   ]);
-  if (!doctor) notFound();
+  if (!doctorWithAlternateName) notFound();
+  // Paket U (SEO kararı) — tam ad YALNIZCA JSON-LD `alternateName`'de; bileşenlere (ve sayfa verisine)
+  // giden doktor nesnesinden çıkarılır, sayfa metninde/title/meta/OG'de görünmez.
+  const { alternateName, ...doctor } = doctorWithAlternateName;
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   // Paket A2 — onay kutusu linkleri katı eşleşir: ilgili sayfa yoksa link yerine düz metin gösterilir.
@@ -231,7 +234,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
           </section>
         </BookingSelectionProvider>
 
-        <JsonLdScript json={buildDoctorJsonLd(doctor, canonicalUrl)} />
+        <JsonLdScript json={buildDoctorJsonLd(doctor, canonicalUrl, alternateName)} />
       </div>
     </>
   );

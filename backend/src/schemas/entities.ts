@@ -2534,6 +2534,8 @@ export const DoctorProfileSchema = z.object({
   displayName: z.string().optional(),
   /** Paket U (C2) — elle düzeltme; yalnızca admin yanıtlarında. */
   publicName: z.string().nullable().optional(),
+  /** Paket U (SEO kararı) — tam ad; YALNIZCA public profil detayında ve yalnızca JSON-LD `alternateName` için. */
+  alternateName: z.string().optional(),
   slug: z.string(),
   bio: z.string(),
   // [DPI] §1.1/§1.2 — uzun biyografi, `lib/html-sanitize.ts`'ten geçirilmiş HTML.
