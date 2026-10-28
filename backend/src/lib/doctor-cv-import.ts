@@ -406,7 +406,7 @@ export const TARGET_SOCIAL_LINKS = [
   { platform: "youtube", url: "https://www.youtube.com/@doc.dr.vahitmutlu" },
 ];
 
-type Db = Pick<PrismaClient, "doctorProfile" | "doctorAdditionalSpecialty" | "specialty" | "media" | "auditLog" | "$transaction">;
+export type Db = Pick<PrismaClient, "doctorProfile" | "doctorAdditionalSpecialty" | "specialty" | "media" | "auditLog" | "$transaction">;
 
 export interface OperatorInfo {
   operator: string;
@@ -549,7 +549,7 @@ export interface DoctorBackup {
   additionalSpecialtyIds: string[];
 }
 
-function assertOperator(info: OperatorInfo) {
+export function assertOperator(info: OperatorInfo) {
   const op = info.operator?.trim() ?? "";
   // eslint-disable-next-line no-control-regex
   if (op.length < 3 || op.length > 100 || /[\u0000-\u001f\u007f]/.test(op)) {
@@ -557,7 +557,8 @@ function assertOperator(info: OperatorInfo) {
   }
 }
 
-async function writeBackup(db: Db, backupDir: string, doctorId: string, now: Date): Promise<string> {
+/** Paket U — genel `import-doctor-cv` de kullanır; dosya adı doktorun kendi slug'ı (Vahit için değişmedi). */
+export async function writeBackup(db: Db, backupDir: string, doctorId: string, now: Date): Promise<string> {
   const doctor = await db.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } });
   const additional = await db.doctorAdditionalSpecialty.findMany({ where: { doctorId }, select: { specialtyId: true } });
   const backup: DoctorBackup = {
@@ -577,12 +578,12 @@ async function writeBackup(db: Db, backupDir: string, doctorId: string, now: Dat
     additionalSpecialtyIds: additional.map((a) => a.specialtyId),
   };
   await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
-  const file = path.join(backupDir, `${DOCTOR_SLUG}-${now.toISOString().replace(/[:.]/g, "-")}.json`);
+  const file = path.join(backupDir, `${doctor.slug}-${now.toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.writeFile(file, JSON.stringify(backup, null, 2), { encoding: "utf8", mode: 0o600 });
   return file;
 }
 
-function appLike(db: Db): FastifyInstance {
+export function appLike(db: Db): FastifyInstance {
   const log = { warn: (...a: unknown[]) => console.warn(...a), info: () => {}, error: (...a: unknown[]) => console.error(...a) };
   return { prisma: db, log } as unknown as FastifyInstance;
 }
@@ -673,12 +674,12 @@ export async function applyDoctorCvImport(
 }
 
 /** Yedek operatör girdisidir: yalnızca bu araçla yönetilen doktora ve geçerli şemaya izin verilir. */
-export async function readDoctorBackup(file: string): Promise<DoctorBackup> {
+export async function readDoctorBackup(file: string, expectedSlug: string = DOCTOR_SLUG): Promise<DoctorBackup> {
   const parsed = JSON.parse(await fs.readFile(file, "utf8")) as DoctorBackup;
   if (parsed?.kind !== "doctor-profile-backup" || typeof parsed.doctorId !== "string" || !parsed.fields) {
     throw new DoctorImportError("Geçerli bir doktor profili yedeği değil.");
   }
-  if (parsed.slug !== DOCTOR_SLUG) throw new DoctorImportError(`Yedek bu araçla yönetilmeyen bir doktora ait: "${parsed.slug}".`);
+  if (parsed.slug !== expectedSlug) throw new DoctorImportError(`Yedek bu araçla yönetilmeyen bir doktora ait: "${parsed.slug}".`);
   const { fields } = parsed;
   if (typeof fields.title !== "string" || typeof fields.bio !== "string") throw new DoctorImportError("Yedekte title/bio eksik.");
   if (!DoctorCvEntrySchema.array().max(MAX_CV_ENTRIES).safeParse(fields.cvEntries).success) throw new DoctorImportError("Yedekteki cvEntries geçersiz.");
