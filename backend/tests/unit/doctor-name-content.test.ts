@@ -56,9 +56,10 @@ describe("canlıdaki adlarla aday desenleri (regresyon: Kiril soyad kısaltması
   const NAMES = ["Kadir KOLCUOĞLU", "Ali FIRAT", "Hakan SOFU", "Doğukan YILDIRIM", "Kamil ÖZDİL", "Ayşe Zehra ÖZDEMİR KAYA", "Hasan Tuna Türkmen", "Vahit MUTLU"];
 
   it.each(NAMES)("%s: Kiril ve Arapça desenler hatasız kurulur; tam ad deseni kurulur", (name) => {
-    const { patterns, errors } = buildOtherScriptPatterns(name);
+    const { patterns, surnamePatterns, errors } = buildOtherScriptPatterns(name);
     expect(errors).toEqual([]);
     expect(patterns).toHaveLength(2);
+    expect(surnamePatterns).toHaveLength(1);
     expect(() => fullNamePattern(name)).not.toThrow();
     // Desenler gerçekten çalışır (çökmez) ve Latin metinde aday üretmez.
     expect(findOtherScriptCandidates(`Prof. Dr. ${name} — Проф. д-р текст — أ. د. نص`, name)).toEqual([]);
@@ -69,7 +70,32 @@ describe("canlıdaki adlarla aday desenleri (regresyon: Kiril soyad kısaltması
     expect(findOtherScriptCandidates("Проф. д-р Догукан Йылдырым", "Doğukan YILDIRIM")).toEqual(["Догукан Йылдырым"]);
     expect(findOtherScriptCandidates("Проф. д-р Камиль Озкан", "Kamil ÖZDİL")).toEqual([]);
     expect(findOtherScriptCandidates("Доц. д-р Айше Захра Оздемир Кая", "Ayşe Zehra ÖZDEMİR KAYA")).toEqual(["Айше Захра Оздемир Кая"]);
-    expect(findOtherScriptCandidates("د. كادير كولجو أوغلو", "Kadir KOLCUOĞLU")).toEqual([]);
-    expect(findOtherScriptCandidates("أ. د. علي فرات", "Ali FIRAT")).toEqual(["علي فرات"]);
+  });
+
+  // Gerçek Arapça yazımlar — mantıksal (okuma) sırasıyla; ekranda sağdan sola görünür.
+  const ARABIC_NAMES: [string, string, string][] = [
+    ["Kadir KOLCUOĞLU", "قادر كولجو أوغلو", "كولجو أوغلو"],
+    ["Ali FIRAT", "علي فرات", "فرات"],
+    ["Hakan SOFU", "هاكان صوفو", "صوفو"],
+    ["Doğukan YILDIRIM", "دوغوكان يلدريم", "يلدريم"],
+    ["Kamil ÖZDİL", "كامل أوزديل", "أوزديل"],
+    ["Ayşe Zehra ÖZDEMİR KAYA", "عائشة زهراء أوزدمير قايا", "قايا"],
+    ["Hasan Tuna Türkmen", "حسن طونا تركمان", "تركمان"],
+    ["Vahit MUTLU", "وحيد موتلو", "موتلو"],
+  ];
+
+  it.each(ARABIC_NAMES)("%s: Arapça tam ad (%s) aday olarak bulunur", (name, arabic) => {
+    expect(findOtherScriptCandidates(`أ. د. ${arabic} طبيب`, name)).toEqual([arabic]);
+  });
+
+  it.each(ARABIC_NAMES)("%s: Arapça soyad tek başına (%s) aday olarak bulunur", (name, _arabic, surname) => {
+    expect(findOtherScriptCandidates(`يعمل الدكتور ${surname} في إسطنبول`, name)).toEqual([surname]);
+  });
+
+  it("علي فرات ve tek başına فرات bulunur; tam ad eşleşmesinin içindeki soyad ikinci kez listelenmez", () => {
+    expect(findOtherScriptCandidates("أ. د. علي فرات طبيب. ويقول فرات إن", "Ali FIRAT")).toEqual(["علي فرات", "فرات"]);
+    // Mantıksal sıra: ع (U+0639) ل (U+0644) ي (U+064A) — ters dizilim ("يلع") eşleşmez.
+    expect([..."علي"].map((c) => c.codePointAt(0))).toEqual([0x0639, 0x0644, 0x064a]);
+    expect(findOtherScriptCandidates("يلع تارف", "Ali FIRAT")).toEqual([]);
   });
 });

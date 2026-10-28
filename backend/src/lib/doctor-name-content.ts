@@ -104,23 +104,41 @@ function cyrillicPattern(word: string, maxLetters?: number): string {
 }
 
 const ARABIC: Record<string, string> = {
-  b: "ب", c: "(ج|جه)", ç: "تش", d: "[دض]", f: "ف", g: "[غج]", ğ: "", h: "[هح]", j: "ج", k: "[كق]", l: "ل", m: "م", n: "ن",
-  p: "ب", r: "ر", s: "[سص]", ş: "ش", t: "[تط]", v: "[فو]", y: "ي", z: "[زظ]",
+  // Türkçe sondaki t çoğu zaman Arapça kökenli d'dir (Vahit → وحيد); ğ Arapça yazımda غ ya da hiç.
+  b: "ب", c: "(?:ج|جه)", ç: "تش", d: "[دض]", f: "ف", g: "[غج]", ğ: "غ?", h: "[هح]", j: "ج", k: "[كق]", l: "ل", m: "م", n: "ن",
+  p: "ب", r: "ر", s: "[سص]", ş: "ش", t: "[تطد]", v: "[فو]", y: "[يئ]", z: "[زظ]",
 };
+/** Ünlü konumu: 0–2 harf (ا أ إ آ ي ئ و ى ع ة ه + fetha) — "Ali" = علي, "Ayşe" = آيشه/عائشة, "Özdemir" = أوزدمير. */
+const ARABIC_VOWEL = "[اأإآيئوىعةهَ]{0,2}";
 
 /** Arapça iskelet: ünsüzler sırayla, ünlüler isteğe bağlı (ا/ي/و/ى). */
 function arabicPattern(word: string): string {
+  // Birimler arası isteğe bağlı boşluk: bileşik soyadlar Arapçada ayrı yazılabilir (Kolcuoğlu → كولجو أوغلو).
   return [...word.toLocaleLowerCase("tr")]
-    .map((c) => ("aâeıiîoöuüû".includes(c) ? "[اأإيوىعَ]?" : ARABIC[c] ?? ""))
-    .join("");
+    .map((c) => ("aâeıiîoöuüû".includes(c) ? ARABIC_VOWEL : ARABIC[c] ?? ""))
+    .filter(Boolean)
+    .join("\\s?");
 }
 
 /** Rusça/Arapça metinde ad + soyadın başka alfabedeki yazımı (ör. "Хакан Софу") — otomatik değiştirilmez. */
 export function findOtherScriptCandidates(content: string, fullName: string): string[] {
-  const { patterns, errors } = buildOtherScriptPatterns(fullName);
+  const { patterns, surnamePatterns, errors } = buildOtherScriptPatterns(fullName);
   const text = content.replace(/<[^>]*>/g, " ");
   const out: string[] = errors.map((e) => `(${e})`);
-  for (const re of patterns) for (const m of text.matchAll(re)) out.push(m[0]);
+  const covered: [number, number][] = [];
+  for (const re of patterns) {
+    for (const m of text.matchAll(re)) {
+      out.push(m[0]);
+      covered.push([m.index!, m.index! + m[0].length]);
+    }
+  }
+  // Yalnızca soyad (başka alfabede) — tam ad eşleşmesinin parçası değilse ayrıca listelenir.
+  for (const re of surnamePatterns) {
+    for (const m of text.matchAll(re)) {
+      const start = m.index!;
+      if (!covered.some(([a, b]) => start >= a && start < b)) out.push(m[0]);
+    }
+  }
   return out;
 }
 
@@ -128,25 +146,27 @@ export function findOtherScriptCandidates(content: string, fullName: string): st
  * Kiril ve Arapça aday desenleri. Kurulamayan desen script'i ÇÖKERTMEZ: hata mesajı döner ve aday
  * listesine "desen kurulamadı" notu olarak düşer. Kiril soyad toleranslı (ilk 4 harfin birimleri).
  */
-export function buildOtherScriptPatterns(fullName: string): { patterns: RegExp[]; errors: string[] } {
+export function buildOtherScriptPatterns(fullName: string): { patterns: RegExp[]; surnamePatterns: RegExp[]; errors: string[] } {
   const words = fullName.trim().split(/\s+/);
-  if (words.length < 2) return { patterns: [], errors: [] };
+  if (words.length < 2) return { patterns: [], surnamePatterns: [], errors: [] };
   const first = words[0]!;
   const last = words[words.length - 1]!;
-  const sources: [string, string, string][] = [
-    ["Kiril", `(?<![\\p{L}])${cyrillicPattern(first)}[\\p{L}]*\\s+(?:[\\p{L}.-]+\\s+){0,2}${cyrillicPattern(last, 4)}[\\p{L}]*`, "giu"],
-    ["Arapça", `(?<![\\p{L}])${arabicPattern(first)}\\s+(?:[\\p{L}]+\\s+){0,2}${arabicPattern(last)}`, "gu"],
+  const sources: [string, string, string, "full" | "surname"][] = [
+    ["Kiril", `(?<![\\p{L}])${cyrillicPattern(first)}[\\p{L}]*\\s+(?:[\\p{L}.-]+\\s+){0,2}${cyrillicPattern(last, 4)}[\\p{L}]*`, "giu", "full"],
+    ["Arapça", `(?<![\\p{L}])${arabicPattern(first)}\\s+(?:[\\p{L}]+\\s+){0,2}${arabicPattern(last)}(?![\\p{L}])`, "gu", "full"],
+    ["Arapça soyad", `(?<![\\p{L}])${arabicPattern(last)}(?![\\p{L}])`, "gu", "surname"],
   ];
   const patterns: RegExp[] = [];
+  const surnamePatterns: RegExp[] = [];
   const errors: string[] = [];
-  for (const [label, source, flags] of sources) {
+  for (const [label, source, flags, kind] of sources) {
     try {
-      patterns.push(new RegExp(source, flags));
+      (kind === "full" ? patterns : surnamePatterns).push(new RegExp(source, flags));
     } catch (err) {
       errors.push(`${label} desen kurulamadı: ${(err as Error).message}`);
     }
   }
-  return { patterns, errors };
+  return { patterns, surnamePatterns, errors };
 }
 
 /** Önce/sonra örneği: ilk eşleşmenin çevresi (HTML'siz). */
