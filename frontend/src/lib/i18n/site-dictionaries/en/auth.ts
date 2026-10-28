@@ -66,6 +66,17 @@ export const authStrings = {
     submit: "Update password",
     backToLogin: "Back to sign in",
   },
+  // Paket U (B4) — misafir hesabı aktivasyon ekranı.
+  activate: {
+    title: "Activate your account",
+    subtitle: "Enter the code and set a new password to access the account linked to your appointment.",
+    invalidLink: "The link is invalid. Please use the link in the activation email again.",
+    intro: "Enter the 6-digit code sent to {email} and your new password.",
+    newPasswordConfirm: "New password (again)",
+    passwordsMismatch: "Passwords do not match.",
+    submit: "Activate my account",
+    haveAccount: "Already have an account? Sign in",
+  },
   verify: {
     title: "Verify your email",
     subtitle: "Enter the code we sent to your email to activate your account.",

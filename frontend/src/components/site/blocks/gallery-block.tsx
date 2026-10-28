@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BlockChrome, GalleryBlock } from "@/lib/page-builder/types";
 import { GalleryLightbox } from "./gallery-lightbox";
+import { fillUi, useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 /**
  * WordPress-tarzı çoklu görsel galeri public render — design-notes-page-builder-gallery.md madde B.
@@ -15,6 +16,7 @@ import { GalleryLightbox } from "./gallery-lightbox";
  * tam ekran önizleme açar, ok tuşları/swipe ile gezinme, ESC/overlay ile kapama sağlar.
  */
 export function GalleryBlockView({ block, chrome }: { block: GalleryBlock; chrome: BlockChrome }) {
+  const ui = useUiStrings();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const images = block.data.images;
   const layout = block.data.layout ?? "grid";
@@ -29,7 +31,7 @@ export function GalleryBlockView({ block, chrome }: { block: GalleryBlock; chrom
   }
 
   function lightboxTriggerLabel(alt: string, index: number) {
-    return alt ? `Görseli büyüt: ${alt}` : `Görseli büyüt: Görsel ${index + 1}`;
+    return fillUi(ui.enlargeImageNamed, { alt: alt || fillUi(ui.imageNumber, { n: index + 1 }) });
   }
 
   const lightbox = <GalleryLightbox images={images} index={lightboxIndex} onIndexChange={setLightboxIndex} />;
@@ -41,7 +43,7 @@ export function GalleryBlockView({ block, chrome }: { block: GalleryBlock; chrom
           <div
             ref={scrollerRef}
             role="region"
-            aria-label="Galeri, kaydırmalı görünüm"
+            aria-label={ui.galleryScroll}
             tabIndex={0}
             className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
@@ -67,7 +69,7 @@ export function GalleryBlockView({ block, chrome }: { block: GalleryBlock; chrom
             <>
               <button
                 type="button"
-                aria-label="Önceki görsel"
+                aria-label={ui.previousImage}
                 onClick={() => scrollByOneItem(-1)}
                 className="absolute left-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-foreground/70 shadow-md hover:bg-background hover:text-foreground sm:flex"
               >
@@ -75,7 +77,7 @@ export function GalleryBlockView({ block, chrome }: { block: GalleryBlock; chrom
               </button>
               <button
                 type="button"
-                aria-label="Sonraki görsel"
+                aria-label={ui.nextImage}
                 onClick={() => scrollByOneItem(1)}
                 className="absolute right-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-foreground/70 shadow-md hover:bg-background hover:text-foreground sm:flex"
               >

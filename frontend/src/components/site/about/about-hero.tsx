@@ -14,13 +14,15 @@ interface AboutHeroProps {
   primaryHref: string;
   /** Dile göre çözülmüş ikincil CTA hedefi — `null` ise (ör. hedef çapa gizli bir bölümdeyse) link render edilmez. */
   secondaryHref: string | null;
+  /** Paket U (B4) — içerik yolu (breadcrumb) gezinme bölgesinin erişilebilir adı, dile göre. */
+  breadcrumbLabel?: string;
 }
 
-export function AboutHero({ hero, homeLabel, breadcrumbCurrent, homeHref, primaryHref, secondaryHref }: AboutHeroProps) {
+export function AboutHero({ hero, homeLabel, breadcrumbCurrent, homeHref, primaryHref, secondaryHref, breadcrumbLabel = "Breadcrumb" }: AboutHeroProps) {
   return (
     <section className="bg-background">
       <div className={`${aboutContainerClass} pt-8 pb-16 sm:pt-10 lg:pb-24`}>
-        <nav aria-label="Breadcrumb" className="text-sm text-[var(--about-muted-text)]">
+        <nav aria-label={breadcrumbLabel} className="text-sm text-[var(--about-muted-text)]">
           <ol className="flex items-center gap-2">
             <li>
               <Link href={homeHref} className="inline-flex min-h-11 items-center hover:text-foreground hover:underline">

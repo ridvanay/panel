@@ -135,6 +135,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
         hero={content.hero}
         homeLabel={dict.common.home}
         breadcrumbCurrent={dict.about.breadcrumbCurrent}
+        breadcrumbLabel={dict.ui.breadcrumb}
         homeHref={withLocalePrefix("/", lang, defaultLocaleCode)}
         primaryHref={href(content.hero.primaryCta.href)}
         secondaryHref={secondaryHeroHref}

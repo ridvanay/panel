@@ -3,11 +3,13 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import type { BeforeAfterSliderBlock, BlockChrome } from "@/lib/page-builder/types";
+import { useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 /** Sürükleme adımı — klavye ile (ok tuşları) erişilebilirlik. */
 const KEYBOARD_STEP = 5;
 
 export function BeforeAfterSliderBlockView({ block, chrome }: { block: BeforeAfterSliderBlock; chrome: BlockChrome }) {
+  const ui = useUiStrings();
   const { beforeUrl, afterUrl, beforeLabel, afterLabel, orientation, initialSliderPosition } = block.data;
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -83,7 +85,7 @@ export function BeforeAfterSliderBlockView({ block, chrome }: { block: BeforeAft
           className="absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-white text-foreground shadow-lg active:cursor-grabbing"
           style={handleStyle}
           role="slider"
-          aria-label="Karşılaştırma tutamacı"
+          aria-label={ui.compareHandle}
           aria-valuenow={Math.round(percent)}
           aria-valuemin={0}
           aria-valuemax={100}

@@ -14,6 +14,8 @@ import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { fetchLegalPagesClient, resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fillUi, useUiStrings } from "@/lib/i18n/use-ui-strings";
+import type { UiStrings } from "@/lib/i18n/site-dictionaries/en/ui";
 import { useAuthOptional } from "@/context/auth-context";
 import type { LiveChatPosition, SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -89,35 +91,39 @@ const PHONE_FORMAT_REGEX = /^\+?[0-9\s()-]{7,20}$/;
  * bırakma HATA ÜRETİR; doldurulmuş ama hatalı biçimli bir alan zorunlu OLMASA bile reddedilir
  * (görev talimatı: "e-posta/telefon formatı basit bir regex ile" doğrulanır).
  */
-const preChatBaseSchema = z.object({
-  visitorName: z.string().trim().max(120, "En fazla 120 karakter olmalı.").optional(),
-  visitorPhone: z
-    .string()
-    .trim()
-    .max(40, "En fazla 40 karakter olmalı.")
-    .optional()
-    .refine((value) => !value || PHONE_FORMAT_REGEX.test(value), "Geçerli bir telefon numarası girin."),
-  visitorEmail: z
-    .string()
-    .trim()
-    .max(200, "En fazla 200 karakter olmalı.")
-    .optional()
-    .refine((value) => !value || z.string().email().safeParse(value).success, "Geçerli bir e-posta adresi girin."),
-  message: z.string().trim().min(1, "Lütfen bir mesaj yazın.").max(2000, "En fazla 2000 karakter olmalı."),
-});
+/** Paket U (B4) — doğrulama mesajları dile göre (`ui` sözlüğü). */
+function buildPreChatBaseSchema(ui: UiStrings) {
+  const max = (n: number) => fillUi(ui.chatErrMax, { max: n });
+  return z.object({
+    visitorName: z.string().trim().max(120, max(120)).optional(),
+    visitorPhone: z
+      .string()
+      .trim()
+      .max(40, max(40))
+      .optional()
+      .refine((value) => !value || PHONE_FORMAT_REGEX.test(value), ui.chatErrPhone),
+    visitorEmail: z
+      .string()
+      .trim()
+      .max(200, max(200))
+      .optional()
+      .refine((value) => !value || z.string().email().safeParse(value).success, ui.chatErrEmail),
+    message: z.string().trim().min(1, ui.chatErrMessage).max(2000, max(2000)),
+  });
+}
 
-type PreChatFormValues = z.infer<typeof preChatBaseSchema>;
+type PreChatFormValues = z.infer<ReturnType<typeof buildPreChatBaseSchema>>;
 
-function buildPreChatSchema(require: { name: boolean; phone: boolean; email: boolean }) {
-  return preChatBaseSchema.superRefine((values, ctx) => {
+function buildPreChatSchema(require: { name: boolean; phone: boolean; email: boolean }, ui: UiStrings) {
+  return buildPreChatBaseSchema(ui).superRefine((values, ctx) => {
     if (require.name && !values.visitorName?.trim()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorName"], message: "Ad soyad zorunludur." });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorName"], message: ui.chatErrNameRequired });
     }
     if (require.phone && !values.visitorPhone?.trim()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorPhone"], message: "Telefon numarası zorunludur." });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorPhone"], message: ui.chatErrPhoneRequired });
     }
     if (require.email && !values.visitorEmail?.trim()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorEmail"], message: "E-posta zorunludur." });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorEmail"], message: ui.chatErrEmailRequired });
     }
   });
 }
@@ -157,6 +163,7 @@ interface InternalChatPanelProps {
 
 function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, requirePhone, requireEmail }: InternalChatPanelProps) {
   const localize = useLocalizePath();
+  const ui = useUiStrings();
   // `favorite-button.tsx` İLE AYNI desen: `status === "loading"` da `unauthenticated` gibi ele
   // alınır (henüz TEYİT EDİLMEMİŞ bir giriş durumunda form YANLIŞLIKLA atlanmaz/gösterilmez —
   // `AuthProvider` bu widget'ın MONTE EDİLDİĞİ layout'un kökünde olduğundan pratikte panel
@@ -175,8 +182,8 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
   // koşul otomatik olarak `false`'a döner (ayrı bir "form gönderildi" bayrağı GEREKMEZ).
   const showPreChatForm = preChatEnabled && !authenticated && !session;
   const preChatFormSchema = useMemo(
-    () => buildPreChatSchema({ name: requireName, phone: requirePhone, email: requireEmail }),
-    [requireName, requirePhone, requireEmail]
+    () => buildPreChatSchema({ name: requireName, phone: requirePhone, email: requireEmail }, ui),
+    [requireName, requirePhone, requireEmail, ui]
   );
   const {
     register: registerPreChat,
@@ -310,7 +317,7 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 404) {
         resetSession();
-        setSendError("Oturumunuz sona ermiş. Yeni bir sohbet başlatabilirsiniz.");
+        setSendError(ui.chatSessionExpired);
       } else if (err instanceof ApiClientError && err.code === "SUPPORT_SESSION_CLOSED") {
         setStatus("CLOSED");
         setSendError(null);
@@ -358,16 +365,16 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
   return (
     <div
       role="dialog"
-      aria-label={`${siteName} Destek`}
+      aria-label={fillUi(ui.chatSupport, { site: siteName })}
       className="flex h-[28rem] w-[22rem] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-[var(--site-radius)] border border-border bg-surface shadow-lg"
       // Alt çubuk + güvenli alan varken pencere ekranın üstünden taşmasın.
       style={{ maxHeight: "calc(100dvh - var(--site-bottom-inset, 0px) - env(safe-area-inset-bottom, 0px) - 3rem)" }}
     >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-primary/5 px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">{siteName} Destek</p>
+        <p className="text-sm font-semibold text-foreground">{fillUi(ui.chatSupport, { site: siteName })}</p>
         <button
           type="button"
-          aria-label="Sohbeti kapat"
+          aria-label={ui.chatClose}
           onClick={onClose}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground/60 transition-colors duration-300 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         >
@@ -378,7 +385,7 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
       {showPreChatForm ? (
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
           <p className="text-sm text-foreground">
-            Merhaba! Size daha hızlı yardımcı olabilmemiz için önce birkaç bilgi rica ediyoruz.
+            {ui.chatPreChatIntro}
           </p>
           <form
             // `handleSend`/`handleAssign` İLE AYNI desen (dosya geneli) — RHF'in `handleSubmit(cb)`
@@ -387,19 +394,19 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
             // bunu render'da doğrudan `handlePreChatFormSubmit(onPreChatSubmit)` çağrısından AYIRT
             // edemez — ERTELENMİŞ (deferred) çağrı bu belirsizliği ORTADAN KALDIRIR.
             onSubmit={(e) => void handlePreChatFormSubmit(onPreChatSubmit)(e)}
-            aria-label="Görüşme öncesi bilgi formu"
+            aria-label={ui.chatPreChatFormLabel}
             className="space-y-3"
             noValidate
           >
             <div className="space-y-1">
               <label htmlFor="pre-chat-visitor-name" className="text-xs font-medium text-foreground/70">
-                Adınız Soyadınız{requireName && <span className="text-danger"> *</span>}
+                {ui.chatNameLabel}{requireName && <span className="text-danger"> *</span>}
               </label>
               <input
                 id="pre-chat-visitor-name"
                 type="text"
                 autoComplete="name"
-                placeholder="Adınız Soyadınız"
+                placeholder={ui.chatNameLabel}
                 aria-invalid={preChatErrors.visitorName ? true : undefined}
                 aria-describedby={preChatErrors.visitorName ? "pre-chat-visitor-name-error" : undefined}
                 className={cn(PRE_CHAT_INPUT_CLASSES, "h-9")}
@@ -414,13 +421,13 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
 
             <div className="space-y-1">
               <label htmlFor="pre-chat-visitor-phone" className="text-xs font-medium text-foreground/70">
-                Telefon Numaranız{requirePhone && <span className="text-danger"> *</span>}
+                {ui.chatPhoneLabel}{requirePhone && <span className="text-danger"> *</span>}
               </label>
               <input
                 id="pre-chat-visitor-phone"
                 type="tel"
                 autoComplete="tel"
-                placeholder="+90 5XX XXX XX XX"
+                placeholder={ui.chatPhonePlaceholder}
                 aria-invalid={preChatErrors.visitorPhone ? true : undefined}
                 aria-describedby={preChatErrors.visitorPhone ? "pre-chat-visitor-phone-error" : undefined}
                 className={cn(PRE_CHAT_INPUT_CLASSES, "h-9")}
@@ -435,13 +442,13 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
 
             <div className="space-y-1">
               <label htmlFor="pre-chat-visitor-email" className="text-xs font-medium text-foreground/70">
-                E-posta Adresiniz{requireEmail && <span className="text-danger"> *</span>}
+                {ui.chatEmailLabel}{requireEmail && <span className="text-danger"> *</span>}
               </label>
               <input
                 id="pre-chat-visitor-email"
                 type="email"
                 autoComplete="email"
-                placeholder="ornek@eposta.com"
+                placeholder={ui.chatEmailPlaceholder}
                 aria-invalid={preChatErrors.visitorEmail ? true : undefined}
                 aria-describedby={preChatErrors.visitorEmail ? "pre-chat-visitor-email-error" : undefined}
                 className={cn(PRE_CHAT_INPUT_CLASSES, "h-9")}
@@ -456,12 +463,12 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
 
             <div className="space-y-1">
               <label htmlFor="pre-chat-message" className="text-xs font-medium text-foreground/70">
-                Mesajınız<span className="text-danger"> *</span>
+                {ui.chatMessageLabel}<span className="text-danger"> *</span>
               </label>
               <textarea
                 id="pre-chat-message"
                 rows={3}
-                placeholder="Size nasıl yardımcı olabiliriz?"
+                placeholder={ui.chatMessagePlaceholder}
                 aria-invalid={preChatErrors.message ? true : undefined}
                 aria-describedby={preChatErrors.message ? "pre-chat-message-error" : undefined}
                 className={cn(PRE_CHAT_INPUT_CLASSES, "min-h-[4.5rem] resize-none py-2")}
@@ -481,16 +488,16 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
               disabled={preChatSubmitting}
               className="flex h-9 w-full items-center justify-center rounded-[var(--site-radius)] bg-primary text-sm font-medium text-primary-foreground transition-colors duration-300 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {preChatSubmitting ? "Gönderiliyor…" : "Görüşmeyi Başlat"}
+              {preChatSubmitting ? ui.chatSending : ui.chatStart}
             </button>
           </form>
         </div>
       ) : (
         <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
           <div className="max-w-[85%] rounded-[var(--site-radius)] bg-muted px-3 py-2 text-sm text-foreground">
-            Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?
+            {ui.chatWelcome}
           </div>
-          {loadingHistory && <p className="text-xs text-foreground/40">Yükleniyor…</p>}
+          {loadingHistory && <p className="text-xs text-foreground/40">{ui.chatLoading}</p>}
           {messages.map((m) => (
             <div
               key={m.id}
@@ -511,21 +518,25 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
        * ile "bir daha gösterme" YAPILMAZ — her mesajdan önce hatırlatılmalıdır.
        */}
       <div className="space-y-1 border-t border-border bg-warning/5 px-4 py-2 text-xs text-foreground/70">
-        <p>Lütfen sağlık durumunuza ilişkin ayrıntı paylaşmayın; tıbbi konular için randevu oluşturun.</p>
+        <p>{ui.chatHealthWarning}</p>
         <p>
-          Bu sohbeti kullanarak{" "}
-          {kvkkPage ? (
-            <Link
-              href={localize(`/${kvkkPage.slug}`)}
-              target="_blank"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              KVKK Aydınlatma Metni
-            </Link>
-          ) : (
-            "KVKK Aydınlatma Metni"
-          )}
-          {"'"}ni kabul etmiş olursunuz.
+          {ui.chatKvkkSentence.split("{notice}").map((part, i, parts) => (
+            <span key={i}>
+              {part}
+              {i < parts.length - 1 &&
+                (kvkkPage ? (
+                  <Link
+                    href={localize(`/${kvkkPage.slug}`)}
+                    target="_blank"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {ui.chatKvkkLink}
+                  </Link>
+                ) : (
+                  ui.chatKvkkLink
+                ))}
+            </span>
+          ))}
         </p>
       </div>
 
@@ -533,7 +544,7 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
 
       {showPreChatForm ? null : isClosed ? (
         <div className="flex items-center justify-between gap-2 border-t border-border p-3">
-          <p className="text-xs text-foreground/60">Bu sohbet kapatıldı.</p>
+          <p className="text-xs text-foreground/60">{ui.chatClosed}</p>
           <button
             type="button"
             onClick={() => {
@@ -542,13 +553,13 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
             }}
             className="text-xs font-medium text-primary hover:underline"
           >
-            Yeni Sohbet Başlat
+            {ui.chatNew}
           </button>
         </div>
       ) : (
         <form onSubmit={(e) => void handleSend(e)} className="flex items-center gap-2 border-t border-border p-3">
           <label htmlFor="live-chat-message-input" className="sr-only">
-            Mesajınızı yazın
+            {ui.chatInputLabel}
           </label>
           <input
             id="live-chat-message-input"
@@ -558,12 +569,12 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
               setDraft(e.target.value);
               bump();
             }}
-            placeholder="Mesajınızı yazın…"
+            placeholder={ui.chatInputPlaceholder}
             className="h-9 w-full min-w-0 rounded-[var(--site-radius)] border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/30"
           />
           <button
             type="submit"
-            aria-label="Mesajı gönder"
+            aria-label={ui.chatSend}
             disabled={!draft.trim() || sending}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--site-radius)] bg-primary text-primary-foreground transition-colors duration-300 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -594,6 +605,7 @@ interface InternalLiveChatWidgetProps {
 
 /** "internal" sağlayıcı — kendi (gerçek backend'e bağlı) sohbet arayüzü. */
 function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireName, requirePhone, requireEmail }: InternalLiveChatWidgetProps) {
+  const ui = useUiStrings();
   const [open, setOpen] = useState(false);
   const side = position === "BOTTOM_LEFT" ? "left" : "right";
 
@@ -636,7 +648,7 @@ function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireNam
           <motion.button
             key="trigger"
             type="button"
-            aria-label="Canlı destek sohbetini aç"
+            aria-label={ui.chatOpen}
             onClick={() => setOpen(true)}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}

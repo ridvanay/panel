@@ -100,7 +100,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
     <div className={cn("contact-page", aboutSerif.variable)}>
       <section className="bg-background">
         <div className={cn(aboutContainerClass, "pt-8 pb-16 sm:pt-10 lg:pb-24")}>
-          <nav aria-label="Breadcrumb" className="text-sm text-[var(--about-muted-text)]">
+          <nav aria-label={dict.ui.breadcrumb} className="text-sm text-[var(--about-muted-text)]">
             <ol className="flex items-center gap-2">
               <li>
                 <Link href={homeHref} className="inline-flex min-h-11 items-center hover:text-foreground hover:underline">

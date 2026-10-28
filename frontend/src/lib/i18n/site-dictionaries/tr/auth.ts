@@ -63,6 +63,17 @@ export const authStrings: AuthStrings = {
     submit: "Şifreyi güncelle",
     backToLogin: "Girişe dön",
   },
+  // Paket U (B4) — misafir hesabı aktivasyon ekranı.
+  activate: {
+    title: "Hesabınızı aktive edin",
+    subtitle: "Randevunuzla ilişkilendirilen hesabınıza erişmek için kodu ve yeni parolanızı belirleyin.",
+    invalidLink: "Bağlantı geçersiz. Aktivasyon e-postasındaki bağlantıyı tekrar kullanın.",
+    intro: "{email} adresine gönderilen 6 haneli kodu ve yeni parolanızı girin.",
+    newPasswordConfirm: "Yeni şifre (tekrar)",
+    passwordsMismatch: "Parolalar eşleşmiyor.",
+    submit: "Hesabımı aktive et",
+    haveAccount: "Zaten hesabınız var mı? Giriş yapın",
+  },
   verify: {
     title: "E-postanızı doğrulayın",
     subtitle: "Hesabınızı etkinleştirmek için e-postanıza gönderdiğimiz kodu girin.",

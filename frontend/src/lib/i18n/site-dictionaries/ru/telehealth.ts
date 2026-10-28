@@ -76,6 +76,18 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "Свободное время и запись",
 
   specialtiesPageTitle: "Наши специализации",
+
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+
+  doctorsMetaDescription: "Запишитесь на онлайн-консультацию к нашим врачам по таким специальностям, как {specialties}.",
+
+  doctorsMetaDescriptionDefault: "Запишитесь на онлайн-консультацию к нашим врачам.",
+
+  specialtiesMetaDescription: "Познакомьтесь с нашими врачами по таким специальностям, как {specialties}.",
+
+  specialtiesMetaDescriptionDefault: "Ознакомьтесь с нашими специальностями и запишитесь на онлайн-консультацию.",
+
+  specialtyMetaDescription: "Запишитесь на онлайн-консультацию к нашим врачам по направлению «{specialty}».",
   specialtiesPageSubtitle: "Найдите врача по специализации и запишитесь на онлайн-приём.",
   specialtiesEmptyTitle: "Специализации не найдены",
   specialtiesEmptyDescription: "Сейчас нет специализаций для отображения.",

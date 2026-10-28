@@ -1,6 +1,9 @@
+"use client";
+
 import { Quote, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BlockChrome, TestimonialBlock } from "@/lib/page-builder/types";
+import { fillUi, useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 function gridColsClass(count: number): string {
   if (count === 1) return "grid-cols-1";
@@ -19,6 +22,7 @@ function initials(name: string): string {
 }
 
 export function TestimonialBlockView({ block, chrome }: { block: TestimonialBlock; chrome: BlockChrome }) {
+  const ui = useUiStrings();
   const items = block.data.items;
 
   return (
@@ -28,7 +32,7 @@ export function TestimonialBlockView({ block, chrome }: { block: TestimonialBloc
           <figure key={item.id} className="flex flex-col gap-4 rounded-lg border border-border p-6">
             <Quote className="h-6 w-6 text-primary/40" aria-hidden />
             {item.rating && (
-              <div className="flex gap-0.5" role="img" aria-label={`5 üzerinden ${item.rating} yıldız`}>
+              <div className="flex gap-0.5" role="img" aria-label={fillUi(ui.ratingOutOf5, { rating: item.rating })}>
                 {Array.from({ length: 5 }, (_, i) => (
                   <Star
                     key={i}

@@ -8,7 +8,7 @@ import { DoctorFilters } from "@/components/site/telehealth/doctor-filters";
 import { EmptyState } from "@/components/ui/empty-state";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
-import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
+import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
 
 /**
@@ -54,12 +54,13 @@ export async function generateMetadata({
         .filter((d) => d.specialty)
         .map((d) => d.specialty!.name),
     ),
-  ).sort((a, b) => a.localeCompare(b, "tr"));
+  ).sort((a, b) => a.localeCompare(b, contentLocaleToIntl(lang)));
 
+  // Paket U (B4) — meta açıklaması dile göre (önceden her dilde Türkçe sabit metindi).
   const description =
     specialtyNames.length > 0
-      ? `${specialtyNames.slice(0, 6).join(", ")} gibi uzmanlık alanlarında doktorlarımızla online randevu alın.`
-      : "Doktorlarımızla online randevu alın.";
+      ? formatSiteString(dict.telehealth.doctorsMetaDescription, { specialties: specialtyNames.slice(0, 6).join(", ") })
+      : dict.telehealth.doctorsMetaDescriptionDefault;
 
   return {
     title: pageTitle,

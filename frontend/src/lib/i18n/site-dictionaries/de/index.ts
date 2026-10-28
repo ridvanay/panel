@@ -9,6 +9,7 @@ import { contactStrings } from "./contact";
 import { homeStrings } from "./home";
 import { portalStrings } from "./portal";
 import { consentStrings } from "./consent";
+import { uiStrings } from "./ui";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -21,4 +22,5 @@ export const siteDictionary: SiteDictionary = {
   home: homeStrings,
   portal: portalStrings,
   consent: consentStrings,
+  ui: uiStrings,
 };

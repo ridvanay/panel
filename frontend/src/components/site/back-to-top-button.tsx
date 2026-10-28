@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
+import { useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 const SCROLL_THRESHOLD = 400;
 
@@ -12,6 +13,7 @@ const SCROLL_THRESHOLD = 400;
  * (`--site-chat-stack-right`, bkz. `live-chat-widget.tsx`).
  */
 export function BackToTopButton() {
+  const ui = useUiStrings();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -24,7 +26,7 @@ export function BackToTopButton() {
   return (
     <button
       type="button"
-      aria-label="Yukarı çık"
+      aria-label={ui.backToTop}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}

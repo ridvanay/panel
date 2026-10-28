@@ -113,6 +113,12 @@ export const telehealthStrings = {
 
   // --- /specialties (madde 10) ---
   specialtiesPageTitle: "Our Areas of Expertise",
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+  doctorsMetaDescription: "Book an online consultation with our doctors in specialties such as {specialties}.",
+  doctorsMetaDescriptionDefault: "Book an online consultation with our doctors.",
+  specialtiesMetaDescription: "Explore our doctors in specialties such as {specialties}.",
+  specialtiesMetaDescriptionDefault: "Explore our specialties and book an online consultation.",
+  specialtyMetaDescription: "Book an online consultation with our doctors in {specialty}.",
   specialtiesPageSubtitle: "Discover our doctors by specialty and book your online appointment.",
   specialtiesEmptyTitle: "No specialty found",
   specialtiesEmptyDescription: "There are currently no specialties to list.",

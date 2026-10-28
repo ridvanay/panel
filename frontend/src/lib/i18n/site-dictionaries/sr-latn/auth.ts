@@ -64,6 +64,17 @@ export const authStrings: AuthStrings = {
     submit: "Ažuriraj lozinku",
     backToLogin: "Nazad na prijavu",
   },
+  // Paket U (B4) — misafir hesabı aktivasyon ekranı.
+  activate: {
+    title: "Aktivirajte nalog",
+    subtitle: "Unesite kod i postavite novu lozinku da biste pristupili nalogu povezanom sa Vašim terminom.",
+    invalidLink: "Link nije ispravan. Ponovo upotrebite link iz imejla za aktivaciju.",
+    intro: "Unesite šestocifreni kod poslat na {email} i novu lozinku.",
+    newPasswordConfirm: "Nova lozinka (ponovo)",
+    passwordsMismatch: "Lozinke se ne podudaraju.",
+    submit: "Aktiviraj moj nalog",
+    haveAccount: "Već imate nalog? Prijavite se",
+  },
   verify: {
     title: "Potvrdite svoju e-poštu",
     subtitle: "Unesite kôd koji smo poslali na Vašu e-poštu da biste aktivirali svoj nalog.",

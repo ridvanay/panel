@@ -8,6 +8,7 @@ import type { ContactStrings } from "./en/contact";
 import type { HomeStrings } from "./en/home";
 import type { PortalStrings } from "./en/portal";
 import type { ConsentStrings } from "./en/consent";
+import type { UiStrings } from "./en/ui";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -28,6 +29,8 @@ export type SiteDictionary = {
   home: HomeStrings;
   portal: PortalStrings;
   consent: ConsentStrings;
+  /** Paket U (B4) — erişilebilirlik etiketleri + canlı destek sohbeti. */
+  ui: UiStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings };

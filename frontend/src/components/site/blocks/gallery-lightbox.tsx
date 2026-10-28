@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fillUi, useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 interface GalleryLightboxProps {
   images: { url: string; alt: string }[];
@@ -31,6 +32,7 @@ export const CONTROL_BUTTON_CLASS =
  * base-ui'ye güvenmek yerine garanti altına alan savunma katmanı.
  */
 export function GalleryLightbox({ images, index, onIndexChange }: GalleryLightboxProps) {
+  const ui = useUiStrings();
   const open = index !== null;
   const currentImage = index !== null ? images[index] : null;
   const touchStartX = useRef<number | null>(null);
@@ -97,12 +99,12 @@ export function GalleryLightbox({ images, index, onIndexChange }: GalleryLightbo
           className="fixed inset-0 z-50 flex flex-col outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         >
           <DialogPrimitive.Title className="sr-only">
-            {currentImage?.alt || (index !== null ? `Görsel ${index + 1}` : "Galeri önizleme")}
+            {currentImage?.alt || (index !== null ? fillUi(ui.imageNumber, { n: index + 1 }) : ui.galleryPreview)}
           </DialogPrimitive.Title>
 
           <DialogPrimitive.Close
             ref={closeRef}
-            aria-label="Kapat"
+            aria-label={ui.close}
             className={cn(CONTROL_BUTTON_CLASS, "absolute right-3 top-3 z-10 sm:right-6 sm:top-6")}
           >
             <X className="h-5 w-5" />
@@ -112,7 +114,7 @@ export function GalleryLightbox({ images, index, onIndexChange }: GalleryLightbo
             <button
               ref={prevRef}
               type="button"
-              aria-label="Önceki görsel"
+              aria-label={ui.previousImage}
               onClick={() => index !== null && goTo(index - 1)}
               className={cn(CONTROL_BUTTON_CLASS, "absolute left-2 top-1/2 z-10 -translate-y-1/2 sm:left-4")}
             >
@@ -124,7 +126,7 @@ export function GalleryLightbox({ images, index, onIndexChange }: GalleryLightbo
             <button
               ref={nextRef}
               type="button"
-              aria-label="Sonraki görsel"
+              aria-label={ui.nextImage}
               onClick={() => index !== null && goTo(index + 1)}
               className={cn(CONTROL_BUTTON_CLASS, "absolute right-2 top-1/2 z-10 -translate-y-1/2 sm:right-4")}
             >

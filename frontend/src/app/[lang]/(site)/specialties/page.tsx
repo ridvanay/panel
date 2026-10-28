@@ -6,7 +6,7 @@ import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { SpecialtyCard } from "@/components/site/telehealth/specialty-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
-import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
+import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
 
 /**
@@ -32,10 +32,11 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
   const pageTitle = dict.telehealth.specialtiesPageTitle;
 
   const specialtyNames = specialties.map((s) => s.name);
+  // Paket U (B4) — meta açıklaması dile göre (önceden her dilde Türkçe sabit metindi).
   const description =
     specialtyNames.length > 0
-      ? `${specialtyNames.slice(0, 6).join(", ")} gibi uzmanlık alanlarında doktorlarımızı keşfedin.`
-      : "Uzmanlık alanlarımızı keşfedin ve online randevu alın.";
+      ? formatSiteString(dict.telehealth.specialtiesMetaDescription, { specialties: specialtyNames.slice(0, 6).join(", ") })
+      : dict.telehealth.specialtiesMetaDescriptionDefault;
 
   return {
     title: pageTitle,

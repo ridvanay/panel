@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { BlockChrome, ImageBlock, ImageRadius } from "@/lib/page-builder/types";
 import { linkAttrs } from "@/lib/page-builder/link-attrs";
 import { GalleryLightbox } from "./gallery-lightbox";
+import { fillUi, useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 const RADIUS_CLASS: Record<ImageRadius, string> = {
   none: "",
@@ -17,6 +18,7 @@ const RADIUS_CLASS: Record<ImageRadius, string> = {
 /** `chrome` bu blokta davranışsal fark YARATMAZ — bugün de gutter'sız (edge-to-edge), yalnızca
  *  arayüz tutarlılığı için `BlockRenderer`'ın diğer yaprak görünümleriyle AYNI imzayı taşır. */
 export function ImageBlockView({ block }: { block: ImageBlock; chrome: BlockChrome }) {
+  const ui = useUiStrings();
   const { url, alt, caption, radius, lightbox, href } = block.data;
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const radiusClass = RADIUS_CLASS[radius ?? "none"];
@@ -36,7 +38,7 @@ export function ImageBlockView({ block }: { block: ImageBlock; chrome: BlockChro
         <>
           <button
             type="button"
-            aria-label={alt ? `Görseli büyüt: ${alt}` : "Görseli büyüt"}
+            aria-label={alt ? fillUi(ui.enlargeImageNamed, { alt }) : ui.enlargeImage}
             onClick={() => setLightboxOpen(true)}
             className={cn("block w-full cursor-zoom-in outline-none focus-visible:ring-3 focus-visible:ring-ring/50", radiusClass)}
           >

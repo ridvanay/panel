@@ -63,6 +63,17 @@ export const authStrings: AuthStrings = {
     submit: "Passwort aktualisieren",
     backToLogin: "Zurück zur Anmeldung",
   },
+  // Paket U (B4) — misafir hesabı aktivasyon ekranı.
+  activate: {
+    title: "Aktivieren Sie Ihr Konto",
+    subtitle: "Geben Sie den Code ein und legen Sie ein neues Passwort fest, um auf das mit Ihrem Termin verknüpfte Konto zuzugreifen.",
+    invalidLink: "Der Link ist ungültig. Bitte verwenden Sie erneut den Link aus der Aktivierungs-E-Mail.",
+    intro: "Geben Sie den an {email} gesendeten 6-stelligen Code und Ihr neues Passwort ein.",
+    newPasswordConfirm: "Neues Passwort (wiederholen)",
+    passwordsMismatch: "Die Passwörter stimmen nicht überein.",
+    submit: "Mein Konto aktivieren",
+    haveAccount: "Sie haben bereits ein Konto? Anmelden",
+  },
   verify: {
     title: "E-Mail-Adresse bestätigen",
     subtitle: "Geben Sie den Code ein, den wir Ihnen per E-Mail gesendet haben, um Ihr Konto zu aktivieren.",

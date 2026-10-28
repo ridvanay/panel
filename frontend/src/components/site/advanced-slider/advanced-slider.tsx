@@ -22,6 +22,7 @@ import {
   scrimBackground,
   type DeviceBackground,
 } from "./background";
+import { useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 /** §5.1 architect — eşik 50px VEYA hız > 0.4px/ms; `slide` track sürüklemesinde de AYNI eşik. */
 const SWIPE_THRESHOLD_PX = 50;
@@ -350,6 +351,7 @@ function crossfadeMotionProps(
  * ÖLÇÜLMEZ (bkz. §5.2).
  */
 export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlider; chrome?: BlockChrome }) {
+  const ui = useUiStrings();
   const rawId = useId();
   const rootId = `adv-slider-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
   const slides = slider.slides;
@@ -614,7 +616,7 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
           <button
             type="button"
             onClick={prev}
-            aria-label="Önceki slayt"
+            aria-label={ui.previousSlide}
             className={cn(
               "absolute left-4 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border backdrop-blur-sm transition-all duration-200 hover:scale-105 sm:left-6",
               navTheme.control
@@ -625,7 +627,7 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
           <button
             type="button"
             onClick={next}
-            aria-label="Sonraki slayt"
+            aria-label={ui.nextSlide}
             className={cn(
               "absolute right-4 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border backdrop-blur-sm transition-all duration-200 hover:scale-105 sm:right-6",
               navTheme.control
@@ -659,7 +661,7 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
         <button
           type="button"
           onClick={() => setPlaying((p) => !p)}
-          aria-label={playing ? "Otomatik oynatmayı duraklat" : "Otomatik oynatmayı başlat"}
+          aria-label={playing ? ui.pauseAutoplay : ui.startAutoplay}
           className={cn(
             "absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border backdrop-blur-sm transition-all duration-200 hover:scale-105 sm:bottom-6 sm:right-6",
             navTheme.control

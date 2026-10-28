@@ -76,6 +76,18 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "Disponibilidad y reserva",
 
   specialtiesPageTitle: "Nuestras áreas de especialización",
+
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+
+  doctorsMetaDescription: "Reserve una consulta online con nuestros médicos en especialidades como {specialties}.",
+
+  doctorsMetaDescriptionDefault: "Reserve una consulta online con nuestros médicos.",
+
+  specialtiesMetaDescription: "Conozca a nuestros médicos en especialidades como {specialties}.",
+
+  specialtiesMetaDescriptionDefault: "Descubra nuestras especialidades y reserve una consulta online.",
+
+  specialtyMetaDescription: "Reserve una consulta online con nuestros médicos de {specialty}.",
   specialtiesPageSubtitle: "Descubra a nuestros médicos por especialidad y reserve su cita en línea.",
   specialtiesEmptyTitle: "No se ha encontrado ninguna especialidad",
   specialtiesEmptyDescription: "En este momento no hay especialidades que mostrar.",

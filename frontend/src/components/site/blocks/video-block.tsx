@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { getVideoEmbedUrl } from "@/lib/page-builder/video-embed";
 import { CONTROL_BUTTON_CLASS } from "./gallery-lightbox";
 import type { BlockChrome, VideoBlock } from "@/lib/page-builder/types";
+import { useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 /** Bir sağlayıcının (iframe VEYA `<video>`) gerçek oynatıcı elemanını üretir — `playStyle`ten
  *  BAĞIMSIZ, hem inline hem lightbox modalinde aynen kullanılır. `forceAutoplay` yalnızca
@@ -20,6 +21,7 @@ function VideoPlayer({
   forceAutoplay?: boolean;
   className?: string;
 }) {
+  const ui = useUiStrings();
   const { provider, url, autoplay, muted, loop } = block.data;
   const effectiveAutoplay = forceAutoplay || autoplay;
   const embedUrl = provider === "mp4" ? null : getVideoEmbedUrl(provider, url, { autoplay: effectiveAutoplay, muted, loop });
@@ -42,7 +44,7 @@ function VideoPlayer({
   return (
     <iframe
       src={embedUrl}
-      title="Video"
+      title={ui.video}
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
       allowFullScreen
       className={cn("h-full w-full", className)}
@@ -52,6 +54,7 @@ function VideoPlayer({
 
 /** ui-designer §4.1 — kapak + oynat rozeti tetikleyici kartı (`playStyle: "lightbox"`). */
 function LightboxTrigger({ block }: { block: VideoBlock }) {
+  const ui = useUiStrings();
   const [open, setOpen] = useState(false);
   const { coverUrl } = block.data;
 
@@ -59,7 +62,7 @@ function LightboxTrigger({ block }: { block: VideoBlock }) {
     <>
       <button
         type="button"
-        aria-label="Videoyu oynat"
+        aria-label={ui.playVideo}
         onClick={() => setOpen(true)}
         className="group relative block w-full overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
@@ -85,9 +88,9 @@ function LightboxTrigger({ block }: { block: VideoBlock }) {
         <DialogPrimitive.Portal>
           <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
           <DialogPrimitive.Popup className="fixed inset-0 z-50 flex items-center justify-center p-4 outline-none sm:p-10 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0">
-            <DialogPrimitive.Title className="sr-only">Video</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="sr-only">{ui.video}</DialogPrimitive.Title>
             <DialogPrimitive.Close
-              aria-label="Kapat"
+              aria-label={ui.close}
               className={cn(CONTROL_BUTTON_CLASS, "absolute end-3 top-3 z-10 sm:end-6 sm:top-6")}
             >
               <X className="h-5 w-5" />

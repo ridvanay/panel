@@ -61,10 +61,11 @@ function buildSelfLanguageAlternates(locales: Locale[], defaultLocaleCode: strin
 
 export async function generateMetadata({ params }: SpecialtyDetailPageProps): Promise<Metadata> {
   const { lang, slug } = await params;
-  const [specialty, locales, settings] = await Promise.all([
+  const [specialty, locales, settings, dict] = await Promise.all([
     fetchSpecialtyBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
+    getSiteDictionary(lang),
   ]);
   if (!specialty) return {};
 
@@ -73,7 +74,7 @@ export async function generateMetadata({ params }: SpecialtyDetailPageProps): Pr
   const title = specialty.name;
   const description = specialty.description
     ? truncateForDescription(specialty.description)
-    : `${specialty.name} uzmanlık alanındaki doktorlarımızla online randevu alın.`;
+    : formatSiteString(dict.telehealth.specialtyMetaDescription, { specialty: specialty.name });
 
   return {
     title,

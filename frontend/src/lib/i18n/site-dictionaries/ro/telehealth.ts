@@ -76,6 +76,18 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "Disponibilitate și programare",
 
   specialtiesPageTitle: "Domeniile noastre de competență",
+
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+
+  doctorsMetaDescription: "Programați o consultație online cu medicii noștri în specialități precum {specialties}.",
+
+  doctorsMetaDescriptionDefault: "Programați o consultație online cu medicii noștri.",
+
+  specialtiesMetaDescription: "Descoperiți medicii noștri în specialități precum {specialties}.",
+
+  specialtiesMetaDescriptionDefault: "Descoperiți specialitățile noastre și programați o consultație online.",
+
+  specialtyMetaDescription: "Programați o consultație online cu medicii noștri din domeniul {specialty}.",
   specialtiesPageSubtitle: "Descoperiți medicii noștri după specialitate și faceți-vă programarea online.",
   specialtiesEmptyTitle: "Nu a fost găsită nicio specialitate",
   specialtiesEmptyDescription: "Momentan nu există specialități de afișat.",

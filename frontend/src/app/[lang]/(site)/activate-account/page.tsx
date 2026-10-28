@@ -18,9 +18,9 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 /** §4.3/§4.5 — `verify-email` ile BİREBİR AYNI jenerik hata (`VERIFICATION_CODE_INVALID`),
  * amaç eşleşmezse de aynı gövde döner (numaralandırma yüzeyi yok). */
-function activateAccountErrorMessage(err: unknown): string {
+function activateAccountErrorMessage(err: unknown, invalidCodeMessage: string): string {
   if (err instanceof ApiClientError && err.code === "VERIFICATION_CODE_INVALID") {
-    return "Kod hatalı veya süresi dolmuş, yeniden gönderin.";
+    return invalidCodeMessage;
   }
   return friendlyErrorMessage(err);
 }
@@ -36,7 +36,10 @@ function ActivateAccountForm() {
   const router = useRouter();
   const localize = useLocalizePath();
   const email = useSearchParams().get("email");
-  const passwordStrings = useAuthStrings().passwordRules;
+  // Paket U (B4) — ekran metinleri dile göre (`auth.activate`, `auth.verify`, `auth.reset`).
+  const authStrings = useAuthStrings();
+  const passwordStrings = authStrings.passwordRules;
+  const t = authStrings.activate;
 
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -46,7 +49,7 @@ function ActivateAccountForm() {
 
   if (!email) {
     return (
-      <Alert variant="error">Bağlantı geçersiz. Aktivasyon e-postasındaki bağlantıyı tekrar kullanın.</Alert>
+      <Alert variant="error">{t.invalidLink}</Alert>
     );
   }
 
@@ -54,7 +57,7 @@ function ActivateAccountForm() {
     event.preventDefault();
     setError(null);
     if (password !== passwordConfirm) {
-      setError("Parolalar eşleşmiyor.");
+      setError(t.passwordsMismatch);
       return;
     }
     setSubmitting(true);
@@ -65,7 +68,7 @@ function ActivateAccountForm() {
       router.replace(localize("/patient/bookings"));
     } catch (err) {
       // Paket S — şifre politikası ihlali: sunucunun kural kodları aktif dilde.
-      setError(passwordPolicyMessage(err, passwordStrings) ?? activateAccountErrorMessage(err));
+      setError(passwordPolicyMessage(err, passwordStrings) ?? activateAccountErrorMessage(err, authStrings.verify.invalidCode));
     } finally {
       setSubmitting(false);
     }
@@ -76,11 +79,15 @@ function ActivateAccountForm() {
       {error && <Alert variant="error">{error}</Alert>}
 
       <p className="text-sm text-foreground/60">
-        <strong className="font-medium text-foreground">{email}</strong> adresine gönderilen 6 haneli kodu ve yeni
-        parolanızı girin.
+        {t.intro.split("{email}").map((part, i, parts) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && <strong className="font-medium text-foreground">{email}</strong>}
+          </span>
+        ))}
       </p>
 
-      <Field id="code" label="Doğrulama Kodu" required>
+      <Field id="code" label={authStrings.verify.codeLabel} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -100,7 +107,7 @@ function ActivateAccountForm() {
 
       <PasswordField
         id="password"
-        label="Yeni şifre"
+        label={authStrings.reset.newPassword}
         required
         value={password}
         context={{ email }}
@@ -108,7 +115,7 @@ function ActivateAccountForm() {
         inputProps={{ value: password, onChange: (e) => setPassword(e.target.value) }}
       />
 
-      <Field id="passwordConfirm" label="Yeni şifre (tekrar)" required>
+      <Field id="passwordConfirm" label={t.newPasswordConfirm} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -122,20 +129,22 @@ function ActivateAccountForm() {
       </Field>
 
       <Button type="submit" className="w-full" loading={submitting} disabled={code.length !== 6}>
-        Hesabımı aktive et
+        {t.submit}
       </Button>
     </form>
   );
 }
 
 export default function ActivateAccountPage() {
+  const t = useAuthStrings().activate;
+  const localize = useLocalizePath();
   return (
     <AuthPageShell
-      title="Hesabınızı aktive edin"
-      subtitle="Randevunuzla ilişkilendirilen hesabınıza erişmek için kodu ve yeni parolanızı belirleyin."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
-        <Link href="/login" className="font-medium text-primary hover:underline">
-          Zaten hesabınız var mı? Giriş yapın
+        <Link href={localize("/login")} className="font-medium text-primary hover:underline">
+          {t.haveAccount}
         </Link>
       }
     >

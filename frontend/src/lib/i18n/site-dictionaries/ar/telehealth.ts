@@ -76,6 +76,18 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "المواعيد المتاحة والحجز",
 
   specialtiesPageTitle: "مجالات خبرتنا",
+
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+
+  doctorsMetaDescription: "احجز استشارة عبر الإنترنت مع أطبائنا في تخصصات مثل {specialties}.",
+
+  doctorsMetaDescriptionDefault: "احجز استشارة عبر الإنترنت مع أطبائنا.",
+
+  specialtiesMetaDescription: "تعرّف على أطبائنا في تخصصات مثل {specialties}.",
+
+  specialtiesMetaDescriptionDefault: "اكتشف تخصصاتنا واحجز استشارة عبر الإنترنت.",
+
+  specialtyMetaDescription: "احجز استشارة عبر الإنترنت مع أطبائنا في تخصص {specialty}.",
   specialtiesPageSubtitle: "اكتشف أطباءنا حسب التخصص واحجز موعدك عبر الإنترنت.",
   specialtiesEmptyTitle: "لم يُعثر على أي تخصص",
   specialtiesEmptyDescription: "لا توجد تخصصات لعرضها حاليًا.",

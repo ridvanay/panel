@@ -76,6 +76,18 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "Verfügbarkeit und Buchung",
 
   specialtiesPageTitle: "Unsere Fachgebiete",
+
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+
+  doctorsMetaDescription: "Buchen Sie eine Online-Sprechstunde bei unseren Ärztinnen und Ärzten in Fachbereichen wie {specialties}.",
+
+  doctorsMetaDescriptionDefault: "Buchen Sie eine Online-Sprechstunde bei unseren Ärztinnen und Ärzten.",
+
+  specialtiesMetaDescription: "Lernen Sie unsere Ärztinnen und Ärzte in Fachbereichen wie {specialties} kennen.",
+
+  specialtiesMetaDescriptionDefault: "Entdecken Sie unsere Fachbereiche und buchen Sie eine Online-Sprechstunde.",
+
+  specialtyMetaDescription: "Buchen Sie eine Online-Sprechstunde bei unseren Ärztinnen und Ärzten im Fachbereich {specialty}.",
   specialtiesPageSubtitle: "Entdecken Sie unsere Ärzte nach Fachgebiet und buchen Sie Ihren Online-Termin.",
   specialtiesEmptyTitle: "Kein Fachgebiet gefunden",
   specialtiesEmptyDescription: "Derzeit gibt es keine Fachgebiete zum Anzeigen.",

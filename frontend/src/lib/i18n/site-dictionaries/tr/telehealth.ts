@@ -76,6 +76,18 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "Müsaitlik ve Randevu",
 
   specialtiesPageTitle: "Uzmanlık Alanlarımız",
+
+  // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
+
+  doctorsMetaDescription: "{specialties} gibi uzmanlık alanlarında doktorlarımızla online randevu alın.",
+
+  doctorsMetaDescriptionDefault: "Doktorlarımızla online randevu alın.",
+
+  specialtiesMetaDescription: "{specialties} gibi uzmanlık alanlarında doktorlarımızı keşfedin.",
+
+  specialtiesMetaDescriptionDefault: "Uzmanlık alanlarımızı keşfedin ve online randevu alın.",
+
+  specialtyMetaDescription: "{specialty} uzmanlık alanındaki doktorlarımızla online randevu alın.",
   specialtiesPageSubtitle: "Branşa göre doktorlarımızı keşfedin ve online randevunuzu alın.",
   specialtiesEmptyTitle: "Uzmanlık alanı bulunamadı",
   specialtiesEmptyDescription: "Şu anda listelenecek bir uzmanlık alanı yok.",
