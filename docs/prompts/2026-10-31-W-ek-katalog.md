@@ -1,6 +1,15 @@
 # Paket W-ek — Genişletilmiş eşleştirme kataloğu (hekim kontrolü için)
 
-> **Durum: TASLAK, onay bekliyor.** Seed ve kod bu tablo onaylandıktan sonra yazılacak. Sihirbaz **tanı koymaz**; katalog yalnızca "hangi uzmanlık / koordinatör" sorusunu yanıtlar.
+> **Durum: ONAYLANDI (2026-10-31), aşağıdaki düzeltmelerle uygulandı.** Ayrıntılar: `2026-10-31-W-ek-RAPOR.md` §2. Sihirbaz **tanı koymaz**; katalog yalnızca "hangi uzmanlık / koordinatör" sorusunu yanıtlar.
+>
+> **Onay sonrası düzeltmeler** (aşağıdaki tablo onay öncesi hâlidir; kodda bunlar geçerlidir):
+> - `rf-poisoning`, `rf-loss-of-consciousness` ve `rf-sudden-vision-loss` tetikleyicileri daraltıldı: "ilaç içti", tek başına "bayıldı/bayıldım" ve "gözüm karardı" çıkarıldı.
+> - Kırmızı bayrak terimleri, başka konuların eş anlamlılarıyla hiçbir dilde çakışmaz; bunu bir test denetler.
+> - `adenomyosis`: IR 40 · IVF 30 · **ONC 40**.
+> - `leg-pain-cramps` ("Bacak ağrısı / kramp") koordinatöre gider; ipucu "Kardiyoloji / Damar cerrahisi".
+> - Yeni konu `claudication` ("Yürürken bacak ağrısı"): IR 40.
+> - Öneri kırmızı bayraklar eklendi: `rf-sudden-testicular-pain`, `rf-infant-fever`.
+> - Sonuç: **332 kayıt = 314 konu + 18 kırmızı bayrak**; 143 konu koordinatöre gider.
 
 ## Özet
 
