@@ -23,7 +23,8 @@ export interface GeneratedSlot {
  * §4.2 — "Geçmişteki ve şu andan itibaren 2 saatten yakın slotlar `available: false` döner
  * (rezervasyon tamponu; SABİT, ayar DEĞİL)."
  */
-export const SLOT_BOOKING_BUFFER_MS = 2 * 60 * 60 * 1000;
+// 2026-10-30 — kullanıcı kararı: önceden rezervasyon kısıtı KALDIRILDI (0). Başlamamış her slot alınabilir.
+export const SLOT_BOOKING_BUFFER_MS = 0;
 
 /**
  * `"YYYY-MM-DD"` → `CalendarDate`. Girdi biçimi zaten route şemasında (`telehealth.schemas.ts::

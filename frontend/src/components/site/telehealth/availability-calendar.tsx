@@ -69,7 +69,7 @@ const HOUR_GROUP_LABELS = ["morning", "afternoon", "evening"] as const;
 
 /** Backend `SLOT_BOOKING_BUFFER_MS` (lib/availability.ts) ile AYNI: başlangıcına 2 saatten az kalan
  * slot rezerve edilemez. Bu slotlar "Dolu" DEĞİL, "çok yakın" olarak etiketlenir (yalnızca gösterim). */
-const SLOT_BOOKING_BUFFER_MS = 2 * 60 * 60 * 1000;
+const SLOT_BOOKING_BUFFER_MS = 0;
 type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
 
 /**
@@ -620,8 +620,6 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   {t.calendar.earliestSelected}
                 </p>
               )}
-
-              <p className="mt-2 text-xs text-foreground/60">{t.calendar.noticeInfo}</p>
 
               {monthFetchError && (
                 <Alert variant="error" className="mt-3">
