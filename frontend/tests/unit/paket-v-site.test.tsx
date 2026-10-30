@@ -14,6 +14,7 @@ import { siteDictionary as srLatn } from "@/lib/i18n/site-dictionaries/sr-latn";
 import { resolveLanguageSupport } from "@/lib/language-support";
 import { SupportLanguagesBand } from "@/components/site/support/support-languages-band";
 import { SupportBadge } from "@/components/site/support/support-badge";
+import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { AccreditationList } from "@/components/site/accreditations/accreditation-list";
 import { AccreditationStrip } from "@/components/site/accreditations/accreditation-strip";
 import { SiteFooter } from "@/components/site/site-footer";
@@ -85,6 +86,15 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
     // Canlı destek kapalıyken yalnızca iletişim ("Talk to us").
     expect(within(band).queryByRole("button", { name: "Live chat" })).toBeNull();
     expect(within(band).getByRole("link", { name: "Talk to us" })).toHaveAttribute("href", "/en/contact");
+  });
+
+  it("bant hero ile aynı genişlikte: aynı kapsayıcı sınıfı, renkli alan kapsayıcının içinde", () => {
+    const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en"], supportHours: {}, interpreterIncluded: false }), "en");
+    render(<SupportLanguagesBand support={support} dict={en.common} chatEnabled={false} contactHref="/en/contact" />);
+    const box = screen.getByTestId("support-languages-band-box");
+    expect(box.parentElement!.className).toBe(aboutContainerClass);
+    expect(box).toHaveClass("bg-[var(--site-primary)]");
+    expect(screen.getByTestId("support-languages-band")).not.toHaveClass("bg-[var(--site-primary)]");
   });
 
   it("tercüman açık + canlı destek açık; rozet sayıyı gösterir", () => {

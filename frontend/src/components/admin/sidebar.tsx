@@ -33,6 +33,7 @@ import {
   CreditCard,
   Radar,
   BadgeCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Sidebar,
@@ -147,11 +148,12 @@ export const navItems: NavItem[] = [
   },
   // Görev (2026-09-14) Görev 1 — `PATCH /admin/telehealth/settings` yalnızca ADMIN/MANAGER
   // yazabildiği için (EDITOR → 403), `/admin/telehealth/appointments` İLE AYNI yazma-hassas
-  // görünürlük kuralı: EDITOR'a sidebar'da GÖSTERİLMEZ.
+  // görünürlük kuralı: EDITOR'a sidebar'da GÖSTERİLMEZ. 2026-10-30 — sayfa artık tema dışında acil
+  // durum uyarısı, destek dilleri vb. de içerdiği için Tele-Sağlık grubunda "Ayarlar" adıyla.
   {
     href: "/admin/telehealth/settings",
     labelKey: "nav.telehealthSettings",
-    icon: Palette,
+    icon: SlidersHorizontal,
     module: "telehealth",
     roles: ["ADMIN", "MANAGER"],
   },
