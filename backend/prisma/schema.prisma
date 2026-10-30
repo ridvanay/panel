@@ -261,22 +261,22 @@ enum WebhookDeliveryStatus {
 }
 
 model User {
-  id              String         @id @default(uuid())
+  id                 String              @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
-  seq             Int            @unique @default(autoincrement())
-  email           String         @unique
-  passwordHash    String
-  name            String
-  avatarUrl       String?
+  seq                Int                 @unique @default(autoincrement())
+  email              String              @unique
+  passwordHash       String
+  name               String
+  avatarUrl          String?
   // Paket P — hastanın tercih ettiği IANA saat dilimi (randevu saatleri hem bu dilimde hem Türkiye
   // saatinde gösterilir). NULL = tarayıcıdan algılanan dilim kullanılır.
-  timeZone        String?
+  timeZone           String?
   // Hesap seviyesinde genel iletişim numarası (randevu/SMS hatırlatma vb.) — `Address.phone`
   // (e-ticaret adres defteri, ZORUNLU alan, satır ~2657) ile KARIŞTIRILMAMALI: o teslimat
   // adresine özgüdür ve zorunludur, bu ise kullanıcı hesabının genel numarasıdır ve opsiyoneldir
   // (mevcut kullanıcılarda backfill YOK). Format doğrulaması backend katmanında yapılır (bkz.
   // users.schemas.ts), burada CHECK/unique constraint YOK — eşleştirme/arama amaçlı değil.
-  phone           String?
+  phone              String?
   // E-posta doğrulama zaman damgası — bkz. .claude/architect-scope-guest-account-otp.md §2.4
   // (bağlayıcı karar dokümanı). ARTIK YAZILAN bir alandır: `POST /auth/verify-email` /
   // `POST /auth/activate-account` başarıyla tüketildiğinde ve `resetPassword` başarılı
@@ -286,28 +286,28 @@ model User {
   // email_verified_at IS NULL`) — yani bu turdan ÖNCE var olan hiçbir hesap etkilenmez,
   // doğrulama YALNIZCA bu turdan SONRA açılan hesaplar için zorunludur (§2.4, bilinçli
   // bir "grandfathering" beyanıdır, gerçek bir doğrulama kanıtı değildir).
-  emailVerifiedAt DateTime?
-  role            SiteRole       @default(USER)
+  emailVerifiedAt    DateTime?
+  role               SiteRole            @default(USER)
   /// Paket AA — `role = INTERPRETER` kullanıcının tercüman profili.
   interpreterProfile InterpreterProfile? @relation("InterpreterProfileUser")
-  status          SiteUserStatus @default(ACTIVE)
-  lastLoginAt     DateTime?
+  status             SiteUserStatus      @default(ACTIVE)
+  lastLoginAt        DateTime?
   // Soft-delete (çöp kutusu) — status=DELETED ile birlikte set edilir; sadece silindiyse
   // dolu. Kalıcı silme (hard delete) DEĞİL — DELETE /admin/users/{userId} bu alanı doldurur,
   // POST /admin/users/{userId}/restore null'a döndürür (bkz. openapi.yaml).
-  deletedAt       DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  deletedAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   // §10.4 Güvenlik & 2FA (TOTP) — bkz. ARCHITECTURE.md §10.4.
-  twoFactorEnabled    Boolean   @default(false)
+  twoFactorEnabled      Boolean   @default(false)
   // AES-256-GCM ile şifrelenmiş base32 TOTP secret — DÜZ METİN SAKLANMAZ (bkz. lib/crypto.ts).
-  twoFactorSecret     String?
-  twoFactorVerifiedAt DateTime?
+  twoFactorSecret       String?
+  twoFactorVerifiedAt   DateTime?
   // Son kabul edilen TOTP zaman adımı (floor(epochMs/30000)) — replay önleme.
   twoFactorLastUsedStep Int?
   // Bu andan önce üretilmiş erişim token'ları geçersiz (2FA/şifre sıfırlama vb.).
-  sessionsValidAfter DateTime?
+  sessionsValidAfter    DateTime?
 
   // NOT: `advancedBuilderEnabled` kolonu KALDIRILDI (bkz.
   // .claude/architect-scope-rbac-5-tier.md §3, bağlayıcı karar dokümanı — bu doküman
@@ -1299,7 +1299,7 @@ model SiteSettings {
   liveChatPosition           LiveChatPosition @default(BOTTOM_RIGHT)
   updatedAt                  DateTime         @updatedAt
   // Dolu ve geçmişteyse ADMIN/MANAGER için 2FA zorunlu; null = kapalı (varsayılan).
-  staffTwoFactorRequiredAt DateTime?
+  staffTwoFactorRequiredAt   DateTime?
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
@@ -1556,23 +1556,23 @@ model SiteCustomCode {
 }
 
 model NavigationItem {
-  id        String   @id @default(uuid())
-  seq       Int      @unique @default(autoincrement())
+  id           String   @id @default(uuid())
+  seq          Int      @unique @default(autoincrement())
   // KARDEŞ-KAPSAMLI sıra: aynı `parentId` grubu içinde 0'dan artan. Global bir sıra
   // DEĞİLDİR — tüketici önce `parentId`'ye göre gruplar, sonra `order`'a göre sıralar.
-  order     Int
-  label     String
-  href      String
+  order        Int
+  label        String
+  href         String
   // Hiyerarşi (WordPress menü düzenleyicisi benzeri alt menü). null = kök seviye öğe.
   // MAKSİMUM DERİNLİK 2 (kök + bir alt seviye): `parentId` dolu olan bir öğe, YALNIZCA
   // `parentId`'si null olan (kök) bir öğeyi işaret edebilir. Bu kural DB'de değil API
   // validasyonunda zorlanır (bkz. ARCHITECTURE.md §6.x Navigasyon Hiyerarşisi) — Postgres
   // CHECK ile ifade edilemez (başka satıra bakmayı gerektirir). Kural sayesinde döngü
   // (cycle) ve kendine referans yapısal olarak imkânsızdır.
-  parentId  String?
-  createdAt DateTime @default(now())
+  parentId     String?
+  createdAt    DateTime @default(now())
   // Paket O — dil başına etiket: { "<dil>": { "label": "..." } }. Yoksa kanonik (EN) `label`.
-  translations Json @default("{}")
+  translations Json     @default("{}")
 
   // Self-relation. Cascade: bir üst öğe silinirse alt öğeleri de silinir — DB'de asla
   // öksüz (orphan) alt menü kalmaz. (PUT /admin/navigation tam-replace olduğu için pratikte
@@ -1609,13 +1609,13 @@ model SocialLink {
 }
 
 model FooterColumn {
-  id        String   @id @default(uuid())
-  seq       Int      @unique @default(autoincrement())
-  order     Int
-  title     String
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  seq          Int      @unique @default(autoincrement())
+  order        Int
+  title        String
+  createdAt    DateTime @default(now())
   // Paket O — dil başına başlık: { "<dil>": { "title": "..." } }. Yoksa kanonik (EN) `title`.
-  translations Json @default("{}")
+  translations Json     @default("{}")
 
   links FooterLink[]
 
@@ -1624,13 +1624,13 @@ model FooterColumn {
 }
 
 model FooterLink {
-  id       String @id @default(uuid())
-  columnId String
-  order    Int
-  label    String
-  href     String
+  id           String @id @default(uuid())
+  columnId     String
+  order        Int
+  label        String
+  href         String
   // Paket O — dil başına etiket: { "<dil>": { "label": "..." } }. Yoksa kanonik (EN) `label`.
-  translations Json @default("{}")
+  translations Json   @default("{}")
 
   column FooterColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
 
@@ -1662,28 +1662,28 @@ model Media {
   folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
-  productCovers          Product[]         @relation("ProductCoverMedia")
-  productGalleryItems    ProductImage[]    @relation("ProductGalleryImage")
+  productCovers          Product[]            @relation("ProductCoverMedia")
+  productGalleryItems    ProductImage[]       @relation("ProductGalleryImage")
   // §1/§2 (.claude/architect-scope-ecommerce-pro-template.md) — varyasyon görseli ve
   // teknik döküman (PDF) karşı-ilişkileri.
-  productVariantImages   ProductVariant[]  @relation("ProductVariantImage")
-  productDocuments       ProductDocument[] @relation("ProductDocumentMedia")
+  productVariantImages   ProductVariant[]     @relation("ProductVariantImage")
+  productDocuments       ProductDocument[]    @relation("ProductDocumentMedia")
   // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
-  portfolioCovers        PortfolioItem[]   @relation("PortfolioCoverMedia")
-  portfolioGalleryItems  PortfolioImage[]  @relation("PortfolioGalleryImage")
+  portfolioCovers        PortfolioItem[]      @relation("PortfolioCoverMedia")
+  portfolioGalleryItems  PortfolioImage[]     @relation("PortfolioGalleryImage")
   // §10.12.2 Site Özelleştirme — SiteAppearance.pageHeaderBackgroundMediaId için
   // zorunlu karşı-ilişki alanı.
-  pageHeaderBackgrounds  SiteAppearance[]  @relation("SiteAppearancePageHeaderBackground")
+  pageHeaderBackgrounds  SiteAppearance[]     @relation("SiteAppearancePageHeaderBackground")
   // Gelişmiş Slider — Slide.bgMediaId / Slide.bgVideoPosterMediaId karşı-ilişkileri.
-  slideBackgrounds       Slide[]           @relation("SlideBackgroundMedia")
-  slideVideoPosters      Slide[]           @relation("SlideVideoPosterMedia")
-  slideTabletBackgrounds Slide[]           @relation("SlideTabletBackgroundMedia")
-  slideMobileBackgrounds Slide[]           @relation("SlideMobileBackgroundMedia")
+  slideBackgrounds       Slide[]              @relation("SlideBackgroundMedia")
+  slideVideoPosters      Slide[]              @relation("SlideVideoPosterMedia")
+  slideTabletBackgrounds Slide[]              @relation("SlideTabletBackgroundMedia")
+  slideMobileBackgrounds Slide[]              @relation("SlideMobileBackgroundMedia")
   // Tele-Sağlık — bkz. .claude/architect-scope-telehealth-template.md §3.3/§3.7.
   // DoctorProfile.avatarMediaId için zorunlu karşı-ilişki alanı.
-  doctorAvatars          DoctorProfile[]   @relation("DoctorAvatarMedia")
+  doctorAvatars          DoctorProfile[]      @relation("DoctorAvatarMedia")
   // Specialty.imageMediaId için zorunlu karşı-ilişki alanı.
-  specialtyImages        Specialty[]       @relation("SpecialtyImageMedia")
+  specialtyImages        Specialty[]          @relation("SpecialtyImageMedia")
   // Paket V — AccreditationBadge.logoMediaId için zorunlu karşı-ilişki alanı (kolon DEĞİL).
   accreditationLogos     AccreditationBadge[] @relation("AccreditationBadgeLogo")
 
@@ -1819,6 +1819,9 @@ enum EmailTemplatePurpose {
   // notlar) — YENİDEN KULLANILMAMALIDIR.
   BOOKING_PAYMENT_PENDING
   CUSTOM
+  // Paket W — hekim eşleştirme sihirbazı: admin/koordinatöre "Yeni eşleştirme talebi #123" bildirimi
+  // (şikayet metni YOK; yalnızca numara + admin bağlantısı). Sistem şablon anahtarı `matcher.new_lead`.
+  MATCHER_NEW_LEAD
 }
 
 /// RAW  = §10.3'ten devralınan ham HTML şablonu (`bodyHtml` kaynak).
@@ -2224,12 +2227,14 @@ model Specialty {
   /// Paket O — dil başına ad/açıklama: { "<dil>": { "name": "...", "description": "..." } }. Yoksa kanonik (EN).
   translations Json     @default("{}")
 
-  doctors    DoctorProfile[]
-  imageMedia Media?          @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
+  doctors           DoctorProfile[]
+  imageMedia        Media?                      @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
   /// Birincil (`specialtyId`) DIŞINDA, doktorun İKİNCİL/EK uzmanlık bağlantıları —
   /// bkz. `DoctorAdditionalSpecialty`. `doctors` (yukarıdaki, tekil FK üzerinden) İLE
   /// KARIŞTIRILMAZ: o birincil uzmanlık, bu ek uzmanlıklardır.
   additionalDoctors DoctorAdditionalSpecialty[]
+  /// Paket W — eşleştirme sihirbazı konu → uzmanlık ağırlıkları.
+  careTopics        CareTopicSpecialty[]
 
   @@index([isActive, order])
   @@index([imageMediaId])
@@ -2317,9 +2322,9 @@ model DoctorProfile {
   /// DB garantisi: migration `20261026190000_doctor_single_founder_index` — kısmi benzersiz indeks
   /// `doctor_profiles_single_founder_key` (WHERE "isFounder" = true). Prisma şemada ifade edilemez;
   /// `migrate dev` onu DROP etmeyi önerirse o satır üretilen migration'dan silinmelidir.
-  isFounder   Boolean @default(false)
+  isFounder  Boolean   @default(false)
   /// Paket P (İş 3) — kadro katmanı (1 = en üst); opsiyonel, piramit sıralamasında `order` ile birlikte.
-  rosterTier  Int?
+  rosterTier Int?
   /// 2026-10-18 (Paket B2) — arşiv damgası. Randevu geçmişi olan doktor `Appointment.doctor`
   /// `onDelete: Restrict` nedeniyle silinemez; arşivlenir. Arşivli doktor public yüzeyde, sitemap'te
   /// ve sayaçlarda GÖRÜNMEZ; geçmiş randevu/fatura/kayıt bozulmaz. Arşivleme `isActive=false` da yapar.
@@ -2327,15 +2332,15 @@ model DoctorProfile {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  user                User?                @relation("DoctorProfileUser", fields: [userId], references: [id], onDelete: SetNull)
-  specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
-  avatarMedia         Media?               @relation("DoctorAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
-  availability        DoctorAvailability[]
+  user                  User?                       @relation("DoctorProfileUser", fields: [userId], references: [id], onDelete: SetNull)
+  specialty             Specialty?                  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  avatarMedia           Media?                      @relation("DoctorAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
+  availability          DoctorAvailability[]
   /// Paket P — izin/istisna aralıkları (ilişki alanı; kolon eklemez).
-  timeOff      DoctorTimeOff[]
-  appointments        Appointment[]
+  timeOff               DoctorTimeOff[]
+  appointments          Appointment[]
   // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kayıtları.
-  appointmentBookings AppointmentBooking[]
+  appointmentBookings   AppointmentBooking[]
   /// `specialtyId` (birincil uzmanlık, TEK FK) DIŞINDA doktorun bağlı olduğu EK
   /// uzmanlıklar — bkz. `DoctorAdditionalSpecialty`. Bir doktor birden fazla uzmanlık
   /// sekmesinde/listesinde görünebilsin diye (ör. Obesity & Metabolic Surgery +
@@ -2632,11 +2637,11 @@ model AppointmentBooking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  doctor       DoctorProfile         @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  patientUser  User?                 @relation("AppointmentBookingPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
-  appointments Appointment[]
-  intake       AppointmentIntake?
-  documents    AppointmentDocument[]
+  doctor                 DoctorProfile            @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientUser            User?                    @relation("AppointmentBookingPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+  appointments           Appointment[]
+  intake                 AppointmentIntake?
+  documents              AppointmentDocument[]
   /// Paket AA — tercüman atamaları (en çok 1 aktif; bkz. migration'daki kısmi tekil indeks) ve hasta talebi.
   interpreterAssignments AppointmentInterpreter[]
   interpreterRequest     InterpreterRequest?
@@ -3566,6 +3571,8 @@ enum CrmLeadChannel {
   BOOKING_ABANDONED
   MANUAL
   ADS_IMPORT
+  /// Paket W — "Find my physician" eşleştirme sihirbazı (ayrıntılar `MatcherSubmission`).
+  MATCHER
 }
 
 /// Paket N2 — talep (lead). Kaynak kayıtlara (iletişim formu, canlı destek, randevu) YALNIZCA düz
@@ -3606,7 +3613,8 @@ model CrmLead {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  notes CrmLeadNote[]
+  notes             CrmLeadNote[]
+  matcherSubmission MatcherSubmission?
 
   @@unique([channel, sourceRefId])
   @@index([status, createdAt])
@@ -3757,4 +3765,97 @@ model InterpreterRequest {
   booking AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@map("interpreter_requests")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paket W — "Find my physician" eşleştirme sihirbazı. TANI KOYMAZ: yalnızca kural tabanlı
+// "hangi uzmanlık / hangi hekim" önerisi (admin'den yönetilen katalog + ağırlıklar).
+// ---------------------------------------------------------------------------------------------
+
+/// Şikayet/ihtiyaç kataloğu. `translations`: { "<dil>": { label, description, synonyms: string[] } }.
+/// `bodyArea`: head | neck-spine | chest | abdomen | pelvis-urology | women | skin-aesthetic | dental |
+/// joints-bones | general-checkup | cancer | mental-wellbeing | other (zod ile doğrulanır).
+/// Kırmızı bayrak (`isRedFlag`) konuları hiçbir uzmanlığa eşlenmez; acil uyarısı açar.
+model CareTopic {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  bodyArea     String
+  translations Json     @default("{}")
+  isRedFlag    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  specialties CareTopicSpecialty[]
+
+  @@index([isActive, bodyArea, sortOrder])
+  @@map("care_topics")
+}
+
+/// Konu → uzmanlık ağırlığı (1–100). Hekimi olmayan uzmanlık öneri anında kodda düşülür.
+model CareTopicSpecialty {
+  topicId     String
+  specialtyId String
+  weight      Int
+
+  topic     CareTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, specialtyId])
+  @@index([specialtyId])
+  @@map("care_topic_specialties")
+}
+
+/// Sihirbaz talebinin ayrıntıları (lead'e 1:1). Sağlık alanları (`topicIds`, `freeText`, yaş, süre,
+/// önceki tanı, öneriler) YALNIZCA sağlık verisi açık rızası (`consentHealthAt`) varsa yazılır; saklama
+/// süresi (`matcherRetentionDays`) dolunca anonimleştirilir (`anonymizedAt`).
+model MatcherSubmission {
+  id                      String    @id @default(uuid())
+  seq                     Int       @unique @default(autoincrement())
+  leadId                  String    @unique
+  topicIds                String[]
+  freeText                String?
+  ageBand                 String?
+  birthYear               Int?
+  /// 18 yaş altı: formu dolduran veli/vasinin adı.
+  guardianName            String?
+  forWhom                 String
+  duration                String?
+  priorDiagnosis          String?
+  preference              String
+  preferredLanguage       String
+  country                 String?
+  timeZone                String?
+  recommendedSpecialtyIds String[]
+  recommendedDoctorIds    String[]
+  /// Kırmızı bayrak uyarısında "Acil değil, devam et" onayı (kayda geçer).
+  redFlagAcknowledgedAt   DateTime?
+  consentHealthAt         DateTime?
+  consentContactAt        DateTime?
+  /// "Koordinatör beni arasın" isteği (lead `nextActionAt` da bu ana çekilir).
+  callbackRequestedAt     DateTime?
+  /// Sonuç sayfasındaki geri arama isteği için tek kullanımlık erişim anahtarının özeti.
+  accessTokenHash         String?
+  anonymizedAt            DateTime?
+  createdAt               DateTime  @default(now())
+
+  lead CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([anonymizedAt])
+  @@map("matcher_submissions")
+}
+
+/// Anonim sayaçlar (kişi/oturum kimliği YOK): adım erişimi, seçilen konu, eşleşmeyen serbest metin
+/// terimi, kırmızı bayrak. Rapor: en çok seçilenler, eşleşmeyen terim sıklığı, adım bazında terk.
+model MatcherStat {
+  day   DateTime @db.Date
+  kind  String
+  key   String
+  count Int      @default(0)
+
+  @@id([day, kind, key])
+  @@index([kind, day])
+  @@map("matcher_stats")
 }

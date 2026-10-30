@@ -1,3 +1,4 @@
+import { MatcherCtaCard } from "@/components/site/matcher/matcher-modal";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { UserRoundSearch } from "lucide-react";
@@ -136,8 +137,8 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
       </div>
 
       {doctors.length === 0 ? (
-        // Paket V — hekimi olmayan uzmanlıkta liste yerine koordinatöre yönlendirme (W paketinden
-        // sonra eşleştirme sihirbazı da buraya eklenecek).
+        // Paket V — hekimi olmayan uzmanlıkta liste yerine koordinatöre yönlendirme (eşleştirme sihirbazı
+        // kartı aşağıda — Paket W).
         <section
           data-testid="specialty-coordinator-box"
           aria-labelledby="specialty-coordinator-title"
@@ -173,6 +174,8 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
           ))}
         </div>
       )}
+      {/* Paket W — eşleştirme sihirbazı. */}
+      <MatcherCtaCard className="mt-10" />
 
       <JsonLdScript json={buildSpecialtyJsonLd(specialty, canonicalUrl)} />
     </div>

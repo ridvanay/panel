@@ -21,6 +21,8 @@ import {
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import { getInterpreterAccess } from "@/lib/api/interpreter";
+import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
+import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -376,6 +378,7 @@ export function SiteHeader({
     };
   }, [userId, telehealthModuleEnabled]);
   const hasInterpreterPanel = interpreterAccess !== null && interpreterAccess.userId === userId && interpreterAccess.hasProfile;
+  const matcherText = useMatcherStrings().m;
   const pathname = usePathname();
   const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
   const navTree: NavNode[] =
@@ -520,6 +523,8 @@ export function SiteHeader({
               </Link>
             );
           })}
+          {/* Paket W — "Find my physician" (modal); telehealth kapalıysa render edilmez. */}
+          {telehealthModuleEnabled && <MatcherLaunchButton variant="outline" className="min-h-9 px-3 py-1.5 whitespace-nowrap" />}
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
@@ -792,6 +797,9 @@ export function SiteHeader({
                 )}
 
                 <ul className="flex flex-col gap-0.5 border-t border-border pt-3">
+                  {telehealthModuleEnabled && (
+                    <MobileMenuLink href={localize("/find-a-physician")} icon={Stethoscope} label={matcherText.entryButton} onNavigate={closeMobileMenu} />
+                  )}
                   {status === "authenticated" && user ? (
                     <>
                       {isDoctorSession && telehealthModuleEnabled && (

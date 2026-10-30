@@ -1080,6 +1080,8 @@ export const EmailTemplatePurposeSchema = z.enum([
   // DTO-seviyesi ayna da kalıyor). Hiçbir kod yolu bu amacı ÜRETMEZ/TÜKETMEZ.
   "BOOKING_PAYMENT_PENDING",
   "CUSTOM",
+  // Paket W — eşleştirme sihirbazı yeni talep bildirimi (admin/koordinatör; sağlık bilgisi YOK).
+  "MATCHER_NEW_LEAD",
 ]);
 export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;
 

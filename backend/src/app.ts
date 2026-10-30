@@ -97,6 +97,8 @@ import { registerSupportRetentionScheduler } from "./lib/support-retention";
 import { crmPublicRoutes } from "./modules/crm/crm.public.routes";
 import { crmAdminRoutes } from "./modules/crm/crm.admin.routes";
 import { registerCrmSchedulers } from "./modules/crm/crm.rollup";
+import { matcherPublicRoutes } from "./modules/matcher/matcher.routes";
+import { matcherAdminRoutes } from "./modules/matcher/matcher.admin.routes";
 import { warnIfRevalidationDisabled } from "./lib/revalidate";
 
 export function buildApp() {
@@ -378,6 +380,9 @@ export function buildApp() {
       // ADMIN + 2FA'ya açık yönetim uçları.
       api.register(crmPublicRoutes, { prefix: "/crm" });
       api.register(crmAdminRoutes, { prefix: "/admin/crm" });
+      // Paket W — "Find my physician" eşleştirme sihirbazı.
+      api.register(matcherPublicRoutes, { prefix: "/matcher" });
+      api.register(matcherAdminRoutes, { prefix: "/admin/matcher" });
     },
     { prefix: "/api/v1" }
   );

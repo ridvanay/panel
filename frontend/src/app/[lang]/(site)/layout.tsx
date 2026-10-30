@@ -17,6 +17,7 @@ import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
 import { SiteHeader } from "@/components/site/site-header";
+import { MatcherModalProvider } from "@/components/site/matcher/matcher-modal";
 import { SiteFooter } from "@/components/site/site-footer";
 import { DoctorPortalRouteGuard } from "@/components/site/doctor-portal-route-guard";
 import { LiveChatWidget } from "@/components/site/live-chat-widget";
@@ -79,6 +80,8 @@ export default async function SiteLayout({
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
         <SiteScope appearance={appearance} lang={lang}>
+          {/* Paket W — "Find my physician" modalı (header, anasayfa arama kutusu, CTA kartları). */}
+          <MatcherModalProvider enabled={telehealthModuleEnabled}>
           {/* §9 frontend-agent — doktor hesabı guard'ı (bkz. bileşenin başlığı); `LocaleAlternatesProvider`
               İÇİNDE mount edilir ki `useLocalizePath()` çalışsın. Görsel çıktısı YOKTUR (`null` döner). */}
           <DoctorPortalRouteGuard />
@@ -141,6 +144,7 @@ export default async function SiteLayout({
           {/* Alta sabit çubukların yüksekliğini `--site-bottom-inset`e yazar — yüzen düğmeler
               (sohbet, yukarı çık) bununla çubukların üstüne çıkar (bkz. bottom-bar-inset.tsx). */}
           <BottomBarInsetObserver />
+          </MatcherModalProvider>
         </SiteScope>
       </LocaleAlternatesProvider>
 

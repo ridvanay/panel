@@ -1,3 +1,4 @@
+import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Card } from "@/components/ui/card";
@@ -54,6 +55,8 @@ export default async function SiteNotFound() {
         <LinkButton href={buttonHref} className="mt-6 justify-center">
           {buttonLabel}
         </LinkButton>
+        {/* Paket W — aradığını bulamayan ziyaretçiye eşleştirme sihirbazı. */}
+        <MatcherLaunchButton variant="outline" className="mt-3 w-full" />
       </Card>
     </main>
   );

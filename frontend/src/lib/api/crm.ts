@@ -70,7 +70,7 @@ export type CrmLeadStatus =
   | "NEGATIVE"
   | "SPAM";
 
-export type CrmLeadChannel = "CONTACT_FORM" | "LIVE_CHAT" | "WHATSAPP" | "PHONE" | "EMAIL" | "BOOKING_ABANDONED" | "MANUAL" | "ADS_IMPORT";
+export type CrmLeadChannel = "CONTACT_FORM" | "LIVE_CHAT" | "WHATSAPP" | "PHONE" | "EMAIL" | "BOOKING_ABANDONED" | "MANUAL" | "ADS_IMPORT" | "MATCHER";
 
 export const CRM_LEAD_STATUS_OPTIONS: { value: CrmLeadStatus; label: string }[] = [
   { value: "NEW", label: "Yeni" },
@@ -93,6 +93,7 @@ export const CRM_LEAD_CHANNEL_OPTIONS: { value: CrmLeadChannel; label: string }[
   { value: "BOOKING_ABANDONED", label: "Yarım kalan randevu" },
   { value: "MANUAL", label: "Manuel" },
   { value: "ADS_IMPORT", label: "Google Ads" },
+  { value: "MATCHER", label: "Eşleştirme sihirbazı" },
 ];
 
 export const leadStatusLabel = (s: CrmLeadStatus) => CRM_LEAD_STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s;

@@ -8,6 +8,7 @@ import { ViewTracker } from "@/components/site/view-tracker";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
+import { MatcherCtaCard } from "@/components/site/matcher/matcher-modal";
 import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
@@ -94,6 +95,7 @@ export default async function BlogPostPage({ params }: PageProps) {
             <SocialShareButtons url={canonicalUrl} title={post.title} networks={appearance.socialShareNetworks} />
           </div>
         )}
+        <MatcherCtaCard className="mt-10" />
       </article>
     </>
   );

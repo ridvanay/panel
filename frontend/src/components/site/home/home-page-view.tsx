@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, Lock } from "lucide-react";
 import { SafeImage } from "@/components/site/safe-image";
 import { Eyebrow } from "@/components/site/about/eyebrow";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
+import { MatcherHeroSearch } from "@/components/site/matcher/matcher-modal";
 import { ABOUT_ICONS } from "@/components/site/about/about-icons";
 import { AboutDoctors } from "@/components/site/about/about-doctors";
 import { SpecialtyCardsGrid } from "@/components/site/blocks/specialty-cards-block";
@@ -199,6 +200,8 @@ function HomeHero({
               </Link>
             )}
           </div>
+          {/* Paket W — "What do you need help with?" arama kutusu (modalı açar). */}
+          <MatcherHeroSearch />
         </div>
 
         {/* Görsel kutusu SABİT oranlı (mobil 7:6, masaüstü ~1:1) — görsel geç yüklense de düzen kaymaz. */}

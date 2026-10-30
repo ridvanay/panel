@@ -34,6 +34,7 @@ export const CRM_LEAD_CHANNELS = [
   "BOOKING_ABANDONED",
   "MANUAL",
   "ADS_IMPORT",
+  "MATCHER",
 ] as const satisfies readonly CrmLeadChannel[];
 
 export const CRM_LEAD_STATUS_LABELS: Record<CrmLeadStatus, string> = {
@@ -57,6 +58,7 @@ export const CRM_LEAD_CHANNEL_LABELS: Record<CrmLeadChannel, string> = {
   BOOKING_ABANDONED: "Yarım kalan randevu",
   MANUAL: "Manuel",
   ADS_IMPORT: "Google Ads",
+  MATCHER: "Eşleştirme sihirbazı",
 };
 
 /** Sonuçlanmış durumlar — "bugün aranacaklar" listesine girmez. */

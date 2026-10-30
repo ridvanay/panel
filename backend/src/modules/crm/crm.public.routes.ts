@@ -34,7 +34,7 @@ function allowedOrigins(): string[] {
  * (aynı origin dahil). Başlık yoksa ya da farklıysa 403 — sunucudan sunucuya sahte olay basmayı ve
  * başka sitelerden CSRF benzeri olay göndermeyi engeller.
  */
-function assertSameSiteOrigin(request: FastifyRequest): void {
+export function assertSameSiteOrigin(request: FastifyRequest): void {
   const origin = request.headers.origin;
   if (!origin || !allowedOrigins().includes(origin)) {
     throw new ForbiddenError("İzin verilmeyen kaynak (origin).");

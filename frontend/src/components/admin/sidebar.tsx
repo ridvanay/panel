@@ -35,6 +35,7 @@ import {
   BadgeCheck,
   SlidersHorizontal,
   Languages,
+  ListChecks,
 } from "lucide-react";
 import {
   Sidebar,
@@ -153,6 +154,8 @@ export const navItems: NavItem[] = [
   // durum uyarısı, destek dilleri vb. de içerdiği için Tele-Sağlık grubunda "Ayarlar" adıyla.
   // Paket AA — tercüman hesapları, rapor ve gizlilik taahhüdü metni (atama rezervasyon listesinden).
   { href: "/admin/telehealth/interpreters", labelKey: "nav.telehealthInterpreters", icon: Languages, module: "telehealth", roles: ["ADMIN", "MANAGER"] },
+  // Paket W — eşleştirme sihirbazı kataloğu, önizleme, raporlar ve ayarlar.
+  { href: "/admin/telehealth/matcher", labelKey: "nav.telehealthMatcher", icon: ListChecks, module: "telehealth", roles: ["ADMIN", "MANAGER"] },
   {
     href: "/admin/telehealth/settings",
     labelKey: "nav.telehealthSettings",

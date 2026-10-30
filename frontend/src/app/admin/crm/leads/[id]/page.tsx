@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Field } from "@/components/ui/field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LeadStatusBadge, SlaBadge, formatDateTime, formatMoney } from "@/components/admin/crm/crm-ui";
+import { MatcherLeadCard } from "@/components/admin/matcher/matcher-lead-card";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 function toLocalInput(iso: string | null): string {
@@ -180,6 +181,9 @@ export default function CrmLeadDetailPage({ params }: { params: Promise<{ id: st
         </dl>
         {data.anonymizedAt && <Alert variant="info">Saklama süresi dolduğu için kişi bilgileri ve notlar silindi ({formatDateTime(data.anonymizedAt)}).</Alert>}
       </Card>
+
+      {/* Paket W — sihirbaz cevapları (sağlık verisi; istek üzerine yüklenir, görüntüleme audit'li). */}
+      {data.channel === "MATCHER" && <MatcherLeadCard leadId={data.id} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="space-y-3">

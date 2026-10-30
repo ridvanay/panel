@@ -193,6 +193,11 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
    */
   BOOKING_PAYMENT_PENDING: [],
   CUSTOM: [],
+  // Paket W — yalnızca talep numarası ve admin bağlantısı; şikayet/sağlık bilgisi değişken olarak YOK.
+  MATCHER_NEW_LEAD: [
+    { key: "submission_number", label: "Talep Numarası", sampleValue: "123", source: "system" },
+    { key: "admin_url", label: "Admin Bağlantısı", sampleValue: "https://example.com/admin/crm/leads/abc", source: "system" },
+  ],
 };
 
 export function getSystemVariablesForPurpose(purpose: EmailTemplatePurpose): EmailVariableDefinition[] {
