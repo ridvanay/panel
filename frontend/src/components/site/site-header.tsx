@@ -735,7 +735,7 @@ export function SiteHeader({
                     href={localize("/find-a-physician")}
                     onClick={closeMobileMenu}
                     data-testid="mobile-menu-find-physician"
-                    className="flex min-h-12 items-center justify-center gap-2 rounded-[var(--site-radius)] border-2 border-[var(--site-primary)] px-4 text-base font-semibold text-[var(--site-primary)] hover:bg-[var(--site-primary)]/5"
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] border-2 border-[var(--site-primary,var(--color-primary))] px-4 text-base font-semibold text-[var(--site-primary,var(--color-primary))] hover:bg-[var(--site-primary,var(--color-primary))]/5"
                   >
                     <Stethoscope className="h-5 w-5" aria-hidden="true" />
                     {matcherText.entryButton}
