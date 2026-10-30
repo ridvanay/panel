@@ -155,10 +155,29 @@ describe("modules/telehealth/lib/availability", () => {
     });
   });
 
-  describe("generateAvailableSlots — rezervasyon tamponu + doluluk", () => {
-    it("`now`'a göre 2 saatten YAKIN slotlar available:false döner", () => {
+  describe("generateAvailableSlots — önceden rezervasyon kısıtı yok (tampon 0) + doluluk", () => {
+    it("tampon 0: önceden rezervasyon kısıtı yok (2026-10-30 kullanıcı kararı)", () => {
+      expect(SLOT_BOOKING_BUFFER_MS).toBe(0);
+    });
+
+    it("1 dakika sonra başlayacak slot MÜSAİTTİR (2 saat kuralı kaldırıldı)", () => {
       const startsAt = new Date("2025-01-06T06:00:00.000Z"); // 09:00 Istanbul
-      const now = new Date(startsAt.getTime() - SLOT_BOOKING_BUFFER_MS + 60_000); // tam tampon sınırının 1dk İÇİNDE
+      const slots = generateAvailableSlots({
+        timeZone: "Europe/Istanbul",
+        sessionDurationMin: 60,
+        rules: [{ dayOfWeek: 1, startMinute: 540, endMinute: 600, isActive: true }],
+        fromDate: { year: 2025, month: 1, day: 6 },
+        toDate: { year: 2025, month: 1, day: 6 },
+        now: new Date(startsAt.getTime() - 60_000),
+        bookedStartTimesMs: new Set(),
+      });
+      expect(slots).toHaveLength(1);
+      expect(slots[0]!.available).toBe(true);
+    });
+
+    it("başlamış slot (1 dakika önce başladı) available:false döner", () => {
+      const startsAt = new Date("2025-01-06T06:00:00.000Z"); // 09:00 Istanbul
+      const now = new Date(startsAt.getTime() + 60_000);
       const slots = generateAvailableSlots({
         timeZone: "Europe/Istanbul",
         sessionDurationMin: 60,
@@ -172,9 +191,9 @@ describe("modules/telehealth/lib/availability", () => {
       expect(slots[0]!.available).toBe(false);
     });
 
-    it("tam tampon sınırındaki (2 saat sonrası) slot MÜSAİTTİR (>= karşılaştırması)", () => {
+    it("tam başlangıç anındaki slot MÜSAİTTİR (>= karşılaştırması, tampon 0)", () => {
       const startsAt = new Date("2025-01-06T06:00:00.000Z");
-      const now = new Date(startsAt.getTime() - SLOT_BOOKING_BUFFER_MS);
+      const now = new Date(startsAt.getTime());
       const slots = generateAvailableSlots({
         timeZone: "Europe/Istanbul",
         sessionDurationMin: 60,
@@ -235,9 +254,10 @@ describe("modules/telehealth/lib/availability", () => {
       expect(isBookableSlotStart(new Date("2025-01-07T06:00:00.000Z"), params)).toBe(false); // Salı, kural yok.
     });
 
-    it("tampon içindeki (çok yakın) bir slot için false döner", () => {
+    it("çok yakın (1 dakika sonra başlayan) slot artık alınabilir; başlamış slot alınamaz", () => {
       const startsAt = new Date("2025-01-06T06:00:00.000Z");
-      expect(isBookableSlotStart(startsAt, { ...params, now: new Date(startsAt.getTime() - 60_000) })).toBe(false);
+      expect(isBookableSlotStart(startsAt, { ...params, now: new Date(startsAt.getTime() - 60_000) })).toBe(true);
+      expect(isBookableSlotStart(startsAt, { ...params, now: new Date(startsAt.getTime() + 60_000) })).toBe(false);
     });
   });
 });

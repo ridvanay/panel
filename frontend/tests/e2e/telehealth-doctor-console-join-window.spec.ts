@@ -69,14 +69,19 @@ async function cleanupFixtures() {
   await resetFixtureUserToBaseline(adminToken, DOCTOR_NY_EMAIL);
 }
 
-/** `GET /doctors/{slug}/slots`'tan İLK müsait slotu döner — `SLOT_BOOKING_BUFFER_MS` (2 saat,
- * `backend/src/modules/telehealth/lib/availability.ts`) müsait dönen HER slotun katılım
- * penceresinin (`JOIN_WINDOW_BEFORE_START_MS`, 10 dk) ÇOK ötesinde/kapalı olduğunu garanti eder —
- * `telehealth-multi-slot-booking.spec.ts::pickAvailableSlotIso` İLE AYNI desen. */
+/**
+ * Katılım penceresi (`JOIN_WINDOW_BEFORE_START_MS`, 10 dk) KAPALI kalsın diye en az bu kadar ileride
+ * başlayan slot seçilir. 2026-10-30'dan beri `SLOT_BOOKING_BUFFER_MS` = 0 (önceden rezervasyon kısıtı
+ * yok): API birkaç dakika sonra başlayan slotu da müsait döndürür, bu yüzden pay testin kendisinde.
+ */
+const MIN_SLOT_LEAD_MS = 2 * 60 * 60 * 1000;
+
+/** `GET /doctors/{slug}/slots`'tan en az `MIN_SLOT_LEAD_MS` ileride başlayan İLK müsait slotu döner. */
 async function pickAvailableSlotIso(doctorSlug: string): Promise<string> {
   const { from, to } = defaultSlotRangeISODates(14);
   const slotsRes = await getPublicDoctorSlotsRaw(doctorSlug, from, to);
-  const slot = (slotsRes.data ?? []).find((s) => s.available);
+  const earliest = Date.now() + MIN_SLOT_LEAD_MS;
+  const slot = (slotsRes.data ?? []).find((s) => s.available && Date.parse(s.startsAt) >= earliest);
   if (!slot) throw new Error(`${doctorSlug} için müsait bir slot bulunamadı.`);
   return slot.startsAt;
 }
@@ -233,7 +238,7 @@ test("madde 1a: katılım penceresi KAPALIYKEN bile 'Odaya Katıl' /doctor konso
     await expect(page.getByText(PATIENT_TR, { exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Regresyonun asıl konusu: randevu saatine saatler/günler kalmış (katılım penceresi KAPALI —
-    // `SLOT_BOOKING_BUFFER_MS` 2 saat ötesinde bir slot seçildi, bkz. `pickAvailableSlotIso`), ama
+    // en az 2 saat ileride bir slot seçildi, bkz. `pickAvailableSlotIso`), ama
     // buton yine de DOM'da mevcut, GÖRÜNÜR ve tıklanabilir GERÇEK bir `<a>` (eski davranışta bu
     // durumda buton tamamen `<span>`/`<Badge>`'e dönüşüp KAYBOLUYORDU).
     const joinLink = page.getByRole("link", { name: "Odaya Katıl" });

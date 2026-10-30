@@ -97,10 +97,10 @@ async function bookAppointment(app: FastifyInstance, doctorSlug: string, startsA
 }
 
 /**
- * `POST /appointments` (§4.3) her zaman en az `SLOT_BOOKING_BUFFER_MS` (2 saat) İLERİDE bir
- * `startsAt` ister (bkz. `lib/availability.ts::isBookableSlotStart`) — bu yüzden GERÇEK
- * rezervasyon akışıyla katılım penceresi (§4.5: `startsAt - 5dk` … `endsAt + 15dk`) İÇİNDE bir
- * randevu ÜRETİLEMEZ (booking anı ile pencere birbirini yapısal olarak DIŞLAR). meeting-token
+ * 2026-10-30'dan beri `SLOT_BOOKING_BUFFER_MS` = 0: `POST /appointments` başlamamış her slotu kabul
+ * eder (bkz. `lib/availability.ts::isBookableSlotStart`). Yine de katılım penceresinin (§4.5:
+ * `startsAt - 5dk` … `endsAt + 15dk`) kenarlarını ve geçmiş/devam eden randevuları kesin zamanlarla
+ * kurmak rezervasyon akışıyla mümkün değildir (geçmiş slot alınamaz, slotlar kurala hizalıdır). meeting-token
  * yetkilendirme/pencere mantığını izole test etmek için `Appointment` satırı DOĞRUDAN yazılır —
  * booking akışının kendisi zaten `telehealth.test.ts`'te (backend-agent) ayrıca test edilir.
  */
