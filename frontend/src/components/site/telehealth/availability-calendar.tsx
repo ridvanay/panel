@@ -66,6 +66,10 @@ interface AvailabilityCalendarProps {
 /** Grup anahtarları dahili; görünen başlık sözlükten gelir (`t.calendar.morning` / `afternoon` / `evening`). */
 // Paket R — hastanın saatine göre üç grup: sabah (<12), öğleden sonra (12–17), akşam (≥17).
 const HOUR_GROUP_LABELS = ["morning", "afternoon", "evening"] as const;
+
+/** Backend `SLOT_BOOKING_BUFFER_MS` (lib/availability.ts) ile AYNI: başlangıcına 2 saatten az kalan
+ * slot rezerve edilemez. Bu slotlar "Dolu" DEĞİL, "çok yakın" olarak etiketlenir (yalnızca gösterim). */
+const SLOT_BOOKING_BUFFER_MS = 2 * 60 * 60 * 1000;
 type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
 
 /**
@@ -325,7 +329,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
     return hourGroups
       .map((group) => ({
         label: group.label,
-        items: group.items.filter((slot) => slot.available || new Date(slot.startsAt).getTime() < now),
+        items: group.items.filter((slot) => slot.available || new Date(slot.startsAt).getTime() < now + SLOT_BOOKING_BUFFER_MS),
       }))
       .filter((group) => group.items.length > 0);
   }, [hourGroups, hideFullSlots, now]);
@@ -617,6 +621,8 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                 </p>
               )}
 
+              <p className="mt-2 text-xs text-foreground/60">{t.calendar.noticeInfo}</p>
+
               {monthFetchError && (
                 <Alert variant="error" className="mt-3">
                   <span>{monthFetchError}</span>
@@ -746,6 +752,24 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 className="flex min-h-10 cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                               >
                                 <SlotCardContent view={view} status={t.schedule.pastShort} />
+                              </span>
+                            );
+                          }
+
+                          if (!slot.available && new Date(slot.startsAt).getTime() < now + SLOT_BOOKING_BUFFER_MS) {
+                            return (
+                              <span
+                                key={slot.startsAt}
+                                tabIndex={-1}
+                                role="checkbox"
+                                aria-checked="false"
+                                aria-disabled="true"
+                                data-slot-nav=""
+                                data-slot-status="too-soon"
+                                aria-label={fmt(t.calendar.slotTooSoon, { time })}
+                                className="flex min-h-10 cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                              >
+                                <SlotCardContent view={view} status={t.calendar.tooSoon} />
                               </span>
                             );
                           }
