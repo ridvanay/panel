@@ -1,0 +1,660 @@
+{
+ "headache-migraine": {
+  "hash": "d4ecd5240de329cd3e6728d56331390cb48440dbaf83554cdbe528f7d2300876",
+  "weights": {}
+ },
+ "brain-tumor-suspicion": {
+  "hash": "80c4903be94ad0d0f264d6ab265634d20abfbf5ac0676b2fe10743a0a62b6a5e",
+  "weights": {
+   "neurosurgery": 100,
+   "surgical-oncology": 30
+  }
+ },
+ "pituitary-tumor": {
+  "hash": "ca22203b40d7932a288a9ac4061318a5bf7d577487b2031791b67443afeadcaa",
+  "weights": {
+   "neurosurgery": 100
+  }
+ },
+ "hydrocephalus": {
+  "hash": "d2c7a6eb36bed03e8098bbd7714199be793545748d6bf78743fb273a3dafb135",
+  "weights": {
+   "neurosurgery": 100
+  }
+ },
+ "trigeminal-neuralgia": {
+  "hash": "a4a4ddd278c5a93d82d930830101f35210be64ba3472c62a72cebd1110db7788",
+  "weights": {
+   "neurosurgery": 80
+  }
+ },
+ "head-injury-followup": {
+  "hash": "168f843f46f7154f11adef8f4ef3a283190a599353f6d57267bef27e26e1c100",
+  "weights": {
+   "neurosurgery": 80
+  }
+ },
+ "hair-loss": {
+  "hash": "92964b0d9c350ae45887d105d2eb2d26b262e100a509c2f28e16ce74fd642485",
+  "weights": {
+   "hair-transplantation": 100,
+   "plastic-and-aesthetic-surgery": 20
+  }
+ },
+ "beard-eyebrow-transplant": {
+  "hash": "cc639f0f472d810972a1e58c93b05533e4eb59a62c3c74a34cb80b672f36d477",
+  "weights": {
+   "hair-transplantation": 100
+  }
+ },
+ "neck-pain": {
+  "hash": "43ee9a749b46f5dc724a52ce5bd40115489a45f7279a241c536591fdeec246c5",
+  "weights": {
+   "neurosurgery": 70
+  }
+ },
+ "cervical-disc-herniation": {
+  "hash": "034d965437cba9c57571a8948edd7a68f251db9f300ed3c24059f43a2792f38e",
+  "weights": {
+   "neurosurgery": 100
+  }
+ },
+ "lumbar-disc-herniation": {
+  "hash": "219e5eb6626316518bd50a22b0a33ac0fb851aee9c239435ef88c1772ddcbd3e",
+  "weights": {
+   "neurosurgery": 100
+  }
+ },
+ "low-back-pain": {
+  "hash": "4ef0cda85decf8d42dc38e6f2950613ad8e70d77fcc0a045b696e933cb4e7492",
+  "weights": {
+   "neurosurgery": 70
+  }
+ },
+ "sciatica": {
+  "hash": "e02e453a594b07f18986a31d7b0903096f83e2af4378a6d5c3ace8c24ddfe23d",
+  "weights": {
+   "neurosurgery": 90
+  }
+ },
+ "spinal-stenosis": {
+  "hash": "85c2b0ad16eae26e1d8b27bc9c8c87e35b41c76c18a8b558aacd06f8b99a70c1",
+  "weights": {
+   "neurosurgery": 100
+  }
+ },
+ "spine-slippage-scoliosis": {
+  "hash": "667296a0e157e0d724922960a6362cb163dfd018996998602694da42817d9629",
+  "weights": {
+   "neurosurgery": 70
+  }
+ },
+ "hand-numbness-carpal-tunnel": {
+  "hash": "33463c28c518b886b02875932f4bbfe779b6ac2fa1a8a5b2178cde9c56a97736",
+  "weights": {
+   "neurosurgery": 70,
+   "plastic-and-aesthetic-surgery": 30
+  }
+ },
+ "thyroid-nodule": {
+  "hash": "a07ba641861e5bd7d7e5fc03bfcc686748f0438d6d294178a24efed941762260",
+  "weights": {
+   "surgical-oncology": 50,
+   "interventional-radiology-specialist": 50
+  }
+ },
+ "lung-nodule": {
+  "hash": "a36a37414d495acbac6641852be62af51595e488800688560ceb4c27b862c3e2",
+  "weights": {
+   "thoracic-surgery": 100,
+   "surgical-oncology": 40
+  }
+ },
+ "lung-cancer": {
+  "hash": "5717122468444882338e33b38e649cb06fa81686017cdc69905dfdd5803390b2",
+  "weights": {
+   "thoracic-surgery": 100,
+   "surgical-oncology": 60
+  }
+ },
+ "chest-wall-deformity": {
+  "hash": "36eefbc9144fadc85ca2f27d0c54220c3d0583d0a7a4b6e58d0ae13b751c9b85",
+  "weights": {
+   "thoracic-surgery": 100,
+   "plastic-and-aesthetic-surgery": 30
+  }
+ },
+ "pleural-effusion": {
+  "hash": "e192fe6a6abc8f4b22b1d4abf82adb39a3bb1b75576c7d4ddbd33e248bf47ca6",
+  "weights": {
+   "thoracic-surgery": 90
+  }
+ },
+ "pneumothorax": {
+  "hash": "61eb44486bc0ff0672dfbaad71e0e85c1dbb331a3ec74ca8b0d1eb56a8fe2471",
+  "weights": {
+   "thoracic-surgery": 100
+  }
+ },
+ "hyperhidrosis": {
+  "hash": "bda0e451b015e2ba7a17bb87632c9e0bf574284a633338ee33014ba5b41d33b0",
+  "weights": {
+   "thoracic-surgery": 90
+  }
+ },
+ "mediastinal-mass": {
+  "hash": "cf2f1798b76bb5efa5a7fad7cf265505e4cad06f994b79739e68326bcdba3639",
+  "weights": {
+   "thoracic-surgery": 100,
+   "surgical-oncology": 40
+  }
+ },
+ "chronic-cough": {
+  "hash": "2c38c24c8209f5296cee70e1633f00fb9a2d56158e71f6b8db34c6f1611ee391",
+  "weights": {
+   "thoracic-surgery": 40,
+   "gastroenterology": 40
+  }
+ },
+ "swallowing-difficulty": {
+  "hash": "d58edb9d125e85f0a782a3b60de41c6b8228aa994f930cc3b207fa7291be1d39",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "achalasia": {
+  "hash": "23fd6f648916e29aaacf85a8e1d19ffad15013587f3cb05f114df38e47f186ca",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "esophageal-cancer": {
+  "hash": "90ca99bed23c0820d794d5217b84990d8c079ec4ca4a1c532fd4e280c97b135e",
+  "weights": {
+   "surgical-oncology": 80,
+   "gastroenterology": 60,
+   "thoracic-surgery": 50
+  }
+ },
+ "reflux-heartburn": {
+  "hash": "85e9f42d1ff8dd38e66605b5d202431208ca1bf19fad43582f58c34a2488e99a",
+  "weights": {
+   "gastroenterology": 100,
+   "obesity-and-metabolic-surgery": 40
+  }
+ },
+ "hiatal-hernia": {
+  "hash": "bb28499348e8c6fafb8037b4e68e97a787bd9b475f2e4051840b544d30a3caaa",
+  "weights": {
+   "gastroenterology": 80,
+   "obesity-and-metabolic-surgery": 70
+  }
+ },
+ "indigestion-stomach-pain": {
+  "hash": "e16b2327bb51bc67ea1fd9a55c255a1eec552c05f148491dd118d7720892b265",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "gastritis-ulcer": {
+  "hash": "00e02f813de8dcdff8a1046b5b0a8afb85624c73df8845562dcbef2379dbae52",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "bloating-ibs": {
+  "hash": "e1bf7f3b57765a5ae43bb478e4f1b383809fb84fe02ba250a87e6444548db979",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "constipation": {
+  "hash": "0eea3bd924c445bc9a9cd6cb9d4b9bc985bd05f38ff91a2f1d66c216b035a3c4",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "chronic-diarrhea": {
+  "hash": "67147fc596ee4cc213507d7180827f5bb7ac85cedc64e231a655834d54ca0c3e",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "blood-in-stool": {
+  "hash": "451f6c180a05e5473faa58e3c013cb3d1ea3b34614afd0492b59b57aed7f2a8e",
+  "weights": {
+   "gastroenterology": 100,
+   "surgical-oncology": 30
+  }
+ },
+ "hemorrhoids-fissure": {
+  "hash": "4a5b4fab07efffb08ff147fdb43bf947ac01d7bb23aba2c8064403e9f2eb2013",
+  "weights": {
+   "gastroenterology": 50
+  }
+ },
+ "colonoscopy-screening": {
+  "hash": "5b255d809d336dbec71f5efea525c37da2e9c4034914cc018dbe67c8b6d4f863",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "colon-polyp": {
+  "hash": "13dffc8007bb4dff7d415017ba0f2f54e78fe0a2a86c42312e5b5bcfe70f3146",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "early-gi-cancer": {
+  "hash": "88afe9dd1e47d27403156342a7123dbdade00902b3b26bf21e5cae5c2e3f8d45",
+  "weights": {
+   "gastroenterology": 100,
+   "surgical-oncology": 30
+  }
+ },
+ "stomach-cancer": {
+  "hash": "2e146286b28efc37aaa82ca64cb43918e5e94550b9daec655189cbfd606ecce6",
+  "weights": {
+   "surgical-oncology": 100,
+   "gastroenterology": 50
+  }
+ },
+ "colorectal-cancer": {
+  "hash": "b1b64c84532d62c524adb112a51406c1b90f46381a09c8fdbd9cb6f1779a496f",
+  "weights": {
+   "surgical-oncology": 100,
+   "gastroenterology": 50
+  }
+ },
+ "gallstones": {
+  "hash": "28f81017a84f76c731301a09c21309a6c66b8fa15808bedf176195bc19f99e83",
+  "weights": {
+   "gastroenterology": 70
+  }
+ },
+ "bile-duct-stones-jaundice": {
+  "hash": "61f08d369b0e6b468c3cbfc13950273820afa0058edfe6356262e94cf3f19e39",
+  "weights": {
+   "gastroenterology": 100
+  }
+ },
+ "pancreatitis-pancreatic-cyst": {
+  "hash": "f0669e6510394b69b75a4a084fdd0c4c066e509648c98fbc9b349b0ab6bc7daa",
+  "weights": {
+   "gastroenterology": 90,
+   "surgical-oncology": 30
+  }
+ },
+ "pancreatic-cancer": {
+  "hash": "001af6f802ed1d261f2b85fe914aef4d8c822b6c06a8ff49a8b46383d507d9ee",
+  "weights": {
+   "surgical-oncology": 100,
+   "gastroenterology": 60
+  }
+ },
+ "fatty-liver-liver-enzymes": {
+  "hash": "0347b88bf48146d3f343a7f75099d940064b65f6cfccfca186caeb3160b02384",
+  "weights": {
+   "gastroenterology": 100,
+   "obesity-and-metabolic-surgery": 30
+  }
+ },
+ "liver-tumor": {
+  "hash": "f792be86f133efb61a3c5c40dfaa0d228050083ef0f810065944813bfb28cb43",
+  "weights": {
+   "surgical-oncology": 100,
+   "interventional-radiology-specialist": 60,
+   "gastroenterology": 40
+  }
+ },
+ "abdominal-hernia": {
+  "hash": "0054a63f49510b879a727d77471e96594c496170b7cabdb5b8de304d2452fb2b",
+  "weights": {
+   "obesity-and-metabolic-surgery": 80,
+   "plastic-and-aesthetic-surgery": 30
+  }
+ },
+ "obesity": {
+  "hash": "604d2041da74033580c107ca4e71f54732c9eb704cb7c92282825e053dcd31d7",
+  "weights": {
+   "obesity-and-metabolic-surgery": 100
+  }
+ },
+ "type2-diabetes-metabolic": {
+  "hash": "82249acea334b11c1c4b4e1d71fa6e92cc1f6db6415a66527150217903d73110",
+  "weights": {
+   "obesity-and-metabolic-surgery": 100,
+   "gastroenterology": 20
+  }
+ },
+ "bariatric-revision": {
+  "hash": "c2a4e26abbeb8363c257e1de46f5e92ad5f487a1552f5d268b3d080c6418f898",
+  "weights": {
+   "obesity-and-metabolic-surgery": 100
+  }
+ },
+ "gastric-balloon": {
+  "hash": "72ee2e792e9606b8664653d156de0051376f699bb77f4999bcbeb6d809688cab",
+  "weights": {
+   "obesity-and-metabolic-surgery": 80,
+   "gastroenterology": 50
+  }
+ },
+ "kidney-stone": {
+  "hash": "ca2eb0c0db0ca500293417ad3e967e07a227c42cfe310e5a7d3032c65be8602c",
+  "weights": {}
+ },
+ "prostate": {
+  "hash": "88001508e7c47c4adcae319383d3a7b2cdfeb6b0123fbe4f581542854a5ae63f",
+  "weights": {
+   "interventional-radiology-specialist": 70
+  }
+ },
+ "urinary-incontinence": {
+  "hash": "72455510b33300ffac2cc3b1b2d0774c707aeb8eabb53a2027acf1ac8bde57e1",
+  "weights": {}
+ },
+ "male-infertility": {
+  "hash": "e5c6bf72b63959c9f180311062f187ca48b9cdc029b1125c9abb7d720efc4ad8",
+  "weights": {
+   "ivf-and-reproductive-health": 100
+  }
+ },
+ "infertility": {
+  "hash": "4b4e59bf372be1a78b3866a8ec9fc10436895f08d0817bc4730eb18d20e85bd6",
+  "weights": {
+   "ivf-and-reproductive-health": 100
+  }
+ },
+ "ivf": {
+  "hash": "ce9bc9cdf7a00d02eac5adfa609206f91ce49abfb7fcf659017a6b9e5aae4655",
+  "weights": {
+   "ivf-and-reproductive-health": 100
+  }
+ },
+ "egg-freezing": {
+  "hash": "b77477d2b2322bcf14f6bf013a8f08e89f250bc4cdd61d101d7d8fc1ae4fe493",
+  "weights": {
+   "ivf-and-reproductive-health": 100
+  }
+ },
+ "recurrent-miscarriage": {
+  "hash": "f8be7b5b18e2eea18f4ef5e9122dfda8732dad0acdda80ab277561c8bda55a2b",
+  "weights": {
+   "ivf-and-reproductive-health": 90
+  }
+ },
+ "pcos": {
+  "hash": "2017d440af5ed7686f69457a89233f18d25a34dd7ed85999f653f2423413d9b0",
+  "weights": {
+   "ivf-and-reproductive-health": 80,
+   "obesity-and-metabolic-surgery": 30
+  }
+ },
+ "endometriosis": {
+  "hash": "7a272313f26c6f0db0fb89fca61b3a6dafa76c99730ebb8fa2d22d77108e82b8",
+  "weights": {
+   "ivf-and-reproductive-health": 70
+  }
+ },
+ "uterine-fibroids": {
+  "hash": "fd12e6df8a905b57f3ec14fc507f9cb2934914a644f5281617c60442244fe502",
+  "weights": {
+   "surgical-oncology": 70,
+   "interventional-radiology-specialist": 50,
+   "ivf-and-reproductive-health": 30
+  }
+ },
+ "ovarian-cyst": {
+  "hash": "655cb4cf3c26be6c27ee44f09bcbd198f4f2ad63ad0a7d39d0400ba8194125b0",
+  "weights": {
+   "ivf-and-reproductive-health": 50,
+   "surgical-oncology": 30
+  }
+ },
+ "breast-lump": {
+  "hash": "e862d8a85fc96f7df1430f2c998448ac07c91aeab8a0a284ecd713bbdd7bd59d",
+  "weights": {
+   "surgical-oncology": 100,
+   "plastic-and-aesthetic-surgery": 20
+  }
+ },
+ "breast-cancer": {
+  "hash": "82a7758aa0e5cea19fb234722ae9e65a802080b73b305fe15194454ba2690aed",
+  "weights": {
+   "surgical-oncology": 100,
+   "plastic-and-aesthetic-surgery": 40
+  }
+ },
+ "breast-aesthetics": {
+  "hash": "f76c4b000d433b594061ebf70e464fad39662d05404c4457ca0f22eee212ee51",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "rhinoplasty": {
+  "hash": "4ae5ff397a53d19f176a48d1fbddb25c4aa89f95a20b977785de5499fe15a736",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "fillers-botox": {
+  "hash": "c55f9c63a93b4b94521d0d0a5926775bc18fe89c3a1dca586090a8b17b09223a",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "facelift": {
+  "hash": "309a6301598c4e3e5a5d1d1ff8c316b6a42bb0f4a81a842c6039cc215f1d94aa",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "eyelid-surgery": {
+  "hash": "a1846e0bc8decc1d4a7bb5bd0c773f367e6c8933c8239fe4db8cc19bbd890277",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "liposuction-body-contouring": {
+  "hash": "acb2a0c747bcf3516bf7b71afd3c18e9ecacaa08d7f04a676f6e67f9e2575dcd",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100,
+   "obesity-and-metabolic-surgery": 20
+  }
+ },
+ "tummy-tuck": {
+  "hash": "6c4707c346b71c37d89ff9999d490760d932c718914ea56a2d9157de51e9f4cf",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "post-weight-loss-contouring": {
+  "hash": "24670c074c57a8aa6ed4954f28b464e0b97463df014ab6d36567d98568bccb08",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100,
+   "obesity-and-metabolic-surgery": 30
+  }
+ },
+ "gynecomastia": {
+  "hash": "bd940b2d4d310210a42cf2eeed462643e57c8bb81eaa9f29026cf46cefe6a514",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 100
+  }
+ },
+ "scar-revision": {
+  "hash": "7e8597ec83ec8bcc1a92e800f165b3ee082af5f08c44270b7de88d1b5d1c1743",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 90
+  }
+ },
+ "skin-lesion-mole": {
+  "hash": "36651f47a36d6ffa9a37f9c7eb4c4463eaea82d344b608dc977b1706f91c993e",
+  "weights": {
+   "plastic-and-aesthetic-surgery": 40,
+   "surgical-oncology": 40
+  }
+ },
+ "toothache": {
+  "hash": "79541adc1d0bbdd6cd8a17aab1f214d08d08bf0db0f314db69012694a742da59",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "dental-abscess": {
+  "hash": "a1318d8facd013b7e7bba2314cae8ef48a7542076abc62bfa5fd11237e62ebdf",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "gum-recession": {
+  "hash": "95342998c55e55fc26e5d9d58c1e0290debb1fd03bf21faec5572a353ba4401c",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "dental-implant": {
+  "hash": "d7ea7e176956216efe632918682ccd6885be5121fe0f3c279e483bf4c5569de6",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "smile-design": {
+  "hash": "34f51bcf6a81c5dfe3c33309d5508be24df30005755f2ac5111c8bbcc7e963b5",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "teeth-whitening": {
+  "hash": "bc9d8432f66f283aa81af759b441dee23edbee9ae5f499fac4fe115a30674dc9",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "braces-crooked-teeth": {
+  "hash": "5a12a6a56ff53ed75d38508da8bba2c153053090d5a671883f9b1285ea49b735",
+  "weights": {
+   "orthodontist": 100
+  }
+ },
+ "clear-aligners": {
+  "hash": "cf2d2c637f0924e3a32c4fdb22c46f3045fdecbc8dd3ccca15a6d9fe63f43350",
+  "weights": {
+   "orthodontist": 100
+  }
+ },
+ "bite-problems": {
+  "hash": "440bb64bc5709313fe869615b888f02a289613a848fcd869933f1fe387a331b1",
+  "weights": {
+   "orthodontist": 100
+  }
+ },
+ "root-canal": {
+  "hash": "afc205d573e3321b439c0d40c15766568a88b6ac64f6b0c8388066728c4d6d88",
+  "weights": {
+   "dentalcare": 100
+  }
+ },
+ "knee-pain": {
+  "hash": "ab46a9b8dee5ca6dae63cd8293aefda7ec629eee0ea6eac2e451d0ae5abad5e1",
+  "weights": {}
+ },
+ "hip-shoulder-pain": {
+  "hash": "c41c4875daf0893543a91b4060d071560f2e9ea286bb5e8cc963202dc03eacb6",
+  "weights": {}
+ },
+ "varicose-veins": {
+  "hash": "95c25e4201777fd90a01182fbc0a0544537931132ea08fea2bba00fe5d3aa438",
+  "weights": {
+   "interventional-radiology-specialist": 100
+  }
+ },
+ "general-checkup": {
+  "hash": "42f66a3210bec2617736282684c609b9ca8aade8273e5c3d64105156a8572362",
+  "weights": {}
+ },
+ "longevity": {
+  "hash": "c9e212d5d30fe18a9c124b992039153840003daa3a0a26069c7dc579234e0964",
+  "weights": {}
+ },
+ "second-opinion": {
+  "hash": "7bf9656d6f1ecf6f347699363035a63a878066805a3ebf7ca4fef53a186f2dab",
+  "weights": {}
+ },
+ "cancer-screening": {
+  "hash": "54e847fee99bf3ec9809d547f07414282274a5e411a1d1c49da0988efec7e207",
+  "weights": {
+   "gastroenterology": 50,
+   "surgical-oncology": 50
+  }
+ },
+ "cancer-surgery-opinion": {
+  "hash": "b92b882a0ba6ea6a259425cda494f2a8d04b55c5f1e4bb61ad291c4e213dc4cf",
+  "weights": {
+   "surgical-oncology": 100
+  }
+ },
+ "soft-tissue-lump": {
+  "hash": "b8294cff18c011a629a84bc5d74cf211b22604beb20d723c6764ea16c985c7dc",
+  "weights": {
+   "surgical-oncology": 70,
+   "plastic-and-aesthetic-surgery": 30
+  }
+ },
+ "swollen-lymph-nodes": {
+  "hash": "114e7bd60ff9b74c33175d83d7539f4c4834d527a56a8d2181c883de828fb4fa",
+  "weights": {
+   "surgical-oncology": 50
+  }
+ },
+ "stress-anxiety": {
+  "hash": "b31f27a93c2c412fb76f8b8e2ef09f742c31158966310bd3ef941b00263558b5",
+  "weights": {}
+ },
+ "sleep-problems": {
+  "hash": "f9a764f9b9e3c6c6cb5878f4beaf7179afe82a576019a7432fd68e3a8b519cb3",
+  "weights": {}
+ },
+ "dialysis-access": {
+  "hash": "c03bc4837723e4ee9d2697f27f780b5d5874aab060051ada7e840e785af46279",
+  "weights": {
+   "interventional-radiology-specialist": 100
+  }
+ },
+ "something-else": {
+  "hash": "533323144c20701659fe0bb9c3f23e4f2e6e76f0c9c33a3c45bc645a0ee4a5dc",
+  "weights": {}
+ },
+ "rf-chest-pain-breathless": {
+  "hash": "35499fce189daf167bddc42e51f7fb0c0c42c07baac8bc2212b8ce517a60b239",
+  "weights": {}
+ },
+ "rf-stroke-signs": {
+  "hash": "f8c85d9419e6714974ae6619948e58d05fe564fe7a95495e99a40298f7a8ca56",
+  "weights": {}
+ },
+ "rf-severe-bleeding": {
+  "hash": "ee91865983769c06b8a324d29c1f9bddeec2b263597f2c612e4646c286f2d184",
+  "weights": {}
+ },
+ "rf-loss-of-consciousness": {
+  "hash": "f8598e9e6ac48a1e48fc0b4c7b30fdf6fab100ed07c80af561b66a385c84e0dd",
+  "weights": {}
+ },
+ "rf-thunderclap-headache": {
+  "hash": "407afbed39b589caaf67a1d95528fb843303dfecff25fa2b57727bd4e3a4afce",
+  "weights": {}
+ },
+ "rf-suicidal-thoughts": {
+  "hash": "0c5489b0701eb9e71fb5141df9049c09c66a5cc35f1c12474b605d9637653272",
+  "weights": {}
+ },
+ "rf-acute-abdomen": {
+  "hash": "92318714d86d0512ce4b0b598ee69f31fbc20864b40ae2bf111acea578b6a9b7",
+  "weights": {}
+ },
+ "rf-severe-allergy": {
+  "hash": "1c29ec21921c126b9142453f67a67c2041ed815b0cc99e9071ccd7c4ac9c6db0",
+  "weights": {}
+ }
+}

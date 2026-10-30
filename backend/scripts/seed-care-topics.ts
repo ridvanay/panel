@@ -1,11 +1,12 @@
 /**
- * Paket W — eşleştirme sihirbazı kataloğu (≈100 konu + 8 kırmızı bayrak, 9 dil eş anlamlılar).
- * Kaynak tablo: docs/prompts/2026-10-30-W-eslesme-tablosu.md. Mantık: `src/lib/care-topics/seed.ts`.
- * İdempotent: var olan konuya dokunmaz. Canlıya yüklemeden önce tablo hekim kontrolünden geçmeli.
+ * Paket W / W-ek — eşleştirme sihirbazı kataloğu (314 konu + 18 kırmızı bayrak, 9 dil eş anlamlılar).
+ * Kaynak tablo: docs/prompts/2026-10-31-W-ek-katalog.md. Mantık: `src/lib/care-topics/seed.ts`.
+ * Varsayılan: yalnızca yeni konuları ekler, var olana dokunmaz. `--update-existing`: var olan kayıt
+ * seed'den beri DEĞİŞMEMİŞSE (içerik özeti) günceller; admin değiştirdiyse atlar.
  *
  * ÇALIŞTIRMA (backend/ dizininden):
- *   npx tsx scripts/seed-care-topics.ts                                                    # kuru çalışma
- *   npx tsx scripts/seed-care-topics.ts --confirm=seed-care-topics --operator="Ad Soyad"
+ *   npx tsx scripts/seed-care-topics.ts [--update-existing]                                 # kuru çalışma
+ *   npx tsx scripts/seed-care-topics.ts [--update-existing] --confirm=seed-care-topics --operator="Ad Soyad"
  */
 import os from "node:os";
 import { PrismaClient } from "@prisma/client";
@@ -19,7 +20,7 @@ function arg(name: string): string | undefined {
 async function main() {
   const prisma = new PrismaClient();
   try {
-    const plan = await buildSeedCareTopicsPlan(prisma);
+    const plan = await buildSeedCareTopicsPlan(prisma, { updateExisting: process.argv.includes("--update-existing") });
     console.log(formatSeedCareTopicsPlan(plan));
     const confirm = arg("confirm");
     if (!confirm) {
@@ -27,7 +28,7 @@ async function main() {
       return;
     }
     const result = await applySeedCareTopicsPlan(prisma, plan, { confirm, operator: arg("operator") ?? "", osUser: os.userInfo().username, hostname: os.hostname() });
-    console.log(result.created.length ? `\nEklendi: ${result.created.length} konu.` : "\nEklenecek konu yoktu; hiçbir şey yazılmadı.");
+    console.log(`\nEklendi: ${result.created.length} · Güncellendi: ${result.updated.length}${result.skippedChanged.length ? ` · Yazım sırasında değişmiş, atlandı: ${result.skippedChanged.join(", ")}` : ""}`);
   } catch (err) {
     console.error(`HATA: ${(err as Error).message}`);
     process.exitCode = 1;

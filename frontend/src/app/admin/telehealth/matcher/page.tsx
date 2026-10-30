@@ -9,6 +9,7 @@ import { listAdminSpecialties } from "@/lib/api/telehealth";
 import type { Specialty } from "@/lib/api/types";
 import { matcherStrings as trStrings } from "@/lib/i18n/matcher-dictionaries/tr";
 import { PageHeading } from "@/components/admin/page-heading";
+import { MatcherDemandCard } from "@/components/admin/matcher/matcher-demand-card";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -43,6 +44,8 @@ export default function AdminMatcherPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [area, setArea] = useState<MatcherBodyArea | "">("");
+  /** Paket W-ek — "" tümü, "__none__" ipucu yok, aksi halde ipucu metni. */
+  const [hint, setHint] = useState("");
   const [editing, setEditing] = useState<AdminCareTopic | "new" | null>(null);
 
   const load = useCallback(async () => {
@@ -67,9 +70,11 @@ export default function AdminMatcherPage() {
     return (topics ?? []).filter(
       (t) =>
         (!area || t.bodyArea === area) &&
+        (!hint || (hint === "__none__" ? !t.targetSpecialtyHint : t.targetSpecialtyHint === hint)) &&
         (!q || t.slug.includes(q) || Object.values(t.translations).some((tr) => tr.label.toLowerCase().includes(q) || tr.synonyms.some((s) => s.toLowerCase().includes(q))))
     );
-  }, [topics, filter, area]);
+  }, [topics, filter, area, hint]);
+  const hints = useMemo(() => [...new Set((topics ?? []).map((t) => t.targetSpecialtyHint).filter((h): h is string => !!h))].sort((a, b) => a.localeCompare(b, "tr")), [topics]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -91,6 +96,15 @@ export default function AdminMatcherPage() {
             {MATCHER_BODY_AREAS.map((a) => (
               <option key={a} value={a}>
                 {AREA_LABEL[a]}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Uzmanlık ipucu" value={hint} onChange={(e) => setHint(e.target.value)} className="h-9 max-w-56 rounded-md border border-border bg-background px-2 text-sm" data-testid="matcher-hint-filter">
+            <option value="">Tüm ipuçları</option>
+            <option value="__none__">İpucu yok</option>
+            {hints.map((h) => (
+              <option key={h} value={h}>
+                {h}
               </option>
             ))}
           </select>
@@ -133,6 +147,7 @@ export default function AdminMatcherPage() {
                       ) : (
                         t.weights.map((w) => `${w.specialtyName} ${w.weight}`).join(" · ")
                       )}
+                      {t.targetSpecialtyHint && <p className="mt-0.5 text-foreground/50">İpucu: {t.targetSpecialtyHint}</p>}
                     </td>
                     <td className="pe-2">
                       <div className="flex flex-wrap gap-1">
@@ -164,6 +179,7 @@ export default function AdminMatcherPage() {
           key={editing === "new" ? "new" : editing.id}
           topic={editing === "new" ? null : editing}
           specialties={specialties}
+          hints={hints}
           canEdit={canEdit}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -172,6 +188,8 @@ export default function AdminMatcherPage() {
           }}
         />
       )}
+
+      <MatcherDemandCard specialties={specialties} canEdit={canEdit} onChanged={() => void load()} />
 
       <ReportCard />
       <p className="admin-text-secondary">
@@ -188,12 +206,14 @@ function emptyTranslations(): AdminCareTopicInput["translations"] {
 function TopicEditor({
   topic,
   specialties,
+  hints,
   canEdit,
   onClose,
   onSaved,
 }: {
   topic: AdminCareTopic | null;
   specialties: Specialty[];
+  hints: string[];
   canEdit: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -205,6 +225,7 @@ function TopicEditor({
     isRedFlag: topic?.isRedFlag ?? false,
     isActive: topic?.isActive ?? true,
     sortOrder: topic?.sortOrder ?? 0,
+    targetSpecialtyHint: topic?.targetSpecialtyHint ?? null,
     weights: topic?.weights.map((w) => ({ specialtyId: w.specialtyId, weight: w.weight })) ?? [],
   }));
   const [lang, setLang] = useState<(typeof LANGS)[number]>("tr");
@@ -264,6 +285,23 @@ function TopicEditor({
           <label className="block space-y-1 text-sm">
             <span className="font-medium">Sıra</span>
             <Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) || 0 })} />
+          </label>
+          <label className="block space-y-1 text-sm sm:col-span-4">
+            <span className="font-medium">Doğal uzmanlık ipucu (hasta görmez)</span>
+            <Input
+              list="matcher-hint-options"
+              maxLength={120}
+              placeholder="ör. Nöroloji / KBB — bizde hekimi olmayan uzmanlık"
+              value={form.targetSpecialtyHint ?? ""}
+              onChange={(e) => setForm({ ...form, targetSpecialtyHint: e.target.value || null })}
+              data-testid="matcher-hint-input"
+            />
+            <datalist id="matcher-hint-options">
+              {hints.map((h) => (
+                <option key={h} value={h} />
+              ))}
+            </datalist>
+            <span className="text-xs text-foreground/60">“Talep var, hekim yok” raporu ve toplu uzmanlık atama bu alana göre gruplar.</span>
           </label>
         </div>
         <div className="flex flex-wrap gap-6 text-sm">

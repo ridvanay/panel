@@ -19,7 +19,10 @@ import {
   detectRedFlagsInText,
   incrementMatcherStat,
   incrementUnmatchedTerm,
+  incrementSearchPick,
   loadActiveTopics,
+  searchTopics,
+  topicPopularity,
   parseMatcherSettings,
   readTelehealthSettingsRaw,
   recommend,
@@ -156,7 +159,7 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 60, timeWindow: "1 minute" } }, schema: { querystring: z.object({ lang: localeCode.default("en") }) } },
     async (request, reply) => {
       const lang = request.query.lang;
-      const [topics, raw] = await Promise.all([loadActiveTopics(app), readTelehealthSettingsRaw(app)]);
+      const [topics, raw, popularity] = await Promise.all([loadActiveTopics(app), readTelehealthSettingsRaw(app), topicPopularity(app)]);
       const settings = parseMatcherSettings(raw);
       const items = topics.map((topic) => {
         const text = topicTextFor(topic.translations, lang);
@@ -164,9 +167,35 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
         const synonyms = topic.isRedFlag
           ? [...new Set(Object.values(topic.translations).flatMap((tr) => [tr.label, ...tr.synonyms]))]
           : [...new Set([...text.synonyms, ...(en && lang !== "en" ? [en.label, ...en.synonyms] : [])])];
-        return { id: topic.id, slug: topic.slug, bodyArea: topic.bodyArea, isRedFlag: topic.isRedFlag, label: text.label, description: text.description, synonyms };
+        // Paket W-ek — `popularity`: son 90 gün seçim sayısı (bölgedeki ilk 12 çip; eşitlikte katalog sırası).
+        return { id: topic.id, slug: topic.slug, bodyArea: topic.bodyArea, isRedFlag: topic.isRedFlag, label: text.label, description: text.description, synonyms, popularity: popularity.get(topic.slug) ?? 0 };
       });
       return reply.header("cache-control", "public, max-age=60").send(ok({ contactRequired: settings.contactRequired, topics: items }));
+    }
+  );
+
+  /**
+   * Paket W-ek — 9 dilde, yazım hatası toleranslı konu araması (en iyi 8). KVKK incelemesi: sorgu
+   * (hastanın yazdığı şikayet) URL'de DEĞİL gövdede taşınır — erişim/proxy loglarına düşmesin; hiçbir yere
+   * kaydedilmez, önbelleğe alınmaz (yalnızca sunucu belleğinde 60 sn).
+   */
+  server.post(
+    "/topics/search",
+    {
+      config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
+      schema: { body: z.object({ q: z.string().trim().min(1).max(80), lang: localeCode.default("en") }).strict() },
+    },
+    async (request, reply) => reply.header("cache-control", "no-store").send(ok({ results: await searchTopics(app, request.body.q, request.body.lang) }))
+  );
+
+  /** Aramadan seçilen konu (anonim popülerlik sayacı; yalnızca aktif konu slug'ı kabul edilir). */
+  server.post(
+    "/search-pick",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } }, schema: { body: z.object({ slug: z.string().trim().max(80) }).strict(), response: { 204: z.undefined() } } },
+    async (request, reply) => {
+      const topics = await loadActiveTopics(app);
+      if (topics.some((t) => t.slug === request.body.slug)) await incrementSearchPick(app, request.body.slug);
+      return reply.code(204).send();
     }
   );
 

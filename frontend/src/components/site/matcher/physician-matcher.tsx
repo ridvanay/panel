@@ -5,15 +5,20 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  Activity,
   ArrowLeft,
   ArrowRight,
   Baby,
+  Blocks,
   Bone,
   Brain,
   CircleHelp,
   ClipboardCheck,
   Droplets,
+  Ear,
+  Eye,
   Flower2,
+  Heart,
   HeartPulse,
   Languages,
   MessageCircle,
@@ -24,6 +29,7 @@ import {
   Siren,
   Smile,
   Sparkles,
+  Thermometer,
   Utensils,
   X,
   type LucideIcon,
@@ -46,7 +52,9 @@ import {
   getMatcherWhatsappDigits,
   recommendPhysicians,
   reportMatcherProgress,
+  reportMatcherSearchPick,
   requestMatcherCallback,
+  searchMatcherTopics,
   submitMatcher,
   type MatcherBodyArea,
   type MatcherCatalog,
@@ -54,6 +62,7 @@ import {
   type MatcherPreference,
   type MatcherPriorDiagnosis,
   type MatcherRecommendation,
+  type MatcherSearchHit,
   type MatcherTopic,
 } from "@/lib/api/matcher";
 import { MATCHER_FREE_TEXT_MAX, MATCHER_MAX_TOPICS, bookingHref, emergencyNumberFor, prepareTopicIndex, searchTopics, topicsInText, trackMatcher } from "./matcher-helpers";
@@ -68,10 +77,15 @@ import { cn } from "@/lib/utils";
  */
 
 const BODY_AREA_ICONS: Record<MatcherBodyArea, LucideIcon> = {
+  "general-symptoms": Thermometer,
   head: Brain,
+  ent: Ear,
+  eyes: Eye,
   "neck-spine": PersonStanding,
   chest: HeartPulse,
+  "heart-vessels": Heart,
   abdomen: Utensils,
+  "hormones-metabolism": Activity,
   "pelvis-urology": Droplets,
   women: Baby,
   "skin-aesthetic": Sparkles,
@@ -80,8 +94,13 @@ const BODY_AREA_ICONS: Record<MatcherBodyArea, LucideIcon> = {
   "general-checkup": ClipboardCheck,
   cancer: Ribbon,
   "mental-wellbeing": Flower2,
+  children: Blocks,
   other: CircleHelp,
 };
+
+/** Paket W-ek — bölge açılınca ilk bu kadar konu çip olarak görünür; kalanı "Daha fazla göster". */
+const AREA_TOPIC_PREVIEW = 12;
+const SEARCH_DEBOUNCE_MS = 200;
 
 const SITE_LANGUAGES = ["tr", "en", "de", "fr", "es", "ru", "ar", "ro", "sr-latn"];
 const TOTAL_STEPS = 5;
@@ -127,6 +146,8 @@ export function PhysicianMatcher({
   const [query, setQuery] = useState(initialQuery);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [openArea, setOpenArea] = useState<MatcherBodyArea | null>(null);
+  const [showAllAreaTopics, setShowAllAreaTopics] = useState(false);
+  const [serverSearch, setServerSearch] = useState<{ q: string; hits: MatcherSearchHit[] } | null>(null);
   const [showFreeText, setShowFreeText] = useState(false);
   const [freeText, setFreeText] = useState("");
   const [redFlagOpen, setRedFlagOpen] = useState(false);
@@ -232,8 +253,43 @@ export function PhysicianMatcher({
   const topicIndex = useMemo(() => prepareTopicIndex(topics), [topics]);
   const deferredQuery = useDeferredValue(query);
   const deferredFreeText = useDeferredValue(freeText);
-  const matches = useMemo(() => searchTopics(topicIndex, deferredQuery), [topicIndex, deferredQuery]);
-  const listOpen = deferredQuery.trim().length >= 2 && matches.length > 0;
+  const localMatches = useMemo(() => searchTopics(topicIndex, deferredQuery), [topicIndex, deferredQuery]);
+  const trimmedQuery = deferredQuery.trim();
+  // Paket W-ek — sunucu araması (9 dilin eş anlamlıları + yazım hatası toleransı); gelene kadar yerel sonuçlar.
+  useEffect(() => {
+    if (trimmedQuery.length < 2) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchMatcherTopics(trimmedQuery, lang)
+        .then((res) => {
+          if (!cancelled) setServerSearch({ q: trimmedQuery, hits: res.results });
+        })
+        .catch(() => {});
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmedQuery, lang]);
+  const serverHits = serverSearch && serverSearch.q === trimmedQuery ? serverSearch.hits : null;
+  const matchedTermById = useMemo(() => new Map((serverHits ?? []).filter((h) => h.matched).map((h) => [h.id, h.matched!])), [serverHits]);
+  const matches = useMemo(
+    () => (serverHits ? serverHits.map((h) => topicById.get(h.id)).filter((t): t is MatcherTopic => !!t) : localMatches),
+    [serverHits, topicById, localMatches]
+  );
+  const listOpen = trimmedQuery.length >= 2 && matches.length > 0;
+  // Bölge çipleri: popülerlik (son 90 gün seçim) azalan; eşitlikte katalog sırası. Seçili konular her zaman görünür.
+  const areaTopics = useMemo(() => {
+    if (!openArea) return [];
+    return topics
+      .map((topic, index) => ({ topic, index }))
+      .filter(({ topic }) => topic.bodyArea === openArea && !topic.isRedFlag)
+      .sort((a, b) => (b.topic.popularity ?? 0) - (a.topic.popularity ?? 0) || a.index - b.index)
+      .map(({ topic }) => topic);
+  }, [topics, openArea]);
+  const visibleAreaTopics = showAllAreaTopics
+    ? areaTopics
+    : [...areaTopics.slice(0, AREA_TOPIC_PREVIEW), ...areaTopics.slice(AREA_TOPIC_PREVIEW).filter((t) => selectedIds.includes(t.id))];
   const textMatches = useMemo(() => (deferredFreeText.trim().length >= 3 ? topicsInText(topicIndex, deferredFreeText) : []), [topicIndex, deferredFreeText]);
   const textRedFlags = textMatches.filter((t) => t.isRedFlag);
   const textSuggestions = textMatches.filter((t) => !t.isRedFlag && !selectedIds.includes(t.id)).slice(0, 4);
@@ -258,6 +314,7 @@ export function PhysicianMatcher({
   }
 
   function chooseFromList(topic: MatcherTopic) {
+    if (!selectedIds.includes(topic.id)) reportMatcherSearchPick(topic.slug);
     toggleTopic(topic);
     setQuery("");
     setActiveIndex(-1);
@@ -570,7 +627,7 @@ export function PhysicianMatcher({
               <label htmlFor="matcher-search" className="sr-only">
                 {m.searchLabel}
               </label>
-              <Search className="pointer-events-none absolute start-3 top-1/2 h-5 w-5 -translate-y-1/2 text-foreground/50" aria-hidden="true" />
+              <Search className="pointer-events-none absolute start-3 top-6 h-5 w-5 -translate-y-1/2 text-foreground/50" aria-hidden="true" />
               <input
                 id="matcher-search"
                 ref={searchRef}
@@ -605,14 +662,29 @@ export function PhysicianMatcher({
                       data-testid="matcher-search-option"
                     >
                       <span className="text-sm font-medium text-foreground">{topic.label}</span>
+                      {matchedTermById.has(topic.id) && <span className="text-xs text-foreground/60">{fmt(m.searchMatchedTerm, { term: matchedTermById.get(topic.id)! })}</span>}
                       {topic.description && <span className="text-xs text-foreground/60">{topic.description}</span>}
                     </li>
                   ))}
                 </ul>
               )}
-              <p role="status" className={cn("text-sm text-foreground/60", deferredQuery.trim().length >= 2 && matches.length === 0 ? "mt-2" : "sr-only")}>
-                {deferredQuery.trim().length >= 2 ? (matches.length === 0 ? m.noSearchResults : `${matches.length}`) : ""}
+              <p role="status" className={cn("text-sm text-foreground/70", trimmedQuery.length >= 2 && matches.length === 0 ? "mt-2" : "sr-only")} data-testid="matcher-no-results">
+                {trimmedQuery.length >= 2 ? (matches.length === 0 ? m.noSearchResults : `${matches.length}`) : ""}
               </p>
+              {trimmedQuery.length >= 2 && matches.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFreeText(true);
+                    if (!freeText.trim()) setFreeText(query.trim().slice(0, MATCHER_FREE_TEXT_MAX));
+                    setQuery("");
+                  }}
+                  className="mt-1 text-sm font-medium text-[var(--site-link,var(--site-primary))] underline underline-offset-4"
+                  data-testid="matcher-no-results-write"
+                >
+                  {m.noSearchResultsWrite}
+                </button>
+              )}
             </div>
 
             {selected.length > 0 && (
@@ -651,7 +723,10 @@ export function PhysicianMatcher({
                       type="button"
                       aria-expanded={open}
                       aria-controls={`matcher-area-${area}`}
-                      onClick={() => setOpenArea(open ? null : area)}
+                      onClick={() => {
+                        setOpenArea(open ? null : area);
+                        setShowAllAreaTopics(false);
+                      }}
                       className={cn(
                         "flex min-h-14 items-center gap-2 rounded-[var(--site-radius)] border p-3 text-start text-sm font-medium transition-colors motion-reduce:transition-none",
                         open ? "border-[var(--site-primary)] bg-[var(--site-primary)]/5 text-foreground" : "border-border bg-surface text-foreground hover:bg-surface-muted"
@@ -665,10 +740,9 @@ export function PhysicianMatcher({
                 })}
               </div>
               {openArea && (
-                <div id={`matcher-area-${openArea}`} className="mt-3 flex flex-wrap gap-2 rounded-[var(--site-radius)] border border-border p-3">
-                  {topics
-                    .filter((t) => t.bodyArea === openArea && !t.isRedFlag)
-                    .map((topic) => (
+                <div id={`matcher-area-${openArea}`} className="mt-3 rounded-[var(--site-radius)] border border-border p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {visibleAreaTopics.map((topic) => (
                       <button
                         key={topic.id}
                         type="button"
@@ -684,6 +758,18 @@ export function PhysicianMatcher({
                         {topic.label}
                       </button>
                     ))}
+                  </div>
+                  {areaTopics.length > AREA_TOPIC_PREVIEW && (
+                    <button
+                      type="button"
+                      aria-expanded={showAllAreaTopics}
+                      onClick={() => setShowAllAreaTopics((v) => !v)}
+                      className="mt-3 text-sm font-medium text-[var(--site-link,var(--site-primary))] underline-offset-4 hover:underline"
+                      data-testid="matcher-show-more"
+                    >
+                      {showAllAreaTopics ? m.showFewerTopics : fmt(m.showMoreTopics, { count: areaTopics.length - AREA_TOPIC_PREVIEW })}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

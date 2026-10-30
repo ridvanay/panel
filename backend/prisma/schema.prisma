@@ -3773,23 +3773,27 @@ model InterpreterRequest {
 // ---------------------------------------------------------------------------------------------
 
 /// Şikayet/ihtiyaç kataloğu. `translations`: { "<dil>": { label, description, synonyms: string[] } }.
-/// `bodyArea`: head | neck-spine | chest | abdomen | pelvis-urology | women | skin-aesthetic | dental |
-/// joints-bones | general-checkup | cancer | mental-wellbeing | other (zod ile doğrulanır).
+/// `bodyArea`: `src/lib/care-topics/catalog.ts::BODY_AREAS` (Paket W-ek: 19 bölge; zod ile doğrulanır).
 /// Kırmızı bayrak (`isRedFlag`) konuları hiçbir uzmanlığa eşlenmez; acil uyarısı açar.
 model CareTopic {
-  id           String   @id @default(uuid())
-  slug         String   @unique
-  bodyArea     String
-  translations Json     @default("{}")
-  isRedFlag    Boolean  @default(false)
-  isActive     Boolean  @default(true)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                  String   @id @default(uuid())
+  slug                String   @unique
+  bodyArea            String
+  translations        Json     @default("{}")
+  isRedFlag           Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  /// Paket W-ek — bizde karşılığı olmayan doğal uzmanlık (ör. "Nöroloji / KBB"); hasta görmez.
+  targetSpecialtyHint String?
+  /// Seed'in son yazdığı içeriğin özeti; `--update-existing` yalnızca kayıt değişmemişse günceller.
+  seedHash            String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   specialties CareTopicSpecialty[]
 
   @@index([isActive, bodyArea, sortOrder])
+  @@index([targetSpecialtyHint])
   @@map("care_topics")
 }
 

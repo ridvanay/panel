@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
 import { foldTerm, textContainsTerm } from "../../lib/matcher-text";
+import { fuzzyMatchScore } from "../../lib/matcher-fuzzy";
 import { PUBLIC_DOCTOR_WHERE } from "../telehealth/lib/archive-filters";
 import { computeEarliestAvailability } from "../telehealth/lib/earliest-availability";
 import { generateAvailableSlots } from "../telehealth/lib/availability";
@@ -109,8 +110,26 @@ interface CachedTopic {
   bodyArea: string;
   isRedFlag: boolean;
   sortOrder: number;
+  targetSpecialtyHint: string | null;
   translations: Record<string, TopicText>;
   weights: { specialtyId: string; weight: number }[];
+  /** Paket W-ek — arama için katlanmış terimler (tüm diller; etiketler işaretli). */
+  searchTerms: { term: string; lang: string; isLabel: boolean }[];
+}
+
+function buildSearchTerms(translations: Record<string, TopicText>): CachedTopic["searchTerms"] {
+  const seen = new Set<string>();
+  const out: CachedTopic["searchTerms"] = [];
+  for (const [lang, text] of Object.entries(translations)) {
+    for (const [i, raw] of [text.label, ...text.synonyms].entries()) {
+      const term = foldTerm(raw);
+      const key = `${lang}|${term}`;
+      if (!term || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ term, lang, isLabel: i === 0 });
+    }
+  }
+  return out;
 }
 
 let topicCache: { at: number; topics: CachedTopic[] } | null = null;
@@ -118,6 +137,7 @@ const TOPIC_CACHE_MS = 5 * 60 * 1000;
 
 export function invalidateMatcherTopicCache(): void {
   topicCache = null;
+  searchCache.clear();
   recommendCache.clear();
 }
 
@@ -128,15 +148,20 @@ export async function loadActiveTopics(app: FastifyInstance): Promise<CachedTopi
     orderBy: [{ sortOrder: "asc" }, { slug: "asc" }],
     include: { specialties: { select: { specialtyId: true, weight: true } } },
   });
-  const topics = rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    bodyArea: row.bodyArea,
-    isRedFlag: row.isRedFlag,
-    sortOrder: row.sortOrder,
-    translations: readTopicTranslations(row.translations),
-    weights: row.specialties,
-  }));
+  const topics = rows.map((row) => {
+    const translations = readTopicTranslations(row.translations);
+    return {
+      id: row.id,
+      slug: row.slug,
+      bodyArea: row.bodyArea,
+      isRedFlag: row.isRedFlag,
+      sortOrder: row.sortOrder,
+      targetSpecialtyHint: row.targetSpecialtyHint,
+      translations,
+      weights: row.specialties,
+      searchTerms: buildSearchTerms(translations),
+    };
+  });
   topicCache = { at: Date.now(), topics };
   return topics;
 }
@@ -177,9 +202,106 @@ export async function unmatchedTerms(app: FastifyInstance, text: string): Promis
 }
 
 // ------------------------------------------------------------------------------------------------
+// Paket W-ek — arama (9 dil, yazım hatası toleranslı) ve popülerlik
+// ------------------------------------------------------------------------------------------------
+export const MATCHER_SEARCH_LIMIT = 8;
+/** Güvenlik incelemesi — sorguda en çok bu kadar sözcük; aynı (dil, sorgu) 60 sn bellekte (en çok 500). */
+const MATCHER_SEARCH_MAX_WORDS = 6;
+const SEARCH_CACHE_MS = 60 * 1000;
+const SEARCH_CACHE_MAX = 500;
+const searchCache = new Map<string, { at: number; hits: TopicSearchHit[] }>();
+/** Aramadan seçim sayacı: konu başına günlük üst sınır (bot şişirmesine karşı; rapor yaklaşık değerdir). */
+export const MATCHER_SEARCH_PICK_DAILY_CAP = 1000;
+
+export interface TopicSearchHit {
+  id: string;
+  slug: string;
+  bodyArea: string;
+  isRedFlag: boolean;
+  label: string;
+  description: string;
+  /** Eşleşen terim etiket değilse hastaya "… olarak da bilinir" göstermek için (aktif dil/EN dışı olabilir). */
+  matched: string | null;
+  score: number;
+}
+
+/**
+ * Bütün konuları 9 dilin etiket + eş anlamlılarında arar. Puan: `fuzzyMatchScore` (tam > önek > içerir >
+ * yazım hatası); aktif dilde eşleşme küçük bir öncelik alır, eşitlikte `sortOrder`.
+ */
+export async function searchTopics(app: FastifyInstance, query: string, lang: string, limit = MATCHER_SEARCH_LIMIT): Promise<TopicSearchHit[]> {
+  const q = foldTerm(query).split(" ").slice(0, MATCHER_SEARCH_MAX_WORDS).join(" ");
+  if (q.length < 2) return [];
+  const cacheKey = `${lang}|${limit}|${q}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < SEARCH_CACHE_MS) return cached.hits;
+  const topics = await loadActiveTopics(app);
+  const hits: (TopicSearchHit & { sortOrder: number })[] = [];
+  for (const topic of topics) {
+    let best = 0;
+    let bestTerm: CachedTopic["searchTerms"][number] | null = null;
+    for (const term of topic.searchTerms) {
+      const base = fuzzyMatchScore(q, term.term);
+      if (!base) continue;
+      const score = base * 10 + (term.lang === lang ? 3 : term.lang === "en" ? 1 : 0) + (term.isLabel ? 1 : 0);
+      if (score > best) {
+        best = score;
+        bestTerm = term;
+      }
+    }
+    if (!best || !bestTerm) continue;
+    const text = topicTextFor(topic.translations, lang);
+    // Eşleşen terim etiketin içinde zaten geçiyorsa ayrıca gösterilmez.
+    const own = foldTerm(text.label).includes(bestTerm.term);
+    // KVKK incelemesi — kırmızı bayrakta "… ile eşleşti" (tanı çağrıştıran terim) gösterilmez.
+    const original = own || topic.isRedFlag ? null : findOriginalTerm(topic.translations, bestTerm);
+    hits.push({ id: topic.id, slug: topic.slug, bodyArea: topic.bodyArea, isRedFlag: topic.isRedFlag, label: text.label, description: text.description, matched: original, score: best, sortOrder: topic.sortOrder });
+  }
+  const result = hits
+    .sort((a, b) => b.score - a.score || a.sortOrder - b.sortOrder)
+    .slice(0, limit)
+    .map(({ sortOrder: _sortOrder, ...hit }) => hit);
+  if (searchCache.size >= SEARCH_CACHE_MAX) searchCache.delete(searchCache.keys().next().value!);
+  searchCache.set(cacheKey, { at: Date.now(), hits: result });
+  return result;
+}
+
+/** Aramadan seçim: konu başına günlük üst sınır dolmadıysa artar. */
+export async function incrementSearchPick(app: FastifyInstance, slug: string, now = new Date()): Promise<void> {
+  const day = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  const row = await app.prisma.matcherStat.findUnique({ where: { day_kind_key: { day, kind: "search_pick", key: slug } }, select: { count: true } });
+  if (row && row.count >= MATCHER_SEARCH_PICK_DAILY_CAP) return;
+  await incrementMatcherStat(app, "search_pick", slug, now);
+}
+
+function findOriginalTerm(translations: Record<string, TopicText>, term: { term: string; lang: string }): string | null {
+  const text = translations[term.lang];
+  if (!text) return null;
+  return [text.label, ...text.synonyms].find((raw) => foldTerm(raw) === term.term) ?? null;
+}
+
+let popularityCache: { at: number; counts: Map<string, number> } | null = null;
+const POPULARITY_CACHE_MS = 10 * 60 * 1000;
+export const MATCHER_POPULARITY_DAYS = 90;
+
+/** Son 90 günde konu başına seçim + aramadan seçim sayısı (anonim sayaçlardan). 10 dk önbellek. */
+export async function topicPopularity(app: FastifyInstance, now = new Date()): Promise<Map<string, number>> {
+  if (popularityCache && Date.now() - popularityCache.at < POPULARITY_CACHE_MS) return popularityCache.counts;
+  const since = new Date(now.getTime() - MATCHER_POPULARITY_DAYS * 86_400_000);
+  const grouped = await app.prisma.matcherStat.groupBy({ by: ["key"], where: { kind: { in: ["topic", "search_pick"] }, day: { gte: since } }, _sum: { count: true } });
+  const counts = new Map(grouped.map((g) => [g.key, g._sum.count ?? 0]));
+  popularityCache = { at: Date.now(), counts };
+  return counts;
+}
+
+export function clearTopicPopularityCache(): void {
+  popularityCache = null;
+}
+
+// ------------------------------------------------------------------------------------------------
 // Anonim sayaçlar
 // ------------------------------------------------------------------------------------------------
-export type MatcherStatKind = "step" | "topic" | "unmatched_term" | "red_flag" | "submit";
+export type MatcherStatKind = "step" | "topic" | "unmatched_term" | "red_flag" | "submit" | "search_pick";
 
 /** Güvenlik/uyumluluk incelemesi — günde en çok bu kadar farklı eşleşmeyen terim; sayaç satırları 90 günde silinir. */
 export const MATCHER_UNMATCHED_DAILY_CAP = 500;

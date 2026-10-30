@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { foldTerm, matchScore, textContainsTerm } from "../../src/lib/matcher-text";
+import { boundedEditDistance, fuzzyMatchScore } from "../../src/lib/matcher-fuzzy";
 import { rankDoctors, scoreSpecialties } from "../../src/modules/matcher/matcher.service";
 import { ageBandFor, cleanFreeText, toE164 } from "../../src/modules/matcher/matcher.routes";
 import { CARE_TOPIC_CATALOG } from "../../src/lib/care-topics/catalog";
@@ -52,7 +53,7 @@ describe("Paket W — arama normalleştirmesi", () => {
     expect(JSON.stringify(CARE_TOPIC_TEXTS["sr-latn"])).not.toMatch(/[Ѐ-ӿ]/);
     expect(JSON.stringify(CARE_TOPIC_TEXTS.ro)).not.toMatch(/[şţ]/);
     for (const t of CARE_TOPIC_CATALOG.filter((x) => x.isRedFlag)) expect(Object.keys(t.weights)).toEqual([]);
-    expect(CARE_TOPIC_CATALOG.filter((x) => x.isRedFlag).map((x) => x.slug)).toHaveLength(8);
+    expect(CARE_TOPIC_CATALOG.filter((x) => x.isRedFlag).map((x) => x.slug)).toHaveLength(18);
     // Karar: baş ağrısı koordinatöre; ercp/esd/poem uzmanlık olarak önerilmez; diş konuları ortodontiye bağlanmaz.
     expect(CARE_TOPIC_CATALOG.find((x) => x.slug === "headache-migraine")!.weights).toEqual({});
     for (const t of CARE_TOPIC_CATALOG) for (const s of ["ercp", "esd", "poem"]) expect(t.weights[s]).toBeUndefined();
@@ -91,5 +92,28 @@ describe("Paket W — puanlama ve sıralama (saf fonksiyonlar)", () => {
     expect(cleanFreeText("<script>alert(1)</script>Boyun <b>ağrısı</b>")).toBe("alert(1) Boyun ağrısı");
     expect(cleanFreeText("x".repeat(900))).toHaveLength(500);
     expect([ageBandFor(5), ageBandFor(17), ageBandFor(18), ageBandFor(80)]).toEqual(["0-17", "0-17", "18-29", "75+"]);
+  });
+});
+
+describe("Paket W-ek — yazım hatası toleranslı arama puanı", () => {
+  it("sınırlı düzenleme mesafesi (yer değiştirme = 1, sınır aşılınca max+1)", () => {
+    expect(boundedEditDistance("donmesi", "donmesi", 1)).toBe(0);
+    expect(boundedEditDistance("donemsi", "donmesi", 1)).toBe(1);
+    expect(boundedEditDistance("schwindl", "schwindel", 1)).toBe(1);
+    expect(boundedEditDistance("abc", "xyzabc", 1)).toBe(2);
+  });
+
+  it("tam > önek > içerir > yazım hatası; eşleşmeyen 0", () => {
+    const term = foldTerm("Baş dönmesi");
+    expect(fuzzyMatchScore(foldTerm("baş dönmesi"), term)).toBe(30);
+    expect(fuzzyMatchScore(foldTerm("bas donmesi"), term)).toBe(30);
+    expect(fuzzyMatchScore(foldTerm("baş dön"), term)).toBe(20);
+    const typo = fuzzyMatchScore(foldTerm("bas donemsi"), term);
+    expect(typo).toBeGreaterThan(0);
+    expect(typo).toBeLessThan(10);
+    expect(fuzzyMatchScore(foldTerm("schwindl"), foldTerm("Schwindel"))).toBeGreaterThan(0);
+    expect(fuzzyMatchScore(foldTerm("migren"), term)).toBe(0);
+    expect(fuzzyMatchScore("ab", "abc def")).toBe(20);
+    expect(fuzzyMatchScore("xy", term)).toBe(0);
   });
 });

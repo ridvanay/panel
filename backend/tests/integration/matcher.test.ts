@@ -142,15 +142,19 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
   });
 
   describe("seed ve katalog", () => {
-    it("seed: 110 konu, ağırlıklar slug ile bağlanır, kırmızı bayrak eşlenmez; ikinci çalıştırma hiçbir şey eklemez", async () => {
-      expect(await app.prisma.careTopic.count()).toBe(110);
-      expect(await app.prisma.careTopic.count({ where: { isRedFlag: true } })).toBe(8);
+    it("seed: 332 kayıt (W-ek), ağırlıklar slug ile bağlanır, kırmızı bayrak eşlenmez; ikinci çalıştırma hiçbir şey eklemez", async () => {
+      expect(await app.prisma.careTopic.count()).toBe(332);
+      expect(await app.prisma.careTopic.count({ where: { isRedFlag: true } })).toBe(18);
       const fibroid = await app.prisma.careTopicSpecialty.findMany({ where: { topicId: topic.fibroid }, include: { specialty: true } });
       expect(Object.fromEntries(fibroid.map((f) => [f.specialty.slug, f.weight]))).toEqual({ "surgical-oncology": 70, "interventional-radiology-specialist": 50, "ivf-and-reproductive-health": 30 });
       expect(await app.prisma.careTopicSpecialty.count({ where: { topic: { isRedFlag: true } } })).toBe(0);
       const { buildSeedCareTopicsPlan } = await import("../../src/lib/care-topics/seed");
       const again = await buildSeedCareTopicsPlan(app.prisma);
-      expect([again.toCreate.length, again.existing.length]).toEqual([0, 110]);
+      expect([again.toCreate.length, again.toUpdate.length, again.skippedModified.length, again.upToDate.length]).toEqual([0, 0, 0, 332]);
+      // Yeni kayıtlar seed özetini ve doğal uzmanlık ipucunu taşır.
+      const dizzy = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "dizziness-vertigo" } });
+      expect(dizzy.seedHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(dizzy.targetSpecialtyHint).toBe("Nöroloji / KBB");
     });
 
     it("GET /matcher/topics: aktif dil + EN eş anlamlıları; kırmızı bayrakta tüm dillerin terimleri; iletişim ayarı", async () => {
@@ -492,6 +496,176 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       expect(audit.metadata).toMatchObject({ before: { scoreThreshold: 40, maxSpecialties: 1 }, after: { scoreThreshold: 150, maxSpecialties: 2 } });
       await putSettings(defaults);
       expect((await recommendReq([topic.reflux])).json().data.specialties).toHaveLength(2);
+    });
+  });
+
+  describe("Paket W-ek — genişletilmiş katalog", () => {
+    const search = (q: string, lang: string) => app.inject({ method: "POST", url: "/api/v1/matcher/topics/search", headers: ORIGIN, payload: { q, lang }, remoteAddress: nextIp() });
+    const slugsOf = async (q: string, lang: string) => (await search(q, lang)).json().data.results.map((r: { slug: string }) => r.slug) as string[];
+
+    it("9 dilde arama: 'baş dönmesi' / 'Schwindel' / 'головокружение' / 'دوخة' → baş dönmesi konusu → koordinatör", async () => {
+      for (const [q, lang] of [
+        ["baş dönmesi", "tr"],
+        ["Schwindel", "de"],
+        ["головокружение", "ru"],
+        ["دوخة", "ar"],
+        ["Schwindel", "en"],
+      ] as const) {
+        expect((await slugsOf(q, lang))[0], `${q} (${lang})`).toBe("dizziness-vertigo");
+      }
+      const dizzy = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "dizziness-vertigo" } });
+      const rec = (await recommendReq([dizzy.id])).json().data;
+      expect(rec.coordinator).toBe(true);
+      expect(rec.specialties).toEqual([]);
+    });
+
+    it("yazım hatası toleransı ('bas donemsi', 'schwindl'); en çok 8 sonuç; bulunamayan sorgu boş liste", async () => {
+      expect((await slugsOf("bas donemsi", "tr"))[0]).toBe("dizziness-vertigo");
+      expect(await slugsOf("schwindl", "de")).toContain("dizziness-vertigo");
+      expect((await search("ağrı", "tr")).json().data.results.length).toBeLessThanOrEqual(8);
+      expect(await slugsOf("qwxzzk", "tr")).toEqual([]);
+      // Sorgu URL'de taşınmaz (GET yok); yabancı kökenden POST reddedilir; yanıt önbelleğe alınmaz.
+      expect((await app.inject({ method: "GET", url: "/api/v1/matcher/topics/search?q=bas", remoteAddress: nextIp() })).statusCode).toBe(404);
+      expect((await app.inject({ method: "POST", url: "/api/v1/matcher/topics/search", headers: { origin: "https://evil.example" }, payload: { q: "bas", lang: "tr" }, remoteAddress: nextIp() })).statusCode).toBe(403);
+      expect((await search("bas", "tr")).headers["cache-control"]).toBe("no-store");
+      // Kırmızı bayrak sonucunda "eşleşti" terimi gösterilmez.
+      const rf = (await search("kutu kutu ilaç", "tr")).json().data.results.find((r: { slug: string }) => r.slug === "rf-poisoning");
+      expect(rf.matched).toBeNull();
+    });
+
+    it("yeni kırmızı bayraklar ve tetikleyiciler; daraltılmış ifadeler yanlış alarm vermez", async () => {
+      const { detectRedFlagsInText } = await import("../../src/modules/matcher/matcher.service");
+      expect(await detectRedFlagsInText(app, "babam kutu kutu ilaç içti")).toContain("rf-poisoning");
+      expect(await detectRedFlagsInText(app, "çocuk çamaşır suyu içti")).toContain("rf-poisoning");
+      expect(await detectRedFlagsInText(app, "annem kendine gelmiyor")).toContain("rf-loss-of-consciousness");
+      expect(await detectRedFlagsInText(app, "göğsüm sıkışıyor")).toContain("rf-chest-pain-breathless");
+      // Geçmiş bayılma, sıradan ilaç kullanımı ve göz kararması acil sayılmaz.
+      expect(await detectRedFlagsInText(app, "geçen ay iki kez bayıldım")).toEqual([]);
+      expect(await detectRedFlagsInText(app, "tansiyon ilacı içtim ama başım dönüyor")).toEqual([]);
+      expect(await detectRedFlagsInText(app, "ayağa kalkınca gözüm karardı")).toEqual([]);
+      for (const slug of [
+        "rf-fainting-chest-pain",
+        "rf-fever-stiff-neck",
+        "rf-pregnancy-bleeding-pain",
+        "rf-sudden-vision-loss",
+        "rf-coffee-ground-vomit",
+        "rf-child-breathing",
+        "rf-severe-burn",
+        "rf-poisoning",
+        "rf-sudden-testicular-pain",
+        "rf-infant-fever",
+      ]) {
+        const row = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug }, include: { specialties: true } });
+        expect([row.isRedFlag, row.specialties.length], slug).toEqual([true, 0]);
+      }
+      // Kırmızı bayrak seçilince öneri yok.
+      const poisoning = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "rf-poisoning" } });
+      expect((await recommendReq([poisoning.id])).json().data.redFlag).toBe(true);
+    });
+
+    it("katalog: bölgede 12'den fazla konu (Daha fazla göster); popülerlik aramadan seçimle artar; bilinmeyen slug sayılmaz", async () => {
+      const topics = (await app.inject({ method: "GET", url: "/api/v1/matcher/topics?lang=tr", remoteAddress: nextIp() })).json().data.topics as { slug: string; bodyArea: string; isRedFlag: boolean; popularity: number }[];
+      expect(topics.filter((t) => t.bodyArea === "abdomen" && !t.isRedFlag).length).toBeGreaterThan(12);
+      expect(topics.find((t) => t.slug === "tinnitus")!.popularity).toBe(0);
+      expect((await app.inject({ method: "POST", url: "/api/v1/matcher/search-pick", headers: ORIGIN, payload: { slug: "tinnitus" }, remoteAddress: nextIp() })).statusCode).toBe(204);
+      await app.inject({ method: "POST", url: "/api/v1/matcher/search-pick", headers: ORIGIN, payload: { slug: "olmayan-konu" }, remoteAddress: nextIp() });
+      expect(await app.prisma.matcherStat.count({ where: { kind: "search_pick", key: "tinnitus" } })).toBe(1);
+      expect(await app.prisma.matcherStat.count({ where: { kind: "search_pick", key: "olmayan-konu" } })).toBe(0);
+      const { clearTopicPopularityCache } = await import("../../src/modules/matcher/matcher.service");
+      clearTopicPopularityCache();
+      const again = (await app.inject({ method: "GET", url: "/api/v1/matcher/topics?lang=tr", remoteAddress: nextIp() })).json().data.topics as { slug: string; popularity: number }[];
+      expect(again.find((t) => t.slug === "tinnitus")!.popularity).toBe(1);
+    });
+
+    it("seed --update-existing: yalnızca seed'den beri değişmemiş kayıt güncellenir; admin değiştirdiyse dokunulmaz; bayraksız hiçbir şey güncellenmez", async () => {
+      const { buildSeedCareTopicsPlan, applySeedCareTopicsPlan, careTopicContentHash } = await import("../../src/lib/care-topics/seed");
+      const { invalidateMatcherTopicCache } = await import("../../src/modules/matcher/matcher.service");
+      const opts = { confirm: "seed-care-topics", operator: "Test", osUser: "t", hostname: "h" };
+      const slugById = new Map((await app.prisma.specialty.findMany()).map((x) => [x.id, x.slug]));
+      const hashOf = async (slug: string) => {
+        const row = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug }, include: { specialties: true } });
+        return careTopicContentHash({
+          bodyArea: row.bodyArea,
+          translations: row.translations,
+          isRedFlag: row.isRedFlag,
+          targetSpecialtyHint: row.targetSpecialtyHint,
+          weights: Object.fromEntries(row.specialties.map((x) => [slugById.get(x.specialtyId)!, x.weight])),
+        });
+      };
+
+      // (1) "Eski seed sürümü": içerik farklı ama seedHash o içeriğe eşit → değişmemiş sayılır.
+      const sinus = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "sinusitis" } });
+      await app.prisma.careTopic.update({ where: { id: sinus.id }, data: { targetSpecialtyHint: "Eski ipucu" } });
+      await app.prisma.careTopic.update({ where: { id: sinus.id }, data: { seedHash: await hashOf("sinusitis") } });
+      // (2) Admin düzenlemesi (PUT) — seedHash eski kalır.
+      const tinnitus = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "tinnitus" } });
+      const dto = (await app.inject({ method: "GET", url: "/api/v1/admin/matcher/topics", headers: auth(admin.token) })).json().data.find((t: { id: string }) => t.id === tinnitus.id);
+      const put = await app.inject({
+        method: "PUT",
+        url: `/api/v1/admin/matcher/topics/${tinnitus.id}`,
+        headers: auth(admin.token),
+        payload: {
+          slug: dto.slug,
+          bodyArea: dto.bodyArea,
+          translations: { ...dto.translations, tr: { ...dto.translations.tr, label: "Kulak çınlaması (admin)" } },
+          isRedFlag: false,
+          isActive: true,
+          sortOrder: dto.sortOrder,
+          targetSpecialtyHint: dto.targetSpecialtyHint,
+          weights: [],
+        },
+      });
+      expect(put.statusCode).toBe(200);
+      // (3) seedHash'i olmayan ve eski seed özetiyle eşleşmeyen kayıt → değişmiş sayılır.
+      await app.prisma.careTopic.update({ where: { slug: "hoarseness" }, data: { seedHash: null, targetSpecialtyHint: "Elle" } });
+
+      const dry = await buildSeedCareTopicsPlan(app.prisma);
+      expect(dry.toUpdate.map((c) => c.topic.slug)).toEqual(["sinusitis"]);
+      expect([...dry.skippedModified].sort()).toEqual(["hoarseness", "tinnitus"]);
+      // Bayraksız: plan "güncellenebilir" der ama yazmaz.
+      await applySeedCareTopicsPlan(app.prisma, dry, opts);
+      expect((await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "sinusitis" } })).targetSpecialtyHint).toBe("Eski ipucu");
+
+      const plan = await buildSeedCareTopicsPlan(app.prisma, { updateExisting: true });
+      const result = await applySeedCareTopicsPlan(app.prisma, plan, opts);
+      expect(result.updated).toEqual(["sinusitis"]);
+      const after = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "sinusitis" } });
+      expect(after.targetSpecialtyHint).toBe("KBB");
+      expect(after.seedHash).toBe(await hashOf("sinusitis"));
+      expect(((await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "tinnitus" } })).translations as Record<string, { label: string }>).tr!.label).toBe("Kulak çınlaması (admin)");
+      expect((await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "hoarseness" } })).targetSpecialtyHint).toBe("Elle");
+      const audit = await app.prisma.auditLog.findFirstOrThrow({ where: { action: "matcher.topics_seeded" }, orderBy: { createdAt: "desc" } });
+      expect(audit.metadata).toMatchObject({ created: 0, updated: 1, skippedModified: 2 });
+      invalidateMatcherTopicCache();
+    });
+
+    it("Talep var, hekim yok raporu ipucuna göre gruplar; toplu atama ipucundaki konuları uzmanlığa bağlar (yalnızca ADMIN)", async () => {
+      const { incrementMatcherStat } = await import("../../src/modules/matcher/matcher.service");
+      await incrementMatcherStat(app, "topic", "nasal-polyps");
+      await incrementMatcherStat(app, "topic", "nasal-polyps");
+      await incrementMatcherStat(app, "search_pick", "nasal-polyps");
+      const report = async () => (await app.inject({ method: "GET", url: "/api/v1/admin/matcher/demand-report", headers: auth(manager.token) })).json().data;
+      const before = await report();
+      const kbb = before.groups.find((g: { hint: string | null }) => g.hint === "KBB");
+      expect(kbb.requests).toBeGreaterThanOrEqual(3);
+      expect(kbb.topics.find((t: { slug: string }) => t.slug === "nasal-polyps")).toMatchObject({ selections: 2, searchPicks: 1 });
+      // Hekimi olan uzmanlığa bağlı konu raporda yok.
+      expect(before.groups.flatMap((g: { topics: { slug: string }[] }) => g.topics.map((t) => t.slug))).not.toContain("reflux-heartburn");
+
+      const body = { hint: "KBB", specialtyId: sp.gas, weight: 60 };
+      expect((await app.inject({ method: "POST", url: "/api/v1/admin/matcher/topics/bulk-weight", headers: auth(manager.token), payload: body })).statusCode).toBe(403);
+      const wrong = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "reflux-heartburn" } });
+      expect((await app.inject({ method: "POST", url: "/api/v1/admin/matcher/topics/bulk-weight", headers: auth(admin.token), payload: { ...body, topicIds: [wrong.id] } })).statusCode).toBe(422);
+      const passive = await app.prisma.specialty.create({ data: { name: "Pasif", slug: "pasif-uzmanlik", icon: "Heart", isActive: false } });
+      expect((await app.inject({ method: "POST", url: "/api/v1/admin/matcher/topics/bulk-weight", headers: auth(admin.token), payload: { ...body, specialtyId: passive.id } })).statusCode).toBe(422);
+      const kbbCount = await app.prisma.careTopic.count({ where: { targetSpecialtyHint: "KBB", isRedFlag: false } });
+      const res = await app.inject({ method: "POST", url: "/api/v1/admin/matcher/topics/bulk-weight", headers: auth(admin.token), payload: body });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.updated).toBe(kbbCount);
+      expect((await report()).groups.find((g: { hint: string | null }) => g.hint === "KBB")).toBeUndefined();
+      const polyps = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "nasal-polyps" } });
+      expect((await recommendReq([polyps.id])).json().data.specialties.map((x: { slug: string }) => x.slug)).toEqual(["gastroenterology"]);
+      expect(await app.prisma.auditLog.count({ where: { action: "matcher.topics_bulk_weight" } })).toBe(1);
     });
   });
 });

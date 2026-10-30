@@ -2,10 +2,15 @@ import { apiFetch } from "./client";
 
 /** Paket W — "Find my physician" (herkese açık uçlar + admin). Kişisel veri YALNIZCA `submitMatcher`'da gider. */
 export type MatcherBodyArea =
+  | "general-symptoms"
   | "head"
+  | "ent"
+  | "eyes"
   | "neck-spine"
   | "chest"
+  | "heart-vessels"
   | "abdomen"
+  | "hormones-metabolism"
   | "pelvis-urology"
   | "women"
   | "skin-aesthetic"
@@ -14,13 +19,20 @@ export type MatcherBodyArea =
   | "general-checkup"
   | "cancer"
   | "mental-wellbeing"
+  | "children"
   | "other";
 
+/** Paket W-ek — 19 bölge (backend `care-topics/catalog.ts::BODY_AREAS` ile aynı sırada). */
 export const MATCHER_BODY_AREAS: MatcherBodyArea[] = [
+  "general-symptoms",
   "head",
+  "ent",
+  "eyes",
   "neck-spine",
   "chest",
+  "heart-vessels",
   "abdomen",
+  "hormones-metabolism",
   "pelvis-urology",
   "women",
   "skin-aesthetic",
@@ -29,6 +41,7 @@ export const MATCHER_BODY_AREAS: MatcherBodyArea[] = [
   "general-checkup",
   "cancer",
   "mental-wellbeing",
+  "children",
   "other",
 ];
 
@@ -40,6 +53,8 @@ export interface MatcherTopic {
   label: string;
   description: string;
   synonyms: string[];
+  /** Paket W-ek — son 90 gün seçim sayısı (bölgede ilk 12 çipin sırası için). */
+  popularity?: number;
 }
 
 export interface MatcherCatalog {
@@ -111,6 +126,25 @@ export function recommendPhysicians(input: { topicIds: string[]; preferredLangua
   return apiFetch<MatcherRecommendation>("/matcher/recommend", { method: "POST", body: input });
 }
 
+/** Paket W-ek — sunucuda 9 dil + yazım hatası toleranslı arama (en iyi 8). */
+export interface MatcherSearchHit {
+  id: string;
+  slug: string;
+  label: string;
+  /** Eşleşen terim etiket değilse (ör. başka dildeki eş anlamlı). */
+  matched: string | null;
+}
+
+export function searchMatcherTopics(q: string, lang: string): Promise<{ results: MatcherSearchHit[] }> {
+  // KVKK — sorgu (şikayet metni) URL'de değil gövdede gider; loglara düşmez.
+  return apiFetch<{ results: MatcherSearchHit[] }>("/matcher/topics/search", { method: "POST", body: { q, lang } });
+}
+
+/** Aramadan seçilen konu — anonim popülerlik sayacı; hata yutulur. */
+export function reportMatcherSearchPick(slug: string): void {
+  apiFetch<void>("/matcher/search-pick", { method: "POST", body: { slug } }).catch(() => {});
+}
+
 /** Anonim adım sayacı — hata sessizce yutulur (akışı asla bloklamaz). */
 export function reportMatcherProgress(step: MatcherStep): void {
   apiFetch<void>("/matcher/progress", { method: "POST", body: { step } }).catch(() => {});
@@ -156,6 +190,8 @@ export interface AdminCareTopic {
   isRedFlag: boolean;
   isActive: boolean;
   sortOrder: number;
+  /** Paket W-ek — bizde karşılığı olmayan doğal uzmanlık (hasta görmez). */
+  targetSpecialtyHint: string | null;
   updatedAt: string;
   weights: { specialtyId: string; specialtySlug: string; specialtyName: string; weight: number }[];
 }
@@ -167,7 +203,18 @@ export interface AdminCareTopicInput {
   isRedFlag: boolean;
   isActive: boolean;
   sortOrder: number;
+  targetSpecialtyHint: string | null;
   weights: { specialtyId: string; weight: number }[];
+}
+
+/** Paket W-ek — "Talep var, hekim yok" (son N gün, koordinatöre giden konular, ipucuna göre gruplu). */
+export interface MatcherDemandReport {
+  days: number;
+  groups: {
+    hint: string | null;
+    requests: number;
+    topics: { id: string; slug: string; label: string; selections: number; searchPicks: number }[];
+  }[];
 }
 
 export interface MatcherPreview {
@@ -221,6 +268,9 @@ export const updateAdminCareTopic = (id: string, input: AdminCareTopicInput) =>
 export const deleteAdminCareTopic = (id: string) => apiFetch<void>(`/admin/matcher/topics/${encodeURIComponent(id)}`, { method: "DELETE" });
 export const previewMatcher = (q: string, lang: string) => apiFetch<MatcherPreview>("/admin/matcher/preview", { query: { q, lang } });
 export const getMatcherReport = (from: string, to: string) => apiFetch<MatcherReport>("/admin/matcher/report", { query: { from, to } });
+export const getMatcherDemandReport = (days = 90) => apiFetch<MatcherDemandReport>("/admin/matcher/demand-report", { query: { days } });
+export const bulkAssignMatcherHint = (input: { hint: string; specialtyId: string; weight: number; topicIds?: string[] }) =>
+  apiFetch<{ updated: number }>("/admin/matcher/topics/bulk-weight", { method: "POST", body: input });
 export const getMatcherSettings = () => apiFetch<MatcherSettings>("/admin/matcher/settings");
 export const updateMatcherSettings = (input: MatcherSettings) => apiFetch<MatcherSettings>("/admin/matcher/settings", { method: "PUT", body: input });
 export const getMatcherLeadCard = (leadId: string) => apiFetch<MatcherLeadCard>(`/admin/matcher/leads/${encodeURIComponent(leadId)}`);

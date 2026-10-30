@@ -13,6 +13,14 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Changed
 
+- **`feat(matcher)`: Paket W-ek — Eşleştirme kataloğu genişletmesi (2026-10-31).** Katalog 110'dan 332
+  kayda çıktı (314 konu + 18 kırmızı bayrak, 19 vücut bölgesi; 9 dilde 8–15 eş anlamlı). Yeni
+  `CareTopic.targetSpecialtyHint` (bizde olmayan doğal uzmanlık) ve `seedHash` alanları (yalnızca ekleyen
+  migration). Sihirbaz: bölgede ilk 12 popüler konu + "Daha fazla göster", sunucuda 9 dil ve yazım hatası
+  toleranslı arama (`POST /matcher/topics/search`), bulunamazsa serbest metne yönlendirme. Admin: ipucu
+  alanı/filtresi, "Talep var, hekim yok" raporu ve ipucuna göre toplu uzmanlık atama. Seed:
+  `--update-existing` yalnızca seed'den beri değişmemiş kaydı günceller.
+
 - **`feat(email)`: Paket AC — Kurumsal e-posta kabuğu (2026-10-31).** Sistemin gönderdiği bütün
   e-postalar (şablonlu ve koda gömülü) tek kabuktan geçer (`lib/branded-email.ts`,
   `lib/branded-mail.ts::sendBrandedMail`): logo (yoksa metin), marka rengi şeridi, 600 px tablo,

@@ -10,7 +10,6 @@ import { ok } from "../../lib/envelope";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
 import { LOCALE_CODE_PATTERN } from "../../lib/localization";
-import { foldTerm, matchScore } from "../../lib/matcher-text";
 import { BODY_AREAS } from "../../lib/care-topics/catalog";
 import { PUBLIC_DOCTOR_WHERE } from "../telehealth/lib/archive-filters";
 import { mergeTelehealthSettings } from "../telehealth/lib/emergency-notice";
@@ -18,6 +17,7 @@ import { requireCrmAccess } from "../crm/crm.access";
 import { registerCrmRetentionStep } from "../crm/crm.rollup";
 import {
   MATCHER_MAX_SPECIALTIES_LIMIT,
+  MATCHER_POPULARITY_DAYS,
   MATCHER_RETENTION_MAX,
   MATCHER_RETENTION_MIN,
   MATCHER_THRESHOLD_MAX,
@@ -29,6 +29,7 @@ import {
   readTelehealthSettingsRaw,
   readTopicTranslations,
   scoreSpecialties,
+  searchTopics,
   topicTextFor,
 } from "./matcher.service";
 
@@ -55,6 +56,8 @@ const TopicBodySchema = z
     isRedFlag: z.boolean().default(false),
     isActive: z.boolean().default(true),
     sortOrder: z.number().int().min(0).max(100000).default(0),
+    /** Paket W-ek — bizde karşılığı olmayan doğal uzmanlık (hasta görmez). */
+    targetSpecialtyHint: z.string().trim().max(120).nullish().transform((v) => (v ? v : null)),
     weights: z
       .array(z.object({ specialtyId: z.string().uuid(), weight: z.number().int().min(1).max(100) }))
       .max(20)
@@ -92,6 +95,7 @@ function toTopicDto(row: {
   isRedFlag: boolean;
   isActive: boolean;
   sortOrder: number;
+  targetSpecialtyHint: string | null;
   updatedAt: Date;
   specialties: { weight: number; specialty: { id: string; slug: string; name: string } }[];
 }) {
@@ -103,6 +107,7 @@ function toTopicDto(row: {
     isRedFlag: row.isRedFlag,
     isActive: row.isActive,
     sortOrder: row.sortOrder,
+    targetSpecialtyHint: row.targetSpecialtyHint,
     updatedAt: row.updatedAt.toISOString(),
     weights: row.specialties.map((s) => ({ specialtyId: s.specialty.id, specialtySlug: s.specialty.slug, specialtyName: s.specialty.name, weight: s.weight })),
   };
@@ -129,7 +134,15 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
       const found = await app.prisma.specialty.count({ where: { id: { in: body.weights.map((w) => w.specialtyId) } } });
       if (found !== body.weights.length) throw new ValidationError("Uzmanlık bulunamadı.", { weights: ["Bilinmeyen uzmanlık."] });
     }
-    const data = { slug: body.slug, bodyArea: body.bodyArea, translations: body.translations, isRedFlag: body.isRedFlag, isActive: body.isActive, sortOrder: body.sortOrder };
+    const data = {
+      slug: body.slug,
+      bodyArea: body.bodyArea,
+      translations: body.translations,
+      isRedFlag: body.isRedFlag,
+      isActive: body.isActive,
+      sortOrder: body.sortOrder,
+      targetSpecialtyHint: body.targetSpecialtyHint ?? null,
+    };
     const saved = await app.prisma.$transaction(async (tx) => {
       const topic = id ? await tx.careTopic.update({ where: { id }, data }) : await tx.careTopic.create({ data });
       await tx.careTopicSpecialty.deleteMany({ where: { topicId: topic.id } });
@@ -175,20 +188,11 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
     "/preview",
     { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER), schema: { querystring: z.object({ q: z.string().trim().min(1).max(80), lang: z.string().regex(LOCALE_CODE_PATTERN).default("tr") }) } },
     async (request, reply) => {
-      const q = foldTerm(request.query.q);
-      const rows = await app.prisma.careTopic.findMany({ where: { isActive: true }, include: { specialties: { select: { specialtyId: true, weight: true } } } });
-      const matches = rows
-        .map((row) => {
-          const translations = readTopicTranslations(row.translations);
-          const own = translations[request.query.lang];
-          const en = translations.en;
-          const terms = [own, en].filter(Boolean).flatMap((t) => [t!.label, ...t!.synonyms]);
-          const score = Math.max(0, ...terms.map((term) => matchScore(q, foldTerm(term))));
-          return { row, translations, score };
-        })
-        .filter((m) => m.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 8);
+      // Paket W-ek — sihirbazdaki aramayla aynı motor (9 dil, yazım hatası toleranslı).
+      const hits = await searchTopics(app, request.query.q, request.query.lang);
+      const rows = await app.prisma.careTopic.findMany({ where: { id: { in: hits.map((h) => h.id) } }, include: { specialties: { select: { specialtyId: true, weight: true } } } });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const matches = hits.filter((h) => byId.has(h.id)).map((h) => ({ hit: h, row: byId.get(h.id)! }));
       const top = matches.slice(0, 1);
       const scores = scoreSpecialties(top.map((m) => ({ weights: m.row.specialties })));
       const specialtyRows = await app.prisma.specialty.findMany({ where: { id: { in: [...scores.keys()] } }, select: { id: true, slug: true, name: true, isActive: true } });
@@ -200,7 +204,7 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
       const { scoreThreshold } = parseMatcherSettings(await readTelehealthSettingsRaw(app));
       return reply.send(
         ok({
-          topics: matches.map((m) => ({ id: m.row.id, slug: m.row.slug, label: topicTextFor(m.translations, request.query.lang).label, isRedFlag: m.row.isRedFlag, score: m.score })),
+          topics: matches.map((m) => ({ id: m.row.id, slug: m.row.slug, label: m.hit.label, isRedFlag: m.row.isRedFlag, score: m.hit.score })),
           specialties: specialtyRows
             .map((s) => ({ ...s, score: scores.get(s.id) ?? 0, hasDoctors: staffedIds.has(s.id), passesThreshold: (scores.get(s.id) ?? 0) >= scoreThreshold }))
             .sort((a, b) => b.score - a.score),
@@ -246,6 +250,104 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
       );
     }
   );
+
+  /**
+   * Paket W-ek — "Talep var, hekim yok": son N günde seçilen/aramadan seçilen ama koordinatöre giden
+   * (hekimi olan bir uzmanlığa bağlı olmayan) konular, `targetSpecialtyHint`'e göre gruplu. Hangi branşta
+   * hekim alınacağına karar vermek için.
+   */
+  server.get(
+    "/demand-report",
+    { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER), schema: { querystring: z.object({ days: z.coerce.number().int().min(1).max(MATCHER_POPULARITY_DAYS).default(MATCHER_POPULARITY_DAYS) }) } },
+    async (request, reply) => {
+      const since = new Date(Date.now() - request.query.days * 86_400_000);
+      const [grouped, topics, staffedIds] = await Promise.all([
+        app.prisma.matcherStat.groupBy({ by: ["kind", "key"], where: { kind: { in: ["topic", "search_pick"] }, day: { gte: since } }, _sum: { count: true } }),
+        app.prisma.careTopic.findMany({
+          where: { isActive: true, isRedFlag: false },
+          select: { id: true, slug: true, translations: true, targetSpecialtyHint: true, specialties: { select: { specialtyId: true, specialty: { select: { isActive: true } } } } },
+        }),
+        staffedSpecialtyIds(),
+      ]);
+      const selections = new Map<string, number>();
+      const searches = new Map<string, number>();
+      for (const g of grouped) (g.kind === "topic" ? selections : searches).set(g.key, g._sum.count ?? 0);
+      const groups = new Map<string, { hint: string | null; requests: number; topics: { id: string; slug: string; label: string; selections: number; searchPicks: number }[] }>();
+      for (const topic of topics) {
+        const coordinator = !topic.specialties.some((s) => s.specialty.isActive && staffedIds.has(s.specialtyId));
+        if (!coordinator) continue;
+        const key = topic.targetSpecialtyHint ?? "";
+        const group = groups.get(key) ?? { hint: topic.targetSpecialtyHint, requests: 0, topics: [] };
+        const sel = selections.get(topic.slug) ?? 0;
+        const sp = searches.get(topic.slug) ?? 0;
+        group.requests += sel + sp;
+        group.topics.push({ id: topic.id, slug: topic.slug, label: topicTextFor(readTopicTranslations(topic.translations), "tr").label, selections: sel, searchPicks: sp });
+        groups.set(key, group);
+      }
+      const result = [...groups.values()]
+        .map((g) => ({ ...g, topics: g.topics.sort((a, b) => b.selections + b.searchPicks - (a.selections + a.searchPicks) || a.label.localeCompare(b.label, "tr")) }))
+        .sort((a, b) => b.requests - a.requests || b.topics.length - a.topics.length);
+      return reply.send(ok({ days: request.query.days, groups: result }));
+    }
+  );
+
+  /**
+   * Paket W-ek — hekim alındığında: aynı `targetSpecialtyHint`'e sahip (kırmızı bayrak olmayan) konuları
+   * tek seferde bir uzmanlığa bağla. `topicIds` verilirse yalnızca onlar (yine o ipucuna ait olmalı).
+   * Var olan ağırlık güncellenir. Admin değişikliği sayılır — seed bu konuları artık güncellemez.
+   */
+  server.post(
+    "/topics/bulk-weight",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: {
+        body: z
+          .object({
+            hint: z.string().trim().min(1).max(120),
+            specialtyId: z.string().uuid(),
+            weight: z.number().int().min(1).max(100),
+            topicIds: z.array(z.string().uuid()).max(500).optional(),
+          })
+          .strict(),
+      },
+    },
+    async (request, reply) => {
+      const { hint, specialtyId, weight, topicIds } = request.body;
+      const specialty = await app.prisma.specialty.findUnique({ where: { id: specialtyId }, select: { id: true, slug: true, isActive: true } });
+      if (!specialty) throw new ValidationError("Uzmanlık bulunamadı.", { specialtyId: ["Bilinmeyen uzmanlık."] });
+      if (!specialty.isActive) throw new ValidationError("Pasif uzmanlığa konu bağlanamaz.", { specialtyId: ["Uzmanlık pasif."] });
+      const topics = await app.prisma.careTopic.findMany({
+        where: { targetSpecialtyHint: hint, isRedFlag: false, ...(topicIds ? { id: { in: topicIds } } : {}) },
+        select: { id: true },
+      });
+      if (topicIds && topics.length !== new Set(topicIds).size) throw new ValidationError("Seçilen konuların hepsi bu ipucuna ait değil.", { topicIds: ["Geçersiz konu."] });
+      await app.prisma.$transaction(
+        topics.map((t) =>
+          app.prisma.careTopicSpecialty.upsert({
+            where: { topicId_specialtyId: { topicId: t.id, specialtyId } },
+            create: { topicId: t.id, specialtyId, weight },
+            update: { weight },
+          })
+        )
+      );
+      invalidateMatcherTopicCache();
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "matcher.topics_bulk_weight",
+        targetType: "Specialty",
+        targetId: specialty.id,
+        metadata: { hint, specialty: specialty.slug, weight, count: topics.length },
+        ipAddress: request.ip,
+      });
+      return reply.send(ok({ updated: topics.length }));
+    }
+  );
+
+  async function staffedSpecialtyIds(): Promise<Set<string>> {
+    const doctors = await app.prisma.doctorProfile.findMany({ where: PUBLIC_DOCTOR_WHERE, select: { specialtyId: true, additionalSpecialties: { select: { specialtyId: true } } } });
+    return new Set(doctors.flatMap((d) => [d.specialtyId, ...d.additionalSpecialties.map((a) => a.specialtyId)]).filter((id): id is string => !!id));
+  }
 
   server.get("/settings", { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER) }, async (_request, reply) => reply.send(ok(parseMatcherSettings(await readTelehealthSettingsRaw(app)))));
 

@@ -39,6 +39,11 @@ const api = vi.hoisted(() => ({
   recommend: vi.fn(),
   progress: vi.fn(),
   submit: vi.fn(),
+  // Paket W-ek — sunucu araması; varsayılan "erişilemez" (yerel sonuçlar kalır).
+  search: vi.fn<(q: string, lang: string) => Promise<{ results: { id: string; slug: string; label: string; matched: string | null }[] }>>(async () => {
+    throw new Error("offline");
+  }),
+  searchPick: vi.fn(),
 }));
 vi.mock("@/lib/api/matcher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/matcher")>();
@@ -47,6 +52,8 @@ vi.mock("@/lib/api/matcher", async (importOriginal) => {
     getMatcherCatalog: async () => api.catalog,
     recommendPhysicians: async (input: unknown) => (api.recommend(input), api.rec),
     reportMatcherProgress: (step: string) => api.progress(step),
+    searchMatcherTopics: (q: string, lang: string) => api.search(q, lang),
+    reportMatcherSearchPick: (slug: string) => api.searchPick(slug),
     submitMatcher: async (input: { consentContact: boolean; callback?: boolean }) => (
       api.submit(input), input.consentContact || input.callback ? { id: "s1", number: 7, token: "t".repeat(30), stored: true } : { id: "x", number: 0, token: "", stored: false }
     ),
@@ -97,6 +104,10 @@ beforeEach(() => {
   api.recommend.mockClear();
   api.progress.mockClear();
   api.submit.mockClear();
+  api.searchPick.mockClear();
+  api.search.mockReset().mockImplementation(async () => {
+    throw new Error("offline");
+  });
   tzState.timeZone = "Europe/Istanbul";
   (window as unknown as { WMCRM?: unknown }).WMCRM = undefined;
 });
@@ -325,5 +336,53 @@ describe("sihirbaz akışı", () => {
     await user.click(await screen.findByTestId("matcher-continue"));
     await waitFor(() => expect(nav.params.get("step")).toBe("5"));
     expect(api.submit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Paket W-ek — çok konulu katalog", () => {
+  const manyTopics = (n: number) => Array.from({ length: n }, (_, i) => ({ ...topic(`g${i}`, `gen-${i}`, `Genel konu ${i + 1}`, []), bodyArea: "general-symptoms" as const, popularity: i === 14 ? 50 : 0 }));
+
+  it("bölgede ilk 12 konu çip; 'Daha fazla göster (N)' kalanları açar; popüler konu öne çıkar", async () => {
+    api.catalog = { contactRequired: false, topics: [...TOPICS, ...manyTopics(16)] };
+    const user = userEvent.setup();
+    render(<PhysicianMatcher mode="page" />);
+    await user.click(await screen.findByTestId("matcher-area-general-symptoms"));
+    const chips = () => screen.getAllByTestId("matcher-chip").map((c) => c.textContent);
+    expect(chips()).toHaveLength(12);
+    // Son 90 günde en çok seçilen (15. konu) ilk sırada.
+    expect(chips()[0]).toBe("Genel konu 15");
+    const more = screen.getByTestId("matcher-show-more");
+    expect(more).toHaveTextContent("Daha fazla göster (4)");
+    await user.click(more);
+    expect(chips()).toHaveLength(16);
+    expect(screen.getByTestId("matcher-show-more")).toHaveTextContent("Daha az göster");
+  });
+
+  it("sunucu araması: başka dildeki eş anlamlıyla eşleşme gösterilir; seçim anonim sayaca gider", async () => {
+    api.search.mockImplementation(async () => ({ results: [{ id: "t1", slug: "reflux-heartburn", label: "Reflü / mide yanması", matched: "Sodbrennen" }] }));
+    const user = userEvent.setup();
+    render(<PhysicianMatcher mode="page" />);
+    await user.type(await screen.findByTestId("matcher-search"), "sodbrenen");
+    const option = await screen.findByRole("option", { name: /Reflü \/ mide yanması/ });
+    expect(option).toHaveTextContent("“Sodbrennen” ile eşleşti");
+    expect(api.search).toHaveBeenCalledWith("sodbrenen", "tr");
+    await user.click(option);
+    expect(api.searchPick).toHaveBeenCalledWith("reflux-heartburn");
+    expect(within(screen.getByTestId("matcher-selected")).getByText("Reflü / mide yanması")).toBeInTheDocument();
+  });
+
+  it("hiçbir şey bulunamazsa koordinatör mesajı; 'Kendi cümlelerimle yaz' serbest metni sorguyla açar", async () => {
+    api.search.mockImplementation(async () => ({ results: [] }));
+    const user = userEvent.setup();
+    render(<PhysicianMatcher mode="page" />);
+    await user.type(await screen.findByTestId("matcher-search"), "qwxzz");
+    expect(await screen.findByTestId("matcher-no-results")).toHaveTextContent("Şikayetinizi kendi cümlelerinizle yazın, koordinatörümüz sizi doğru hekime yönlendirsin.");
+    await user.click(screen.getByTestId("matcher-no-results-write"));
+    expect(screen.getByTestId("matcher-free-text")).toHaveValue("qwxzz");
+  });
+
+  it("Arapça arayüz: yeni bölge adları RTL sözlükte var", () => {
+    expect(MATCHER_DICTIONARIES.ar.bodyAreas["general-symptoms"]).toBe("أعراض عامة");
+    expect(MATCHER_DICTIONARIES.ar.showMoreTopics).toContain("{count}");
   });
 });
