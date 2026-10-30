@@ -12,10 +12,13 @@ import { useAuthOptional } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { acceptInterpreterConfidentiality, getInterpreterMe, listInterpreterAssignments } from "@/lib/api/interpreter";
+import { ApiClientError } from "@/lib/api/error";
 import type { InterpreterAssignment, InterpreterMe } from "@/lib/api/types";
 
 /**
- * Paket AA — tercüman paneli (`/[lang]/interpreter`). Sırayla: 2FA kurulumu (yoksa satır içi), gizlilik
+ * Paket AA — tercüman paneli (`/[lang]/interpreter`). Erişim ROLE değil tercüman profiline bağlıdır
+ * (Paket AA-ek): ADMIN, hasta ya da doktor da profili varsa paneli kullanır; rolüne ait veri burada
+ * gösterilmez. Sırayla: 2FA kurulumu (yalnızca admin ayarı açıksa, satır içi), gizlilik
  * taahhüdü onayı (güncel sürüm), sonra atanmış yaklaşan/geçmiş görüşmeler. Tercüman hasta belgelerini,
  * intake cevaplarını, doktor notlarını, reçeteleri ve kayıtları görmez; hastanın yalnızca baş harfi.
  */
@@ -29,36 +32,40 @@ export function InterpreterPanel() {
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [noAccess, setNoAccess] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const profile = await getInterpreterMe();
       setMe(profile);
-      setItems(profile.twoFactorEnabled && profile.confidentiality.accepted ? await listInterpreterAssignments() : []);
+      const twoFactorOk = !profile.twoFactorRequired || profile.twoFactorEnabled;
+      setItems(twoFactorOk && profile.confidentiality.accepted ? await listInterpreterAssignments() : []);
     } catch (err) {
-      setError(friendlyError(err));
+      if (err instanceof ApiClientError && err.status === 403) setNoAccess(true);
+      else setError(friendlyError(err));
     }
   }, [friendlyError]);
 
   const status = auth?.status;
-  const isInterpreter = auth?.user?.role === "INTERPRETER";
   useEffect(() => {
-    if (status !== "authenticated" || !isInterpreter) return;
+    if (status !== "authenticated") return;
     (async () => {
       await load();
     })();
-  }, [status, isInterpreter, load]);
+  }, [status, load]);
 
   const formatter = useMemo(() => new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }), [intlLocale]);
   const istanbulFormatter = useMemo(() => new Intl.DateTimeFormat(intlLocale, { timeStyle: "short", timeZone: "Europe/Istanbul" }), [intlLocale]);
 
   if (status === "loading" || status === undefined) return <PanelSkeleton />;
   if (status !== "authenticated") return <LoginRedirect next={localize("/interpreter")} />;
-  if (!isInterpreter) {
+  if (noAccess) {
     return (
       <Shell title={t.interpreter.panelTitle}>
-        <Alert variant="error">403</Alert>
+        <Alert variant="warning">
+          <span data-testid="interpreter-no-access">{t.interpreter.noAccess}</span>
+        </Alert>
       </Shell>
     );
   }
@@ -71,7 +78,7 @@ export function InterpreterPanel() {
   }
   if (!me) return <PanelSkeleton />;
 
-  if (!me.twoFactorEnabled) {
+  if (me.twoFactorRequired && !me.twoFactorEnabled) {
     return (
       <Shell title={t.interpreter.panelTitle}>
         <div className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-[var(--site-radius)] border border-warning/30 bg-warning/5 p-8 text-center">

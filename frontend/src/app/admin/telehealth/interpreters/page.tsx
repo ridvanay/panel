@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Download, Languages, Plus, Save } from "lucide-react";
+import { AlertCircle, Download, Languages, Plus, Save, Search } from "lucide-react";
 import * as interpreterApi from "@/lib/api/interpreter";
-import type { AdminInterpreter, InterpreterConfidentialityText, InterpreterReportRow } from "@/lib/api/types";
+import type { AdminInterpreter, InterpreterConfidentialityText, InterpreterReportRow, InterpreterUserSearchResult } from "@/lib/api/types";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { getRoleBadgeInfo } from "@/lib/role-badge";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,8 @@ function isoDay(offsetDays = 0): string {
  * Paket AA — "Tercümanlar". Hesap oluşturma (davet e-postası, tercüman şifresini kendisi belirler),
  * diller, aktif/pasif, gizlilik taahhüdü ve 2FA durumu; tercüman bazında rapor (CSV) ve taahhüt metni
  * (HUKUK KONTROLÜ GEREKLİ). Yazma yalnızca ADMIN; MANAGER salt okunur. Atama rezervasyon listesinden.
+ * Paket AA-ek — tercümanlık bir YETKİDİR: "Var olan kullanıcıdan ekle" sekmesi (rol değişmez),
+ * "Tercümanlığı kapat" ve 2FA zorunluluğu ayarı (varsayılan kapalı).
  */
 export default function AdminInterpretersPage() {
   const { user } = useAuth();
@@ -58,7 +62,7 @@ export default function AdminInterpretersPage() {
       <PageHeading
         icon={Languages}
         title="Tercümanlar"
-        description="Görüşmelere görüntü ve sesle katılan tercümanlar. Atama rezervasyon listesinden yapılır. Tercümanlar 2FA kurmadan ve gizlilik taahhüdünü onaylamadan görüşmeye katılamaz."
+        description="Görüşmelere görüntü ve sesle katılan tercümanlar. Atama rezervasyon listesinden yapılır. Tercümanlar gizlilik taahhüdünü onaylamadan (ve ayar açıksa 2FA kurmadan) görüşmeye katılamaz."
       />
       {loadError && (
         <Alert variant="error">
@@ -68,7 +72,7 @@ export default function AdminInterpretersPage() {
           </span>
         </Alert>
       )}
-      {canEdit && <CreateInterpreterCard onCreated={() => void load()} />}
+      {canEdit && <AddInterpreterCard onCreated={() => void load()} />}
       {items === null && !loadError ? (
         <div className="flex justify-center py-10">
           <Spinner className="h-6 w-6 text-primary" />
@@ -84,21 +88,90 @@ export default function AdminInterpretersPage() {
           </ul>
         </Card>
       )}
+      <InterpreterSettingsCard canEdit={canEdit} />
       <ReportCard />
       <ConfidentialityTextCard canEdit={canEdit} />
     </div>
   );
 }
 
-function CreateInterpreterCard({ onCreated }: { onCreated: () => void }) {
+const EMAIL_REGISTERED_USE_EXISTING = "EMAIL_REGISTERED_USE_EXISTING";
+
+/** Paket AA-ek — iki sekme: yeni tercüman hesabı (davet) ya da var olan kullanıcıya tercümanlık yetkisi. */
+function AddInterpreterCard({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"new" | "existing">("new");
+  const [prefill, setPrefill] = useState("");
+
+  if (!open) {
+    return (
+      <div className="flex justify-end">
+        <Button type="button" onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Tercüman ekle
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <Card className="space-y-4" data-testid="interpreter-create">
+      <div role="tablist" aria-label="Tercüman ekleme yöntemi" className="flex flex-wrap gap-1">
+        {(
+          [
+            ["new", "Yeni hesap"],
+            ["existing", "Var olan kullanıcıdan ekle"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            data-testid={`interpreter-tab-${key}`}
+            onClick={() => setTab(key)}
+            className={cn("rounded-md px-3 py-1.5 text-sm font-medium", tab === key ? "bg-primary text-primary-foreground" : "bg-surface-muted text-foreground/70")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "new" ? (
+        <NewAccountForm
+          onCancel={() => setOpen(false)}
+          onCreated={() => {
+            setOpen(false);
+            onCreated();
+          }}
+          onUseExisting={(email) => {
+            setPrefill(email);
+            setTab("existing");
+          }}
+        />
+      ) : (
+        <ExistingUserForm
+          key={prefill}
+          initialQuery={prefill}
+          onCancel={() => setOpen(false)}
+          onCreated={() => {
+            setOpen(false);
+            onCreated();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+function NewAccountForm({ onCancel, onCreated, onUseExisting }: { onCancel: () => void; onCreated: () => void; onUseExisting: (email: string) => void }) {
   const [form, setForm] = useState({ name: "", email: "", displayName: "", languages: "", timeZone: "Europe/Istanbul", notes: "" });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [registered, setRegistered] = useState<string | null>(null);
 
   async function submit() {
     setSaving(true);
     setErrors({});
+    setRegistered(null);
     try {
       const res = await interpreterApi.createAdminInterpreter({
         name: form.name.trim(),
@@ -109,30 +182,34 @@ function CreateInterpreterCard({ onCreated }: { onCreated: () => void }) {
         ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
       });
       toast.success(res.emailStatus === "sent" ? "Tercüman oluşturuldu, davet e-postası gönderildi." : "Tercüman oluşturuldu; davet e-postası gönderilemedi (yeniden gönderebilirsiniz).");
-      setForm({ name: "", email: "", displayName: "", languages: "", timeZone: "Europe/Istanbul", notes: "" });
-      setOpen(false);
       onCreated();
     } catch (err) {
-      setErrors(fieldErrorsFrom(err));
-      toast.error(friendlyErrorMessage(err));
+      const fieldErrors = fieldErrorsFrom(err);
+      if (fieldErrors.email === EMAIL_REGISTERED_USE_EXISTING) {
+        // Hata yerine yönlendirme: kayıtlı kişiye "Var olan kullanıcıdan ekle" sekmesinden yetki verilir.
+        setRegistered(friendlyErrorMessage(err));
+      } else {
+        setErrors(fieldErrors);
+        toast.error(friendlyErrorMessage(err));
+      }
     } finally {
       setSaving(false);
     }
   }
 
-  if (!open) {
-    return (
-      <div className="flex justify-end">
-        <Button type="button" onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Yeni tercüman
-        </Button>
-      </div>
-    );
-  }
   return (
-    <Card className="space-y-4" data-testid="interpreter-create">
-      <h2 className="admin-h2">Yeni tercüman</h2>
+    <div className="space-y-4">
+      <h2 className="admin-h2">Yeni tercüman hesabı</h2>
+      {registered && (
+        <Alert variant="info">
+          <span className="flex flex-wrap items-center gap-2" data-testid="interpreter-email-registered">
+            {registered}
+            <Button type="button" size="sm" variant="outline" onClick={() => onUseExisting(form.email.trim())}>
+              Var olan kullanıcıdan ekle
+            </Button>
+          </span>
+        </Alert>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Ad soyad" error={errors.name}>
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -154,13 +231,214 @@ function CreateInterpreterCard({ onCreated }: { onCreated: () => void }) {
         </Field>
       </div>
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Vazgeç
         </Button>
         <Button type="button" loading={saving} disabled={!form.name.trim() || !form.email.trim() || parseLanguages(form.languages).length === 0} onClick={() => void submit()}>
           Oluştur ve davet gönder
         </Button>
       </div>
+    </div>
+  );
+}
+
+function roleText(result: { role: InterpreterUserSearchResult["role"]; isDoctor: boolean }): string {
+  const label = getRoleBadgeInfo({ role: result.role }).label;
+  return result.isDoctor ? `${label} · Doktor` : label;
+}
+
+function ExistingUserForm({ initialQuery, onCancel, onCreated }: { initialQuery: string; onCancel: () => void; onCreated: () => void }) {
+  const [query, setQuery] = useState(initialQuery);
+  const [results, setResults] = useState<InterpreterUserSearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<InterpreterUserSearchResult | null>(null);
+  const [form, setForm] = useState({ displayName: "", languages: "", timeZone: "Europe/Istanbul", notes: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function search() {
+    if (query.trim().length < 3) return;
+    setSearching(true);
+    try {
+      setResults(await interpreterApi.searchUsersForInterpreter(query.trim()));
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function grant() {
+    if (!selected) return;
+    setSaving(true);
+    setErrors({});
+    try {
+      const res = await interpreterApi.createInterpreterFromUser({
+        userId: selected.id,
+        ...(form.displayName.trim() ? { displayName: form.displayName.trim() } : {}),
+        languages: parseLanguages(form.languages),
+        timeZone: form.timeZone.trim() || "Europe/Istanbul",
+        ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
+      });
+      setConfirmOpen(false);
+      if (res.existing) {
+        toast.info(`Bu kullanıcının zaten tercüman profili var: ${res.interpreter.displayName}.`);
+      } else {
+        toast.success(res.emailStatus === "sent" ? "Tercümanlık yetkisi verildi, kişiye e-posta gönderildi." : "Tercümanlık yetkisi verildi; e-posta gönderilemedi.");
+      }
+      onCreated();
+    } catch (err) {
+      setConfirmOpen(false);
+      setErrors(fieldErrorsFrom(err));
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4" data-testid="interpreter-existing">
+      <h2 className="admin-h2">Var olan kullanıcıdan ekle</h2>
+      <p className="admin-text-secondary">Kişinin rolü ve mevcut yetkileri değişmez; yalnızca görüşmelere tercüman olarak atanabilir hale gelir.</p>
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void search();
+        }}
+      >
+        <Field label="E-posta veya ad ile ara">
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="En az 3 karakter: ornek@site.com" data-testid="interpreter-user-search" />
+        </Field>
+        <Button type="submit" variant="outline" loading={searching} disabled={query.trim().length < 3}>
+          <Search className="h-4 w-4" aria-hidden="true" />
+          Ara
+        </Button>
+      </form>
+
+      {results && results.length === 0 && <p className="admin-text-secondary">Kullanıcı bulunamadı.</p>}
+      {results && results.length > 0 && (
+        <ul className="divide-y divide-border rounded-lg border border-border" aria-label="Arama sonuçları">
+          {results.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-foreground">{r.name}</p>
+                <p className="text-xs text-foreground/60">
+                  {r.email} · Rol: {roleText(r)}
+                </p>
+              </div>
+              {r.interpreterProfileId ? (
+                <Badge tone="neutral" size="sm">
+                  Tercüman profili var
+                </Badge>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selected?.id === r.id ? "default" : "outline"}
+                  aria-pressed={selected?.id === r.id}
+                  onClick={() => {
+                    setSelected(r);
+                    setForm((f) => ({ ...f, displayName: "" }));
+                  }}
+                >
+                  Seç
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selected && (
+        <div className="space-y-3 rounded-lg border border-border p-3" data-testid="interpreter-existing-form">
+          <p className="text-sm">
+            <span className="font-medium">{selected.name}</span> <span className="text-foreground/60">({selected.email} · {roleText(selected)})</span>
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Görünen ad (boşsa baş harfli: A. Yılmaz)" error={errors.displayName}>
+              <Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+            </Field>
+            <Field label="Diller (kod, virgülle: ar, en, fa)" error={errors.languages}>
+              <Input value={form.languages} onChange={(e) => setForm({ ...form, languages: e.target.value })} />
+            </Field>
+            <Field label="Saat dilimi" error={errors.timeZone}>
+              <Input value={form.timeZone} onChange={(e) => setForm({ ...form, timeZone: e.target.value })} />
+            </Field>
+            <Field label="Not (yalnızca admin görür)" error={errors.notes}>
+              <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            </Field>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Vazgeç
+        </Button>
+        <Button type="button" disabled={!selected || parseLanguages(form.languages).length === 0} onClick={() => setConfirmOpen(true)}>
+          Tercümanlık ver
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Tercümanlık yetkisi verilsin mi?"
+        description="Bu kullanıcı mevcut yetkilerini koruyarak tercüman olarak görüşmelere atanabilecek."
+        confirmText="Tercümanlık ver"
+        cancelText="Vazgeç"
+        loading={saving}
+        onConfirm={() => void grant()}
+      />
+    </div>
+  );
+}
+
+/** Paket AA-ek — tercüman ayarları: 2FA zorunluluğu (varsayılan kapalı). */
+function InterpreterSettingsCard({ canEdit }: { canEdit: boolean }) {
+  const [require2fa, setRequire2fa] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    interpreterApi
+      .getInterpreterSettings()
+      .then((s) => setRequire2fa(s.require2fa))
+      .catch(() => {});
+  }, []);
+
+  if (require2fa === null) return null;
+  return (
+    <Card className="space-y-2" data-testid="interpreter-settings">
+      <h2 className="admin-h2">Ayarlar</h2>
+      <label className="flex items-center gap-3 text-sm">
+        <Switch
+          checked={require2fa}
+          disabled={!canEdit || saving}
+          aria-label="Tercümanlar için iki adımlı doğrulama zorunlu"
+          onCheckedChange={async (v: boolean) => {
+            setSaving(true);
+            try {
+              setRequire2fa((await interpreterApi.updateInterpreterSettings({ require2fa: v })).require2fa);
+              toast.success("Kaydedildi.");
+            } catch (err) {
+              toast.error(friendlyErrorMessage(err));
+            } finally {
+              setSaving(false);
+            }
+          }}
+        />
+        Tercümanlar için iki adımlı doğrulama (2FA) zorunlu
+      </label>
+      <p className="admin-text-secondary">Kapalıyken tercümanlar 2FA kurmadan görüşmeye katılabilir; gizlilik taahhüdü onayı her durumda zorunludur.</p>
+      {!require2fa && (
+        <Alert variant="warning">
+          <span data-testid="interpreter-2fa-risk">
+            2FA zorunlu değil: şifresi ele geçirilen bir tercüman hesabı (admin, doktor ya da hasta hesabına verilmiş tercümanlık dahil) atandığı görüşmeye katılabilir. Mümkünse açık tutun.
+          </span>
+        </Alert>
+      )}
     </Card>
   );
 }
@@ -171,6 +449,7 @@ function InterpreterRow({ item, canEdit, onUpdated }: { item: AdminInterpreter; 
   const [displayName, setDisplayName] = useState(item.displayName);
   const [notes, setNotes] = useState(item.notes ?? "");
   const [busy, setBusy] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   async function patch(input: Parameters<typeof interpreterApi.updateAdminInterpreter>[1]) {
     setBusy(true);
@@ -190,7 +469,7 @@ function InterpreterRow({ item, canEdit, onUpdated }: { item: AdminInterpreter; 
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">
-            {item.displayName} <span className="text-xs font-normal text-foreground/60">({item.name} · {item.email})</span>
+            {item.displayName} <span className="text-xs font-normal text-foreground/60">({item.name} · {item.email} · Rol: {roleText(item)})</span>
           </p>
           <p className="text-xs text-foreground/60">
             Diller: {item.languages.join(", ")} · Saat dilimi: {item.timeZone} · Aktif atama: {item.activeAssignments}
@@ -206,10 +485,15 @@ function InterpreterRow({ item, canEdit, onUpdated }: { item: AdminInterpreter; 
         </div>
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-xs">
-              <Switch checked={item.isActive} disabled={busy} onCheckedChange={(v: boolean) => void patch({ isActive: v })} aria-label="Aktif" />
-              Aktif
-            </label>
+            {item.isActive ? (
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setConfirmClose(true)} data-testid="interpreter-deactivate">
+                Tercümanlığı kapat
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="outline" loading={busy} onClick={() => void patch({ isActive: true })}>
+                Tercümanlığı yeniden aç
+              </Button>
+            )}
             <Button type="button" size="sm" variant="outline" onClick={() => setEditing((v) => !v)}>
               Düzenle
             </Button>
@@ -233,6 +517,17 @@ function InterpreterRow({ item, canEdit, onUpdated }: { item: AdminInterpreter; 
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmClose}
+        onOpenChange={setConfirmClose}
+        title="Tercümanlık kapatılsın mı?"
+        description="Kişinin rolü ve hesabı değişmez. Bitmemiş görüşmelerdeki tercüman atamaları iptal edilir; görüşmedeyse odadan çıkarılır."
+        confirmText="Tercümanlığı kapat"
+        cancelText="Vazgeç"
+        destructive
+        loading={busy}
+        onConfirm={() => void patch({ isActive: false }).then(() => setConfirmClose(false))}
+      />
       {editing && (
         <div className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3">
           <Input aria-label="Görünen ad" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />

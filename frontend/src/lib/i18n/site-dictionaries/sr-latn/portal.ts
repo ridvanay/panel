@@ -704,6 +704,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "Panel prevodioca",
     panelSubtitle: "Konsultacije koje su vam dodeljene. Pridružite se iz privatnog i tihog prostora.",
     inactive: "Vaš nalog prevodioca je neaktivan. Obratite se koordinatoru.",
+    noAccess: "Ovaj nalog nema pristup prevodioca. Ako vam je pristup dodeljen, obratite se koordinatoru.",
     confidentialityTitle: "Izjava o poverljivosti",
     confidentialityIntro: "Pročitajte i prihvatite izjavu pre nego što se pridružite konsultaciji.",
     confidentialityCheckbox: "Pročitao/la sam izjavu i prihvatam je.",

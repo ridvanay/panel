@@ -700,6 +700,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "Panoul interpretului",
     panelSubtitle: "Consultațiile care v-au fost atribuite. Vă rugăm să vă conectați dintr-un loc privat și liniștit.",
     inactive: "Contul dumneavoastră de interpret este inactiv. Vă rugăm să contactați coordonatorul.",
+    noAccess: "Acest cont nu are acces de interpret. Dacă vi s-a acordat accesul, vă rugăm să contactați coordonatorul.",
     confidentialityTitle: "Angajament de confidențialitate",
     confidentialityIntro: "Citiți și acceptați angajamentul înainte de a vă alătura unei consultații.",
     confidentialityCheckbox: "Am citit angajamentul și îl accept.",

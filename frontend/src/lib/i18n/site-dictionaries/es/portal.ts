@@ -693,6 +693,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "Panel del intérprete",
     panelSubtitle: "Sus consultas asignadas. Únase desde un lugar privado y tranquilo.",
     inactive: "Su cuenta de intérprete está inactiva. Póngase en contacto con el coordinador.",
+    noAccess: "Esta cuenta no tiene acceso de intérprete. Si se le concedió el acceso, póngase en contacto con el coordinador.",
     confidentialityTitle: "Compromiso de confidencialidad",
     confidentialityIntro: "Lea y acepte el compromiso antes de unirse a cualquier consulta.",
     confidentialityCheckbox: "He leído el compromiso y lo acepto.",

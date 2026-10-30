@@ -9,7 +9,9 @@ import { abbreviateDoctorName } from "../../../lib/doctor-display-name";
  * Erişim kuralları (tek yer, testlerle sabitlenir):
  *  - Atama yalnızca aktif + gizlilik taahhüdü onaylı tercümana yapılır; booking başına en çok 1 aktif
  *    atama (ASSIGNED / JOINED / LEFT — ayrıca DB'de kısmi tekil indeks).
- *  - Token: rol INTERPRETER + 2FA etkin + profil aktif + güncel taahhüt onayı + aktif atama + doktorun
+ *  - Tercümanlık bir ROL değil YETKİDİR (Paket AA-ek): kaynağı `InterpreterProfile`'dır. Kullanıcının
+ *    rolü (ADMIN, USER, doktor vb.) değişmez; `INTERPRETER` rolü yalnızca "sadece tercüman" hesaplar içindir.
+ *  - Token: profil aktif + güncel taahhüt onayı + (ayar `interpreterRequire2fa` açıksa) 2FA + aktif atama + doktorun
  *    erişim kuralı (randevu SCHEDULED/IN_PROGRESS, booking ödenmiş). Tercüman görüşmeyi BAŞLATMAZ
  *    (SCHEDULED→IN_PROGRESS geçişi yalnızca hasta/doktor token'ında olur).
  *  - Tercüman hasta belgelerini, intake cevaplarını, doktor notlarını, reçeteleri ve kayıtları görmez;
@@ -28,7 +30,61 @@ export const INTERPRETER_AUDIT = {
   updated: "interpreter.updated",
   requested: "interpreter.requested",
   confidentialityTextUpdated: "interpreter.confidentiality_text_updated",
+  profileCreatedForExistingUser: "interpreter.profile_created_for_existing_user",
+  deactivated: "interpreter.deactivated",
+  settingsUpdated: "interpreter.settings_updated",
+  userSearched: "interpreter.user_searched",
 } as const;
+
+/**
+ * Paket AA-ek — tercümanlar için 2FA zorunluluğu (admin ayarı, `SiteModule(telehealth).settings`).
+ * Varsayılan KAPALI: yalnızca açıkça `true` yazılmışsa zorunludur.
+ */
+export function parseInterpreterRequire2fa(rawSettings: unknown): boolean {
+  if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return false;
+  return (rawSettings as Record<string, unknown>).interpreterRequire2fa === true;
+}
+
+/** Çıkar çatışması kontrolü için booking'den gereken alanlar (Prisma `select` ile birlikte kullanılır). */
+export const CONFLICT_BOOKING_SELECT = {
+  patientUserId: true,
+  patientEmail: true,
+  doctor: { select: { userId: true } },
+  appointments: { select: { patientUserId: true, patientEmail: true } },
+} as const;
+
+export interface ConflictBooking {
+  patientUserId: string | null;
+  patientEmail?: string | null;
+  doctor: { userId: string | null } | null;
+  appointments?: readonly { patientUserId: string | null; patientEmail?: string | null }[];
+}
+
+/** Booking'in hasta/doktor tarafındaki kullanıcı kimlikleri ve (küçük harfli) hasta e-postaları. */
+export function conflictParties(booking: ConflictBooking): { userIds: string[]; emails: string[] } {
+  const userIds = new Set<string>();
+  const emails = new Set<string>();
+  const addUser = (id: string | null | undefined) => id && userIds.add(id);
+  const addEmail = (email: string | null | undefined) => email && emails.add(email.trim().toLowerCase());
+  addUser(booking.patientUserId);
+  addUser(booking.doctor?.userId);
+  addEmail(booking.patientEmail);
+  for (const appointment of booking.appointments ?? []) {
+    addUser(appointment.patientUserId);
+    addEmail(appointment.patientEmail);
+  }
+  return { userIds: [...userIds], emails: [...emails] };
+}
+
+/**
+ * Bir kişi, kendisinin hastası ya da doktoru olduğu görüşmeye tercüman olamaz (çıkar çatışması).
+ * Booking ve randevu düzeyindeki hasta kullanıcısı, doktorun kullanıcısı ve misafir randevu için hasta
+ * e-postası (hesap e-postasıyla aynıysa) karşılaştırılır.
+ */
+export function isConflictOfInterest(user: { id: string; email: string }, booking: ConflictBooking): boolean {
+  const parties = conflictParties(booking);
+  return parties.userIds.includes(user.id) || parties.emails.includes(user.email.trim().toLowerCase());
+}
 
 export const INTERPRETER_IDENTITY_PREFIX = "interpreter:";
 
@@ -166,13 +222,24 @@ type Db = Pick<PrismaClient, "interpreterProfile" | "appointmentInterpreter">;
  */
 export async function findAssignableInterpreters(
   db: Db,
-  input: { span: { startsAt: Date; endsAt: Date }; language?: string; confidentiality: ConfidentialityText; excludeBookingId?: string }
+  input: {
+    span: { startsAt: Date; endsAt: Date };
+    language?: string;
+    confidentiality: ConfidentialityText;
+    excludeBookingId?: string;
+    /** Çıkar çatışması: booking'in hasta/doktor tarafı (bkz. `conflictParties`) listeye girmez. */
+    exclude?: { userIds: readonly string[]; emails: readonly string[] };
+  }
 ) {
+  const excluded = [...(input.exclude?.userIds ?? [])];
+  const excludedEmails = new Set(input.exclude?.emails ?? []);
   const where: Prisma.InterpreterProfileWhereInput = {
     isActive: true,
     confidentialityAcceptedAt: { not: null },
     confidentialityVersion: input.confidentiality.version,
-    user: { status: "ACTIVE", role: "INTERPRETER" },
+    // Rol fark etmez (Paket AA-ek); hesap aktif olmalı.
+    user: { status: "ACTIVE" },
+    ...(excluded.length > 0 ? { userId: { notIn: excluded } } : {}),
     ...(input.language ? { languages: { has: input.language } } : {}),
   };
   const profiles = await db.interpreterProfile.findMany({
@@ -186,8 +253,10 @@ export async function findAssignableInterpreters(
       },
     },
   });
-  return profiles.filter((profile) =>
-    profile.assignments.every((assignment) => {
+  return profiles.filter(
+    (profile) =>
+      !excludedEmails.has(profile.user.email.trim().toLowerCase()) &&
+      profile.assignments.every((assignment) => {
       const live = assignment.booking.appointments.filter((a) => a.status !== "CANCELLED");
       const span = bookingSpan(live);
       return !span || !overlaps(span, input.span);

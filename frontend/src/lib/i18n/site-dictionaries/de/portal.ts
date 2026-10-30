@@ -693,6 +693,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "Dolmetscherbereich",
     panelSubtitle: "Ihre zugewiesenen Sprechstunden. Bitte nehmen Sie von einem ungestörten, privaten Ort aus teil.",
     inactive: "Ihr Dolmetscherkonto ist deaktiviert. Bitte wenden Sie sich an die Koordination.",
+    noAccess: "Dieses Konto hat keinen Dolmetscherzugang. Wenn Ihnen der Zugang erteilt wurde, wenden Sie sich bitte an die Koordination.",
     confidentialityTitle: "Verschwiegenheitserklärung",
     confidentialityIntro: "Bitte lesen und akzeptieren Sie die Erklärung, bevor Sie an einer Sprechstunde teilnehmen.",
     confidentialityCheckbox: "Ich habe die Erklärung gelesen und akzeptiere sie.",

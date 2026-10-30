@@ -699,6 +699,7 @@ export const portalStrings = {
     panelTitle: "Interpreter panel",
     panelSubtitle: "Your assigned consultations. Please join from a private, quiet place.",
     inactive: "Your interpreter account is inactive. Please contact the coordinator.",
+    noAccess: "This account does not have interpreter access. If you were granted access, please contact the coordinator.",
     confidentialityTitle: "Confidentiality undertaking",
     confidentialityIntro: "Please read and accept the undertaking before joining any consultation.",
     confidentialityCheckbox: "I have read the undertaking and I accept it.",

@@ -4,6 +4,7 @@ export const navStrings: NavStrings = {
   siteNavigationAriaLabel: "Seitennavigation",
   accountMenuAriaLabel: "Mein Konto, {name}",
   doctorPortal: "Ärzteportal",
+  interpreterPanel: "Dolmetscherbereich",
   myAppointments: "Meine Termine",
   myAccount: "Mein Konto",
   myOrders: "Meine Bestellungen",

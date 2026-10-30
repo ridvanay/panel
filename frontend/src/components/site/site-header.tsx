@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Globe,
   Heart,
+  Languages,
   LogOut,
   Menu,
   Receipt,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
+import { getInterpreterAccess } from "@/lib/api/interpreter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -358,6 +360,22 @@ export function SiteHeader({
   // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. types.ts).
   const isDoctorSession = status === "authenticated" && user?.doctorProfileId != null;
+  // Paket AA-ek — tercümanlık rol değil yetki: profili olan her kullanıcının menüsünde "Tercüman paneli".
+  const userId = status === "authenticated" ? (user?.id ?? null) : null;
+  const [interpreterAccess, setInterpreterAccess] = useState<{ userId: string; hasProfile: boolean } | null>(null);
+  useEffect(() => {
+    if (!userId || !telehealthModuleEnabled) return;
+    let cancelled = false;
+    getInterpreterAccess()
+      .then((r) => {
+        if (!cancelled) setInterpreterAccess({ userId, hasProfile: r.hasProfile });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, telehealthModuleEnabled]);
+  const hasInterpreterPanel = interpreterAccess !== null && interpreterAccess.userId === userId && interpreterAccess.hasProfile;
   const pathname = usePathname();
   const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
   const navTree: NavNode[] =
@@ -541,6 +559,12 @@ export function SiteHeader({
                   <DropdownMenuItem render={<Link href={localize("/doctor")} />}>
                     <Stethoscope className="h-4 w-4" aria-hidden="true" />
                     {dict.doctorPortal}
+                  </DropdownMenuItem>
+                )}
+                {hasInterpreterPanel && telehealthModuleEnabled && (
+                  <DropdownMenuItem render={<Link href={localize("/interpreter")} />}>
+                    <Languages className="h-4 w-4" aria-hidden="true" />
+                    {dict.interpreterPanel}
                   </DropdownMenuItem>
                 )}
                 {/* [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.3 — hedef `/patient/appointments`e
@@ -772,6 +796,9 @@ export function SiteHeader({
                     <>
                       {isDoctorSession && telehealthModuleEnabled && (
                         <MobileMenuLink href={localize("/doctor")} icon={Stethoscope} label={dict.doctorPortal} onNavigate={closeMobileMenu} />
+                      )}
+                      {hasInterpreterPanel && telehealthModuleEnabled && (
+                        <MobileMenuLink href={localize("/interpreter")} icon={Languages} label={dict.interpreterPanel} onNavigate={closeMobileMenu} />
                       )}
                       {!isDoctorSession && telehealthModuleEnabled && (
                         <MobileMenuLink

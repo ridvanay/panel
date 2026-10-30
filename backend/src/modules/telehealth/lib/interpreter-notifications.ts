@@ -232,3 +232,113 @@ export async function sendInterpreterEmails(app: FastifyInstance, messages: { to
     }
   }
 }
+
+/**
+ * Paket AA-ek — var olan kullanıcıya tercümanlık yetkisi verildiğinde (9 dil). Kişinin mevcut rolü ve
+ * hesabı değişmez; e-posta yalnızca panele giriş adımlarını anlatır (2FA adımı yalnızca ayar açıksa).
+ */
+interface AccessGrantedStrings {
+  subject: string;
+  intro: string;
+  stepsTitle: string;
+  stepPanel: string;
+  step2fa: string;
+  stepConfidentiality: string;
+  cta: string;
+}
+
+const ACCESS_GRANTED: Record<NotificationLocale, AccessGrantedStrings> = {
+  en: {
+    subject: "Interpreter access granted",
+    intro: "You can now be assigned to interpret online consultations. Your existing account and permissions stay the same.",
+    stepsTitle: "Before your first consultation:",
+    stepPanel: "Sign in with your existing account and open the interpreter panel.",
+    step2fa: "Turn on two-step verification for your account.",
+    stepConfidentiality: "Read and accept the interpreter confidentiality undertaking.",
+    cta: "Open the interpreter panel",
+  },
+  tr: {
+    subject: "Tercümanlık yetkisi verildi",
+    intro: "Artık online görüşmelerde tercüman olarak atanabilirsiniz. Mevcut hesabınız ve yetkileriniz aynen kalır.",
+    stepsTitle: "İlk görüşmenizden önce:",
+    stepPanel: "Mevcut hesabınızla giriş yapın ve tercüman panelini açın.",
+    step2fa: "Hesabınızda iki adımlı doğrulamayı açın.",
+    stepConfidentiality: "Tercüman gizlilik taahhüdünü okuyup onaylayın.",
+    cta: "Tercüman panelini aç",
+  },
+  de: {
+    subject: "Dolmetscherzugang freigeschaltet",
+    intro: "Sie können jetzt als Dolmetscher(in) für Online-Sprechstunden eingeteilt werden. Ihr bestehendes Konto und Ihre Berechtigungen bleiben unverändert.",
+    stepsTitle: "Vor Ihrer ersten Sprechstunde:",
+    stepPanel: "Melden Sie sich mit Ihrem bestehenden Konto an und öffnen Sie den Dolmetscherbereich.",
+    step2fa: "Aktivieren Sie die Zwei-Faktor-Authentifizierung für Ihr Konto.",
+    stepConfidentiality: "Lesen und bestätigen Sie die Verschwiegenheitserklärung für Dolmetscher.",
+    cta: "Dolmetscherbereich öffnen",
+  },
+  es: {
+    subject: "Acceso de intérprete concedido",
+    intro: "Ya puede ser asignado como intérprete en consultas en línea. Su cuenta y sus permisos actuales no cambian.",
+    stepsTitle: "Antes de su primera consulta:",
+    stepPanel: "Inicie sesión con su cuenta actual y abra el panel de intérprete.",
+    step2fa: "Active la verificación en dos pasos en su cuenta.",
+    stepConfidentiality: "Lea y acepte el compromiso de confidencialidad del intérprete.",
+    cta: "Abrir el panel de intérprete",
+  },
+  fr: {
+    subject: "Accès interprète accordé",
+    intro: "Vous pouvez désormais être désigné comme interprète pour des consultations en ligne. Votre compte et vos droits actuels restent inchangés.",
+    stepsTitle: "Avant votre première consultation :",
+    stepPanel: "Connectez-vous avec votre compte actuel et ouvrez l'espace interprète.",
+    step2fa: "Activez la validation en deux étapes sur votre compte.",
+    stepConfidentiality: "Lisez et acceptez l'engagement de confidentialité de l'interprète.",
+    cta: "Ouvrir l'espace interprète",
+  },
+  ar: {
+    subject: "تم منحك صلاحية المترجم",
+    intro: "يمكن الآن تعيينك مترجمًا في الاستشارات عبر الإنترنت. يبقى حسابك الحالي وصلاحياتك كما هي.",
+    stepsTitle: "قبل استشارتك الأولى:",
+    stepPanel: "سجّل الدخول بحسابك الحالي وافتح لوحة المترجم.",
+    step2fa: "فعّل التحقق بخطوتين في حسابك.",
+    stepConfidentiality: "اقرأ تعهد السرية الخاص بالمترجم ووافق عليه.",
+    cta: "افتح لوحة المترجم",
+  },
+  ru: {
+    subject: "Вам предоставлен доступ переводчика",
+    intro: "Теперь вас можно назначать переводчиком на онлайн-консультации. Ваша учётная запись и права остаются прежними.",
+    stepsTitle: "Перед первой консультацией:",
+    stepPanel: "Войдите в свою учётную запись и откройте панель переводчика.",
+    step2fa: "Включите двухэтапную проверку в своей учётной записи.",
+    stepConfidentiality: "Прочитайте и примите обязательство о конфиденциальности для переводчика.",
+    cta: "Открыть панель переводчика",
+  },
+  ro: {
+    subject: "Acces de interpret acordat",
+    intro: "Acum puteți fi desemnat ca interpret la consultațiile online. Contul și drepturile dumneavoastră actuale rămân neschimbate.",
+    stepsTitle: "Înainte de prima consultație:",
+    stepPanel: "Autentificați-vă cu contul existent și deschideți panoul de interpret.",
+    step2fa: "Activați verificarea în doi pași pentru contul dumneavoastră.",
+    stepConfidentiality: "Citiți și acceptați angajamentul de confidențialitate al interpretului.",
+    cta: "Deschideți panoul de interpret",
+  },
+  "sr-latn": {
+    subject: "Dodeljen vam je pristup prevodioca",
+    intro: "Sada možete biti raspoređeni kao prevodilac na onlajn konsultacijama. Vaš postojeći nalog i ovlašćenja ostaju isti.",
+    stepsTitle: "Pre prve konsultacije:",
+    stepPanel: "Prijavite se postojećim nalogom i otvorite panel prevodioca.",
+    step2fa: "Uključite verifikaciju u dva koraka na svom nalogu.",
+    stepConfidentiality: "Pročitajte i prihvatite izjavu o poverljivosti za prevodioce.",
+    cta: "Otvori panel prevodioca",
+  },
+};
+
+export function buildInterpreterAccessGrantedEmail(input: { locale: NotificationLocale; panelUrl: string; twoFactorRequired: boolean }): { subject: string; html: string } {
+  const t = ACCESS_GRANTED[input.locale];
+  const steps = [t.stepPanel, ...(input.twoFactorRequired ? [t.step2fa] : []), t.stepConfidentiality];
+  const rows = [
+    `<p>${escapeHtml(t.intro)}</p>`,
+    `<p><strong>${escapeHtml(t.stepsTitle)}</strong></p>`,
+    `<ol>${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>`,
+    `<p><a href="${escapeHtml(input.panelUrl)}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#fff;border-radius:6px;text-decoration:none;">${escapeHtml(t.cta)}</a></p>`,
+  ];
+  return { subject: t.subject, html: wrap(input.locale, rows) };
+}

@@ -74,7 +74,14 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
     return { ...u, profileId: profile.id };
   }
 
-  async function booking(opts: { status?: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; paid?: boolean; startsInMin?: number; doctorUserId?: string | null } = {}) {
+  async function setRequire2fa(value: boolean) {
+    const res = await app.inject({ method: "PUT", url: "/api/v1/admin/telehealth/interpreters/settings", headers: auth(admin.token), payload: { require2fa: value } });
+    expect(res.statusCode).toBe(200);
+  }
+
+  async function booking(
+    opts: { status?: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; paid?: boolean; startsInMin?: number; doctorUserId?: string | null; patientUserId?: string | null; patientEmail?: string } = {}
+  ) {
     const { generateOpaqueToken, hashToken } = await import("../../src/lib/tokens");
     const specialty = await app.prisma.specialty.create({ data: { name: `S ${crypto.randomUUID()}`, slug: `s-${crypto.randomUUID()}`, icon: "Heart" } });
     const doctor = await app.prisma.doctorProfile.create({
@@ -101,7 +108,7 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
         bookingNumber: `B-${crypto.randomUUID().slice(0, 8)}`,
         doctorId: doctor.id,
         patientName: "Zeynep Kaya",
-        patientEmail: `hasta-${crypto.randomUUID()}@example.com`,
+        patientEmail: opts.patientEmail ?? `hasta-${crypto.randomUUID()}@example.com`,
         slotCount: 1,
         unitPriceCents: 50000,
         subtotalCents: 50000,
@@ -111,6 +118,7 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
         expiresAt: new Date(Date.now() + 3600_000),
         meetingRoomName: roomName,
         accessTokenHash: hashToken(raw),
+        patientUserId: opts.patientUserId ?? null,
         consentAt: new Date(),
         consentVersion: "v1",
       },
@@ -215,12 +223,15 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
         expect((await requestToken(row.id, interp.token)).statusCode).toBe(409);
       }
 
-      // 2FA yok.
+      // 2FA yok: ayar (interpreterRequire2fa) açıkken reddedilir; varsayılan kapalıyken katılabilir (Paket AA-ek).
       const no2fa = await interpreter({ twoFactor: false });
       const b2 = await booking();
       await app.prisma.appointmentInterpreter.create({ data: { bookingId: b2.booking.id, interpreterId: no2fa.profileId, language: "ar" } });
+      await setRequire2fa(true);
       const r2 = await requestToken((await assignmentFor(b2.booking.id)).id, no2fa.token);
       expect([r2.statusCode, r2.json().error.code]).toEqual([403, "TWO_FACTOR_REQUIRED"]);
+      await setRequire2fa(false);
+      expect((await requestToken((await assignmentFor(b2.booking.id)).id, no2fa.token)).statusCode).toBe(200);
 
       // Taahhüt yok.
       const noConsent = await interpreter({ accepted: false });
@@ -452,6 +463,194 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
       const url = `/api/v1/appointments/bookings/${b.id}/interpreter-request?t=${raw}`;
       expect((await app.inject({ method: "PUT", url, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(409);
       expect((await app.inject({ method: "PUT", url, payload: { language: null }, remoteAddress: nextIp() })).statusCode).toBe(204);
+    });
+  });
+
+  describe("var olan kullanıcıya tercümanlık yetkisi (Paket AA-ek)", () => {
+    async function grant(userId: string, languages = ["ar", "tr"]) {
+      return app.inject({ method: "POST", url: "/api/v1/admin/telehealth/interpreters/from-user", headers: auth(admin.token), payload: { userId, languages }, remoteAddress: nextIp() });
+    }
+    async function acceptConfidentiality(token: string) {
+      const res = await app.inject({ method: "POST", url: "/api/v1/interpreter/confidentiality/accept", headers: auth(token), payload: { version: await confidentialityVersion() }, remoteAddress: nextIp() });
+      expect(res.statusCode).toBe(204);
+    }
+
+    it("USER, ADMIN ve doktor: rol değişmez, eski yetkiler çalışır; token yalnızca atanmış görüşme için ve her zaman tercüman token'ı", async () => {
+      const patient = await user("USER");
+      const otherAdmin = await user("ADMIN", { twoFactor: true });
+      const doctorUser = await user("USER");
+      await booking({ doctorUserId: doctorUser.id });
+
+      const before = {
+        adminUsers: (await app.inject({ method: "GET", url: "/api/v1/admin/users", headers: auth(otherAdmin.token) })).statusCode,
+        doctorMe: (await app.inject({ method: "GET", url: "/api/v1/doctor/me", headers: auth(doctorUser.token) })).statusCode,
+      };
+
+      for (const target of [patient, otherAdmin, doctorUser]) {
+        mailSpy.mockClear();
+        const res = await grant(target.id);
+        expect(res.statusCode).toBe(201);
+        expect(res.json().data.existing).toBe(false);
+        const roleBefore = target === otherAdmin ? "ADMIN" : "USER";
+        expect(res.json().data.interpreter.role).toBe(roleBefore);
+        expect((await app.prisma.user.findUniqueOrThrow({ where: { id: target.id } })).role).toBe(roleBefore);
+        // "Tercümanlık yetkisi verildi" e-postası; 2FA adımı ayar kapalıyken yok.
+        expect(mailSpy).toHaveBeenCalledTimes(1);
+        const mail = mailSpy.mock.calls[0][1] as { to: string; subject: string; html: string };
+        expect(mail.to).toBe(target.email);
+        expect(mail.subject).toBe("Tercümanlık yetkisi verildi");
+        expect(mail.html).toContain("/tr/interpreter");
+        expect(mail.html).not.toContain("iki adımlı");
+        const audit = await app.prisma.auditLog.findFirstOrThrow({ where: { action: "interpreter.profile_created_for_existing_user", targetId: res.json().data.interpreter.id } });
+        expect(audit.metadata).toMatchObject({ userId: target.id, role: roleBefore });
+        expect(JSON.stringify(audit.metadata)).not.toContain(target.email);
+        // İkinci kez: yeni profil açılmaz, mevcut profil döner.
+        const again = await grant(target.id);
+        expect([again.statusCode, again.json().data.existing, again.json().data.interpreter.id]).toEqual([200, true, res.json().data.interpreter.id]);
+      }
+      expect(await app.prisma.interpreterProfile.count({ where: { userId: { in: [patient.id, otherAdmin.id, doctorUser.id] } } })).toBe(3);
+
+      // Eski yetkiler aynen.
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/users", headers: auth(otherAdmin.token) })).statusCode).toBe(before.adminUsers);
+      expect((await app.inject({ method: "GET", url: "/api/v1/doctor/me", headers: auth(doctorUser.token) })).statusCode).toBe(before.doctorMe);
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/users", headers: auth(patient.token) })).statusCode).toBe(403);
+      // Hesap menüsü bayrağı.
+      expect((await app.inject({ method: "GET", url: "/api/v1/interpreter/access", headers: auth(patient.token) })).json().data.hasProfile).toBe(true);
+      expect((await app.inject({ method: "GET", url: "/api/v1/interpreter/access", headers: auth(manager.token) })).json().data.hasProfile).toBe(false);
+
+      // ADMIN tercüman: kendi atandığı görüşmede tercüman token'ı (dinleyici/doktor değil); başkasının atamasında 404.
+      const adminProfile = await app.prisma.interpreterProfile.findUniqueOrThrow({ where: { userId: otherAdmin.id } });
+      await acceptConfidentiality(otherAdmin.token);
+      const { booking: b } = await booking();
+      expect((await assign(b.id, adminProfile.id)).statusCode).toBe(200);
+      const a = await assignmentFor(b.id);
+      const res = await requestToken(a.id, otherAdmin.token);
+      expect(res.statusCode).toBe(200);
+      const claims = jwt.verify(res.json().data.token, FAKE_SECRET) as Claims;
+      expect(claims.sub).toBe(`interpreter:${adminProfile.id}:${b.id}`);
+      expect(JSON.parse(claims.metadata ?? "{}")).toEqual({ role: "interpreter", language: "ar" });
+      expect(claims.video.hidden).toBeUndefined();
+      expect(claims.video.canPublishSources).toEqual(["camera", "microphone"]);
+      await acceptConfidentiality(patient.token);
+      expect((await requestToken(a.id, patient.token)).statusCode).toBe(404);
+      // Panelde yalnızca tercümanlık atamaları (rolün verisi yok).
+      const list = await app.inject({ method: "GET", url: "/api/v1/interpreter/assignments", headers: auth(otherAdmin.token) });
+      expect(list.json().data.map((x: { id: string }) => x.id)).toEqual([a.id]);
+    });
+
+    it("taahhüt yoksa token yok; 2FA yalnızca ayar açıkken zorunlu; ayar yalnızca ADMIN değiştirir", async () => {
+      const patient = await user("USER");
+      const profileId = (await grant(patient.id)).json().data.interpreter.id as string;
+      const { booking: b } = await booking();
+      await app.prisma.appointmentInterpreter.create({ data: { bookingId: b.id, interpreterId: profileId, language: "ar" } });
+      const a = await assignmentFor(b.id);
+      expect((await requestToken(a.id, patient.token)).statusCode).toBe(403);
+      await acceptConfidentiality(patient.token);
+
+      await setRequire2fa(true);
+      const me = await app.inject({ method: "GET", url: "/api/v1/interpreter/me", headers: auth(patient.token) });
+      expect(me.json().data.twoFactorRequired).toBe(true);
+      expect((await requestToken(a.id, patient.token)).json().error.code).toBe("TWO_FACTOR_REQUIRED");
+      await setRequire2fa(false);
+      expect((await requestToken(a.id, patient.token)).statusCode).toBe(200);
+
+      expect((await app.inject({ method: "PUT", url: "/api/v1/admin/telehealth/interpreters/settings", headers: auth(manager.token), payload: { require2fa: true } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/interpreters/settings", headers: auth(manager.token) })).json().data.require2fa).toBe(false);
+      expect(await app.prisma.auditLog.count({ where: { action: "interpreter.settings_updated" } })).toBeGreaterThan(0);
+    });
+
+    it("çıkar çatışması: kendi hasta ya da doktor olduğu görüşmeye atanamaz ve aday listesinde görünmez", async () => {
+      const doctorUser = await user("USER");
+      const patient = await user("USER");
+      const doctorProfileId = (await grant(doctorUser.id)).json().data.interpreter.id as string;
+      const patientProfileId = (await grant(patient.id)).json().data.interpreter.id as string;
+      await acceptConfidentiality(doctorUser.token);
+      await acceptConfidentiality(patient.token);
+      const { booking: b } = await booking({ doctorUserId: doctorUser.id, patientUserId: patient.id });
+
+      const state = await app.inject({ method: "GET", url: `/api/v1/admin/telehealth/bookings/${b.id}/interpreter?language=ar`, headers: auth(admin.token) });
+      const ids = state.json().data.candidates.map((c: { id: string }) => c.id);
+      expect(ids).not.toContain(doctorProfileId);
+      expect(ids).not.toContain(patientProfileId);
+      for (const id of [doctorProfileId, patientProfileId]) {
+        const res = await assign(b.id, id);
+        expect(res.statusCode).toBe(422);
+        expect(res.json().error.message).toContain("çıkar çatışması");
+      }
+      // Başka bir görüşmeye atanabilir.
+      const other = await booking();
+      expect((await assign(other.booking.id, patientProfileId)).statusCode).toBe(200);
+      // Atama sonradan çatışmaya düşerse (kayıt doğrudan) token verilmez.
+      await app.prisma.appointmentInterpreter.updateMany({ where: { bookingId: other.booking.id }, data: { status: "CANCELLED" } });
+      await app.prisma.appointmentInterpreter.create({ data: { bookingId: b.id, interpreterId: patientProfileId, language: "ar" } });
+      expect((await requestToken((await assignmentFor(b.id)).id, patient.token)).statusCode).toBe(403);
+    });
+
+    it("çıkar çatışması (güvenlik incelemesi): misafir randevuda hasta e-postası eşleşirse atanamaz; atamadan sonra doğan çatışmada temizleyici odadan çıkarır", async () => {
+      const guest = await user("USER");
+      const guestProfileId = (await grant(guest.id)).json().data.interpreter.id as string;
+      await acceptConfidentiality(guest.token);
+      // Hesapsız (misafir) randevu: patientUserId yok, hasta e-postası tercümanın hesap e-postasıyla aynı (büyük harfle).
+      const guestBooking = await booking({ patientEmail: guest.email.toUpperCase() });
+      const state = await app.inject({ method: "GET", url: `/api/v1/admin/telehealth/bookings/${guestBooking.booking.id}/interpreter?language=ar`, headers: auth(admin.token) });
+      expect(state.json().data.candidates.map((c: { id: string }) => c.id)).not.toContain(guestProfileId);
+      expect((await assign(guestBooking.booking.id, guestProfileId)).statusCode).toBe(422);
+
+      // Atama geçerliyken yapıldı; sonra tercüman bu görüşmenin hastası oldu → temizleyici çıkarır.
+      const later = await booking();
+      expect((await assign(later.booking.id, guestProfileId)).statusCode).toBe(200);
+      const identity = `interpreter:${guestProfileId}:${later.booking.id}`;
+      const { runInterpreterSweep } = await import("../../src/modules/telehealth/lib/interpreter-sweeper");
+      const sweep = async () => {
+        const removed: string[] = [];
+        await runInterpreterSweep(app, {
+          listIdentities: async (room) => (room === later.booking.meetingRoomName ? [identity] : []),
+          removeParticipant: async (_room, id) => {
+            removed.push(id);
+            return true;
+          },
+        });
+        return removed;
+      };
+      expect(await sweep()).toEqual([]);
+      await app.prisma.appointmentBooking.update({ where: { id: later.booking.id }, data: { patientUserId: guest.id } });
+      expect(await sweep()).toEqual([identity]);
+    });
+
+    it("tercümanlığı kapatma: gelecek atamalar CANCELLED, rol ve hesap aynı, panel erişimi kapanır; geçmiş atama kalır", async () => {
+      const staff = await user("MANAGER", { twoFactor: true });
+      const profileId = (await grant(staff.id)).json().data.interpreter.id as string;
+      await acceptConfidentiality(staff.token);
+      const future = await booking({ startsInMin: 600 });
+      expect((await assign(future.booking.id, profileId)).statusCode).toBe(200);
+      const past = await booking({ status: "COMPLETED", startsInMin: -600 });
+      await app.prisma.appointmentInterpreter.create({ data: { bookingId: past.booking.id, interpreterId: profileId, language: "ar", status: "LEFT" } });
+
+      const res = await app.inject({ method: "PATCH", url: `/api/v1/admin/telehealth/interpreters/${profileId}`, headers: auth(admin.token), payload: { isActive: false } });
+      expect(res.statusCode).toBe(200);
+      expect((await assignmentFor(future.booking.id)).status).toBe("CANCELLED");
+      expect((await assignmentFor(past.booking.id)).status).toBe("LEFT");
+      const u = await app.prisma.user.findUniqueOrThrow({ where: { id: staff.id } });
+      expect([u.role, u.status]).toEqual(["MANAGER", "ACTIVE"]);
+      expect((await app.prisma.auditLog.findFirstOrThrow({ where: { action: "interpreter.deactivated", targetId: profileId } })).metadata).toMatchObject({ cancelledAssignments: 1 });
+      expect((await app.inject({ method: "GET", url: "/api/v1/interpreter/me", headers: auth(staff.token) })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: "/api/v1/interpreter/access", headers: auth(staff.token) })).json().data.hasProfile).toBe(false);
+      // Rolün kendi yetkisi çalışmaya devam eder.
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/interpreters", headers: auth(staff.token) })).statusCode).toBe(200);
+    });
+
+    it("yeni hesap formunda kayıtlı e-posta: hata yerine 'Var olan kullanıcıdan ekle' yönlendirmesi; arama rol gösterir; MANAGER yetki veremez", async () => {
+      const existing = await user("USER");
+      const res = await app.inject({ method: "POST", url: "/api/v1/admin/telehealth/interpreters", headers: auth(admin.token), payload: { name: "X Y", email: existing.email, languages: ["ar"] }, remoteAddress: nextIp() });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.message).toBe("Bu e-posta kayıtlı. Var olan kullanıcıdan ekle sekmesinden tercümanlık verebilirsiniz.");
+      expect(res.json().error.details).toEqual({ email: ["EMAIL_REGISTERED_USE_EXISTING"] });
+
+      const search = await app.inject({ method: "GET", url: `/api/v1/admin/telehealth/interpreters/user-search?q=${encodeURIComponent(existing.email)}`, headers: auth(admin.token) });
+      expect(search.json().data).toEqual([{ id: existing.id, name: "Test USER", email: existing.email, role: "USER", isDoctor: false, interpreterProfileId: null }]);
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/interpreters/user-search?q=test", headers: auth(manager.token) })).statusCode).toBe(403);
+      const byManager = await app.inject({ method: "POST", url: "/api/v1/admin/telehealth/interpreters/from-user", headers: auth(manager.token), payload: { userId: existing.id, languages: ["ar"] }, remoteAddress: nextIp() });
+      expect(byManager.statusCode).toBe(403);
     });
   });
 });

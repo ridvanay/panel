@@ -693,6 +693,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "لوحة المترجم",
     panelSubtitle: "الاستشارات المعيّنة لك. يُرجى الانضمام من مكان خاص وهادئ.",
     inactive: "حساب المترجم الخاص بك غير نشط. يُرجى التواصل مع المنسق.",
+    noAccess: "لا يملك هذا الحساب صلاحية المترجم. إذا مُنحت الصلاحية، يرجى التواصل مع المنسّق.",
     confidentialityTitle: "تعهد السرية",
     confidentialityIntro: "يُرجى قراءة التعهد والموافقة عليه قبل الانضمام إلى أي استشارة.",
     confidentialityCheckbox: "قرأت التعهد وأوافق عليه.",

@@ -9,12 +9,19 @@ import type {
   InterpreterConfidentialityText,
   InterpreterMe,
   InterpreterReportRow,
+  InterpreterSettings,
   InterpreterTokenResponse,
+  InterpreterUserSearchResult,
 } from "./types";
 
 /** Paket AA — tercümanın kendi uçları (yalnızca INTERPRETER). */
 export function getInterpreterMe(): Promise<InterpreterMe> {
   return apiFetch<InterpreterMe>("/interpreter/me");
+}
+
+/** Paket AA-ek — hesap menüsündeki "Tercüman paneli" bağlantısı için (her oturumlu kullanıcı). */
+export function getInterpreterAccess(): Promise<{ hasProfile: boolean }> {
+  return apiFetch<{ hasProfile: boolean }>("/interpreter/access");
 }
 
 export function acceptInterpreterConfidentiality(version: string): Promise<void> {
@@ -133,4 +140,27 @@ export function unassignBookingInterpreter(bookingId: string, reason?: string): 
     method: "DELETE",
     body: reason ? { reason } : {},
   });
+}
+
+/** Paket AA-ek — var olan kullanıcıya tercümanlık yetkisi. */
+export function searchUsersForInterpreter(q: string): Promise<InterpreterUserSearchResult[]> {
+  return apiFetch<InterpreterUserSearchResult[]>("/admin/telehealth/interpreters/user-search", { query: { q } });
+}
+
+export function createInterpreterFromUser(input: {
+  userId: string;
+  displayName?: string;
+  languages: string[];
+  timeZone?: string;
+  notes?: string;
+}): Promise<{ interpreter: AdminInterpreter; existing: boolean; emailStatus?: "sent" | "failed" }> {
+  return apiFetch("/admin/telehealth/interpreters/from-user", { method: "POST", body: input });
+}
+
+export function getInterpreterSettings(): Promise<InterpreterSettings> {
+  return apiFetch<InterpreterSettings>("/admin/telehealth/interpreters/settings");
+}
+
+export function updateInterpreterSettings(input: InterpreterSettings): Promise<InterpreterSettings> {
+  return apiFetch<InterpreterSettings>("/admin/telehealth/interpreters/settings", { method: "PUT", body: input });
 }

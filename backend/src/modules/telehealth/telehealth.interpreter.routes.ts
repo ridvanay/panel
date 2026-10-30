@@ -3,7 +3,6 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate, authenticateOptional } from "../../middleware/authenticate";
-import { requireSiteRole } from "../../middleware/site-rbac";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
@@ -24,14 +23,16 @@ import {
   buildInterpreterIdentity,
   hasCurrentConfidentiality,
   interpreterParticipantName,
+  isConflictOfInterest,
   nativeLanguageName,
   parseConfidentialityText,
+  parseInterpreterRequire2fa,
   patientInitial,
   pickJoinableAppointment,
 } from "./lib/interpreters";
 
 /**
- * Paket AA — tercümanın kendi uçları (`/interpreter`, yalnızca `SiteRole.INTERPRETER`) ve hasta/doktor
+ * Paket AA — tercümanın kendi uçları (`/interpreter`) ve hasta/doktor
  * tarafındaki küçük uçlar (`/appointments/...`). Hasta/doktor `meeting-token` ucu DEĞİŞMEZ; tercüman
  * token'ı bu dosyadaki ayrı uçtan üretilir.
  *
@@ -50,6 +51,8 @@ const InterpreterMeSchema = z.object({
   timeZone: z.string(),
   isActive: z.boolean(),
   twoFactorEnabled: z.boolean(),
+  /** Admin ayarı `interpreterRequire2fa` (varsayılan kapalı). */
+  twoFactorRequired: z.boolean(),
   confidentiality: z.object({
     accepted: z.boolean(),
     acceptedAt: z.string().nullable(),
@@ -91,21 +94,33 @@ async function readTelehealthSettings(app: FastifyInstance) {
   return (await app.prisma.siteModule.findUnique({ where: { key: "telehealth" }, select: { settings: true } }))?.settings;
 }
 
-/** `/interpreter` — yalnızca INTERPRETER. Admin/doktor/CRM uçları zaten bu rolü reddeder. */
+/**
+ * `/interpreter` — Paket AA-ek: erişim ROLE değil `InterpreterProfile`'a bağlıdır. Profili olan her
+ * kullanıcı (ADMIN, hasta, doktor, sadece-tercüman) bu uçları kendi profiliyle kullanır; rolünden gelen
+ * hiçbir yetki burada kullanılmaz ve rolüne ait veri (hasta randevuları, admin listeleri) dönmez.
+ * Pasif profil yalnızca `INTERPRETER` rollü (sadece tercüman) hesapta panelde "pasif" uyarısı için
+ * okunabilir; diğer roller için pasif profil = erişim yok.
+ */
 export async function interpreterRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", requireModuleEnabled("telehealth"));
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("INTERPRETER"));
 
   async function loadProfile(userId: string) {
     const profile = await app.prisma.interpreterProfile.findUnique({
       where: { userId },
-      include: { user: { select: { twoFactorEnabled: true, status: true } } },
+      include: { user: { select: { twoFactorEnabled: true, status: true, role: true } } },
     });
-    if (!profile) throw new ForbiddenError("Tercüman profili bulunamadı.");
+    if (!profile || profile.user.status !== "ACTIVE") throw new ForbiddenError("Tercüman profili bulunamadı.");
+    if (!profile.isActive && profile.user.role !== "INTERPRETER") throw new ForbiddenError("Tercüman profili bulunamadı.");
     return profile;
   }
+
+  /** Hesap menüsündeki "Tercüman paneli" bağlantısı için — her oturumlu kullanıcıya açık, yalnızca bayrak döner. */
+  server.get("/access", { schema: { response: { 200: ApiSuccessSchema(z.object({ hasProfile: z.boolean() })) } } }, async (request, reply) => {
+    const profile = await app.prisma.interpreterProfile.findUnique({ where: { userId: request.user!.id }, select: { isActive: true, user: { select: { role: true } } } });
+    return reply.send(ok({ hasProfile: !!profile && (profile.isActive || profile.user.role === "INTERPRETER") }));
+  });
 
   server.get("/me", { schema: { response: { 200: ApiSuccessSchema(InterpreterMeSchema) } } }, async (request, reply) => {
     const [profile, settings] = await Promise.all([loadProfile(request.user!.id), readTelehealthSettings(app)]);
@@ -117,6 +132,7 @@ export async function interpreterRoutes(app: FastifyInstance) {
         timeZone: profile.timeZone,
         isActive: profile.isActive,
         twoFactorEnabled: profile.user.twoFactorEnabled,
+        twoFactorRequired: parseInterpreterRequire2fa(settings),
         confidentiality: {
           accepted: hasCurrentConfidentiality(profile, text),
           acceptedAt: profile.confidentialityAcceptedAt?.toISOString() ?? null,
@@ -191,7 +207,8 @@ export async function interpreterRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Tercüman token'ı. Şartlar: 2FA etkin, profil aktif, güncel taahhüt onayı, aktif atama ve doktorun
+   * Tercüman token'ı (her rolde HER ZAMAN tercüman token'ı; dinleyici/doktor yetkisi kullanılmaz).
+   * Şartlar: (ayar açıksa) 2FA etkin, profil aktif, güncel taahhüt onayı, aktif atama ve doktorun
    * erişim kuralı (randevu SCHEDULED/IN_PROGRESS + booking ödenmiş). Görüşme bitince/iptal edilince ya
    * da atama kaldırılınca token alınamaz. Tercüman görüşmeyi başlatmaz (randevu durumu değişmez).
    */
@@ -204,7 +221,7 @@ export async function interpreterRoutes(app: FastifyInstance) {
     async (request, reply) => {
       if (!isLiveKitConfigured()) throw new LiveKitNotConfiguredError();
       const [profile, settings] = await Promise.all([loadProfile(request.user!.id), readTelehealthSettings(app)]);
-      if (profile.user.twoFactorEnabled !== true) throw new TwoFactorRequiredError();
+      if (parseInterpreterRequire2fa(settings) && profile.user.twoFactorEnabled !== true) throw new TwoFactorRequiredError();
       if (!profile.isActive) throw new ForbiddenError("Tercüman hesabı pasif.");
       if (!hasCurrentConfidentiality(profile, parseConfidentialityText(settings))) {
         throw new ForbiddenError("Görüşmeye katılmadan önce gizlilik taahhüdünü onaylayın.");
@@ -218,13 +235,18 @@ export async function interpreterRoutes(app: FastifyInstance) {
               id: true,
               meetingRoomName: true,
               paymentStatus: true,
-              appointments: { select: { id: true, status: true, startsAt: true, endsAt: true } },
+              patientUserId: true,
+              patientEmail: true,
+              doctor: { select: { userId: true } },
+              appointments: { select: { id: true, status: true, startsAt: true, endsAt: true, patientUserId: true, patientEmail: true } },
             },
           },
         },
       });
       // Başkasının ataması / bilinmeyen kimlik → 404 (varlık sızdırılmaz).
       if (!assignment) throw new NotFoundError("Atama bulunamadı.");
+      // Çıkar çatışması (atamadan sonra oluşmuş olsa bile): kendi hasta/doktor görüşmesine tercüman olarak girilmez.
+      if (isConflictOfInterest({ id: request.user!.id, email: request.user!.email }, assignment.booking)) throw new ForbiddenError("Kendi hasta ya da doktor olduğunuz görüşmeye tercüman olarak katılamazsınız.");
       if (!ACTIVE_ASSIGNMENT_STATUSES.includes(assignment.status)) throw new AppointmentNotJoinableError();
       const appointment = pickJoinableAppointment(assignment.booking);
       if (!appointment) throw new AppointmentNotJoinableError();

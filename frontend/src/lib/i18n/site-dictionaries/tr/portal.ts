@@ -691,6 +691,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "Tercüman paneli",
     panelSubtitle: "Size atanan görüşmeler. Lütfen görüşmelere özel ve sessiz bir ortamdan katılın.",
     inactive: "Tercüman hesabınız pasif. Lütfen koordinatörle iletişime geçin.",
+    noAccess: "Bu hesapta tercümanlık yetkisi yok. Yetki verildiyse koordinatörle iletişime geçin.",
     confidentialityTitle: "Gizlilik taahhüdü",
     confidentialityIntro: "Herhangi bir görüşmeye katılmadan önce taahhüdü okuyup onaylayın.",
     confidentialityCheckbox: "Taahhüdü okudum ve kabul ediyorum.",

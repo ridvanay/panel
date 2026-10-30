@@ -4918,6 +4918,8 @@ export interface InterpreterMe {
   timeZone: string;
   isActive: boolean;
   twoFactorEnabled: boolean;
+  /** Paket AA-ek — admin ayarı interpreterRequire2fa (varsayılan kapalı). */
+  twoFactorRequired: boolean;
   confidentiality: { accepted: boolean; acceptedAt: string | null; version: string; textEn: string; textTr: string };
 }
 
@@ -4953,6 +4955,9 @@ export interface AdminInterpreter {
   userId: string;
   name: string;
   email: string;
+  /** Kullanıcının asıl rolü — tercümanlık rolü değiştirmez (Paket AA-ek). */
+  role: SiteRole;
+  isDoctor: boolean;
   displayName: string;
   languages: string[];
   timeZone: string;
@@ -5002,4 +5007,19 @@ export interface InterpreterConfidentialityText {
   en: string;
   tr: string;
   version: string;
+}
+
+/** Paket AA-ek — `GET /admin/telehealth/interpreters/user-search`. */
+export interface InterpreterUserSearchResult {
+  id: string;
+  name: string;
+  email: string;
+  role: SiteRole;
+  isDoctor: boolean;
+  interpreterProfileId: string | null;
+}
+
+/** Paket AA-ek — `/admin/telehealth/interpreters/settings`. */
+export interface InterpreterSettings {
+  require2fa: boolean;
 }

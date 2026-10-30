@@ -9,6 +9,7 @@ export const navStrings = {
   /** Hesap dropdown tetikleyicisinin `aria-label`'ı — `{name}` yer tutucusu `formatSiteString`'e gider. */
   accountMenuAriaLabel: "My account, {name}",
   doctorPortal: "Doctor Portal",
+  interpreterPanel: "Interpreter panel",
   myAppointments: "My Appointments",
   myAccount: "My Account",
   myOrders: "My Orders",

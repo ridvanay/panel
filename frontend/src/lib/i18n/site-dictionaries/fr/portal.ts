@@ -704,6 +704,7 @@ export const portalStrings: PortalStrings = {
     panelTitle: "Espace interprète",
     panelSubtitle: "Vos consultations attribuées. Rejoignez-les depuis un lieu privé et calme.",
     inactive: "Votre compte interprète est désactivé. Veuillez contacter le coordinateur.",
+    noAccess: "Ce compte n'a pas d'accès interprète. Si l'accès vous a été accordé, veuillez contacter le coordinateur.",
     confidentialityTitle: "Engagement de confidentialité",
     confidentialityIntro: "Veuillez lire et accepter l’engagement avant de rejoindre une consultation.",
     confidentialityCheckbox: "J’ai lu l’engagement et je l’accepte.",

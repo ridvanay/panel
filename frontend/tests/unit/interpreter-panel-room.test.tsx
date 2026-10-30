@@ -29,13 +29,17 @@ vi.mock("livekit-client", () => ({
 }));
 
 let me: InterpreterMe;
+let meError: unknown = null;
 let assignments: InterpreterAssignment[];
 let recordingStatus: string | null = null;
 const acceptInterpreterConfidentiality = vi.fn(async () => undefined);
 const requestInterpreterToken = vi.fn(async () => ({ token: "t", serverUrl: "wss://lk", roomName: "r", expiresAt: "x", sessionId: "s" }));
 const setInterpreterRequest = vi.fn(async () => undefined);
 vi.mock("@/lib/api/interpreter", () => ({
-  getInterpreterMe: async () => me,
+  getInterpreterMe: async () => {
+    if (meError) throw meError;
+    return me;
+  },
   listInterpreterAssignments: async () => assignments,
   acceptInterpreterConfidentiality: (...a: unknown[]) => acceptInterpreterConfidentiality(...(a as [])),
   requestInterpreterToken: (...a: unknown[]) => requestInterpreterToken(...(a as [])),
@@ -45,7 +49,8 @@ vi.mock("@/lib/api/interpreter", () => ({
   setInterpreterRequest: (...a: unknown[]) => setInterpreterRequest(...(a as [])),
 }));
 vi.mock("@/components/site/security/two-factor-setup-panel", () => ({ TwoFactorSetupPanel: () => <div data-testid="2fa-setup" /> }));
-vi.mock("@/context/auth-context", () => ({ useAuthOptional: () => ({ status: "authenticated", user: { role: "INTERPRETER" } }) }));
+let sessionRole = "INTERPRETER";
+vi.mock("@/context/auth-context", () => ({ useAuthOptional: () => ({ status: "authenticated", user: { role: sessionRole } }) }));
 vi.mock("@/context/locale-alternates-context", () => ({ useActiveLocaleCode: () => "tr", useLocalizePath: () => (p: string) => p }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
 
@@ -73,6 +78,7 @@ function baseMe(over: Partial<InterpreterMe> = {}): InterpreterMe {
     timeZone: "Europe/Istanbul",
     isActive: true,
     twoFactorEnabled: true,
+    twoFactorRequired: false,
     confidentiality: { accepted: true, acceptedAt: "2026-10-30T00:00:00Z", version: "v-abc12345", textEn: "EN text", textTr: "Gizlilik taahhüdü metni" },
     ...over,
   };
@@ -80,6 +86,8 @@ function baseMe(over: Partial<InterpreterMe> = {}): InterpreterMe {
 
 beforeEach(() => {
   me = baseMe();
+  meError = null;
+  sessionRole = "INTERPRETER";
   assignments = [assignment];
   recordingStatus = null;
   participants = [];
@@ -90,11 +98,30 @@ beforeEach(() => {
 });
 
 describe("tercüman paneli", () => {
-  it("2FA yoksa önce kurulum paneli", async () => {
-    me = baseMe({ twoFactorEnabled: false });
+  it("2FA zorunluysa (admin ayarı) ve kurulmamışsa önce kurulum paneli", async () => {
+    me = baseMe({ twoFactorEnabled: false, twoFactorRequired: true });
     render(<InterpreterPanel />);
     expect(await screen.findByTestId("2fa-setup")).toBeInTheDocument();
     expect(screen.getByText("İki adımlı doğrulama gerekli")).toBeInTheDocument();
+  });
+
+  it("Paket AA-ek: 2FA zorunlu değilse 2FA'sız tercüman doğrudan atamalarını görür", async () => {
+    me = baseMe({ twoFactorEnabled: false, twoFactorRequired: false });
+    render(<InterpreterPanel />);
+    expect(await screen.findByTestId("interpreter-assignment")).toBeInTheDocument();
+    expect(screen.queryByTestId("2fa-setup")).not.toBeInTheDocument();
+  });
+
+  it("Paket AA-ek: erişim rolden değil profilden — ADMIN rolüyle profil varsa panel açılır, profil yoksa 'yetki yok' mesajı", async () => {
+    sessionRole = "ADMIN";
+    const { unmount } = render(<InterpreterPanel />);
+    expect(await screen.findByTestId("interpreter-assignment")).toBeInTheDocument();
+    unmount();
+    const { ApiClientError } = await import("@/lib/api/error");
+    meError = Object.assign(Object.create(ApiClientError.prototype), { status: 403, code: "FORBIDDEN", message: "x" });
+    sessionRole = "USER";
+    render(<InterpreterPanel />);
+    expect(await screen.findByTestId("interpreter-no-access")).toHaveTextContent("Bu hesapta tercümanlık yetkisi yok");
   });
 
   it("taahhüt onaylanmadan görüşme listesi yok; kutu işaretlenince güncel sürümle onaylanır", async () => {

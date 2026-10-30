@@ -18,6 +18,7 @@ import { env } from "../../config/env";
 import { createPasswordResetToken } from "../auth/auth.service";
 import { sendPasswordResetEmail } from "../email-templates/email-templates.service";
 import { toCsv } from "../reports/reports.format";
+import { sendMail } from "../../lib/mail";
 import { mergeTelehealthSettings } from "./lib/emergency-notice";
 import { removeRoomParticipant } from "./lib/livekit";
 import {
@@ -26,13 +27,17 @@ import {
   INTERPRETER_AUDIT,
   bookingSpan,
   buildInterpreterIdentity,
+  conflictParties,
   findAssignableInterpreters,
   hasCurrentConfidentiality,
   initialsDisplayName,
+  isConflictOfInterest,
   nativeLanguageName,
   parseConfidentialityText,
+  parseInterpreterRequire2fa,
 } from "./lib/interpreters";
 import {
+  buildInterpreterAccessGrantedEmail,
   buildInterpreterAssignmentEmail,
   buildParticipantInterpreterEmail,
   interpreterEmailLocale,
@@ -77,6 +82,32 @@ const CreateInterpreterSchema = z
   })
   .strict();
 
+/** Paket AA-ek — var olan kullanıcıya tercümanlık yetkisi (rolü değişmez). */
+const CreateFromUserSchema = z
+  .object({
+    userId: z.string().uuid(),
+    displayName: z.string().trim().min(2).max(80).optional(),
+    languages: languagesSchema,
+    timeZone: timeZoneSchema.default("Europe/Istanbul"),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+
+const UserSearchQuerySchema = z.object({ q: z.string().trim().min(3).max(120) });
+const UserSearchResultSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  role: z.string(),
+  isDoctor: z.boolean(),
+  interpreterProfileId: z.string().nullable(),
+});
+
+const InterpreterSettingsSchema = z.object({ require2fa: z.boolean() });
+
+/** Yeni hesap formunda e-posta zaten kayıtlıysa — ön yüz bu kodla "Var olan kullanıcıdan ekle" sekmesine yönlendirir. */
+export const EMAIL_REGISTERED_USE_EXISTING = "EMAIL_REGISTERED_USE_EXISTING";
+
 const UpdateInterpreterSchema = z
   .object({
     displayName: z.string().trim().min(2).max(80).optional(),
@@ -96,6 +127,9 @@ const AdminInterpreterSchema = z.object({
   userId: z.string(),
   name: z.string(),
   email: z.string(),
+  /** Kullanıcının asıl rolü (tercümanlık rolü değiştirmez). */
+  role: z.string(),
+  isDoctor: z.boolean(),
   displayName: z.string(),
   languages: z.array(z.string()),
   timeZone: z.string(),
@@ -156,7 +190,10 @@ const UpdateConfidentialityTextSchema = z
   .strict();
 
 type ProfileWithUser = Prisma.InterpreterProfileGetPayload<{
-  include: { user: { select: { name: true; email: true; twoFactorEnabled: true; lastLoginAt: true } }; _count: { select: { assignments: true } } };
+  include: {
+    user: { select: { name: true; email: true; role: true; twoFactorEnabled: true; lastLoginAt: true; doctorProfile: { select: { id: true } } } };
+    _count: { select: { assignments: true } };
+  };
 }>;
 
 function toAssignmentDto(row: Prisma.AppointmentInterpreterGetPayload<{ include: { interpreter: { select: { displayName: true } } } }>) {
@@ -178,8 +215,8 @@ async function loadBooking(app: FastifyInstance, bookingId: string) {
   const booking = await app.prisma.appointmentBooking.findUnique({
     where: { id: bookingId },
     include: {
-      appointments: { select: { id: true, startsAt: true, endsAt: true, status: true }, orderBy: { startsAt: "asc" } },
-      doctor: { select: { fullName: true, isFounder: true, publicName: true, timeZone: true, user: { select: { email: true } } } },
+      appointments: { select: { id: true, startsAt: true, endsAt: true, status: true, patientUserId: true, patientEmail: true }, orderBy: { startsAt: "asc" } },
+      doctor: { select: { userId: true, fullName: true, isFounder: true, publicName: true, timeZone: true, user: { select: { email: true } } } },
       interpreterRequest: true,
       interpreterAssignments: { include: { interpreter: { select: { displayName: true } } }, orderBy: { assignedAt: "desc" } },
     },
@@ -205,6 +242,8 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
       userId: row.userId,
       name: row.user.name,
       email: row.user.email,
+      role: row.user.role,
+      isDoctor: row.user.doctorProfile !== null,
       displayName: row.displayName,
       languages: row.languages,
       timeZone: row.timeZone,
@@ -219,9 +258,47 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
   }
 
   const PROFILE_INCLUDE = {
-    user: { select: { name: true, email: true, twoFactorEnabled: true, lastLoginAt: true } },
+    user: { select: { name: true, email: true, role: true, twoFactorEnabled: true, lastLoginAt: true, doctorProfile: { select: { id: true } } } },
     _count: { select: { assignments: true } },
   } as const;
+
+  /**
+   * Tercümanlığı kapatır (profil pasif) — kullanıcının rolüne/hesabına DOKUNULMAZ. Bitmemiş görüşmelerdeki
+   * aktif atamalar `CANCELLED` olur; odada olan tercümanı temizleyici (interpreter-sweeper) çıkarır.
+   */
+  async function cancelOpenAssignments(profileId: string, actorId: string): Promise<number> {
+    const rows = await app.prisma.appointmentInterpreter.findMany({
+      where: { interpreterId: profileId, status: { in: ACTIVE_ASSIGNMENT_STATUSES } },
+      select: {
+        id: true,
+        status: true,
+        bookingId: true,
+        booking: { select: { meetingRoomName: true, appointments: { select: { startsAt: true, endsAt: true, status: true } } } },
+      },
+    });
+    const now = Date.now();
+    const open = rows.filter((row) => {
+      const span = bookingSpan(row.booking.appointments.filter((a) => a.status !== "CANCELLED"));
+      return span !== null && span.endsAt.getTime() > now;
+    });
+    let cancelled = 0;
+    for (const row of open) {
+      const result = await app.prisma.appointmentInterpreter.updateMany({
+        where: { id: row.id, status: { in: ACTIVE_ASSIGNMENT_STATUSES } },
+        data: { status: "CANCELLED", removedById: actorId, removedReason: "interpreter_deactivated", ...(row.status === "JOINED" ? { leftAt: new Date() } : {}) },
+      });
+      cancelled += result.count;
+      // Odadaysa hemen çıkarılır (temizleyiciyi beklemeden); başarısız olursa temizleyici yakalar.
+      if (result.count > 0 && row.status === "JOINED") {
+        try {
+          await removeRoomParticipant(row.booking.meetingRoomName, buildInterpreterIdentity(profileId, row.bookingId));
+        } catch (err) {
+          app.log.info({ err: (err as Error).message }, "Tercüman odadan çıkarılamadı (odada olmayabilir); temizleyici tekrar dener.");
+        }
+      }
+    }
+    return cancelled;
+  }
 
   async function activeCounts(ids: string[]) {
     const rows = await app.prisma.appointmentInterpreter.groupBy({
@@ -260,7 +337,7 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
       const body = request.body;
       const email = body.email.toLowerCase();
       if (await app.prisma.user.findUnique({ where: { email }, select: { id: true } })) {
-        throw new ConflictError("Bu e-posta adresi zaten kayıtlı.");
+        throw new ConflictError("Bu e-posta kayıtlı. Var olan kullanıcıdan ekle sekmesinden tercümanlık verebilirsiniz.", { email: [EMAIL_REGISTERED_USE_EXISTING] });
       }
       const passwordHash = await hashPassword(crypto.randomBytes(32).toString("hex"));
       const profile = await app.prisma.$transaction(async (tx) => {
@@ -310,6 +387,7 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
       const existing = await app.prisma.interpreterProfile.findUnique({ where: { id: request.params.id } });
       if (!existing) throw new NotFoundError("Tercüman bulunamadı.");
       const body = request.body;
+      const deactivating = existing.isActive && body.isActive === false;
       const updated = await app.prisma.interpreterProfile.update({
         where: { id: existing.id },
         data: {
@@ -330,8 +408,153 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
         metadata: { fields: Object.keys(body), isActive: updated.isActive },
         ipAddress: request.ip,
       });
+      if (deactivating) {
+        const cancelledAssignments = await cancelOpenAssignments(existing.id, request.user!.id);
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: INTERPRETER_AUDIT.deactivated,
+          targetType: "InterpreterProfile",
+          targetId: existing.id,
+          metadata: { userId: existing.userId, cancelledAssignments },
+          ipAddress: request.ip,
+        });
+      }
       const [{ text }, counts] = await Promise.all([readConfidentiality(app), activeCounts([updated.id])]);
       return reply.send(ok(toAdminInterpreterDto(updated, text, counts.get(updated.id) ?? 0)));
+    }
+  );
+
+  /** Var olan kullanıcıyı ara (e-posta / ad) — ad, e-posta, mevcut rol ve varsa tercüman profili. */
+  server.get(
+    "/user-search",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+      schema: { querystring: UserSearchQuerySchema, response: { 200: ApiSuccessSchema(z.array(UserSearchResultSchema)) } },
+    },
+    async (request, reply) => {
+      const q = request.query.q;
+      const users = await app.prisma.user.findMany({
+        where: { deletedAt: null, status: "ACTIVE", OR: [{ email: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }] },
+        select: { id: true, name: true, email: true, role: true, doctorProfile: { select: { id: true } }, interpreterProfile: { select: { id: true } } },
+        orderBy: { name: "asc" },
+        take: 20,
+      });
+      // Arama terimi audit'e YAZILMAZ (e-posta/ad olabilir) — yalnızca uzunluk ve sonuç sayısı.
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: INTERPRETER_AUDIT.userSearched,
+        targetType: "User",
+        targetId: null,
+        metadata: { queryLength: q.length, results: users.length },
+        ipAddress: request.ip,
+      });
+      return reply.send(
+        ok(users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, isDoctor: u.doctorProfile !== null, interpreterProfileId: u.interpreterProfile?.id ?? null })))
+      );
+    }
+  );
+
+  /**
+   * Var olan kullanıcıya tercümanlık yetkisi — rolü ve mevcut yetkileri DEĞİŞMEZ. Profili zaten varsa
+   * yenisi açılmaz, mevcut profil `existing: true` ile döner. Kişiye "Tercümanlık yetkisi verildi" e-postası gider.
+   */
+  server.post(
+    "/from-user",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+      schema: {
+        body: CreateFromUserSchema,
+        response: {
+          200: ApiSuccessSchema(z.object({ interpreter: AdminInterpreterSchema, existing: z.literal(true) })),
+          201: ApiSuccessSchema(z.object({ interpreter: AdminInterpreterSchema, existing: z.literal(false), emailStatus: z.enum(["sent", "failed"]) })),
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body;
+      const user = await app.prisma.user.findFirst({ where: { id: body.userId, deletedAt: null }, select: { id: true, name: true, email: true, role: true, status: true } });
+      if (!user) throw new NotFoundError("Kullanıcı bulunamadı.");
+      const { text, raw } = await readConfidentiality(app);
+      const current = await app.prisma.interpreterProfile.findUnique({ where: { userId: user.id }, include: PROFILE_INCLUDE });
+      if (current) {
+        const counts = await activeCounts([current.id]);
+        return reply.status(200).send(ok({ interpreter: toAdminInterpreterDto(current, text, counts.get(current.id) ?? 0), existing: true as const }));
+      }
+      if (user.status !== "ACTIVE") throw new ConflictError("Bu hesap aktif değil; önce hesabı etkinleştirin.");
+      let profile;
+      try {
+        profile = await app.prisma.interpreterProfile.create({
+          data: { userId: user.id, displayName: body.displayName ?? initialsDisplayName(user.name), languages: body.languages, timeZone: body.timeZone, notes: body.notes ?? null },
+          include: PROFILE_INCLUDE,
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code === "P2002") throw new ConflictError("Bu kullanıcının tercüman profili az önce oluşturuldu; sayfayı yenileyin.");
+        throw err;
+      }
+
+      const locale = interpreterEmailLocale(body.languages);
+      const granted = buildInterpreterAccessGrantedEmail({
+        locale,
+        panelUrl: `${env.FRONTEND_URL}/${locale}/interpreter`,
+        twoFactorRequired: parseInterpreterRequire2fa(raw),
+      });
+      let emailStatus: "sent" | "failed" = "failed";
+      try {
+        await sendMail(app, { to: user.email, subject: granted.subject, html: granted.html });
+        emailStatus = "sent";
+      } catch (err) {
+        // Alıcı adresi loga düşmesin diye yalnızca hata mesajı.
+        app.log.warn({ err: (err as Error).message }, "Tercümanlık yetkisi e-postası gönderilemedi.");
+      }
+
+      // E-posta adresi audit'e YAZILMAZ — yalnızca kullanıcı kimliği ve rolü.
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: INTERPRETER_AUDIT.profileCreatedForExistingUser,
+        targetType: "InterpreterProfile",
+        targetId: profile.id,
+        metadata: { userId: user.id, role: user.role, languages: body.languages, emailStatus },
+        ipAddress: request.ip,
+      });
+      return reply.status(201).send(ok({ interpreter: toAdminInterpreterDto(profile, text, 0), existing: false as const, emailStatus }));
+    }
+  );
+
+  /** Tercüman ayarları — şimdilik yalnızca 2FA zorunluluğu (varsayılan kapalı). */
+  server.get(
+    "/settings",
+    { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER), schema: { response: { 200: ApiSuccessSchema(InterpreterSettingsSchema) } } },
+    async (_request, reply) => reply.send(ok({ require2fa: parseInterpreterRequire2fa((await readConfidentiality(app)).raw) }))
+  );
+
+  server.put(
+    "/settings",
+    { preHandler: requireSiteRole(...ROLES_ADMIN), schema: { body: InterpreterSettingsSchema.strict(), response: { 200: ApiSuccessSchema(InterpreterSettingsSchema) } } },
+    async (request, reply) => {
+      const { raw } = await readConfidentiality(app);
+      const before = parseInterpreterRequire2fa(raw);
+      const merged = mergeTelehealthSettings(raw, { interpreterRequire2fa: request.body.require2fa });
+      const row = await app.prisma.siteModule.upsert({
+        where: { key: "telehealth" },
+        create: { key: "telehealth", settings: merged, updatedById: request.user!.id },
+        update: { settings: merged, updatedById: request.user!.id },
+      });
+      const after = parseInterpreterRequire2fa(row.settings);
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: INTERPRETER_AUDIT.settingsUpdated,
+        targetType: "SiteModule",
+        targetId: "telehealth",
+        metadata: { require2faBefore: before, require2faAfter: after },
+        ipAddress: request.ip,
+      });
+      return reply.send(ok({ require2fa: after }));
     }
   );
 
@@ -463,7 +686,13 @@ export async function adminBookingInterpreterRoutes(app: FastifyInstance) {
     const active = booking.interpreterAssignments.find((a) => ACTIVE_ASSIGNMENT_STATUSES.includes(a.status)) ?? null;
     const wanted = language ?? booking.interpreterRequest?.language ?? active?.language;
     const candidates = span
-      ? await findAssignableInterpreters(app.prisma, { span, language: wanted, confidentiality: text, excludeBookingId: booking.id })
+      ? await findAssignableInterpreters(app.prisma, {
+          span,
+          language: wanted,
+          confidentiality: text,
+          excludeBookingId: booking.id,
+          exclude: conflictParties(booking),
+        })
       : [];
     return {
       bookingId: booking.id,
@@ -518,7 +747,17 @@ export async function adminBookingInterpreterRoutes(app: FastifyInstance) {
       if (booking.appointments.every((a) => a.status === "CANCELLED" || a.status === "COMPLETED")) {
         throw new ConflictError("Biten ya da iptal edilen görüşmeye tercüman atanamaz.");
       }
-      const assignable = await findAssignableInterpreters(app.prisma, { span, language: request.body.language, confidentiality: text, excludeBookingId: booking.id });
+      const target = await app.prisma.interpreterProfile.findUnique({ where: { id: request.body.interpreterId }, select: { user: { select: { id: true, email: true } } } });
+      if (target && isConflictOfInterest(target.user, booking)) {
+        throw new ValidationError("Bu kişi bu görüşmenin hastası ya da doktoru; tercüman olarak atanamaz (çıkar çatışması).", { interpreterId: ["Çıkar çatışması."] });
+      }
+      const assignable = await findAssignableInterpreters(app.prisma, {
+        span,
+        language: request.body.language,
+        confidentiality: text,
+        excludeBookingId: booking.id,
+        exclude: conflictParties(booking),
+      });
       const interpreter = assignable.find((c) => c.id === request.body.interpreterId);
       if (!interpreter) {
         throw new ValidationError("Bu tercüman atanamaz (pasif, taahhüt onayı yok, dili konuşmuyor ya da o saatte başka görevi var).", {
@@ -554,7 +793,8 @@ export async function adminBookingInterpreterRoutes(app: FastifyInstance) {
         action: INTERPRETER_AUDIT.assigned,
         targetType: "AppointmentBooking",
         targetId: booking.id,
-        metadata: { assignmentId: created.id, interpreterId: interpreter.id, language: request.body.language },
+        // Admin kendini tercüman olarak atadıysa ayrıca işaretlenir (izlenebilirlik).
+        metadata: { assignmentId: created.id, interpreterId: interpreter.id, language: request.body.language, selfAssigned: target?.user.id === request.user!.id },
         ipAddress: request.ip,
       });
 
