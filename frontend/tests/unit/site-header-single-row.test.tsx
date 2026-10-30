@@ -19,15 +19,15 @@ const LOCALES: Locale[] = [
 ];
 
 describe("başlık tek satır", () => {
-  it("masaüstü satırı flex-nowrap + whitespace-nowrap; nav satır kaydırmaz; logo shrink-0; sığmazsa mobil menü", () => {
+  it("Paket AB: masaüstü menü tek satır (flex-nowrap + whitespace-nowrap), logo shrink-0; ≥1024 px'te hamburger yok (mobil kısım lg:hidden)", () => {
     const src = readFileSync(resolve(__dirname, "../../src/components/site/site-header.tsx"), "utf8");
     expect(src).not.toContain("lg:flex-wrap");
-    expect(src).toContain('"hidden flex-nowrap items-center whitespace-nowrap text-sm lg:flex"');
+    expect(src).toContain("hidden min-w-0 flex-1 flex-nowrap items-center justify-center whitespace-nowrap lg:flex");
     expect(src).toContain("lg:shrink-0");
-    expect(src).toContain('desktopOverflow ? "lg:flex" : "lg:hidden"');
-    // Ölçüme dayalı üç düzey: tam → dar (bayrak + ikon) → mobil menü.
-    expect(src).toContain('type HeaderFit = "full" | "compact" | "mobile";');
-    expect(src).toContain("<span className={fullOnlyClass}>{dict.login}</span>");
+    expect(src).toContain('<div className="flex shrink-0 items-center gap-1.5 lg:hidden">');
+    // Ölçüme dayalı düzen (ResizeObserver): tam → dar (ikon) → "More".
+    expect(src).toContain("useDesktopNavLayout(rowRef, logoRef, measureRef)");
+    expect(src).not.toContain("desktopOverflow");
   });
 
   it("dar masaüstünde dil seçicide yalnızca bayrak: ad xl'de görünür, tooltip ve aria-label'da kalır", () => {

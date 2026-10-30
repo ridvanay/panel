@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, Stethoscope } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import { PhysicianMatcher } from "./physician-matcher";
@@ -107,30 +108,52 @@ function MatcherDialogHost({ initialQuery, onStepPush, rewind }: { initialQuery:
   );
 }
 
-/** Header ve CTA'larda kullanılan "Find my physician" düğmesi (sağlayıcı yoksa ayrı sayfaya bağlantı). */
-export function MatcherLaunchButton({ className, variant = "primary" }: { className?: string; variant?: "primary" | "outline" }) {
+/**
+ * Header ve CTA'larda kullanılan "Find my physician" düğmesi (sağlayıcı yoksa ayrı sayfaya bağlantı).
+ * Paket AB — `display`: "full" metinli; "icon" yalnızca ikon (tooltip + aria-label); "auto" ölçüm
+ * yapılana kadar kırılımla (xl altında yalnızca ikon). Erişilebilir ad her durumda aynı metindir.
+ */
+export function MatcherLaunchButton({
+  className,
+  variant = "primary",
+  display = "full",
+}: {
+  className?: string;
+  variant?: "primary" | "outline";
+  display?: "full" | "icon" | "auto";
+}) {
   const ctx = useMatcherModal();
   const { m } = useMatcherStrings();
   const localize = useLocalizePath();
   const classes = cn(
-    "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--site-radius)] px-4 text-sm font-semibold transition-colors motion-reduce:transition-none",
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--site-radius)] text-sm font-semibold transition-colors motion-reduce:transition-none",
+    display === "icon" ? "w-11 px-0" : display === "auto" ? "w-11 px-0 xl:w-auto xl:px-4" : "px-4",
     variant === "primary" ? "bg-[var(--site-primary)] text-white hover:opacity-90" : "border border-[var(--site-primary)] text-[var(--site-primary)] hover:bg-[var(--site-primary)]/5",
     className
   );
   if (ctx && !ctx.enabled) return null;
-  if (!ctx) {
-    return (
-      <Link href={localize("/find-a-physician")} className={classes}>
-        <Stethoscope className="h-4 w-4" aria-hidden="true" />
-        {m.entryButton}
-      </Link>
-    );
-  }
-  return (
+  const labelClass = display === "icon" ? "sr-only" : display === "auto" ? "sr-only xl:not-sr-only" : undefined;
+  const content = (
+    <>
+      <Stethoscope className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className={labelClass}>{m.entryButton}</span>
+    </>
+  );
+  const element = !ctx ? (
+    <Link href={localize("/find-a-physician")} className={classes} data-testid="matcher-launch">
+      {content}
+    </Link>
+  ) : (
     <button type="button" onClick={() => ctx.open()} className={classes} data-testid="matcher-launch">
-      <Stethoscope className="h-4 w-4" aria-hidden="true" />
-      {m.entryButton}
+      {content}
     </button>
+  );
+  if (display !== "icon") return element;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={element} />
+      <TooltipContent side="bottom">{m.entryButton}</TooltipContent>
+    </Tooltip>
   );
 }
 

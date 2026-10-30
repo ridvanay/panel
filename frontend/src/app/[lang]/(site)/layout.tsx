@@ -103,6 +103,8 @@ export default async function SiteLayout({
             // Açılır menüde uzmanlık görseli/ikonu — yalnızca menünün kullandığı alanlar.
             navSpecialties={navSpecialties.map(({ slug, name, icon, imageUrl }) => ({ slug, name, icon, imageUrl }))}
             dict={dict.nav}
+            // Paket AB — üst şerit: "Support in N languages · Free interpreter" (Paket V ayarı).
+            support={support ? { count: support.languages.length, interpreterIncluded: support.interpreterIncluded } : null}
           />
           <main className="flex-1">{children}</main>
           <SiteFooter

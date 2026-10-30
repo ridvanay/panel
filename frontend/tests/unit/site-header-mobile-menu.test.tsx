@@ -124,13 +124,14 @@ describe("SiteHeader — mobil menü (lg altı)", () => {
 });
 
 describe("SiteHeader — masaüstü açılır menü", () => {
-  it("menü genişliği tetikleyiciye bağlı değil; öğeler 2 satırla sınırlı ve tam metin title'da", async () => {
+  it("menü genişliği tetikleyiciye bağlı değil; uzun adlar 2 satıra sarılır, tooltip (title) YOK, satırlar eşit yükseklik (Paket AB)", async () => {
     const user = userEvent.setup();
     renderHeader();
     await user.click(screen.getByRole("button", { name: /^Specialties/ }));
     const item = await screen.findByRole("menuitem", { name: LONG_LABEL });
-    expect(item).toHaveAttribute("title", LONG_LABEL);
+    expect(item).not.toHaveAttribute("title");
     expect(item.querySelector("span.line-clamp-2")).toHaveTextContent(LONG_LABEL);
+    expect(item.parentElement?.className).toContain("auto-rows-fr");
     // Yeni açılır panel (nav-dropdown.tsx): genişlik içerik/kolon sayısına göre sabit, tetikleyiciye bağlı değil.
     const content = item.closest("[data-slot=nav-dropdown]");
     expect(content).not.toBeNull();

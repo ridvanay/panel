@@ -169,11 +169,11 @@ export function NavDropdown({
               <Menu.GroupLabel className="px-3 pt-3 pb-2 text-xs font-bold tracking-[0.12em] text-[var(--site-muted-text,currentColor)] uppercase">
                 {link.label}
               </Menu.GroupLabel>
-              <div className={cn("grid gap-0.5", twoColumns && "grid-cols-2")}>
+              <div className={cn("grid auto-rows-fr gap-0.5", twoColumns && "grid-cols-2")}>
                 {items.map((item) => (
                   <Menu.Item
                     key={item.id}
-                    render={<Link href={localize(item.href)} title={item.label} />}
+                    render={<Link href={localize(item.href)} />}
                     className="flex min-h-[60px] items-center gap-3.5 rounded-xl px-3 py-2.5 text-[15px] leading-snug font-semibold text-foreground outline-none transition-colors duration-150 hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] motion-reduce:transition-none"
                   >
                     {item.slug !== null && (
@@ -186,7 +186,7 @@ export function NavDropdown({
                         )}
                       </span>
                     )}
-                    <span className="line-clamp-2">{item.label}</span>
+                    <span className="line-clamp-2 text-pretty">{item.label}</span>
                   </Menu.Item>
                 ))}
               </div>

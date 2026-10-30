@@ -74,12 +74,14 @@ describe("SiteHeader — aktif sayfa tespiti (design-notes-header-colors.md §3)
 });
 
 describe("SiteHeader — akıllı yapışkan (smart sticky) davranışı (GÖREV A)", () => {
-  it("stickyHeaderEnabled verilmezse (varsayılan false) header statik kalır — sticky/transform sınıfları YOK", () => {
+  it("stickyHeaderEnabled verilmezse mobilde header statik kalır; masaüstünde (Paket AB) ana bar her zaman yapışkan", () => {
     usePathnameMock.mockReturnValue("/products");
     const { container } = render(<SiteHeader settings={settings} pages={[]} navigationItems={navigationItems} />);
     const header = container.querySelector("header")!;
-    expect(header.className).not.toContain("sticky");
+    expect(header.className).not.toContain("max-lg:sticky");
     expect(header.className).not.toContain("-translate-y-full");
+    expect(header.className).toContain("lg:sticky lg:top-[var(--site-header-top)]");
+    expect(header.style.getPropertyValue("--site-header-top")).toBe("-36px");
   });
 
   it("stickyHeaderEnabled=true iken header 'sticky top-0' olur", () => {

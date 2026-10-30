@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,6 +10,8 @@ import {
   Heart,
   Languages,
   LogOut,
+  MessageCircle,
+  ChevronDown,
   Menu,
   Receipt,
   ShoppingCart,
@@ -22,6 +24,9 @@ import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import { getInterpreterAccess } from "@/lib/api/interpreter";
 import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
+import { MoreMenu } from "@/components/site/header/more-menu";
+import { useDesktopNavLayout } from "@/components/site/header/use-desktop-nav-layout";
+import { useScrolledPast } from "@/components/site/header/use-scrolled-past";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import {
   DropdownMenu,
@@ -113,6 +118,11 @@ interface SiteHeaderProps {
    * Verilmezse (admin önizleme, testler) uzmanlık öğeleri varsayılan ikonla gösterilir.
    */
   navSpecialties?: NavSpecialty[];
+  /**
+   * Paket AB — üst bilgi şeridi: "🌐 Support in N languages · Free interpreter" (Paket V `languageSupport`).
+   * `null`/verilmezse (ayar kapalı, admin önizleme) destek metni gösterilmez.
+   */
+  support?: { count: number; interpreterIncluded: boolean } | null;
 }
 
 /**
@@ -226,63 +236,6 @@ const NAV_LINK_TEXT_CLASSES =
   "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)] focus-visible:text-[var(--site-header-link-hover)]";
 const NAV_LINK_ACTIVE_TEXT_CLASS = "text-[var(--site-header-link-active)]";
 
-/**
- * Paket O — masaüstü satırı (menü + CTA + dil + giriş) logonun yanına hangi düzende sığıyor:
- *   "full"    → geniş aralık, dil seçicide bayrak + ad, girişte metin
- *   "compact" → dar aralık, yalnızca bayrak (ad tooltip/aria-label), giriş yalnızca ikon
- *   "mobile"  → hiçbiri sığmıyor: masaüstü satırı gizlenir, mevcut mobil menü (hamburger)
- * Her düzenin doğal genişliği (`scrollWidth`, `whitespace-nowrap`) bir kez ölçülüp önbelleğe alınır
- * (etiketler değişince — dil değişimi — önbellek sıfırlanır); sonra kullanılabilir genişliğe göre seçilir.
- * `null` = henüz ölçülmedi (sunucu render'ı / jsdom): kırılım (`xl`) sınıfları geçerlidir.
- */
-type HeaderFit = "full" | "compact" | "mobile";
-
-function useHeaderFit(
-  navRef: React.RefObject<HTMLElement | null>,
-  logoRef: React.RefObject<HTMLElement | null>,
-  desktopRef: React.RefObject<HTMLElement | null>
-): HeaderFit | null {
-  const [fit, setFit] = useState<HeaderFit | null>(null);
-  const widths = useRef<{ key: string; full?: number; compact?: number }>({ key: "" });
-  // İnceleme bulgusu — ölçüm boyamadan önce: geniş satır bir kare bile taşmasın.
-  useLayoutEffect(() => {
-    const measure = () => {
-      const nav = navRef.current;
-      const logo = logoRef.current;
-      const desktop = desktopRef.current;
-      // Yerleşimi olmayan ortamda (görünmez ağaç, jsdom) genişlik 0'dır — karar verilmez.
-      if (!nav || !logo || !desktop || nav.clientWidth === 0) return;
-      if (window.innerWidth < 1024) {
-        setFit("full");
-        return;
-      }
-      const key = desktop.textContent ?? "";
-      if (widths.current.key !== key) widths.current = { key };
-      const rendered = desktop.dataset.fit as "full" | "compact" | undefined;
-      if (rendered) widths.current[rendered] = desktop.scrollWidth;
-
-      const style = window.getComputedStyle(nav);
-      const padding = parseFloat(style.paddingLeft || "0") + parseFloat(style.paddingRight || "0");
-      const gap = parseFloat(style.columnGap || "0") || 16;
-      const available = nav.clientWidth - padding - logo.offsetWidth - gap + 1;
-      const { full, compact } = widths.current;
-      setFit(
-        full === undefined ? "full" : full <= available ? "full" : compact === undefined ? "compact" : compact <= available ? "compact" : "mobile"
-      );
-    };
-    measure();
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    if (navRef.current) observer?.observe(navRef.current);
-    if (desktopRef.current) observer?.observe(desktopRef.current);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [navRef, logoRef, desktopRef, fit]);
-  return fit;
-}
-
 /** Hesap/favori/sepet ikonlarının paylaştığı metin/ikon rengi sınıfları — `headerLinkActiveColor` BURAYA UYGULANMAZ. */
 const ICON_LINK_TEXT_CLASSES = "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)]";
 
@@ -348,6 +301,7 @@ export function SiteHeader({
   telehealthModuleEnabled = false,
   dict = legacyFallbackNavStrings,
   navSpecialties = [],
+  support = null,
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -414,53 +368,193 @@ export function SiteHeader({
     setLanguageSheetOpen(true);
   };
 
-  // Paket O — masaüstünde (lg+) başlık TEK SATIR. Ölçüm: menü + düğmeler logonun yanına sığmıyorsa
-  // (uzun RU/DE etiketleri, çok sayıda menü öğesi) masaüstü satırı gizlenir ve mevcut mobil menü
-  // (hamburger) kullanılır. Masaüstü satırı gizliyken de DOM'da kalır (ölçüm için, erişilebilirlik
-  // ağacından çıkarılır).
-  const navRef = useRef<HTMLElement>(null);
+  // Paket AB — iki katlı header. Masaüstünde (≥1024 px) hamburger YOK: menü ölçülerek tam → dar
+  // (ikon düğme) → "More ▾" sırasıyla sığdırılır. Header daha geniş kendi kapsayıcısını kullanır.
+  const rowRef = useRef<HTMLElement>(null);
   const logoRef = useRef<HTMLAnchorElement>(null);
-  const desktopRef = useRef<HTMLDivElement>(null);
-  const headerFit = useHeaderFit(navRef, logoRef, desktopRef);
-  const desktopOverflow = headerFit === "mobile";
-  // Gizli (mobile) durumda satır dar düzende tutulur ki dar genişliği ölçülmeye devam etsin.
-  const desktopLayout: "full" | "compact" | null = headerFit === "mobile" ? "compact" : headerFit;
-  /** Ölçülmemişken kırılım sınıfı (xl'de göster), ölçülünce kesin karar. */
-  const fullOnlyClass = desktopLayout === null ? "hidden xl:inline" : desktopLayout === "full" ? "inline" : "hidden";
+  const measureRef = useRef<HTMLDivElement>(null);
+  const navLayout = useDesktopNavLayout(rowRef, logoRef, measureRef);
+  // Kaydırınca üst şerit (36 px) sticky `top` ile yukarı çıkar; ana bar 80 → 64 px görünür (transform). CLS yok.
+  const scrolled = useScrolledPast(40);
+  const overflowCount = navLayout?.overflowCount ?? 0;
+  const visibleNav = overflowCount > 0 ? navTree.slice(0, navTree.length - overflowCount) : navTree;
+  const overflowNav = overflowCount > 0 ? navTree.slice(navTree.length - overflowCount) : [];
+  const findDisplay = navLayout === null ? "auto" : navLayout.mode === "full" ? "full" : "icon";
+  /** Ölçülmemişken kırılım (≥1280 tam), ölçülünce kesin karar — gap değerleri ölçüm sabitleriyle aynı. */
+  const navGapClass = navLayout === null ? "gap-x-4 xl:gap-x-7" : navLayout.mode === "full" ? "gap-x-7" : "gap-x-4";
+  const NAV_ITEM_TEXT = "text-[15px] font-medium";
   const ctaClassName = cn(
-    "rounded-[var(--site-radius)] font-medium transition-all duration-300 hover:opacity-85",
+    "rounded-[var(--site-radius)] font-semibold transition-all duration-300 hover:opacity-85",
     SITE_BUTTON_STYLE_CLASSES[buttonStyle]
   );
+  const shrinkOnScroll = "lg:transition-transform lg:duration-300 motion-reduce:transition-none lg:group-data-[scrolled=true]/header:translate-y-2";
+
+  // Hesap menüsü (üst şeritte) — giriş yapılmışsa açılır menü, değilse "Sign in".
+  const accountControl =
+    status === "authenticated" && user ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label={formatSiteString(dict.accountMenuAriaLabel, { name: user.name })}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-md px-2 outline-none transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-[var(--site-primary)]/40",
+                ICON_LINK_TEXT_CLASSES
+              )}
+            />
+          }
+        >
+          <UserIcon className="h-4 w-4" aria-hidden="true" />
+          <span className="max-w-[10rem] truncate">{user.name}</span>
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {/* §K6 — KESİN sıra: Doktor Paneli → Randevularım → Hesabım → Siparişlerim → Çıkış Yap. */}
+          {isDoctorSession && telehealthModuleEnabled && (
+            <DropdownMenuItem render={<Link href={localize("/doctor")} />}>
+              <Stethoscope className="h-4 w-4" aria-hidden="true" />
+              {dict.doctorPortal}
+            </DropdownMenuItem>
+          )}
+          {!isDoctorSession && telehealthModuleEnabled && (
+            <DropdownMenuItem render={<Link href={localize("/patient/appointments")} />}>
+              <CalendarClock className="h-4 w-4" aria-hidden="true" />
+              {dict.myAppointments}
+            </DropdownMenuItem>
+          )}
+          {/* `/hesabim` HERKESE (5 rol + doktor) açık — doktorun 2FA ekranı `/hesabim/profil`'e link verir. */}
+          <DropdownMenuItem render={<Link href={localize("/hesabim")} />}>
+            <UserIcon className="h-4 w-4" aria-hidden="true" />
+            {dict.myAccount}
+          </DropdownMenuItem>
+          {productsModuleEnabled && !isDoctorSession && (
+            <DropdownMenuItem render={<Link href={localize("/hesabim/siparislerim")} />}>
+              <Receipt className="h-4 w-4" aria-hidden="true" />
+              {dict.myOrders}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => void auth?.logout()}>
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            {dict.logout}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : (
+      <Link
+        href={`/login?next=${encodeURIComponent(pathname)}`}
+        aria-label={dict.loginAriaLabel}
+        className={cn("flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
+      >
+        <UserIcon className="h-4 w-4" aria-hidden="true" />
+        <span>{dict.login}</span>
+      </Link>
+    );
 
   return (
     <header
+      data-scrolled={scrolled ? "true" : undefined}
       className={cn(
-        "border-b border-border transition-colors duration-300",
-        isSticky
-          ? cn("bg-[var(--site-header-bg-sticky)]", headerStickyBlurEnabled && "backdrop-blur")
-          : "bg-[var(--site-header-bg)] backdrop-blur",
-        stickyHeaderEnabled && "sticky top-0 z-30 transition-transform duration-300",
-        stickyHeaderEnabled && (hidden ? "-translate-y-full" : "translate-y-0"),
-        isSticky && !hidden && "shadow-sm"
+        "group/header z-30 border-b border-border transition-[background-color,box-shadow,top,transform] duration-300 motion-reduce:transition-none",
+        // Masaüstü: ana bar her zaman yapışkan; üst şerit kaydırmayla doğal olarak yukarı çıkar.
+        "lg:sticky lg:top-[var(--site-header-top)]",
+        // Mobil: mevcut akıllı yapışkan davranış (görünüm ayarı açıksa).
+        stickyHeaderEnabled && "max-lg:sticky max-lg:top-0",
+        stickyHeaderEnabled && (hidden ? "max-lg:-translate-y-full" : "max-lg:translate-y-0"),
+        isSticky || scrolled ? cn("bg-[var(--site-header-bg-sticky)]", headerStickyBlurEnabled && "backdrop-blur") : "bg-[var(--site-header-bg)] backdrop-blur",
+        scrolled && "lg:shadow-sm",
+        isSticky && !hidden && "max-lg:shadow-sm"
       )}
+      style={{ "--site-header-top": scrolled ? "-52px" : "-36px" } as React.CSSProperties}
     >
+      {/* 1) Üst bilgi şeridi (36 px, yalnızca ≥1024 px). */}
+      <div className="hidden h-9 border-b border-border/60 bg-[color-mix(in_oklch,var(--site-primary)_4%,transparent)] text-[13px] lg:block" data-testid="site-header-topbar">
+        <div className="mx-auto flex h-full max-w-[1360px] items-center justify-between gap-4 px-6 xl:px-8">
+          <div className="flex min-w-0 items-center gap-3 text-[var(--site-header-link)]">
+            {support && support.count > 0 && (
+              <span className="inline-flex min-w-0 items-center gap-1.5 truncate" data-testid="site-header-support">
+                <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">
+                  {formatSiteString(dict.topbarSupport, { count: support.count })}
+                  {support.interpreterIncluded && (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      {dict.topbarInterpreter}
+                    </>
+                  )}
+                </span>
+              </span>
+            )}
+            <Link
+              href={localize("/contact")}
+              className="inline-flex shrink-0 items-center gap-1 rounded font-medium text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--site-primary)]"
+            >
+              <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+              {dict.topbarContact}
+            </Link>
+          </div>
+          <div role="group" aria-label={dict.topbarAriaLabel} className="flex shrink-0 items-center gap-1">
+            {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compact={false} />}
+            {hasInterpreterPanel && telehealthModuleEnabled && (
+              <Link
+                href={localize("/interpreter")}
+                className={cn("flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
+                data-testid="site-header-interpreter-panel"
+              >
+                <Languages className="h-4 w-4" aria-hidden="true" />
+                {dict.interpreterPanel}
+              </Link>
+            )}
+            {accountControl}
+            {/* design-notes-customer-portal.md §6 — rozet (adet sayacı) BİLEREK yok. */}
+            {productsModuleEnabled && status === "authenticated" && !isDoctorSession && (
+              <Link
+                href={localize("/hesabim/favorilerim")}
+                aria-label={dict.wishlistAriaLabel}
+                className={cn("relative inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
+              >
+                <Heart className="h-4 w-4" />
+              </Link>
+            )}
+            {showCartIcon && (
+              <Link
+                href={localize("/cart")}
+                aria-label={formatSiteString(dict.cartAriaLabel, { count: itemCount })}
+                className={cn("relative inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
+              >
+                <ShoppingCart className="h-4 w-4" />
+                {itemCount > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
+                  >
+                    {itemCount > 99 ? "99+" : itemCount}
+                  </span>
+                )}
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 2) Ana bar — logo · menü · "Find my physician" + "Appointment". */}
       <nav
-        ref={navRef}
-        className="relative mx-auto flex max-w-5xl flex-nowrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:gap-4 lg:py-4"
+        ref={rowRef}
+        className="relative mx-auto flex h-16 max-w-[1360px] flex-nowrap items-center justify-between gap-3 px-4 sm:px-6 lg:h-20 lg:gap-6 xl:px-8"
         aria-label={dict.siteNavigationAriaLabel}
-        data-desktop-overflow={desktopOverflow ? "true" : undefined}
+        data-layout={navLayout ? `${navLayout.mode}${overflowCount ? `+more${overflowCount}` : ""}` : undefined}
       >
-        <Link ref={logoRef} href={localize("/")} className="flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground lg:shrink-0">
+        <Link
+          ref={logoRef}
+          href={localize("/")}
+          className={cn(
+            "flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground lg:shrink-0 lg:origin-left rtl:lg:origin-right",
+            "lg:transition-transform lg:duration-300 motion-reduce:transition-none lg:group-data-[scrolled=true]/header:translate-y-2 lg:group-data-[scrolled=true]/header:scale-[0.85]"
+          )}
+        >
           {settings.logoUrl ? (
-            // Sabit KARE kutu modeli TERK EDİLDİ: logo artık kendi doğal en-boy oranını korur.
-            // Render yüksekliği `headerLogoHeight` (varsayılan `DEFAULT_HEADER_LOGO_HEIGHT`) ile
-            // belirlenir, genişlik `w-auto` ile serbest bırakılır; `headerLogoMaxWidth` doluysa
-            // bir taşma tavanı olarak uygulanır. `shrink-0`: header dar bir viewport'ta sıkışırsa
-            // flexbox'ın img'yi orantısızca küçültmesini engeller. Logo varken site adı metni
-            // DOM'dan kaldırılır — img'nin `alt`'ı link'in tek erişilebilir adı kaynağıdır.
-            // Mobil/tablette (lg altı) logo, CTA + hamburger'a yer açmak için gerektiğinde küçülür
-            // (`min-w-0` + `max-width: 100%`, `object-contain` en-boy oranını korur); masaüstünde
-            // davranış aynı (yeterli yer olduğu için küçülmez).
+            // Logo kendi en-boy oranını korur; yükseklik `headerLogoHeight`, genişlik serbest (tavan: `headerLogoMaxWidth`).
+            // Logo varken site adı metni DOM'dan kaldırılır — img'nin `alt`'ı link'in tek erişilebilir adıdır.
             <span className="flex min-w-0 items-center lg:shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element -- logo URL'si medya kütüphanesinden gelir, next/image remotePatterns henüz tanımlı değil */}
               <img
@@ -478,21 +572,12 @@ export function SiteHeader({
           )}
         </Link>
 
-        {/* Masaüstü (lg ve üstü) — TEK SATIR (Paket O). Dar masaüstünde (lg, xl altı) aralıklar küçülür,
-            dil seçicide yalnızca bayrak, girişte yalnızca ikon kalır; yine sığmazsa mobil menüye geçilir. */}
+        {/* Masaüstü menü (ortada) — tek satır, satır kaydırmaz. */}
         <div
-          ref={desktopRef}
           data-testid="site-header-desktop"
-          data-fit={desktopLayout ?? undefined}
-          aria-hidden={desktopOverflow || undefined}
-          inert={desktopOverflow || undefined}
-          className={cn(
-            "hidden flex-nowrap items-center whitespace-nowrap text-sm lg:flex",
-            desktopLayout === null ? "gap-x-3 xl:gap-x-5" : desktopLayout === "full" ? "gap-x-5" : "gap-x-3",
-            desktopOverflow && "lg:pointer-events-none lg:invisible lg:absolute lg:end-4 lg:top-0"
-          )}
+          className={cn("hidden min-w-0 flex-1 flex-nowrap items-center justify-center whitespace-nowrap lg:flex", NAV_ITEM_TEXT, navGapClass, shrinkOnScroll)}
         >
-          {navTree.map((link) => {
+          {visibleNav.map((link) => {
             if (link.children.length > 0) {
               const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
               return (
@@ -509,7 +594,6 @@ export function SiteHeader({
                 />
               );
             }
-
             const href = localize(link.href);
             const active = isNavLinkActive(pathname, href);
             return (
@@ -517,140 +601,71 @@ export function SiteHeader({
                 key={link.id}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={cn(active ? NAV_LINK_ACTIVE_TEXT_CLASS : NAV_LINK_TEXT_CLASSES)}
+                className={cn(
+                  "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--site-primary)]/40 focus-visible:ring-offset-2",
+                  active ? NAV_LINK_ACTIVE_TEXT_CLASS : NAV_LINK_TEXT_CLASSES
+                )}
               >
                 {link.label}
               </Link>
             );
           })}
-          {/* Paket W — "Find my physician" (modal); telehealth kapalıysa render edilmez. */}
-          {telehealthModuleEnabled && <MatcherLaunchButton variant="outline" className="min-h-9 px-3 py-1.5 whitespace-nowrap" />}
+          {overflowNav.length > 0 && (
+            <MoreMenu
+              label={dict.moreMenu}
+              links={overflowNav}
+              localize={localize}
+              isActive={(href) => isNavLinkActive(pathname, href)}
+              triggerClassName={NAV_LINK_TEXT_CLASSES}
+              activeTriggerClassName={NAV_LINK_ACTIVE_TEXT_CLASS}
+            />
+          )}
+        </div>
+
+        {/* Masaüstü sağ: ikincil "Find my physician" (dar düzende yalnızca ikon) + birincil "Appointment". */}
+        <div className={cn("hidden shrink-0 items-center gap-2 lg:flex", shrinkOnScroll)} data-testid="site-header-actions">
+          {telehealthModuleEnabled && <MatcherLaunchButton variant="outline" display={findDisplay} className="h-10 min-h-10" />}
           {showCta && (
-            // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
-            // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
-            // token'ından KASITLI olarak bağımsız. `buttonStyle` yapısal bir sınıf varyantıdır
-            // (design-notes-theme-typography.md §3.2) — CSS custom property DEĞİLDİR.
-            <Link href={localize(ctaHref as string)} className={cn(ctaClassName, "px-3.5 py-1.5 text-sm")}>
+            // §10.12.4 — `--site-button`/`--site-button-text`; `buttonStyle` yapısal sınıf varyantı.
+            <Link href={localize(ctaHref as string)} className={cn(ctaClassName, "inline-flex h-10 items-center px-4 text-[15px] whitespace-nowrap")}>
               {ctaLabel}
-            </Link>
-          )}
-          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compactBelowXl compact={desktopLayout === null ? undefined : desktopLayout === "compact"} />}
-
-          {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık. `/hesabim/siparislerim` bağlantısı
-              `products` modülü açıkken gösterilir (SUNUM kararı, yetki kararı DEĞİL —
-              `role === "CUSTOMER"` koşulu §10.21.7 gereği KALDIRILDI, bkz.
-              `.claude/architect-scope-customer-portal.md` §4.4). */}
-          {status === "authenticated" && user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={formatSiteString(dict.accountMenuAriaLabel, { name: user.name })}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-lg px-2 py-1.5 outline-none transition-colors hover:bg-surface-muted",
-                      ICON_LINK_TEXT_CLASSES,
-                      "focus-visible:text-[var(--site-header-link-hover)]"
-                    )}
-                  />
-                }
-              >
-                <UserIcon className="h-4 w-4" aria-hidden="true" />
-                <span className={cn("max-w-[8rem] truncate", fullOnlyClass)}>{user.name}</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {/* §K6 — KESİN sıra: Doktor Paneli → Randevularım → Hesabım → Siparişlerim → Çıkış Yap. */}
-                {isDoctorSession && telehealthModuleEnabled && (
-                  <DropdownMenuItem render={<Link href={localize("/doctor")} />}>
-                    <Stethoscope className="h-4 w-4" aria-hidden="true" />
-                    {dict.doctorPortal}
-                  </DropdownMenuItem>
-                )}
-                {hasInterpreterPanel && telehealthModuleEnabled && (
-                  <DropdownMenuItem render={<Link href={localize("/interpreter")} />}>
-                    <Languages className="h-4 w-4" aria-hidden="true" />
-                    {dict.interpreterPanel}
-                  </DropdownMenuItem>
-                )}
-                {/* [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.3 — hedef `/patient/appointments`e
-                    güncellendi (eski `/patient/bookings` artık kalıcı yönlendirmeye düşüyor, gereksiz bir
-                    ekstra atlama olmasın diye buradan DOĞRUDAN yeni rotaya bağlanılır). */}
-                {!isDoctorSession && telehealthModuleEnabled && (
-                  <DropdownMenuItem render={<Link href={localize("/patient/appointments")} />}>
-                    <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                    {dict.myAppointments}
-                  </DropdownMenuItem>
-                )}
-                {/* `/hesabim` HERKESE (5 rol + doktor) açık — `DoctorPortalShell`'in 2FA ekranı
-                    `/hesabim/profil`'e link verir, bu öğe doktorda GİZLENİRSE doktor 2FA'yı
-                    açamaz hale gelir. */}
-                <DropdownMenuItem render={<Link href={localize("/hesabim")} />}>
-                  <UserIcon className="h-4 w-4" aria-hidden="true" />
-                  {dict.myAccount}
-                </DropdownMenuItem>
-                {productsModuleEnabled && !isDoctorSession && (
-                  <DropdownMenuItem render={<Link href={localize("/hesabim/siparislerim")} />}>
-                    <Receipt className="h-4 w-4" aria-hidden="true" />
-                    {dict.myOrders}
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={() => void auth?.logout()}>
-                  <LogOut className="h-4 w-4" aria-hidden="true" />
-                  {dict.logout}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Link
-              href={`/login?next=${encodeURIComponent(pathname)}`}
-              aria-label={dict.loginAriaLabel}
-              className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
-            >
-              <UserIcon className="h-4.5 w-4.5" aria-hidden="true" />
-              <span className={fullOnlyClass}>{dict.login}</span>
-            </Link>
-          )}
-
-          {/* design-notes-customer-portal.md §6 — rozet (adet sayacı) BİLEREK yok; favori adedi
-              işlem hızını etkilemez. */}
-          {productsModuleEnabled && status === "authenticated" && !isDoctorSession && (
-            <Link
-              href={localize("/hesabim/favorilerim")}
-              aria-label={dict.wishlistAriaLabel}
-              className={cn(
-                "relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
-                ICON_LINK_TEXT_CLASSES
-              )}
-            >
-              <Heart className="h-5 w-5" />
-            </Link>
-          )}
-
-          {showCartIcon && (
-            <Link
-              href={localize("/cart")}
-              aria-label={formatSiteString(dict.cartAriaLabel, { count: itemCount })}
-              className={cn(
-                "relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
-                ICON_LINK_TEXT_CLASSES
-              )}
-            >
-              <ShoppingCart className="h-5 w-5" />
-              {itemCount > 0 && (
-                <span
-                  aria-hidden="true"
-                  className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
-                >
-                  {itemCount > 99 ? "99+" : itemCount}
-                </span>
-              )}
             </Link>
           )}
         </div>
 
+        {/* Ölçüm kabı — görünmez, erişilebilirlik ağacı dışı; doğal genişlikleri verir (bkz. use-desktop-nav-layout). */}
+        <div aria-hidden="true" className="pointer-events-none invisible absolute start-0 top-0 h-0 w-0 overflow-hidden">
+          <div ref={measureRef} className={cn("flex w-max whitespace-nowrap", NAV_ITEM_TEXT)} data-testid="site-header-measure">
+            {navTree.map((link) => (
+              <span key={link.id} data-measure="item" className="inline-flex items-center gap-1">
+                {link.label}
+                {link.children.length > 0 && <ChevronDown className="h-3.5 w-3.5" />}
+              </span>
+            ))}
+            <span data-measure="more" className="inline-flex items-center gap-1 px-1">
+              {dict.moreMenu}
+              <ChevronDown className="h-3.5 w-3.5" />
+            </span>
+            {telehealthModuleEnabled && (
+              <>
+                <span data-measure="find-full" className="inline-flex h-10 items-center gap-2 border px-4 text-sm font-semibold">
+                  <Stethoscope className="h-4 w-4" />
+                  {matcherText.entryButton}
+                </span>
+                <span data-measure="find-icon" className="inline-flex h-10 w-11" />
+              </>
+            )}
+            {showCta && (
+              <span data-measure="cta" className="inline-flex h-10 items-center px-4 text-[15px] font-semibold">
+                {ctaLabel}
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Mobil/tablet (lg altı) — yalnızca logo + CTA + hamburger. CTA gizlenmez; dar ekranda
             küçültülür (`text-xs`, dar padding; `sm` ve üstünde normal boyut). */}
-        <div className={cn("flex shrink-0 items-center gap-1.5", desktopOverflow ? "lg:flex" : "lg:hidden")}>
+        <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
           {showCta && (
             <Link
               href={localize(ctaHref as string)}
@@ -714,6 +729,18 @@ export function SiteHeader({
               </div>
 
               <div className="flex flex-col gap-3 p-3">
+                {/* Paket AB — "Find my physician" mobil menünün en üstünde, belirgin düğme. */}
+                {telehealthModuleEnabled && (
+                  <Link
+                    href={localize("/find-a-physician")}
+                    onClick={closeMobileMenu}
+                    data-testid="mobile-menu-find-physician"
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-[var(--site-radius)] border-2 border-[var(--site-primary)] px-4 text-base font-semibold text-[var(--site-primary)] hover:bg-[var(--site-primary)]/5"
+                  >
+                    <Stethoscope className="h-5 w-5" aria-hidden="true" />
+                    {matcherText.entryButton}
+                  </Link>
+                )}
                 <ul className="flex flex-col gap-0.5">
                   {navTree.map((link) => {
                     if (link.children.length > 0) {
@@ -797,9 +824,6 @@ export function SiteHeader({
                 )}
 
                 <ul className="flex flex-col gap-0.5 border-t border-border pt-3">
-                  {telehealthModuleEnabled && (
-                    <MobileMenuLink href={localize("/find-a-physician")} icon={Stethoscope} label={matcherText.entryButton} onNavigate={closeMobileMenu} />
-                  )}
                   {status === "authenticated" && user ? (
                     <>
                       {isDoctorSession && telehealthModuleEnabled && (
