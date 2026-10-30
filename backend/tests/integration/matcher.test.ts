@@ -181,6 +181,8 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       for (const d of data.doctors) expect(d.slots.length).toBeLessThanOrEqual(3);
       expect(data.doctors[0].slots).toHaveLength(3);
       expect(data.doctors[0].displayName).toBe("A. Veli");
+      // Randevu bağlantısı ?specialty=: birincil uzmanlık önerilenlerdeyse o; ek uzmanlıkla eşleşen hekimde eşleşen ek uzmanlık.
+      expect(data.doctors.map((d: { matchedSpecialtySlug: string }) => d.matchedSpecialtySlug)).toEqual(["gastroenterology", "obesity-and-metabolic-surgery", "gastroenterology"]);
       // Arapça konuşan hasta: dil eşleşmesi öne alır.
       const ar = (await recommendReq([topic.reflux], "ar")).json().data;
       expect(ar.doctors[0].slug).toBe("gas-ar");
@@ -243,15 +245,34 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       }
     });
 
-    it("(a) sağlık rızası yoksa sağlık alanları ve öneriler kaydedilmez; (b) iletişim izni yoksa işaretlenir", async () => {
+    it("(a) sağlık rızası yoksa sağlık alanları ve öneriler kaydedilmez", async () => {
       const termsBefore = await app.prisma.matcherStat.aggregate({ where: { kind: "unmatched_term" }, _sum: { count: true } });
-      const res = await submit(submitPayload({ consentHealth: false, consentContact: false }));
+      const res = await submit(submitPayload({ consentHealth: false }));
       const sub = await app.prisma.matcherSubmission.findUniqueOrThrow({ where: { id: res.json().data.id }, include: { lead: true } });
       expect([sub.topicIds, sub.freeText, sub.ageBand, sub.duration, sub.priorDiagnosis, sub.recommendedSpecialtyIds]).toEqual([[], null, null, null, null, []]);
-      expect([sub.consentHealthAt, sub.consentContactAt]).toEqual([null, null]);
+      expect(sub.consentHealthAt).toBeNull();
+      expect(sub.consentContactAt).not.toBeNull();
       expect([sub.lead.specialtyId, sub.lead.doctorId]).toEqual([null, null]);
       const termsAfter = await app.prisma.matcherStat.aggregate({ where: { kind: "unmatched_term" }, _sum: { count: true } });
       expect(termsAfter._sum.count).toBe(termsBefore._sum.count);
+    });
+
+    it("(b) iletişim izni yoksa ad, telefon, e-posta (ve sağlık bilgisi) KAYDEDİLMEZ; lead/talep yok, e-posta gitmez; yalnızca anonim sayaç", async () => {
+      const email = `izinsiz-${crypto.randomUUID()}@example.com`;
+      const leadsBefore = await app.prisma.crmLead.count();
+      const subsBefore = await app.prisma.matcherSubmission.count();
+      const statBefore = (await app.prisma.matcherStat.findMany({ where: { kind: "submit", key: "not_stored" } })).reduce((n, r) => n + r.count, 0);
+      const res = await submit(submitPayload({ consentContact: false, email, name: "İzinsiz Kişi" }));
+      expect(res.statusCode).toBe(201);
+      expect(res.json().data).toMatchObject({ number: 0, token: "", stored: false });
+      expect([await app.prisma.crmLead.count(), await app.prisma.matcherSubmission.count()]).toEqual([leadsBefore, subsBefore]);
+      expect(await app.prisma.crmLead.count({ where: { OR: [{ email }, { name: "İzinsiz Kişi" }] } })).toBe(0);
+      expect(mailSpy).not.toHaveBeenCalled();
+      const statAfter = (await app.prisma.matcherStat.findMany({ where: { kind: "submit", key: "not_stored" } })).reduce((n, r) => n + r.count, 0);
+      expect(statAfter - statBefore).toBe(1);
+      // İzin yokken ad/e-posta gönderilmese de kabul edilir (doğrulama yalnızca kayıt varsa).
+      const minimal = await submit({ locale: "tr", forWhom: "self", preference: "either", preferredLanguage: "tr", topicIds: [], consentHealth: false, consentContact: false });
+      expect(minimal.json().data.stored).toBe(false);
     });
 
     it("doğrulama: e-posta/telefon en az biri, telefon ülke koduyla, 18 yaş altı veli adı, kırmızı bayrak onayı (seçim ve serbest metin)", async () => {
@@ -288,7 +309,7 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
     });
 
     it("geri arama: doğru anahtarla callback + lead nextActionAt; yanlış anahtar 404", async () => {
-      const { id, token } = (await submit(submitPayload({ consentContact: false }))).json().data;
+      const { id, token } = (await submit(submitPayload())).json().data;
       expect((await app.inject({ method: "POST", url: `/api/v1/matcher/submissions/${id}/callback`, headers: ORIGIN, payload: { token: "x".repeat(32), consentContact: true }, remoteAddress: nextIp() })).statusCode).toBe(404);
       const res = await app.inject({ method: "POST", url: `/api/v1/matcher/submissions/${id}/callback`, headers: ORIGIN, payload: { token, consentContact: true }, remoteAddress: nextIp() });
       expect(res.statusCode).toBe(204);
@@ -336,6 +357,9 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       expect([sub.topicIds, sub.freeText, sub.ageBand, sub.recommendedDoctorIds, sub.accessTokenHash]).toEqual([[], null, null, [], null]);
       expect(sub.anonymizedAt).not.toBeNull();
       expect([sub.lead.specialtyName, sub.lead.doctorName]).toEqual([null, null]);
+      // Kullanıcı kararı: sihirbaz lead'inin kişi alanları da aynı sürede (365 gün) anonimleşir.
+      expect([sub.lead.name, sub.lead.email, sub.lead.phone, sub.lead.country]).toEqual([null, null, null, null]);
+      expect(sub.lead.anonymizedAt).not.toBeNull();
       expect((await app.inject({ method: "POST", url: `/api/v1/matcher/submissions/${id}/callback`, headers: ORIGIN, payload: { token, consentContact: true }, remoteAddress: nextIp() })).statusCode).toBe(404);
     });
 
@@ -364,12 +388,13 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       expect(report.funnel.map((f: { step: string }) => f.step)).toEqual(["1", "2", "3", "4", "5"]);
       for (const term of report.unmatchedTerms) expect(term.count).toBeGreaterThanOrEqual(3);
 
-      expect((await app.inject({ method: "GET", url: "/api/v1/admin/matcher/settings", headers: auth(manager.token) })).json().data).toEqual({ contactRequired: true, retentionDays: 365 });
-      expect((await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(manager.token), payload: { contactRequired: false, retentionDays: 90 } })).statusCode).toBe(403);
-      const put = await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(admin.token), payload: { contactRequired: false, retentionDays: 90 } });
-      expect(put.json().data).toEqual({ contactRequired: false, retentionDays: 90 });
+      const defaults = { contactRequired: true, retentionDays: 365, scoreThreshold: 40, maxSpecialties: 2 };
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/matcher/settings", headers: auth(manager.token) })).json().data).toEqual(defaults);
+      expect((await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(manager.token), payload: { ...defaults, contactRequired: false } })).statusCode).toBe(403);
+      const put = await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(admin.token), payload: { ...defaults, contactRequired: false, retentionDays: 90 } });
+      expect(put.json().data).toEqual({ ...defaults, contactRequired: false, retentionDays: 90 });
       expect((await app.inject({ method: "GET", url: "/api/v1/matcher/topics?lang=tr", remoteAddress: nextIp() })).json().data.contactRequired).toBe(false);
-      await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(admin.token), payload: { contactRequired: true, retentionDays: 365 } });
+      await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(admin.token), payload: defaults });
     });
   });
 
@@ -443,6 +468,30 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       const sub = await app.prisma.matcherSubmission.findUniqueOrThrow({ where: { id } });
       expect([sub.guardianName, sub.country, sub.timeZone, sub.redFlagAcknowledgedAt]).toEqual([null, null, null, null]);
       expect(await app.prisma.auditLog.count({ where: { action: "matcher.anonymized" } })).toBeGreaterThan(0);
+    });
+  });
+
+  describe("kullanıcı kararları (rebase sonrası)", () => {
+    const defaults = { contactRequired: true, retentionDays: 365, scoreThreshold: 40, maxSpecialties: 2 };
+    const putSettings = (payload: Record<string, unknown>) => app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(admin.token), payload });
+
+    it("eşik ve en çok uzmanlık sayısı ayardan değişir, öneriye hemen yansır ve audit'e önce/sonra değerleriyle yazılır", async () => {
+      // Varsayılan: reflü → GAS (100) + OBE (40) → 2 uzmanlık.
+      expect((await recommendReq([topic.reflux])).json().data.specialties).toHaveLength(2);
+      // En çok 1 uzmanlık.
+      expect((await putSettings({ ...defaults, maxSpecialties: 1 })).statusCode).toBe(200);
+      expect((await recommendReq([topic.reflux])).json().data.specialties.map((s: { slug: string }) => s.slug)).toEqual(["gastroenterology"]);
+      // Eşik 150 → reflü tek başına eşiği geçemez → koordinatör yolu.
+      await putSettings({ ...defaults, scoreThreshold: 150 });
+      expect((await recommendReq([topic.reflux])).json().data.coordinator).toBe(true);
+      // Sınır dışı değerler reddedilir; MANAGER değiştiremez.
+      expect((await putSettings({ ...defaults, scoreThreshold: 0 })).statusCode).toBe(422);
+      expect((await putSettings({ ...defaults, maxSpecialties: 6 })).statusCode).toBe(422);
+      expect((await app.inject({ method: "PUT", url: "/api/v1/admin/matcher/settings", headers: auth(manager.token), payload: defaults })).statusCode).toBe(403);
+      const audit = await app.prisma.auditLog.findFirstOrThrow({ where: { action: "matcher.settings_updated" }, orderBy: { createdAt: "desc" } });
+      expect(audit.metadata).toMatchObject({ before: { scoreThreshold: 40, maxSpecialties: 1 }, after: { scoreThreshold: 150, maxSpecialties: 2 } });
+      await putSettings(defaults);
+      expect((await recommendReq([topic.reflux])).json().data.specialties).toHaveLength(2);
     });
   });
 });

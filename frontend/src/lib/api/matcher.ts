@@ -58,6 +58,8 @@ export interface MatcherDoctor {
   title: string;
   avatarUrl: string | null;
   specialtyName: string | null;
+  /** Randevu bağlantısındaki `?specialty=` (hekimin eşleşen uzmanlığı). */
+  matchedSpecialtySlug: string;
   languages: string[];
   primaryMatch: boolean;
   speaksLanguage: boolean;
@@ -77,7 +79,7 @@ export interface MatcherRecommendation {
 export interface MatcherSubmitInput {
   website?: string;
   locale: string;
-  name: string;
+  name?: string;
   age?: number;
   birthYear?: number;
   guardianName?: string;
@@ -114,8 +116,16 @@ export function reportMatcherProgress(step: MatcherStep): void {
   apiFetch<void>("/matcher/progress", { method: "POST", body: { step } }).catch(() => {});
 }
 
-export function submitMatcher(input: MatcherSubmitInput): Promise<{ id: string; number: number; token: string }> {
-  return apiFetch<{ id: string; number: number; token: string }>("/matcher/submit", { method: "POST", body: input });
+/** `stored=false`: iletişim izni yok → hiçbir şey kaydedilmedi (yalnızca anonim sayaç). */
+export interface MatcherSubmitResult {
+  id: string;
+  number: number;
+  token: string;
+  stored: boolean;
+}
+
+export function submitMatcher(input: MatcherSubmitInput): Promise<MatcherSubmitResult> {
+  return apiFetch<MatcherSubmitResult>("/matcher/submit", { method: "POST", body: input });
 }
 
 export function requestMatcherCallback(id: string, token: string): Promise<void> {
@@ -170,11 +180,14 @@ export interface MatcherReport {
   unmatchedTerms: { key: string; count: number }[];
   funnel: { step: string; reached: number; dropOffRate: number | null }[];
   redFlags: { key: string; count: number }[];
+  submissions: { key: string; count: number }[];
 }
 
 export interface MatcherSettings {
   contactRequired: boolean;
   retentionDays: number;
+  scoreThreshold: number;
+  maxSpecialties: number;
 }
 
 export interface MatcherLeadCard {

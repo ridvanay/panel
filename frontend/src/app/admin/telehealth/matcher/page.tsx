@@ -174,7 +174,9 @@ export default function AdminMatcherPage() {
       )}
 
       <ReportCard />
-      <SettingsCard canEdit={canEdit} />
+      <p className="admin-text-secondary">
+        Eşik, en çok önerilecek uzmanlık sayısı, iletişim adımı ve saklama süresi: Tele-Sağlık → Ayarlar → “Eşleştirme sihirbazı”.
+      </p>
     </div>
   );
 }
@@ -539,6 +541,15 @@ function ReportCard() {
                 ))}
               </tbody>
             </table>
+            {report.submissions.length > 0 && (
+              <ul className="mt-2 space-y-0.5 text-xs text-foreground/70">
+                {report.submissions.map((r) => (
+                  <li key={r.key}>
+                    {r.key === "stored" ? "Kaydedilen talep (iletişim izni var)" : "Kaydedilmeyen gönderim (iletişim izni yok)"}: {r.count}
+                  </li>
+                ))}
+              </ul>
+            )}
             {report.redFlags.length > 0 && (
               <ul className="mt-2 space-y-0.5 text-xs text-foreground/70">
                 {report.redFlags.map((r) => (
@@ -549,56 +560,6 @@ function ReportCard() {
               </ul>
             )}
           </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function SettingsCard({ canEdit }: { canEdit: boolean }) {
-  const [settings, setSettings] = useState<matcherApi.MatcherSettings | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    matcherApi
-      .getMatcherSettings()
-      .then(setSettings)
-      .catch(() => {});
-  }, []);
-
-  if (!settings) return null;
-  return (
-    <Card className="space-y-3" data-testid="matcher-settings">
-      <h2 className="admin-h2">Ayarlar</h2>
-      <label className="flex items-center gap-3 text-sm">
-        <Switch checked={settings.contactRequired} disabled={!canEdit} onCheckedChange={(v: boolean) => setSettings({ ...settings, contactRequired: v })} aria-label="İletişim adımı zorunlu" />
-        İletişim adımı zorunlu (kapalıysa sonuçlardan sonra ve isteğe bağlı)
-      </label>
-      <label className="flex flex-wrap items-center gap-3 text-sm">
-        <span>Sağlık verisi saklama süresi (gün)</span>
-        <Input type="number" min={30} max={3650} disabled={!canEdit} value={settings.retentionDays} onChange={(e) => setSettings({ ...settings, retentionDays: Number(e.target.value) || 365 })} className="w-28" />
-      </label>
-      <p className="admin-text-secondary">Süre dolunca talebin sağlık alanları (konular, serbest metin, yaş, süre, öneriler) anonimleştirilir. İletişim bilgileri CRM talep saklama kuralına tabidir.</p>
-      {canEdit && (
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            loading={saving}
-            onClick={async () => {
-              setSaving(true);
-              try {
-                setSettings(await matcherApi.updateMatcherSettings(settings));
-                toast.success("Ayarlar kaydedildi.");
-              } catch (err) {
-                toast.error(friendlyErrorMessage(err));
-              } finally {
-                setSaving(false);
-              }
-            }}
-          >
-            <Save className="h-4 w-4" aria-hidden="true" />
-            Kaydet
-          </Button>
         </div>
       )}
     </Card>

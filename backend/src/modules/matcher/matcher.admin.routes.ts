@@ -17,9 +17,12 @@ import { mergeTelehealthSettings } from "../telehealth/lib/emergency-notice";
 import { requireCrmAccess } from "../crm/crm.access";
 import { registerCrmRetentionStep } from "../crm/crm.rollup";
 import {
+  MATCHER_MAX_SPECIALTIES_LIMIT,
   MATCHER_RETENTION_MAX,
   MATCHER_RETENTION_MIN,
-  MATCHER_SCORE_THRESHOLD,
+  MATCHER_THRESHOLD_MAX,
+  MATCHER_THRESHOLD_MIN,
+  clearRecommendCache,
   invalidateMatcherTopicCache,
   parseMatcherSettings,
   purgeOldMatcherStats,
@@ -61,7 +64,14 @@ const TopicBodySchema = z
   .strict()
   .refine((b) => !b.isRedFlag || b.weights.length === 0, { message: "Kırmızı bayrak konuları uzmanlığa eşlenmez.", path: ["weights"] });
 
-const SettingsSchema = z.object({ contactRequired: z.boolean(), retentionDays: z.number().int().min(MATCHER_RETENTION_MIN).max(MATCHER_RETENTION_MAX) }).strict();
+const SettingsSchema = z
+  .object({
+    contactRequired: z.boolean(),
+    retentionDays: z.number().int().min(MATCHER_RETENTION_MIN).max(MATCHER_RETENTION_MAX),
+    scoreThreshold: z.number().int().min(MATCHER_THRESHOLD_MIN).max(MATCHER_THRESHOLD_MAX),
+    maxSpecialties: z.number().int().min(1).max(MATCHER_MAX_SPECIALTIES_LIMIT),
+  })
+  .strict();
 
 const dateParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -187,11 +197,12 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
         select: { specialtyId: true, additionalSpecialties: { select: { specialtyId: true } } },
       });
       const staffedIds = new Set(staffed.flatMap((d) => [d.specialtyId, ...d.additionalSpecialties.map((a) => a.specialtyId)]).filter(Boolean));
+      const { scoreThreshold } = parseMatcherSettings(await readTelehealthSettingsRaw(app));
       return reply.send(
         ok({
           topics: matches.map((m) => ({ id: m.row.id, slug: m.row.slug, label: topicTextFor(m.translations, request.query.lang).label, isRedFlag: m.row.isRedFlag, score: m.score })),
           specialties: specialtyRows
-            .map((s) => ({ ...s, score: scores.get(s.id) ?? 0, hasDoctors: staffedIds.has(s.id), passesThreshold: (scores.get(s.id) ?? 0) >= MATCHER_SCORE_THRESHOLD }))
+            .map((s) => ({ ...s, score: scores.get(s.id) ?? 0, hasDoctors: staffedIds.has(s.id), passesThreshold: (scores.get(s.id) ?? 0) >= scoreThreshold }))
             .sort((a, b) => b.score - a.score),
         })
       );
@@ -229,6 +240,8 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
             .slice(0, 30),
           funnel,
           redFlags: of("red_flag"),
+          // Gönderim sonucu: "stored" (iletişim izni var → talep kaydedildi) / "not_stored" (izin yok → yalnızca sayaç).
+          submissions: of("submit"),
         })
       );
     }
@@ -239,13 +252,20 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
   server.put("/settings", { preHandler: requireSiteRole(...ROLES_ADMIN), schema: { body: SettingsSchema } }, async (request, reply) => {
     const raw = await readTelehealthSettingsRaw(app);
     const before = parseMatcherSettings(raw);
-    const merged = mergeTelehealthSettings(raw, { matcherContactRequired: request.body.contactRequired, matcherRetentionDays: request.body.retentionDays });
+    const merged = mergeTelehealthSettings(raw, {
+      matcherContactRequired: request.body.contactRequired,
+      matcherRetentionDays: request.body.retentionDays,
+      matcherScoreThreshold: request.body.scoreThreshold,
+      matcherMaxSpecialties: request.body.maxSpecialties,
+    });
     const row = await app.prisma.siteModule.upsert({
       where: { key: "telehealth" },
       create: { key: "telehealth", settings: merged, updatedById: request.user!.id },
       update: { settings: merged, updatedById: request.user!.id },
     });
     const after = parseMatcherSettings(row.settings);
+    // Eşik/sayı değişince önbellekteki öneriler eskir.
+    clearRecommendCache();
     await logAudit(app, { actorId: request.user!.id, actorEmail: request.user!.email, action: "matcher.settings_updated", targetType: "SiteModule", targetId: "telehealth", metadata: { before, after }, ipAddress: request.ip });
     return reply.send(ok(after));
   });
@@ -331,9 +351,28 @@ export async function anonymizeExpiredMatcherSubmissions(app: FastifyInstance, n
         anonymizedAt: now,
       },
     }),
+    // Kullanıcı kararı (2026-10-30): sihirbaz lead'lerinin KİŞİ alanları da sağlık verisiyle aynı sürede
+    // (matcherRetentionDays, varsayılan 365) anonimleşir; CRM'in genel 730 günlük kuralını beklemez.
+    app.prisma.crmLeadNote.deleteMany({ where: { leadId: { in: expired.map((e) => e.leadId) }, lead: { channel: "MATCHER" } } }),
     app.prisma.crmLead.updateMany({
       where: { id: { in: expired.map((e) => e.leadId) }, channel: "MATCHER" },
-      data: { specialtyId: null, specialtyName: null, doctorId: null, doctorName: null },
+      data: {
+        specialtyId: null,
+        specialtyName: null,
+        doctorId: null,
+        doctorName: null,
+        name: null,
+        phone: null,
+        email: null,
+        country: null,
+        visitorId: null,
+        refCode: null,
+        gclid: null,
+        bookingId: null,
+        assignedToId: null,
+        landingPath: null,
+        anonymizedAt: now,
+      },
     }),
   ]);
   await logAudit(app, { actorId: null, actorEmail: null, action: "matcher.anonymized", targetType: "MatcherSubmission", targetId: null, metadata: { count: expired.length, retentionDays: settings.retentionDays } });

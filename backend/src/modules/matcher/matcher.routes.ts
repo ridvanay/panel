@@ -72,7 +72,8 @@ const SubmitBodySchema = z
     /** Honeypot — insanlar görmez; doluysa sahte başarı döner, hiçbir şey yazılmaz. */
     website: z.string().max(200).optional(),
     locale: localeCode,
-    name: z.string().trim().min(2).max(120),
+    /** İletişim izni yoksa gönderilmez ve kaydedilmez. */
+    name: z.string().trim().min(2).max(120).optional(),
     age: z.number().int().min(0).max(120).optional(),
     birthYear: z.number().int().min(1900).max(2100).optional(),
     guardianName: z.string().trim().min(2).max(120).optional(),
@@ -95,7 +96,8 @@ const SubmitBodySchema = z
   })
   .strict();
 
-const SubmitResultSchema = z.object({ id: z.string(), number: z.number().int(), token: z.string() });
+/** `stored=false`: iletişim izni yok → hiçbir kişi/sağlık verisi kaydedilmedi (yalnızca anonim sayaç). */
+const SubmitResultSchema = z.object({ id: z.string(), number: z.number().int(), token: z.string(), stored: z.boolean() });
 
 const CallbackBodySchema = z.object({ token: z.string().min(16).max(200), consentContact: z.literal(true) }).strict();
 
@@ -202,10 +204,20 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
       const body = request.body;
       // Honeypot: bot'a başarı gibi görünür (gerçekçi sahte numara), hiçbir şey yazılmaz/gönderilmez.
       if (body.website && body.website.trim().length > 0) {
-        return reply.status(201).send(ok({ id: crypto.randomUUID(), number: 1000 + crypto.randomInt(9000), token: generateOpaqueToken() }));
+        return reply.status(201).send(ok({ id: crypto.randomUUID(), number: 1000 + crypto.randomInt(9000), token: generateOpaqueToken(), stored: true }));
+      }
+
+      // Kullanıcı kararı (2026-10-30): iletişim izni yoksa ad, telefon, e-posta (ve sağlık bilgisi) KAYDEDİLMEZ;
+      // lead/talep oluşmaz, e-posta gitmez — yalnızca anonim istatistik (konu ve adım sayaçları zaten ayrı).
+      // "Koordinatör beni arasın" (callback) açık iletişim isteğidir ve izin sayılır.
+      const contactAllowed = body.consentContact || body.callback;
+      if (!contactAllowed) {
+        await incrementMatcherStat(app, "submit", "not_stored");
+        return reply.status(201).send(ok({ id: crypto.randomUUID(), number: 0, token: "", stored: false }));
       }
 
       const errors: Record<string, string[]> = {};
+      if (!body.name) errors.name = ["Ad soyad gerekli."];
       const phone = body.phoneNumber && body.phoneNumber.trim() ? (body.phoneCountry ? toE164(body.phoneCountry, body.phoneNumber) : null) : undefined;
       if (phone === null) errors.phoneNumber = ["Geçerli bir telefon numarası girin (ülke kodu ile)."];
       if (!body.email && !phone) errors.email = ["E-posta ya da telefon numarasından en az birini girin."];
@@ -246,7 +258,7 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
           data: {
             channel: "MATCHER",
             status: "NEW",
-            name: sanitizeText(body.name, 120),
+            name: sanitizeText(body.name ?? "", 120),
             email: body.email ?? null,
             phone: phone ?? null,
             country: body.country ?? null,
@@ -282,7 +294,7 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
             recommendedDoctorIds: rec ? rec.doctors.map((d) => d.id) : [],
             redFlagAcknowledgedAt: body.redFlagAcknowledged && (selectedRedFlag || textRedFlags.length > 0) ? now : null,
             consentHealthAt: healthAllowed ? now : null,
-            consentContactAt: body.consentContact ? now : null,
+            consentContactAt: now,
             callbackRequestedAt: body.callback ? now : null,
             accessTokenHash: hashToken(rawToken),
           },
@@ -292,15 +304,16 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
 
       if (healthAllowed && freeText) for (const term of await unmatchedTerms(app, freeText)) await incrementUnmatchedTerm(app, term);
       if (textRedFlags.length > 0) await incrementMatcherStat(app, "red_flag", "free_text");
+      await incrementMatcherStat(app, "submit", "stored");
 
       await notifyMatcherLead(app, { number: submission.seq, leadId: lead.id });
       // Posta bombasına karşı aynı adrese saatte en çok 3 onay e-postası (talep yine kaydedilir).
       if (body.email) {
         const recent = await app.prisma.crmLead.count({ where: { channel: "MATCHER", email: body.email, createdAt: { gte: new Date(now.getTime() - 3600_000) } } });
-        if (recent <= 3) await sendMatcherConfirmation(app, { to: body.email, locale: body.locale, number: submission.seq, contactAllowed: body.consentContact });
+        if (recent <= 3) await sendMatcherConfirmation(app, { to: body.email, locale: body.locale, number: submission.seq, contactAllowed: true });
       }
 
-      return reply.status(201).send(ok({ id: submission.id, number: submission.seq, token: rawToken }));
+      return reply.status(201).send(ok({ id: submission.id, number: submission.seq, token: rawToken, stored: true }));
     }
   );
 

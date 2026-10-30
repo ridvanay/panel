@@ -118,5 +118,6 @@ export const matcherStrings: MatcherStrings = {
   privacyNoticeLink: "Aviso de privacidad",
   consentHealthGuardian: "Confirmo que soy el padre, la madre o el tutor legal del paciente y, en su nombre, doy mi consentimiento explícito para el tratamiento de su información de salud (motivo y respuestas) con el fin de sugerir una especialidad y un médico adecuados.",
   callbackConsentNote: "Al pulsar este botón acepta que nuestro coordinador se ponga en contacto con usted sobre esta solicitud.",
+  noContactNote: "Sin este permiso no guardamos su nombre, teléfono, correo electrónico ni datos de salud; solo verá su sugerencia.",
   disclaimer: "Esta herramienta no ofrece diagnósticos ni consejo médico.",
 };

@@ -298,7 +298,6 @@ export function PhysicianMatcher({
 
   // ---- Öneri ----
   const recommendTopicIds = selected.filter((t) => !t.isRedFlag).map((t) => t.id);
-  const firstTopicSlug = selected.find((t) => !t.isRedFlag)?.slug ?? null;
 
   async function loadRecommendation(): Promise<MatcherRecommendation | null> {
     if (recommendTopicIds.length === 0) {
@@ -352,8 +351,10 @@ export function PhysicianMatcher({
   const age = form.age.trim() && Number.isFinite(ageValue) ? (form.ageMode === "age" ? ageValue : new Date().getFullYear() - ageValue) : null;
   const under18 = age !== null && age >= 0 && age < 18;
 
-  function validateContact(): Record<string, string> {
+  function validateContact(contactAllowed: boolean): Record<string, string> {
     const e: Record<string, string> = {};
+    // İletişim izni yoksa hiçbir kişisel veri gönderilmez/kaydedilmez — alanlar zorunlu değil.
+    if (!contactAllowed) return e;
     if (form.name.trim().length < 2) e.name = m.required;
     if (age === null || age < 0 || age > 120) e.age = m.required;
     if (under18 && form.guardianName.trim().length < 2) e.guardianName = m.required;
@@ -368,7 +369,8 @@ export function PhysicianMatcher({
       goTo(5);
       return;
     }
-    const e = validateContact();
+    const contactAllowed = form.consentContact || withCallback;
+    const e = validateContact(contactAllowed);
     setErrors(e);
     if (Object.keys(e).length > 0) {
       const first = Object.keys(e)[0];
@@ -380,7 +382,20 @@ export function PhysicianMatcher({
     setStepError(null);
     try {
       const phoneCountry = form.phoneCountry || country || undefined;
-      const result = await submitMatcher({
+      // Kullanıcı kararı: iletişim izni yoksa ad/telefon/e-posta ve sağlık bilgileri GÖNDERİLMEZ (yalnızca anonim sayaç).
+      const result = !contactAllowed
+        ? await submitMatcher({
+            website: form.website || undefined,
+            locale: lang,
+            forWhom,
+            preference: preference ?? "either",
+            preferredLanguage,
+            topicIds: [],
+            redFlagAcknowledged: redFlagAck,
+            consentHealth: false,
+            consentContact: false,
+          })
+        : await submitMatcher({
         website: form.website || undefined,
         locale: lang,
         name: form.name.trim(),
@@ -402,8 +417,8 @@ export function PhysicianMatcher({
         consentContact: form.consentContact || withCallback,
         callback: withCallback,
       });
-      setSubmission(result);
-      if (withCallback) setCallbackDone(true);
+      if (result.stored) setSubmission(result);
+      if (withCallback && result.stored) setCallbackDone(true);
       trackMatcher("matcher_submit", { callback: withCallback });
       if (!recommendation) await loadRecommendation();
       goTo(5);
@@ -877,6 +892,11 @@ export function PhysicianMatcher({
                 <input type="checkbox" className="mt-1 accent-[var(--site-primary)]" checked={form.consentContact} onChange={(e) => setForm({ ...form, consentContact: e.target.checked })} data-testid="matcher-consent-contact" />
                 <span>{m.consentContact}</span>
               </label>
+              {!form.consentContact && !callbackPending && (
+                <p className="text-xs text-foreground/60" data-testid="matcher-no-contact-note">
+                  {m.noContactNote}
+                </p>
+              )}
             </div>
             {stepError && <Alert variant="warning">{stepError}</Alert>}
             {footer(() => void submitContact(callbackPending), contactRequired ? m.submit : m.submitOptional)}
@@ -958,7 +978,7 @@ export function PhysicianMatcher({
                         </div>
                         <div className="mt-4 flex flex-col gap-2">
                           <Link
-                            href={bookingHref(localize, d.slug, firstTopicSlug)}
+                            href={bookingHref(localize, d.slug, d.matchedSpecialtySlug)}
                             onClick={() => trackMatcher("matcher_book_click", { position: index + 1 })}
                             className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
                             data-testid="matcher-book"

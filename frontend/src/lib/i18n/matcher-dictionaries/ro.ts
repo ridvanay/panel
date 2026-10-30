@@ -118,5 +118,6 @@ export const matcherStrings: MatcherStrings = {
   privacyNoticeLink: "Notă de informare",
   consentHealthGuardian: "Confirm că sunt părintele sau tutorele legal al pacientului și îmi exprim, în numele acestuia, consimțământul explicit pentru prelucrarea informațiilor sale de sănătate (simptome și răspunsuri), pentru a i se putea sugera o specialitate și un medic potrivit.",
   callbackConsentNote: "Apăsând acest buton, sunteți de acord ca un coordonator să vă contacteze în legătură cu această solicitare.",
+  noContactNote: "Fără această permisiune nu salvăm numele, numărul de telefon, adresa de e-mail sau datele dumneavoastră de sănătate; veți vedea doar sugestia.",
   disclaimer: "Acest instrument nu oferă un diagnostic sau sfaturi medicale.",
 };

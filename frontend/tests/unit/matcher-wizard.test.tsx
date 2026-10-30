@@ -47,7 +47,9 @@ vi.mock("@/lib/api/matcher", async (importOriginal) => {
     getMatcherCatalog: async () => api.catalog,
     recommendPhysicians: async (input: unknown) => (api.recommend(input), api.rec),
     reportMatcherProgress: (step: string) => api.progress(step),
-    submitMatcher: async (input: unknown) => (api.submit(input), { id: "s1", number: 7, token: "t".repeat(30) }),
+    submitMatcher: async (input: { consentContact: boolean; callback?: boolean }) => (
+      api.submit(input), input.consentContact || input.callback ? { id: "s1", number: 7, token: "t".repeat(30), stored: true } : { id: "x", number: 0, token: "", stored: false }
+    ),
     requestMatcherCallback: vi.fn(async () => undefined),
     getMatcherWhatsappDigits: async () => "905551112233",
   };
@@ -74,7 +76,7 @@ const REC: MatcherRecommendation = {
   topicSlugs: ["reflux-heartburn"],
   specialties: [{ id: "s-gas", slug: "gastroenterology", name: "Gastroenteroloji", description: "Sindirim sistemi", score: 100 }],
   doctors: [
-    { id: "d1", slug: "ali-veli", displayName: "A. Veli", title: "Prof. Dr.", avatarUrl: null, specialtyName: "Gastroenteroloji", languages: ["tr", "en"], primaryMatch: true, speaksLanguage: true, slots: [{ startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T09:30:00.000Z" }] },
+    { id: "d1", slug: "ali-veli", displayName: "A. Veli", title: "Prof. Dr.", avatarUrl: null, specialtyName: "Gastroenteroloji", matchedSpecialtySlug: "gastroenterology", languages: ["tr", "en"], primaryMatch: true, speaksLanguage: true, slots: [{ startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T09:30:00.000Z" }] },
   ],
 };
 
@@ -116,7 +118,7 @@ describe("sözlük (9 dil)", () => {
   });
 
   it("ön yüz ve backend arama normalleştirmesi birebir aynı", () => {
-    const body = (file: string) => fs.readFileSync(file, "utf8").replace(/^\/\*\*[\s\S]*?\*\/\n/, "");
+    const body = (file: string) => fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n").replace(/^\/\*\*[\s\S]*?\*\/\n/, "");
     expect(body(path.resolve(__dirname, "../../src/lib/matcher/text.ts"))).toBe(body(path.resolve(__dirname, "../../../backend/src/lib/matcher-text.ts")));
   });
 });
@@ -132,9 +134,9 @@ describe("arama ve yardımcılar", () => {
     expect(topicsInText(TOPICS, "Dün gece nefes alamıyorum dedi").map((t) => t.slug)).toEqual(["rf-chest-pain-breathless"]);
   });
 
-  it("ülkeye göre acil numarası; randevu bağlantısında yalnızca topic ve from", () => {
+  it("ülkeye göre acil numarası; randevu bağlantısında yalnızca uzmanlık ve from (sağlık konusu YOK)", () => {
     expect([emergencyNumberFor("TR"), emergencyNumberFor("DE"), emergencyNumberFor("US"), emergencyNumberFor("GB"), emergencyNumberFor(null)]).toEqual(["112", "112", "911", "999", "112"]);
-    expect(bookingHref((p) => `/tr${p}`, "ali-veli", "reflux-heartburn")).toBe("/tr/physicians/ali-veli?topic=reflux-heartburn&from=matcher#randevu");
+    expect(bookingHref((p) => `/tr${p}`, "ali-veli", "gastroenterology")).toBe("/tr/physicians/ali-veli?specialty=gastroenterology&from=matcher#randevu");
     expect(bookingHref((p) => `/en${p}`, "ali-veli", null)).toBe("/en/physicians/ali-veli?from=matcher#randevu");
   });
 });
@@ -197,7 +199,8 @@ describe("sihirbaz akışı", () => {
     const card = await screen.findByTestId("matcher-doctor-card");
     expect(card).toHaveTextContent("Prof. Dr. A. Veli");
     expect(within(card).getByTestId("matcher-interpreter-badge")).toHaveTextContent("Ücretsiz tercüman desteği");
-    expect(within(card).getByTestId("matcher-book")).toHaveAttribute("href", "/tr/physicians/ali-veli?topic=reflux-heartburn&from=matcher#randevu");
+    expect(within(card).getByTestId("matcher-book")).toHaveAttribute("href", "/tr/physicians/ali-veli?specialty=gastroenterology&from=matcher#randevu");
+    expect(within(card).getByTestId("matcher-book").getAttribute("href")).not.toMatch(/topic|reflux|mide/);
     expect(within(card).getByTestId("matcher-book")).toHaveTextContent("A. Veli ile randevu al");
     expect(screen.getByTestId("matcher-disclaimer")).toHaveTextContent("Bu araç tanı koymaz ve tıbbi tavsiye vermez.");
     expect(screen.getByRole("link", { name: "WhatsApp’tan yazın" })).toHaveAttribute("href", "https://wa.me/905551112233");
@@ -259,16 +262,22 @@ describe("sihirbaz akışı", () => {
 
     expect(await screen.findByTestId("matcher-consent-health")).not.toBeChecked();
     expect(screen.getByTestId("matcher-consent-contact")).not.toBeChecked();
+    expect(screen.getByTestId("matcher-no-contact-note")).toHaveTextContent("Bu izni vermezseniz adınızı, telefonunuzu, e-postanızı ve sağlık bilgilerinizi kaydetmeyiz");
     await user.type(screen.getByLabelText("Ad soyad"), "Deniz Kaya");
     await user.type(screen.getByTestId("matcher-age"), "15");
     expect(screen.getByText("Hasta 18 yaşından küçük. Lütfen formu veli ya da vasi olarak doldurun.")).toBeInTheDocument();
     await user.type(screen.getByLabelText("E-posta"), "veli@example.com");
+    // İletişim izni verilince veli adı zorunlu.
+    await user.click(screen.getByTestId("matcher-consent-contact"));
     await user.click(screen.getByTestId("matcher-continue"));
     expect(api.submit).not.toHaveBeenCalled();
-    await user.type(screen.getByLabelText("Veli/vasinin adı soyadı"), "Ahmet Kaya");
+    // İzin geri alınırsa: ad/e-posta/konu/sağlık bilgisi GÖNDERİLMEZ (yalnızca anonim sayaç).
+    await user.click(screen.getByTestId("matcher-consent-contact"));
     await user.click(screen.getByTestId("matcher-continue"));
     await waitFor(() => expect(api.submit).toHaveBeenCalled());
-    expect(api.submit.mock.calls[0]![0]).toMatchObject({ name: "Deniz Kaya", age: 15, guardianName: "Ahmet Kaya", email: "veli@example.com", consentHealth: false, consentContact: false, topicIds: ["t1"] });
+    const sent = api.submit.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sent).toMatchObject({ consentContact: false, consentHealth: false, topicIds: [] });
+    for (const key of ["name", "email", "phoneNumber", "age", "guardianName", "freeText"]) expect(sent).not.toHaveProperty(key);
     for (const [url] of nav.push.mock.calls) expect(url).not.toMatch(/Deniz|veli@|Kaya/);
   });
 
@@ -305,10 +314,12 @@ describe("sihirbaz akışı", () => {
     expect(screen.getByText(/Hastanın velisi ya da vasisi olduğumu beyan eder/)).toBeInTheDocument();
     await user.type(screen.getByLabelText("Veli/vasinin adı soyadı"), "Ahmet Kaya");
     await user.type(screen.getByLabelText("E-posta"), "veli@example.com");
+    await user.click(screen.getByTestId("matcher-consent-contact"));
     await user.click(screen.getByTestId("matcher-continue"));
     await waitFor(() => expect(nav.params.get("step")).toBe("5"));
     rerender(<PhysicianMatcher mode="page" />);
     await screen.findByTestId("matcher-result");
+    expect(api.submit.mock.calls[0]![0]).toMatchObject({ name: "Deniz Kaya", age: 12, guardianName: "Ahmet Kaya", email: "veli@example.com", consentContact: true });
     nav.params = new URLSearchParams("step=4");
     rerender(<PhysicianMatcher mode="page" />);
     await user.click(await screen.findByTestId("matcher-continue"));

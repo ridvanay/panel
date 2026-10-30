@@ -118,5 +118,6 @@ export const matcherStrings: MatcherStrings = {
   privacyNoticeLink: "Datenschutzhinweise",
   consentHealthGuardian: "Ich bestätige, dass ich Elternteil oder gesetzlicher Vormund der Patientin bzw. des Patienten bin, und willige in deren bzw. dessen Namen ausdrücklich in die Verarbeitung der Gesundheitsangaben (Beschwerden und Antworten) ein, damit ein passendes Fachgebiet und eine passende Ärztin bzw. ein passender Arzt vorgeschlagen werden können.",
   callbackConsentNote: "Mit Klick auf diese Schaltfläche stimmen Sie zu, dass unsere Koordination Sie zu dieser Anfrage kontaktiert.",
+  noContactNote: "Ohne diese Erlaubnis speichern wir weder Ihren Namen noch Ihre Telefonnummer, E-Mail-Adresse oder Gesundheitsangaben; Sie sehen nur Ihren Vorschlag.",
   disclaimer: "Dieses Tool stellt keine Diagnose und gibt keinen medizinischen Rat.",
 };

@@ -118,5 +118,6 @@ export const matcherStrings: MatcherStrings = {
   privacyNoticeLink: "Aydınlatma metni",
   consentHealthGuardian: "Hastanın velisi ya da vasisi olduğumu beyan eder, uygun uzmanlık alanı ve hekimin önerilebilmesi için hastanın sağlık bilgilerinin (şikayeti ve cevapları) işlenmesine onun adına açık rıza veririm.",
   callbackConsentNote: "Bu düğmeye basarak koordinatörümüzün bu talep hakkında sizinle iletişime geçmesini kabul etmiş olursunuz.",
+  noContactNote: "Bu izni vermezseniz adınızı, telefonunuzu, e-postanızı ve sağlık bilgilerinizi kaydetmeyiz; yalnızca önerinizi görürsünüz.",
   disclaimer: "Bu araç tanı koymaz ve tıbbi tavsiye vermez.",
 };

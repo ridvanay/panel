@@ -121,6 +121,7 @@ export const matcherStrings = {
   privacyNoticeLink: "Privacy notice",
   consentHealthGuardian: "I confirm that I am the patient’s parent or legal guardian and, on their behalf, give explicit consent to the processing of their health information (complaint and answers) so that a suitable specialty and physician can be suggested.",
   callbackConsentNote: "By pressing this button you agree that our coordinator may contact you about this request.",
+  noContactNote: "Without this permission we do not save your name, phone number, email or health details; you will only see your suggestion.",
   disclaimer: "This tool does not provide a diagnosis or medical advice.",
 } as const;
 

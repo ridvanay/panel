@@ -26,6 +26,7 @@ import { toDoctorProfileDto } from "../../mappers";
  *     İlk 3 hekim gösterilir; her biri için en yakın 3 müsait slot (14 gün).
  */
 
+/** Varsayılanlar — Tele-Sağlık → Ayarlar → "Eşleştirme sihirbazı" kartından değiştirilebilir (audit'li). */
 export const MATCHER_SCORE_THRESHOLD = 40;
 export const MATCHER_MAX_SPECIALTIES = 2;
 export const MATCHER_MAX_DOCTORS = 3;
@@ -39,9 +40,17 @@ export const MATCHER_FREE_TEXT_MAX = 500;
 export interface MatcherSettings {
   /** true (varsayılan): iletişim adımı sonuçtan ÖNCE ve zorunlu; false: sonuçlardan sonra opsiyonel. */
   contactRequired: boolean;
-  /** Sağlık alanlarının anonimleştirilmesine kadar gün (varsayılan 365). */
+  /** Sihirbaz taleplerinin sağlık VE kişi alanlarının anonimleştirilmesine kadar gün (varsayılan 365). */
   retentionDays: number;
+  /** Uzmanlık önerisi için en düşük puan (varsayılan 40). */
+  scoreThreshold: number;
+  /** En çok önerilecek uzmanlık sayısı (varsayılan 2). */
+  maxSpecialties: number;
 }
+
+export const MATCHER_THRESHOLD_MIN = 1;
+export const MATCHER_THRESHOLD_MAX = 300;
+export const MATCHER_MAX_SPECIALTIES_LIMIT = 5;
 
 export const MATCHER_RETENTION_MIN = 30;
 export const MATCHER_RETENTION_MAX = 3650;
@@ -53,10 +62,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 export function parseMatcherSettings(rawSettings: unknown): MatcherSettings {
   const raw = asRecord(rawSettings);
   const days = raw.matcherRetentionDays;
+  const intIn = (v: unknown, min: number, max: number, fallback: number) => (typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : fallback);
   return {
     contactRequired: raw.matcherContactRequired !== false,
-    retentionDays:
-      typeof days === "number" && Number.isInteger(days) && days >= MATCHER_RETENTION_MIN && days <= MATCHER_RETENTION_MAX ? days : 365,
+    retentionDays: intIn(days, MATCHER_RETENTION_MIN, MATCHER_RETENTION_MAX, 365),
+    scoreThreshold: intIn(raw.matcherScoreThreshold, MATCHER_THRESHOLD_MIN, MATCHER_THRESHOLD_MAX, MATCHER_SCORE_THRESHOLD),
+    maxSpecialties: intIn(raw.matcherMaxSpecialties, 1, MATCHER_MAX_SPECIALTIES_LIMIT, MATCHER_MAX_SPECIALTIES),
   };
 }
 
@@ -168,7 +179,7 @@ export async function unmatchedTerms(app: FastifyInstance, text: string): Promis
 // ------------------------------------------------------------------------------------------------
 // Anonim sayaçlar
 // ------------------------------------------------------------------------------------------------
-export type MatcherStatKind = "step" | "topic" | "unmatched_term" | "red_flag";
+export type MatcherStatKind = "step" | "topic" | "unmatched_term" | "red_flag" | "submit";
 
 /** Güvenlik/uyumluluk incelemesi — günde en çok bu kadar farklı eşleşmeyen terim; sayaç satırları 90 günde silinir. */
 export const MATCHER_UNMATCHED_DAILY_CAP = 500;
@@ -222,6 +233,8 @@ export interface RecommendedDoctor {
   title: string;
   avatarUrl: string | null;
   specialtyName: string | null;
+  /** Randevu bağlantısı için: hekimin önerilen uzmanlıklardan eşleşen uzmanlığının slug'ı (birincil öncelikli). */
+  matchedSpecialtySlug: string;
   languages: string[];
   primaryMatch: boolean;
   speaksLanguage: boolean;
@@ -320,7 +333,9 @@ export function clearRecommendCache(): void {
 export async function recommend(app: FastifyInstance, input: RecommendInput, now = new Date()): Promise<RecommendResult> {
   const all = await loadActiveTopics(app);
   const selected = all.filter((topic) => input.topicIds.includes(topic.id));
-  const support = parseLanguageSupport(await readTelehealthSettingsRaw(app));
+  const rawSettings = await readTelehealthSettingsRaw(app);
+  const support = parseLanguageSupport(rawSettings);
+  const { scoreThreshold, maxSpecialties } = parseMatcherSettings(rawSettings);
   const base = { interpreterIncluded: support.interpreterIncluded, topicSlugs: selected.map((t) => t.slug) };
 
   const redFlags = selected.filter((t) => t.isRedFlag).map((t) => t.slug);
@@ -349,10 +364,10 @@ export async function recommend(app: FastifyInstance, input: RecommendInput, now
   const specialtyRows = await app.prisma.specialty.findMany({ where: { id: { in: scoredIds }, isActive: true } });
   const locale = input.locale;
   const ranked = specialtyRows
-    .filter((s) => staffed.has(s.id) && (scores.get(s.id) ?? 0) >= MATCHER_SCORE_THRESHOLD)
+    .filter((s) => staffed.has(s.id) && (scores.get(s.id) ?? 0) >= scoreThreshold)
     .map((s) => ({ row: s, score: scores.get(s.id) ?? 0 }))
     .sort((a, b) => b.score - a.score || a.row.name.localeCompare(b.row.name, "en"))
-    .slice(0, MATCHER_MAX_SPECIALTIES);
+    .slice(0, maxSpecialties);
   if (ranked.length === 0) return empty;
 
   const recIds = ranked.map((r) => r.row.id);
@@ -383,6 +398,10 @@ export async function recommend(app: FastifyInstance, input: RecommendInput, now
       title: d.dto.title,
       avatarUrl: d.dto.avatarMedia?.url ?? null,
       specialtyName: d.dto.specialty?.name ?? null,
+      matchedSpecialtySlug: (() => {
+        const id = d.primaryMatch ? d.row.specialtyId! : d.row.additionalSpecialties.map((l) => l.specialtyId).find((sid) => recIds.includes(sid))!;
+        return ranked.find((r) => r.row.id === id)?.row.slug ?? ranked[0]!.row.slug;
+      })(),
       languages: d.row.languages,
       primaryMatch: d.primaryMatch,
       speaksLanguage: d.speaksLanguage,

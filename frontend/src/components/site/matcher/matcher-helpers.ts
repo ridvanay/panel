@@ -59,10 +59,13 @@ export function emergencyNumberFor(countryCode: string | null | undefined): stri
   }
 }
 
-/** Randevu sayfası bağlantısı — URL'ye YALNIZCA `?topic=<slug>&from=matcher` eklenir (kişisel veri yok). */
-export function bookingHref(localize: (path: string) => string, doctorSlug: string, topicSlug: string | null): string {
+/**
+ * Randevu sayfası bağlantısı — URL'ye YALNIZCA `?specialty=<uzmanlık slug>&from=matcher` eklenir.
+ * Kullanıcı kararı (2026-10-30): şikayet/konu (sağlık bilgisi) URL'ye GİRMEZ.
+ */
+export function bookingHref(localize: (path: string) => string, doctorSlug: string, specialtySlug: string | null): string {
   const params = new URLSearchParams();
-  if (topicSlug) params.set("topic", topicSlug);
+  if (specialtySlug) params.set("specialty", specialtySlug);
   params.set("from", "matcher");
   return `${localize(`/physicians/${encodeURIComponent(doctorSlug)}`)}?${params.toString()}#randevu`;
 }

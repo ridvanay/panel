@@ -118,5 +118,6 @@ export const matcherStrings: MatcherStrings = {
   privacyNoticeLink: "Obaveštenje o privatnosti",
   consentHealthGuardian: "Potvrđujem da sam roditelj ili zakonski staratelj pacijenta i u njegovo ime dajem izričit pristanak na obradu njegovih podataka o zdravlju (tegobe i odgovori) kako bi se mogli predložiti odgovarajuća specijalnost i lekar.",
   callbackConsentNote: "Pritiskom na ovo dugme pristajete da vas naš koordinator kontaktira u vezi sa ovim zahtevom.",
+  noContactNote: "Bez ove dozvole ne čuvamo vaše ime, broj telefona, imejl niti podatke o zdravlju; videćete samo predlog.",
   disclaimer: "Ovaj alat ne postavlja dijagnozu i ne daje medicinske savete.",
 };
