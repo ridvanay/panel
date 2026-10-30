@@ -31,6 +31,7 @@ const roleLabels: Record<SiteRole, string> = {
   EDITOR: "Editör",
   CUSTOMER: "Müşteri",
   USER: "Standart Üye",
+  INTERPRETER: "Tercüman",
 };
 
 

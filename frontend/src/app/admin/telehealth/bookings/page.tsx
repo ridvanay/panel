@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AlertCircle, Archive, CreditCard, Search } from "lucide-react";
+import { AlertCircle, Archive, CreditCard, Search, Languages } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { AppointmentBooking, BookingPaymentStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
 import { ArchiveBookingDialog } from "@/components/admin/telehealth/archive-booking-dialog";
+import { BookingInterpreterDialog } from "@/components/admin/telehealth/booking-interpreter-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { TURKEY_TIME_ZONE, cityLabel, gmtLabel, isSameClockAsTurkey } from "@/lib/dual-time";
@@ -80,6 +81,8 @@ export default function AdminTelehealthBookingsPage() {
   // 2026-10-18 (Paket B4) — "Test olarak arşivle" (yalnızca ADMIN, gerekçe zorunlu).
   const [showArchived, setShowArchived] = useState(false);
   const [pendingArchive, setPendingArchive] = useState<AppointmentBooking | null>(null);
+  // Paket AA — rezervasyonun tercüman kartı.
+  const [interpreterBooking, setInterpreterBooking] = useState<AppointmentBooking | null>(null);
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
 
   const load = useCallback(
@@ -245,6 +248,12 @@ export default function AdminTelehealthBookingsPage() {
                         {booking.archivedReason && <p className="mt-1 max-w-48 truncate text-xs text-foreground/50">{booking.archivedReason}</p>}
                       </TableCell>
                       <TableCell className="text-right">
+                        {!booking.archivedAt && booking.paymentStatus === "PAID" && (
+                          <Button variant="ghost" size="sm" onClick={() => setInterpreterBooking(booking)} aria-label={`${booking.bookingNumber} tercüman`}>
+                            <Languages className="h-3.5 w-3.5" />
+                            Tercüman
+                          </Button>
+                        )}
                         {booking.archivedAt ? (
                           <Button
                             variant="ghost"
@@ -299,6 +308,8 @@ export default function AdminTelehealthBookingsPage() {
         loading={markingPaid}
         onConfirm={handleMarkPaid}
       />
+
+      <BookingInterpreterDialog booking={interpreterBooking} onOpenChange={(open) => !open && setInterpreterBooking(null)} />
 
       <ArchiveBookingDialog
         booking={pendingArchive}

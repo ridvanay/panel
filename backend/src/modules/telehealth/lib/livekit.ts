@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, TrackSource } from "livekit-server-sdk";
 import { env } from "../../../config/env";
 
 /**
@@ -193,6 +193,45 @@ export async function createQaListenerToken(
   const expiresAt = new Date(Date.now() + QA_LISTENER_TOKEN_TTL_SEC * 1000).toISOString();
 
   return { token, serverUrl: config.url, roomName: input.roomName, expiresAt, identity };
+}
+
+/**
+ * Paket AA (2026-10-30, kullanıcı onaylı kırmızı çizgi istisnası) — görüşmeye katılan tercüman.
+ * `createMeetingToken` ve `createQaListenerToken`'dan BİLİNÇLİ OLARAK AYRI: hasta/doktor/dinleyici
+ * token'larının grant'ı, kimliği ve TTL'i bu fonksiyondan ETKİLENMEZ.
+ *
+ * - Yayın ve abonelik açık; oda içi veri (sohbet/kayıt sinyali) hasta/doktorla aynı.
+ * - Ekran paylaşımı KAPALI: `canPublishSources` yalnızca kamera ve mikrofon.
+ * - Görünür katılım: `hidden` KULLANILMAZ. Görünen ad ve `role: "interpreter"` metadata'sı hasta/doktor
+ *   ekranında "Tercüman · dil" etiketini sağlar; `canUpdateOwnMetadata: false` ile değiştirilemez.
+ * - TTL doktor token'ıyla aynı (`LIVEKIT_TOKEN_TTL_MIN`).
+ */
+export const INTERPRETER_ROLE = "interpreter";
+
+export async function createInterpreterToken(
+  input: { roomName: string; identity: string; displayName: string; language: string },
+  config: LiveKitConfig = getLiveKitConfig()
+): Promise<MeetingTokenResult & { identity: string }> {
+  const ttlSeconds = config.tokenTtlMin * 60;
+  const accessToken = new AccessToken(config.apiKey, config.apiSecret, {
+    identity: input.identity,
+    name: input.displayName,
+    metadata: JSON.stringify({ role: INTERPRETER_ROLE, language: input.language }),
+    ttl: ttlSeconds,
+  });
+  accessToken.addGrant({
+    roomJoin: true,
+    room: input.roomName,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+    canPublishSources: [TrackSource.CAMERA, TrackSource.MICROPHONE],
+    canUpdateOwnMetadata: false,
+  });
+
+  const token = await accessToken.toJwt();
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+  return { token, serverUrl: config.url, roomName: input.roomName, expiresAt, identity: input.identity };
 }
 
 /**

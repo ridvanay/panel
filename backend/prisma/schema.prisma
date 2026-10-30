@@ -71,6 +71,9 @@ enum SiteRole {
   EDITOR
   CUSTOMER
   USER
+  /// Paket AA — görüşmelere katılan tercüman. Admin/doktor/CRM yüzeylerine erişemez; yalnızca kendi
+  /// tercüman paneli ve kendisine atanmış görüşmeler.
+  INTERPRETER
 }
 
 // §10.7 benzeri soft-delete (çöp kutusu) deseni, kullanıcılar için — DELETED durumundaki
@@ -285,6 +288,8 @@ model User {
   // bir "grandfathering" beyanıdır, gerçek bir doğrulama kanıtı değildir).
   emailVerifiedAt DateTime?
   role            SiteRole       @default(USER)
+  /// Paket AA — `role = INTERPRETER` kullanıcının tercüman profili.
+  interpreterProfile InterpreterProfile? @relation("InterpreterProfileUser")
   status          SiteUserStatus @default(ACTIVE)
   lastLoginAt     DateTime?
   // Soft-delete (çöp kutusu) — status=DELETED ile birlikte set edilir; sadece silindiyse
@@ -2632,6 +2637,9 @@ model AppointmentBooking {
   appointments Appointment[]
   intake       AppointmentIntake?
   documents    AppointmentDocument[]
+  /// Paket AA — tercüman atamaları (en çok 1 aktif; bkz. migration'daki kısmi tekil indeks) ve hasta talebi.
+  interpreterAssignments AppointmentInterpreter[]
+  interpreterRequest     InterpreterRequest?
 
   @@index([doctorId, createdAt])
   @@index([patientUserId])
@@ -3673,4 +3681,80 @@ model AccreditationBadge {
   @@index([isActive, sortOrder])
   @@index([logoMediaId])
   @@map("accreditation_badges")
+}
+
+/// Paket AA (2026-10-30) — tercüman atama durumu. Aktif sayılanlar: ASSIGNED, JOINED, LEFT (odadan
+/// ayrılmış ama ataması süren tercüman tekrar katılabilir). REMOVED/CANCELLED kapalıdır.
+enum InterpreterAssignmentStatus {
+  ASSIGNED
+  JOINED
+  LEFT
+  REMOVED
+  CANCELLED
+}
+
+/// Paket AA — tercüman profili. `confidentialityAcceptedAt` boşsa hiçbir görüşmeye atanamaz ve katılamaz.
+model InterpreterProfile {
+  id                        String    @id @default(uuid())
+  seq                       Int       @unique @default(autoincrement())
+  userId                    String    @unique
+  /// Sitede görünen ad; varsayılan baş harfli biçim ("A. Yılmaz").
+  displayName               String
+  /// Site dil kodları ve ek ISO kodları (ör. ["ar", "en", "fa"]).
+  languages                 String[]
+  timeZone                  String    @default("Europe/Istanbul")
+  isActive                  Boolean   @default(true)
+  /// Gizlilik taahhüdü onayı ve onaylanan metnin sürümü (metin değişince yeniden onay istenir).
+  confidentialityAcceptedAt DateTime?
+  confidentialityVersion    String?
+  /// Yalnızca admin görür.
+  notes                     String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  user        User                     @relation("InterpreterProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignments AppointmentInterpreter[]
+
+  @@index([isActive])
+  @@map("interpreter_profiles")
+}
+
+/// Paket AA — bir booking'e (çoklu slot tek oda) tercüman ataması.
+model AppointmentInterpreter {
+  id            String                      @id @default(uuid())
+  seq           Int                         @unique @default(autoincrement())
+  bookingId     String
+  interpreterId String
+  language      String
+  status        InterpreterAssignmentStatus @default(ASSIGNED)
+  assignedById  String?
+  assignedAt    DateTime                    @default(now())
+  joinedAt      DateTime?
+  leftAt        DateTime?
+  removedById   String?
+  removedReason String?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  booking     AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  interpreter InterpreterProfile @relation(fields: [interpreterId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId, status])
+  @@index([interpreterId, status])
+  // UYARI: "booking başına en çok 1 aktif atama" kısmi tekil indeksi
+  // (`appointment_interpreters_one_active_per_booking`) migration'da ELLE eklendi; Prisma şemada ifade
+  // edemez. `prisma db push` KULLANMAYIN (indeksi düşürür) — yalnızca `migrate deploy`.
+  @@map("appointment_interpreters")
+}
+
+/// Paket AA — hastanın randevu sihirbazındaki "ücretsiz tercüman istiyorum" talebi (booking başına bir kayıt).
+model InterpreterRequest {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  language    String
+  requestedAt DateTime @default(now())
+
+  booking AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("interpreter_requests")
 }

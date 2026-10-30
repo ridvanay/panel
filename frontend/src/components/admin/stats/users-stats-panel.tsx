@@ -22,6 +22,7 @@ const ROLE_LABELS: Record<SiteRole, string> = {
   EDITOR: "Editör",
   CUSTOMER: "Müşteri",
   USER: "Standart Üye",
+  INTERPRETER: "Tercüman",
 };
 
 // Yeni hardcoded renk eklemek yerine mevcut dinamik accent/viz token'ları kullanılıyor (bkz.
@@ -33,6 +34,7 @@ const ROLE_COLORS: Record<SiteRole, string> = {
   EDITOR: "var(--primary)",
   CUSTOMER: "var(--accent-400, #818cf8)",
   USER: "var(--accent-300, #a5b4fc)",
+  INTERPRETER: "var(--accent-200, #c7d2fe)",
 };
 
 interface UsersStatsPanelProps {

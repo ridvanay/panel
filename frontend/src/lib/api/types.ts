@@ -92,7 +92,8 @@ export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED"
  * `/admin/settings/security/2fa`, `/admin/settings/security/sessions`). Yeni kayıtların
  * varsayılanı `USER`'dır. **BREAKING:** `VIEWER` KALDIRILDI (migration: `VIEWER → USER`).
  */
-export type SiteRole = "ADMIN" | "MANAGER" | "EDITOR" | "CUSTOMER" | "USER";
+// Paket AA — INTERPRETER: yalnızca kendi tercüman paneli ve atanmış görüşmeler.
+export type SiteRole = "ADMIN" | "MANAGER" | "EDITOR" | "CUSTOMER" | "USER" | "INTERPRETER";
 /**
  * `DELETED` = yumuşak silme (bkz. `DELETE /admin/users/{userId}`). Satır fiziksel olarak
  * silinmez; `POST /admin/users/{userId}/restore` ile geri alınabilir. Bu değer YALNIZCA
@@ -4902,4 +4903,103 @@ export interface AccreditationInput {
   translations?: Record<string, { name?: string | null; description?: string | null }>;
   sortOrder?: number;
   isActive?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Paket AA — tercüman katılımı (backend `telehealth.interpreter*.routes.ts`).
+// ---------------------------------------------------------------------------
+
+export type InterpreterAssignmentStatus = "ASSIGNED" | "JOINED" | "LEFT" | "REMOVED" | "CANCELLED";
+
+/** `GET /interpreter/me` */
+export interface InterpreterMe {
+  displayName: string;
+  languages: string[];
+  timeZone: string;
+  isActive: boolean;
+  twoFactorEnabled: boolean;
+  confidentiality: { accepted: boolean; acceptedAt: string | null; version: string; textEn: string; textTr: string };
+}
+
+/** `GET /interpreter/assignments` — hastanın yalnızca baş harfi; belge/intake/not yok. */
+export interface InterpreterAssignment {
+  id: string;
+  language: string;
+  languageName: string;
+  status: InterpreterAssignmentStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  doctorDisplayName: string;
+  patientInitial: string;
+  canJoin: boolean;
+  past: boolean;
+}
+
+export interface InterpreterTokenResponse extends MeetingTokenResponse {
+  sessionId: string;
+}
+
+/** `GET /appointments/{id}/interpreter` — hasta/doktor ekranı için. */
+export interface AppointmentInterpreterInfo {
+  language: string;
+  languageName: string;
+  displayName: string;
+  status: "ASSIGNED" | "JOINED" | "LEFT";
+}
+
+/** Admin — `GET /admin/telehealth/interpreters` satırı. */
+export interface AdminInterpreter {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  displayName: string;
+  languages: string[];
+  timeZone: string;
+  isActive: boolean;
+  twoFactorEnabled: boolean;
+  hasLoggedIn: boolean;
+  confidentialityAcceptedAt: string | null;
+  confidentialityCurrent: boolean;
+  notes: string | null;
+  activeAssignments: number;
+}
+
+export interface AdminInterpreterAssignment {
+  id: string;
+  interpreterId: string;
+  interpreterDisplayName: string;
+  language: string;
+  languageName: string;
+  status: InterpreterAssignmentStatus;
+  assignedAt: string;
+  joinedAt: string | null;
+  leftAt: string | null;
+  removedReason: string | null;
+}
+
+/** `GET /admin/telehealth/bookings/{bookingId}/interpreter` */
+export interface BookingInterpreterState {
+  bookingId: string;
+  bookingNumber: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  request: { language: string; languageName: string; requestedAt: string } | null;
+  active: AdminInterpreterAssignment | null;
+  history: AdminInterpreterAssignment[];
+  candidates: { id: string; displayName: string; languages: string[]; twoFactorEnabled: boolean }[];
+}
+
+export interface InterpreterReportRow {
+  interpreterId: string;
+  displayName: string;
+  language: string;
+  consultations: number;
+  totalSeconds: number;
+}
+
+export interface InterpreterConfidentialityText {
+  en: string;
+  tr: string;
+  version: string;
 }

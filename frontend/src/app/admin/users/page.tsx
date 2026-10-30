@@ -61,6 +61,7 @@ const roleLabels: Record<SiteRole, string> = {
   EDITOR: "Editör",
   CUSTOMER: "Müşteri",
   USER: "Standart Üye",
+  INTERPRETER: "Tercüman",
 };
 
 const statusLabels: Record<SiteUserStatus, string> = {
@@ -779,6 +780,12 @@ export default function AdminUsersPage() {
                             <option value="EDITOR">{roleLabels.EDITOR}</option>
                             <option value="CUSTOMER">{roleLabels.CUSTOMER}</option>
                             <option value="USER">{roleLabels.USER}</option>
+                            {/* Paket AA — tercüman rolü yalnızca "Tercümanlar" ekranından verilir; burada yalnızca gösterilir. */}
+                            {user.role === "INTERPRETER" && (
+                              <option value="INTERPRETER" disabled>
+                                {roleLabels.INTERPRETER}
+                              </option>
+                            )}
                           </Select>
                         </TableCell>
                         <TableCell className="w-28">

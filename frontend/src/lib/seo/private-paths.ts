@@ -37,6 +37,8 @@ export const LOCALIZED_PRIVATE_PATHS = [
   "/hesabim",
   "/siparislerim",
   "/activate-account",
+  // Paket AA — tercüman paneli ve görüşme ekranı.
+  "/interpreter",
 ] as const;
 
 /** `next.config.ts::headers()` kaynakları — dil önekli ve öneksiz hâller. */

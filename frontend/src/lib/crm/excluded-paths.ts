@@ -11,6 +11,8 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
   "/siparislerim",
   "/doctor",
   "/patient",
+  // Paket AA — tercüman paneli/görüşme ekranı (backend `crm.privacy.ts` ile aynı).
+  "/interpreter",
   "/consultation",
   "/checkout",
   "/cart",

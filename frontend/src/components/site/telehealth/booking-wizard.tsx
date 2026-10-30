@@ -24,6 +24,7 @@ import { BookingStepperBar, type BookingStepperStep } from "@/components/site/te
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { InterpreterRequestBox, type InterpreterOfferLanguage } from "@/components/site/interpreter/interpreter-request-box";
 
 /**
  * Grid görevi (2026-09-14) Görev 1 — kurumsal, TEK butonlu, numaralandırılmış randevu sihirbazı.
@@ -147,6 +148,8 @@ interface BookingWizardProps {
    * "Devam Et", adım sayacı) iletilir. Verilmezse panel eski davranışla Türkçe'ye düşer.
    */
   telehealthDict?: TelehealthStrings;
+  /** Paket AA — site ayarında `interpreterIncluded=true` ise tercüman talebi için desteklenen diller; yoksa kutu gösterilmez. */
+  interpreterLanguages?: InterpreterOfferLanguage[];
 }
 
 type WizardStep = 2 | 3 | 4 | 5;
@@ -162,6 +165,7 @@ export function BookingWizard({
   explicitConsentPage = null,
   intlLocale,
   telehealthDict,
+  interpreterLanguages = [],
 }: BookingWizardProps) {
   const router = useRouter();
   const { selectedSlots, clearAllSlots, displayTimeZone, visitorTimeZone, setHasCompletedBooking, resetSignal } = useBookingSelection();
@@ -527,12 +531,22 @@ export function BookingWizard({
                 </Alert>
 
                 {currentStep === 4 ? (
-                  <BookingIntakeStep
-                    bookingId={bookingResult.bookingId}
-                    accessToken={bookingResult.accessToken}
-                    explicitConsentPage={explicitConsentPage}
-                    onDone={() => setCurrentStep(5)}
-                  />
+                  <div className="space-y-4">
+                    {interpreterLanguages.length > 0 && (
+                      <InterpreterRequestBox
+                        bookingId={bookingResult.bookingId}
+                        accessToken={bookingResult.accessToken}
+                        languages={interpreterLanguages}
+                        defaultLanguage={lang}
+                      />
+                    )}
+                    <BookingIntakeStep
+                      bookingId={bookingResult.bookingId}
+                      accessToken={bookingResult.accessToken}
+                      explicitConsentPage={explicitConsentPage}
+                      onDone={() => setCurrentStep(5)}
+                    />
+                  </div>
                 ) : isFreeBooking ? (
                   <Alert variant="success">
                     <div className="flex flex-wrap items-center justify-between gap-3">

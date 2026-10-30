@@ -82,12 +82,15 @@ import { telehealthRecordingAccessRoutes } from "./modules/telehealth/telehealth
 import { telehealthEgressWebhookRoutes } from "./modules/telehealth/telehealth.egress-webhook.routes";
 import { telehealthIdentityRoutes } from "./modules/telehealth/telehealth.identity.routes";
 import { adminTelehealthQaListenerRoutes } from "./modules/telehealth/telehealth.qa-listener.routes";
+import { appointmentInterpreterRoutes, interpreterRoutes } from "./modules/telehealth/telehealth.interpreter.routes";
+import { adminBookingInterpreterRoutes, adminInterpretersRoutes } from "./modules/telehealth/telehealth.interpreters.admin.routes";
 import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
 import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders";
 import { registerAppointmentAutoCloseSweeper } from "./lib/appointment-auto-close";
 import { registerQaListenerSweeper } from "./modules/telehealth/lib/qa-listener-sweeper";
+import { registerInterpreterSweeper } from "./modules/telehealth/lib/interpreter-sweeper";
 import { adminSupportRoutes } from "./modules/support/support.routes";
 import { supportPublicRoutes } from "./modules/support/support.public.routes";
 import { registerSupportRetentionScheduler } from "./lib/support-retention";
@@ -344,6 +347,11 @@ export function buildApp() {
       api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });
       // Paket C — kalite kontrol dinleyicisi (YALNIZCA ADMIN + 2FA). Ayrı dosya, aynı prefix.
       api.register(adminTelehealthQaListenerRoutes, { prefix: "/admin/telehealth/appointments" });
+      // Paket AA — tercüman katılımı (yeni dosyalar; hasta/doktor meeting-token ve dinleyici uçları değişmez).
+      api.register(interpreterRoutes, { prefix: "/interpreter" });
+      api.register(appointmentInterpreterRoutes);
+      api.register(adminInterpretersRoutes, { prefix: "/admin/telehealth/interpreters" });
+      api.register(adminBookingInterpreterRoutes, { prefix: "/admin/telehealth/bookings" });
       // [TCT] §9.7.10 — booking listesi (ADMIN+MANAGER) + manuel ödendi işaretleme (YALNIZCA ADMIN).
       api.register(adminTelehealthBookingsRoutes, { prefix: "/admin/telehealth/bookings" });
       // [TCT] §9.7.7 KARAR K10a — salt-okunur analitik özet (ADMIN+MANAGER, EDITOR dışlanır).
@@ -504,6 +512,13 @@ export function buildApp() {
       registerQaListenerSweeper(app);
     } catch (err) {
       app.log.error({ err }, "QA dinleyici temizleyicisi (qa-listener-sweeper) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket AA — çıkarılan/ataması kaldırılan tercüman eski token'la odaya geri dönemesin (30 sn kadans).
+      registerInterpreterSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Tercüman temizleyicisi (interpreter-sweeper) scheduler kurulumu başarısız oldu.");
     }
 
     try {

@@ -34,6 +34,7 @@ import {
   Radar,
   BadgeCheck,
   SlidersHorizontal,
+  Languages,
 } from "lucide-react";
 import {
   Sidebar,
@@ -150,6 +151,8 @@ export const navItems: NavItem[] = [
   // yazabildiği için (EDITOR → 403), `/admin/telehealth/appointments` İLE AYNI yazma-hassas
   // görünürlük kuralı: EDITOR'a sidebar'da GÖSTERİLMEZ. 2026-10-30 — sayfa artık tema dışında acil
   // durum uyarısı, destek dilleri vb. de içerdiği için Tele-Sağlık grubunda "Ayarlar" adıyla.
+  // Paket AA — tercüman hesapları, rapor ve gizlilik taahhüdü metni (atama rezervasyon listesinden).
+  { href: "/admin/telehealth/interpreters", labelKey: "nav.telehealthInterpreters", icon: Languages, module: "telehealth", roles: ["ADMIN", "MANAGER"] },
   {
     href: "/admin/telehealth/settings",
     labelKey: "nav.telehealthSettings",

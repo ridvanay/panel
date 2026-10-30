@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CursorQuerySchema } from "../../schemas/common";
 import { NewPasswordSchema } from "../auth/auth.schemas";
-import { SiteRoleSchema, SiteUserStatusSchema } from "../../schemas/entities";
+import { AssignableSiteRoleSchema, SiteUserStatusSchema } from "../../schemas/entities";
 
 export const AdminUserIdParamSchema = z.object({
   userId: z.string().uuid(),
@@ -27,11 +27,11 @@ export const ListAdminUsersQuerySchema = CursorQuerySchema.extend({
 export const CreateAdminUserRequestSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  role: SiteRoleSchema.optional(),
+  role: AssignableSiteRoleSchema.optional(),
 });
 
 export const UpdateAdminUserRoleRequestSchema = z.object({
-  role: SiteRoleSchema,
+  role: AssignableSiteRoleSchema,
 });
 
 export const UpdateAdminUserStatusRequestSchema = z.object({

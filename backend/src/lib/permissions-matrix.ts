@@ -9,7 +9,8 @@
  * (§4), bu yüzden "izinli roller" listelerine hiçbir zaman eklenmezler.
  */
 export const PERMISSIONS_MATRIX = {
-  roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"] as const,
+  // Paket AA — INTERPRETER da hiçbir admin modülünde yer almaz (yalnızca kendi tercüman paneli).
+  roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER", "INTERPRETER"] as const,
   modules: [
     {
       // §6 — sayfa modülü üç katmanlıdır; bu matris en yaygın aksiyonların EŞİĞİNİ özetler

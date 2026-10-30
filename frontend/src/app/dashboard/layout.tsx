@@ -45,6 +45,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace("/admin");
       return;
     }
+    // Paket AA — tercüman yalnızca kendi paneline (`post-login-destination.ts` ile aynı kural).
+    if (user.role === "INTERPRETER") {
+      router.replace("/interpreter");
+      return;
+    }
     router.replace("/patient/appointments");
   }, [status, user, router]);
 

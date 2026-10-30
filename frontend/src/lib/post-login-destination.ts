@@ -65,6 +65,11 @@ export function resolvePostLoginPath(input: ResolvePostLoginDestinationInput): s
     if (isSafeInternalPath(input.next) && isAdminPortalPath(input.next)) return input.next;
     return "/admin";
   }
+  // Paket AA — tercüman yalnızca kendi paneline (`/interpreter`, dil öneki kabul edilir) gider.
+  if (input.role === "INTERPRETER") {
+    if (isSafeInternalPath(input.next) && /^(?:\/[a-z]{2}(?:-[a-z]{4})?)?\/interpreter(?:\/|$|\?)/.test(input.next ?? "")) return input.next!;
+    return "/interpreter";
+  }
 
   if (isSafeInternalPath(input.next) && !isDashboardPath(input.next)) return input.next;
   return PATIENT_DEFAULT_PATH;

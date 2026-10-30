@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldHalf, ShoppingBag, SquarePen, User as UserIcon, type LucideIcon } from "lucide-react";
+import { Languages, ShieldCheck, ShieldHalf, ShoppingBag, SquarePen, User as UserIcon, type LucideIcon } from "lucide-react";
 import type { SiteRole } from "@/lib/api/types";
 
 /**
@@ -35,5 +35,7 @@ export function getRoleBadgeInfo(user: { role: SiteRole }): RoleBadgeInfo {
       return { label: "Müşteri", icon: ShoppingBag, tone: "neutral", solid: false };
     case "USER":
       return { label: "Standart Üye", icon: UserIcon, tone: "neutral", solid: false };
+    case "INTERPRETER":
+      return { label: "Tercüman", icon: Languages, tone: "neutral", solid: false };
   }
 }

@@ -17,6 +17,8 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
   "/siparislerim",
   "/doctor",
   "/patient",
+  // Paket AA — tercüman paneli/görüşme ekranı takip edilmez.
+  "/interpreter",
   "/consultation",
   "/checkout",
   "/cart",

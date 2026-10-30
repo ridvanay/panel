@@ -237,6 +237,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
                 explicitConsentPage={explicitConsentPage}
                 intlLocale={contentLocaleToIntl(lang)}
                 telehealthDict={dict.telehealth}
+                interpreterLanguages={support?.interpreterIncluded ? support.languages.map(({ code, nativeName }) => ({ code, nativeName })) : []}
               />
             </div>
           </section>

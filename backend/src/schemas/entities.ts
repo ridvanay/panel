@@ -18,7 +18,12 @@ export const PageEditModeSchema = z.enum(["FREEFORM", "TEMPLATE"]);
 // MembershipRoleSchema (organizasyon bazlı) ile KARIŞTIRILMAMALI.
 // `.claude/architect-scope-rbac-5-tier.md` §1 — 5 kademeli rol (ADMIN → USER, ayrıcalıktan
 // azalan sırada; sıra bağlayıcıdır). `VIEWER` KALDIRILDI.
-export const SiteRoleSchema = z.enum(["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"]);
+export const SiteRoleSchema = z.enum(["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER", "INTERPRETER"]);
+/**
+ * Paket AA — genel kullanıcı yönetiminde (oluşturma / rol değiştirme) atanabilir roller. `INTERPRETER`
+ * yalnızca "Tercümanlar" ekranından, profiliyle birlikte verilir (profilsiz tercüman hesabı oluşmasın).
+ */
+export const AssignableSiteRoleSchema = z.enum(["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"]);
 // `PATCH /admin/users/{userId}/status` gövdesi (YAZMA) — BİLİNÇLİ OLARAK `DELETED` içermez,
 // silme YALNIZCA `DELETE /admin/users/{userId}` ile yapılır (bkz. AdminUserStatusSchema, OKUMA tarafı).
 export const SiteUserStatusSchema = z.enum(["ACTIVE", "SUSPENDED"]);

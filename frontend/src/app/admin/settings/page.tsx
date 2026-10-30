@@ -93,6 +93,7 @@ const ROLE_LETTERS: Record<SiteRole, string> = {
   EDITOR: "E",
   CUSTOMER: "C",
   USER: "U",
+  INTERPRETER: "T",
 };
 
 interface GeneralSettingsSnapshot {

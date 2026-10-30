@@ -51,6 +51,10 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RecordingConsentDialog } from "@/components/site/telehealth/recording-consent-dialog";
 import { QaListenerNotice, isQaListenerParticipant } from "@/components/site/telehealth/qa-listener-notice";
+// Paket AA — tercüman katılımı (ayrı dosyalar; bu dosyada yalnızca bağlantı noktaları).
+import { InterpreterPresence } from "@/components/site/interpreter/interpreter-presence";
+import { InterpreterPreJoinNotice } from "@/components/site/interpreter/interpreter-prejoin-notice";
+import { isInterpreterParticipant } from "@/components/site/interpreter/interpreter-participant";
 import { RecordingIndicator } from "@/components/site/telehealth/recording-indicator";
 import { RecordingControls } from "@/components/site/telehealth/recording-controls";
 import { cn } from "@/lib/utils";
@@ -545,11 +549,14 @@ function ConsultationStage() {
     { source: Track.Source.ScreenShare, withPlaceholder: false },
   ]);
   // Paket C — kalite kontrol dinleyicisi "karşı taraf" sayılmaz (bekleme odası/spotlight onu yok sayar).
-  const hasRemoteParticipant = participants.some((p) => !p.isLocal && !isQaListenerParticipant(p));
+  // Paket AA — tercüman da spotlight'a girmez; ayrı 3. kutuda gösterilir (`InterpreterPresence`).
+  const isCounterpart = (p: { isLocal: boolean; identity: string; metadata?: string }) =>
+    !p.isLocal && !isQaListenerParticipant(p) && !isInterpreterParticipant(p);
+  const hasRemoteParticipant = participants.some(isCounterpart);
 
   const remoteTrack =
-    tracks.find((t) => !t.participant.isLocal && !isQaListenerParticipant(t.participant) && t.source === Track.Source.ScreenShare) ??
-    tracks.find((t) => !t.participant.isLocal && !isQaListenerParticipant(t.participant) && t.source === Track.Source.Camera);
+    tracks.find((t) => isCounterpart(t.participant) && t.source === Track.Source.ScreenShare) ??
+    tracks.find((t) => isCounterpart(t.participant) && t.source === Track.Source.Camera);
   const localCameraTrack = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
 
   return (
@@ -775,6 +782,7 @@ function ConsultationVideoRoom({
       />
       <ConnectionStatusBadge />
       <QaListenerNotice />
+      <InterpreterPresence appointmentId={appointmentId} isDoctor={isDoctor} />
       <div className="absolute right-4 top-4 z-10">
         <RecordingIndicator status={recording?.status} />
       </div>
@@ -933,6 +941,7 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
         <p className="mt-1 text-sm text-foreground/60">
           {appointment.startsAt ? dateTimeFormatter.format(new Date(appointment.startsAt)) : "—"} · {appointment.patientName ?? "Hasta"}
         </p>
+        <InterpreterPreJoinNotice appointmentId={appointment.id} accessToken={accessToken} />
       </div>
 
       {meeting ? (
