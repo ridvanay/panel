@@ -262,3 +262,23 @@ export function renderEmailBlocksToHtml(blocks: unknown[], context: EmailRenderC
 
   return wrapEmailDocument(rows.join(""));
 }
+
+/**
+ * Paket AC — kurumsal kabuk (`lib/branded-email.ts`) içine konacak GÖVDE: blok satırları, logo
+ * başlığı (`logo-header`) ve zorunlu KVKK footer satırı OLMADAN (kabuk ikisini de kendisi verir;
+ * çift logo/çift footer olmaz). Kullanıcının kendi `footer` bloğu (adres/imza) gövdede kalır.
+ */
+export function renderEmailBlocksBody(blocks: unknown[], context: EmailRenderContext): string {
+  const rows: string[] = [];
+  for (const block of blocks) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    if (b.type === "logo-header") continue;
+    const data = (b.data && typeof b.data === "object" ? b.data : {}) as Record<string, unknown>;
+    const inner = renderBlockInner(b.type, data, context);
+    if (inner === null) continue;
+    rows.push(`<tr><td style="${cellStyle(resolveContainerStyle(b.style))}">${inner}</td></tr>`);
+  }
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join("")}</table>`;
+}
+

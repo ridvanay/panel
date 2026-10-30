@@ -69,3 +69,38 @@ export function duplicateTemplate(templateId: string) {
 export function testSendTemplate(templateId: string, input: TestSendEmailTemplateRequest = {}) {
   return apiFetch<TestSendEmailTemplateResponse>(`${BASE}/${templateId}/test-send`, { method: "POST", body: input });
 }
+
+// --- Paket AC — Sistem e-postaları önizleme ---------------------------------------------------
+
+export type SystemEmailAudience = "patient" | "user" | "staff";
+
+export interface SystemEmailListItem {
+  id: string;
+  label: string;
+  audience: SystemEmailAudience;
+  source: "template" | "code";
+  /** "9", "tr", "en", "tr+en" ya da "şablon" (admin'in yazdığı dil). */
+  languages: string;
+}
+
+export interface SystemEmailSample {
+  id: string;
+  locale: string;
+  subject: string;
+  html: string;
+  text: string;
+  available: boolean;
+}
+
+export function listSystemEmails() {
+  return apiFetch<{ locales: string[]; items: SystemEmailListItem[] }>(`${BASE}/system-previews`);
+}
+
+export function getSystemEmailSample(id: string, locale: string) {
+  return apiFetch<SystemEmailSample>(`${BASE}/system-previews/${encodeURIComponent(id)}`, { query: { locale } });
+}
+
+/** Örneği oturumdaki admin'in KENDİ adresine gönderir (gövde `to` kabul etmez). Rate limit: 3/dakika. */
+export function sendSystemEmailToSelf(id: string, locale: string) {
+  return apiFetch<TestSendEmailTemplateResponse>(`${BASE}/system-previews/${encodeURIComponent(id)}/send-self`, { method: "POST", body: { locale } });
+}

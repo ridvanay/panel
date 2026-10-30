@@ -116,7 +116,8 @@ export async function sendNotificationBestEffort(app: FastifyInstance, form: Con
       submission_url: `${env.FRONTEND_URL}/admin/contact/submissions/${submission.id}`,
     };
 
-    await sendEmailUsingTemplateRow(app, template, form.notifyEmail, values);
+    // Paket AC — iç bildirim: sade (personel) footer.
+    await sendEmailUsingTemplateRow(app, template, form.notifyEmail, values, { audience: "staff" });
 
     await app.prisma.contactSubmission.update({
       where: { id: submission.id },

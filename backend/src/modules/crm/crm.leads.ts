@@ -3,7 +3,7 @@ import type { CrmLead, CrmLeadChannel, CrmLeadStatus, Prisma } from "@prisma/cli
 import { z } from "zod";
 import { env } from "../../config/env";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
-import { sendMail } from "../../lib/mail";
+import { sendBrandedMail } from "../../lib/branded-mail";
 import { readCrmSettings } from "./crm.settings";
 import { sanitizeText } from "./crm.privacy";
 
@@ -182,22 +182,25 @@ export async function loadAssigneeNames(app: FastifyInstance): Promise<Map<strin
  * Yeni talep e-postası — BEST-EFFORT. İçerik bilinçli olarak ASGARİ: kanal + panel bağlantısı. Ad,
  * telefon ve mesaj (sağlık bilgisi içerebilir) e-postaya YAZILMAZ; ayrıntılar yalnızca panelde (2FA).
  */
+/** Personel bildirimi gövdesi — yalnızca kanal + panel bağlantısı; kişi bilgisi YOK. */
+export function buildNewLeadNotice(leads: Pick<CrmLead, "id" | "channel">[]): { subject: string; bodyHtml: string } {
+  const base = env.FRONTEND_URL.replace(/\/$/, "");
+  const items = leads
+    .slice(0, 20)
+    .map((l) => `<li>${CRM_LEAD_CHANNEL_LABELS[l.channel]} — <a href="${base}/admin/crm/leads/${l.id}">Talebi aç</a></li>`)
+    .join("");
+  const subject = leads.length === 1 ? `Yeni talep: ${CRM_LEAD_CHANNEL_LABELS[leads[0]!.channel]}` : `${leads.length} yeni talep`;
+  return { subject, bodyHtml: `<p>CRM'e yeni talep düştü. Kişi bilgileri güvenlik nedeniyle e-postada gösterilmez.</p><ul>${items}</ul>` };
+}
+
 export async function notifyNewLeads(app: FastifyInstance, leads: Pick<CrmLead, "id" | "channel" | "candidate">[]): Promise<void> {
   const real = leads.filter((l) => !l.candidate);
   if (real.length === 0) return;
   const settings = await readCrmSettings(app.prisma);
   if (!settings.notificationEmail) return;
-  const base = env.FRONTEND_URL.replace(/\/$/, "");
-  const items = real
-    .slice(0, 20)
-    .map((l) => `<li>${CRM_LEAD_CHANNEL_LABELS[l.channel]} — <a href="${base}/admin/crm/leads/${l.id}">Talebi aç</a></li>`)
-    .join("");
   try {
-    await sendMail(app, {
-      to: settings.notificationEmail,
-      subject: real.length === 1 ? `Yeni talep: ${CRM_LEAD_CHANNEL_LABELS[real[0]!.channel]}` : `${real.length} yeni talep`,
-      html: `<p>CRM'e yeni talep düştü. Kişi bilgileri güvenlik nedeniyle e-postada gösterilmez.</p><ul>${items}</ul>`,
-    });
+    const { subject, bodyHtml } = buildNewLeadNotice(real);
+    await sendBrandedMail(app, { to: settings.notificationEmail, subject, preheader: subject, bodyHtml, locale: "tr", audience: "staff" });
   } catch (err) {
     app.log.error({ err }, "CRM yeni talep bildirimi gönderilemedi");
   }

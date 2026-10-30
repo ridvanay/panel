@@ -1,3 +1,4 @@
+import { renderBrandedPreview } from "../../lib/branded-mail";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { authenticate } from "../../middleware/authenticate";
@@ -52,8 +53,8 @@ function assertEmailEnabledHasHost(finalEnabled: boolean, finalHost: string | nu
   }
 }
 
-const TEST_EMAIL_SUBJECT = "SMTP Yapılandırma Testi";
-const TEST_EMAIL_HTML =
+export const TEST_EMAIL_SUBJECT = "SMTP Yapılandırma Testi";
+export const TEST_EMAIL_HTML =
   "<p>Bu e-posta, admin panelinden kaydettiğiniz SMTP yapılandırmasının çalıştığını doğrulamak için gönderilmiştir.</p>";
 
 /**
@@ -204,11 +205,14 @@ export async function adminEmailSettingsRoutes(app: FastifyInstance) {
         // de ardışık çalıştırılır (§4.2/§4.3).
         const transporter = await buildTransporterFromEmailSettingsRow(existing);
         await transporter.verify();
+        // Paket AC — SMTP testi de kurumsal kabukla (gerçek e-postaların görünümünü doğrular).
+        const branded = await renderBrandedPreview(app, { locale: "tr", audience: "staff", preheader: TEST_EMAIL_SUBJECT, bodyHtml: TEST_EMAIL_HTML });
         const info = await transporter.sendMail({
           from: resolveFromHeader(existing),
           to: request.user!.email,
           subject: TEST_EMAIL_SUBJECT,
-          html: TEST_EMAIL_HTML,
+          html: branded.html,
+          text: branded.text,
         });
         messageId = String(info.messageId);
       } catch (err) {

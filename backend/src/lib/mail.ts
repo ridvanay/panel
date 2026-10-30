@@ -29,6 +29,10 @@ export interface SendMailInput {
   to: string;
   subject: string;
   html: string;
+  /** Paket AC — `text/plain` alternatifi (spam puanı ve metin istemcileri). */
+  text?: string;
+  /** Paket AC — yanıtlar destek adresine gitsin. */
+  replyTo?: string;
 }
 
 export interface SendMailResult {
@@ -205,7 +209,10 @@ async function getTransporter(app: FastifyInstance): Promise<{ transporter: Tran
   return { transporter, from: config.from };
 }
 
-/** Ham SMTP gönderimi — şablon/render işini bilmez, sadece `to/subject/html` gönderir. */
+/**
+ * Ham SMTP gönderimi — şablon/render işini bilmez. Paket AC: modüller bunu DOĞRUDAN çağırmaz; tek
+ * çağıran `lib/branded-mail.ts::sendBrandedMail` (kurumsal kabuk) — bkz. statik tarama testi.
+ */
 export async function sendMail(app: FastifyInstance, input: SendMailInput): Promise<SendMailResult> {
   try {
     const { transporter, from } = await getTransporter(app);
@@ -214,6 +221,8 @@ export async function sendMail(app: FastifyInstance, input: SendMailInput): Prom
       to: input.to,
       subject: input.subject,
       html: input.html,
+      ...(input.text ? { text: input.text } : {}),
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
     });
 
     const previewUrl = usingEtherealAccount ? nodemailer.getTestMessageUrl(info) || undefined : undefined;

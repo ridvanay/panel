@@ -18,7 +18,7 @@ import { env } from "../../config/env";
 import { createPasswordResetToken } from "../auth/auth.service";
 import { sendPasswordResetEmail } from "../email-templates/email-templates.service";
 import { toCsv } from "../reports/reports.format";
-import { sendMail } from "../../lib/mail";
+import { sendBrandedMail } from "../../lib/branded-mail";
 import { mergeTelehealthSettings } from "./lib/emergency-notice";
 import { removeRoomParticipant } from "./lib/livekit";
 import {
@@ -504,7 +504,7 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
       });
       let emailStatus: "sent" | "failed" = "failed";
       try {
-        await sendMail(app, { to: user.email, subject: granted.subject, html: granted.html });
+        await sendBrandedMail(app, { to: user.email, subject: granted.subject, preheader: granted.subject, bodyHtml: granted.html, locale: granted.locale, audience: granted.audience, ...(granted.cta ? { cta: granted.cta } : {}) });
         emailStatus = "sent";
       } catch (err) {
         // Alıcı adresi loga düşmesin diye yalnızca hata mesajı.

@@ -12,9 +12,11 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { EmailTemplateEditorMode, EmailTemplatePurpose, SiteSettings } from "@prisma/client";
-import { sendMail, type SendMailResult } from "../../lib/mail";
+import type { SendMailResult } from "../../lib/mail";
+import { renderBrandedPreview, sendBrandedMail } from "../../lib/branded-mail";
+import type { EmailAudience } from "../../lib/branded-email";
 import { renderTemplate } from "../../lib/template-render";
-import { renderComplianceFooterFragment, renderEmailBlocksToHtml, type EmailRenderContext } from "../../lib/email-renderer";
+import { renderEmailBlocksBody, type EmailRenderContext } from "../../lib/email-renderer";
 import { resolveTemplateVariables, type EmailCustomVariable } from "../../lib/email-variables";
 import { NotFoundError } from "../../lib/errors";
 import { env } from "../../config/env";
@@ -81,7 +83,8 @@ export async function sendEmailUsingTemplateRow(
   app: FastifyInstance,
   template: { purpose: EmailTemplatePurpose; editorMode: EmailTemplateEditorMode; subject: string; bodyHtml: string; blocks: unknown; customVariables: unknown },
   to: string,
-  values: Record<string, string>
+  values: Record<string, string>,
+  opts: TemplateSendOptions = {}
 ): Promise<SendMailResult> {
   const definitions = await resolveTemplateVariables(app, template.purpose, (template.customVariables as unknown as EmailCustomVariable[]) ?? []);
   const allowedKeys = definitions.map((v) => v.key);
@@ -94,17 +97,47 @@ export async function sendEmailUsingTemplateRow(
   };
 
   const subject = renderTemplate(template.subject, mergedValues, allowedKeys);
-  // Uyum footer'ı (§10.16.4) editorMode'dan BAĞIMSIZ olarak zorunludur — RAW modu (5 sistem
-  // şablonu: WELCOME/PASSWORD_RESET/SYSTEM_ANNOUNCEMENT/ORDER_CONFIRMATION/ORG_INVITATION)
-  // `renderEmailBlocksToHtml`'i hiç çağırmadığı için footer'ı AYRICA eklemek gerekir — aksi halde
-  // en sık gönderilen sistem e-postaları hiçbir zaman hukuki sayfa/site adı linki taşımazdı.
+  // Paket AC — gövde (RAW ya da blok) kurumsal kabuğa girer; logo, KVKK footer'ı ve düz metin
+  // sürümü kabuktan gelir (editorMode'dan bağımsız — §10.16.4 uyum garantisi korunur).
   const context = await buildEmailRenderContext(app, settings);
-  const html =
+  const bodyHtml =
     template.editorMode === "RAW"
-      ? renderTemplate(template.bodyHtml, mergedValues, allowedKeys) + renderComplianceFooterFragment(context)
-      : renderTemplate(renderEmailBlocksToHtml((template.blocks as unknown[]) ?? [], context), mergedValues, allowedKeys);
+      ? renderTemplate(template.bodyHtml, mergedValues, allowedKeys)
+      : renderTemplate(renderEmailBlocksBody((template.blocks as unknown[]) ?? [], context), mergedValues, allowedKeys);
 
-  return sendMail(app, { to, subject, html });
+  const defaultLocale = (await getLocaleSet(app)).default.code;
+  return sendBrandedMail(app, {
+    to,
+    subject,
+    preheader: subject,
+    bodyHtml,
+    locale: opts.locale ?? defaultLocale,
+    // Şablon metni tek dilde (site varsayılanı) yazılır — gövde yönü ona göre.
+    bodyLocale: defaultLocale,
+    audience: opts.audience ?? audienceForPurpose(template.purpose),
+  });
+}
+
+/** Paket AC — sistem şablonu e-postasının alıcı türü ve dili (footer içeriği bunlara göre). */
+export interface TemplateSendOptions {
+  locale?: string;
+  audience?: EmailAudience;
+}
+
+/** Amaç → varsayılan alıcı türü. Doktora giden randevu e-postaları çağıranda `audience: "staff"` ile ezilir. */
+export function audienceForPurpose(purpose: EmailTemplatePurpose): EmailAudience {
+  switch (purpose) {
+    case "CONTACT_FORM_NOTIFICATION":
+    case "MATCHER_NEW_LEAD":
+      return "staff";
+    case "APPOINTMENT_CONFIRMATION":
+    case "APPOINTMENT_RESCHEDULED":
+    case "APPOINTMENT_REMINDER_60M":
+    case "APPOINTMENT_REMINDER_30M":
+      return "patient";
+    default:
+      return "user";
+  }
 }
 
 /**
@@ -116,7 +149,8 @@ export async function sendTemplateEmail(
   app: FastifyInstance,
   purpose: EmailTemplatePurpose,
   to: string,
-  values: Record<string, string>
+  values: Record<string, string>,
+  opts: TemplateSendOptions = {}
 ): Promise<SendMailResult> {
   const template = await app.prisma.emailTemplate.findFirst({ where: { purpose, isActive: true } });
   if (!template) {
@@ -126,7 +160,7 @@ export async function sendTemplateEmail(
     throw new NotFoundError(`Aktif e-posta şablonu bulunamadı (amaç: ${purpose}).`);
   }
 
-  return sendEmailUsingTemplateRow(app, template, to, values);
+  return sendEmailUsingTemplateRow(app, template, to, values, opts);
 }
 
 export interface RenderTemplatePreviewInput {
@@ -141,6 +175,8 @@ export interface RenderTemplatePreviewInput {
 export interface RenderedEmailTemplate {
   renderedSubject: string;
   renderedHtml: string;
+  /** Paket AC — `text/plain` sürümü. */
+  renderedText: string;
 }
 
 /**
@@ -152,7 +188,9 @@ export interface RenderedEmailTemplate {
 export async function renderTemplatePreviewOrTest(
   app: FastifyInstance,
   input: RenderTemplatePreviewInput,
-  overrideValues: Record<string, string> = {}
+  overrideValues: Record<string, string> = {},
+  locale?: string,
+  audience?: EmailAudience
 ): Promise<RenderedEmailTemplate> {
   const definitions = await resolveTemplateVariables(app, input.purpose, input.customVariables ?? []);
   const context = await buildEmailRenderContext(app);
@@ -169,17 +207,22 @@ export async function renderTemplatePreviewOrTest(
   }
 
   const allowedKeys = definitions.map((d) => d.key);
-  // RAW modu için de uyum footer'ı eklenir (bkz. `sendEmailUsingTemplateRow` üzerindeki not) —
-  // aksi halde önizleme, gerçekte gönderilecek olandan (footer'sız) daha eksik gösterirdi.
-  const html =
-    input.editorMode === "RAW"
-      ? (input.bodyHtml ?? "") + renderComplianceFooterFragment(context)
-      : renderEmailBlocksToHtml(input.blocks ?? [], context);
-
-  return {
-    renderedSubject: renderTemplate(input.subject, values, allowedKeys),
-    renderedHtml: renderTemplate(html, values, allowedKeys),
-  };
+  // Paket AC — önizleme ve test gönderimi, gerçekte gidecek olanla AYNI kurumsal kabukla.
+  const body = renderTemplate(
+    input.editorMode === "RAW" ? (input.bodyHtml ?? "") : renderEmailBlocksBody(input.blocks ?? [], context),
+    values,
+    allowedKeys
+  );
+  const renderedSubject = renderTemplate(input.subject, values, allowedKeys);
+  const defaultLocale = (await getLocaleSet(app)).default.code;
+  const branded = await renderBrandedPreview(app, {
+    locale: locale ?? defaultLocale,
+    bodyLocale: defaultLocale,
+    audience: audience ?? audienceForPurpose(input.purpose),
+    preheader: renderedSubject,
+    bodyHtml: body,
+  });
+  return { renderedSubject, renderedHtml: branded.html, renderedText: branded.text };
 }
 
 /** Kayıt (register) akışı sonrasında gönderilen karşılama maili — bkz. auth.service.ts::register. */

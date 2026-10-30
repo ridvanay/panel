@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
-import { AlertCircle, Lock, Mail, MoreVertical, Plus } from "lucide-react";
+import { AlertCircle, Eye, LayoutList, Lock, Mail, MoreVertical, Plus } from "lucide-react";
 import * as emailTemplatesApi from "@/lib/api/email-templates";
 import type { EmailTemplatePurpose, EmailTemplateSummary } from "@/lib/api/types";
 import { EMAIL_PURPOSE_LABEL, EMAIL_PURPOSES } from "@/lib/email-blocks/purpose-labels";
@@ -23,6 +23,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PageHeading } from "@/components/admin/page-heading";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SystemEmailPreviews } from "@/components/admin/email-editor/system-email-previews";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 function relativeDate(iso: string): { relative: string; absolute: string } {
@@ -174,67 +176,130 @@ export default function EmailTemplatesListPage() {
         }
       />
 
-      {loadError && (
-        <Alert variant="error">
-          <span className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {loadError}
-          </span>
-        </Alert>
-      )}
+      <Tabs defaultValue="templates">
+        <TabsList variant="line">
+          <TabsTrigger value="templates">
+            <LayoutList className="h-3.5 w-3.5" />
+            Şablonlar
+          </TabsTrigger>
+          <TabsTrigger value="system-previews">
+            <Eye className="h-3.5 w-3.5" />
+            Sistem e-postaları önizleme
+          </TabsTrigger>
+        </TabsList>
 
-      {!loadError && !loaded && (
-        <div className="flex justify-center py-12">
-          <Spinner className="h-6 w-6 text-primary" />
-        </div>
-      )}
+        <TabsContent value="templates" className="mt-6 space-y-6 outline-none">
+          {loadError && (
+            <Alert variant="error">
+              <span className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {loadError}
+              </span>
+            </Alert>
+          )}
 
-      {!loadError && loaded && templates && templates.length === 0 && (
-        <EmptyState icon={Mail} title="Henüz e-posta şablonu yok" description='Sağ üstteki "Yeni Şablon" ile başlayın.' />
-      )}
+          {!loadError && !loaded && (
+            <div className="flex justify-center py-12">
+              <Spinner className="h-6 w-6 text-primary" />
+            </div>
+          )}
 
-      {!loadError && loaded && templates && templates.length > 0 && (
-        <>
-          {/* Masaüstü (≥768px) */}
-          <div className="hidden overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
-            <Table>
-              <TableHeader className="bg-muted">
-                <TableRow>
-                  <TableHead className="w-auto">Ad</TableHead>
-                  <TableHead className="w-48">Kullanıldığı Yer</TableHead>
-                  <TableHead className="w-24">Durum</TableHead>
-                  <TableHead className="w-40">Son Düzenleme</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+          {!loadError && loaded && templates && templates.length === 0 && (
+            <EmptyState icon={Mail} title="Henüz e-posta şablonu yok" description='Sağ üstteki "Yeni Şablon" ile başlayın.' />
+          )}
+
+          {!loadError && loaded && templates && templates.length > 0 && (
+            <>
+              {/* Masaüstü (≥768px) */}
+              <div className="hidden overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
+                <Table>
+                  <TableHeader className="bg-muted">
+                    <TableRow>
+                      <TableHead className="w-auto">Ad</TableHead>
+                      <TableHead className="w-48">Kullanıldığı Yer</TableHead>
+                      <TableHead className="w-24">Durum</TableHead>
+                      <TableHead className="w-40">Son Düzenleme</TableHead>
+                      <TableHead className="w-10" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {templates.map((template) => {
+                      const date = relativeDate(template.updatedAt);
+                      const busy = busyId === template.id;
+                      return (
+                        <TableRow key={template.id} className="even:bg-muted hover:bg-primary/8 dark:hover:bg-primary/10">
+                          <TableCell className="w-auto">
+                            <Link href={`/admin/notifications/templates/${template.id}`} className="admin-link inline-flex items-center gap-1.5">
+                              {template.name}
+                              {template.isSystem && <Lock className="h-3.5 w-3.5 text-foreground/40" aria-label="Sistem şablonu — silinemez" />}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="w-48">
+                            <Badge tone="neutral" size="sm">
+                              {EMAIL_PURPOSE_LABEL[template.purpose]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="w-24">
+                            <Badge tone={template.isActive ? "success" : "neutral"} solid size="lg">
+                              {template.isActive ? "Aktif" : "Pasif"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="w-40" title={date.absolute}>
+                            {date.relative}
+                          </TableCell>
+                          <TableCell className="w-10 text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`${template.name} için işlemler`} />}>
+                                <MoreVertical className="h-4 w-4" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem render={<Link href={`/admin/notifications/templates/${template.id}`} />}>Düzenle</DropdownMenuItem>
+                                <DropdownMenuItem disabled={busy} onClick={() => handleDuplicate(template)}>
+                                  Kopyala
+                                </DropdownMenuItem>
+                                {!template.isActive && (
+                                  <DropdownMenuItem disabled={busy} onClick={() => handleActivate(template)}>
+                                    Aktifleştir
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={busy || template.isSystem || template.isActive}
+                                  title={
+                                    template.isSystem
+                                      ? "Sistem şablonu silinemez"
+                                      : template.isActive
+                                        ? "Önce başka bir şablonu aktifleştirin"
+                                        : undefined
+                                  }
+                                  onClick={() => setDeleteTarget(template)}
+                                >
+                                  Sil
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobil (<768px) */}
+              <div className="space-y-3 md:hidden">
                 {templates.map((template) => {
                   const date = relativeDate(template.updatedAt);
                   const busy = busyId === template.id;
                   return (
-                    <TableRow key={template.id} className="even:bg-muted hover:bg-primary/8 dark:hover:bg-primary/10">
-                      <TableCell className="w-auto">
-                        <Link href={`/admin/notifications/templates/${template.id}`} className="admin-link inline-flex items-center gap-1.5">
+                    <div key={template.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={`/admin/notifications/templates/${template.id}`} className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-primary">
                           {template.name}
                           {template.isSystem && <Lock className="h-3.5 w-3.5 text-foreground/40" aria-label="Sistem şablonu — silinemez" />}
                         </Link>
-                      </TableCell>
-                      <TableCell className="w-48">
-                        <Badge tone="neutral" size="sm">
-                          {EMAIL_PURPOSE_LABEL[template.purpose]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="w-24">
-                        <Badge tone={template.isActive ? "success" : "neutral"} solid size="lg">
-                          {template.isActive ? "Aktif" : "Pasif"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="w-40" title={date.absolute}>
-                        {date.relative}
-                      </TableCell>
-                      <TableCell className="w-10 text-right">
                         <DropdownMenu>
-                          <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`${template.name} için işlemler`} />}>
+                          <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label={`${template.name} için işlemler`} />}>
                             <MoreVertical className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
@@ -247,79 +312,35 @@ export default function EmailTemplatesListPage() {
                                 Aktifleştir
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem
-                              variant="destructive"
-                              disabled={busy || template.isSystem || template.isActive}
-                              title={
-                                template.isSystem
-                                  ? "Sistem şablonu silinemez"
-                                  : template.isActive
-                                    ? "Önce başka bir şablonu aktifleştirin"
-                                    : undefined
-                              }
-                              onClick={() => setDeleteTarget(template)}
-                            >
+                            <DropdownMenuItem variant="destructive" disabled={busy || template.isSystem || template.isActive} onClick={() => setDeleteTarget(template)}>
                               Sil
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <Badge tone="neutral" size="sm">
+                          {EMAIL_PURPOSE_LABEL[template.purpose]}
+                        </Badge>
+                        <Badge tone={template.isActive ? "success" : "neutral"} solid size="lg">
+                          {template.isActive ? "Aktif" : "Pasif"}
+                        </Badge>
+                        <span className="text-xs text-foreground/60" title={date.absolute}>
+                          {date.relative}
+                        </span>
+                      </div>
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
-          </div>
+              </div>
+            </>
+          )}
+        </TabsContent>
 
-          {/* Mobil (<768px) */}
-          <div className="space-y-3 md:hidden">
-            {templates.map((template) => {
-              const date = relativeDate(template.updatedAt);
-              const busy = busyId === template.id;
-              return (
-                <div key={template.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <Link href={`/admin/notifications/templates/${template.id}`} className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-primary">
-                      {template.name}
-                      {template.isSystem && <Lock className="h-3.5 w-3.5 text-foreground/40" aria-label="Sistem şablonu — silinemez" />}
-                    </Link>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label={`${template.name} için işlemler`} />}>
-                        <MoreVertical className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem render={<Link href={`/admin/notifications/templates/${template.id}`} />}>Düzenle</DropdownMenuItem>
-                        <DropdownMenuItem disabled={busy} onClick={() => handleDuplicate(template)}>
-                          Kopyala
-                        </DropdownMenuItem>
-                        {!template.isActive && (
-                          <DropdownMenuItem disabled={busy} onClick={() => handleActivate(template)}>
-                            Aktifleştir
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem variant="destructive" disabled={busy || template.isSystem || template.isActive} onClick={() => setDeleteTarget(template)}>
-                          Sil
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <Badge tone="neutral" size="sm">
-                      {EMAIL_PURPOSE_LABEL[template.purpose]}
-                    </Badge>
-                    <Badge tone={template.isActive ? "success" : "neutral"} solid size="lg">
-                      {template.isActive ? "Aktif" : "Pasif"}
-                    </Badge>
-                    <span className="text-xs text-foreground/60" title={date.absolute}>
-                      {date.relative}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+        <TabsContent value="system-previews" className="mt-6 outline-none">
+          <SystemEmailPreviews />
+        </TabsContent>
+      </Tabs>
 
       <NewTemplateDialog open={newDialogOpen} onOpenChange={setNewDialogOpen} />
 

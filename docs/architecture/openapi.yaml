@@ -4374,6 +4374,111 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  # ---- Paket AC — Sistem e-postaları önizleme (ADMIN veya MANAGER) ----
+
+  /admin/notifications/templates/system-previews:
+    get:
+      tags: [EmailTemplates]
+      summary: Sistemin gönderdiği bütün e-posta türlerinin listesi (şablonlu + koda gömülü)
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [locales, items]
+                        properties:
+                          locales: { type: array, items: { type: string } }
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              required: [id, label, audience, source, languages]
+                              properties:
+                                id: { type: string, example: "code:matcher-confirmation" }
+                                label: { type: string }
+                                audience: { type: string, enum: [patient, user, staff] }
+                                source: { type: string, enum: [template, code] }
+                                languages: { type: string, description: '"9", "tr", "en", "tr+en" veya "şablon"' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/notifications/templates/system-previews/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, maxLength: 80 } }
+    get:
+      tags: [EmailTemplates]
+      summary: Bir sistem e-postasını örnek veriyle, seçilen dilde, kurumsal kabukla üretir
+      description: Örnek veriler uydurmadır; gerçek kullanıcı/hasta verisi okunmaz. Rate limit `EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT`.
+      parameters:
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [en, tr, de, es, fr, ar, ru, ro, sr-latn], default: tr } }
+      responses:
+        "200":
+          description: Önizleme
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [id, locale, subject, html, text, available]
+                        properties:
+                          id: { type: string }
+                          locale: { type: string }
+                          subject: { type: string }
+                          html: { type: string }
+                          text: { type: string, description: text/plain sürümü }
+                          available: { type: boolean, description: "Şablonlu e-postada aktif şablon yoksa false" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/notifications/templates/system-previews/{id}/send-self:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, maxLength: 80 } }
+    post:
+      tags: [EmailTemplates]
+      summary: Sistem e-postası örneğini oturumdaki kullanıcının KENDİ adresine gönderir
+      description: >
+        Gövde `to` kabul etmez; alıcı her zaman isteği yapan kullanıcıdır. Konu `[Test] ` önekiyle
+        gider. Rate limit 3/dakika (`EMAIL_TEST_SEND_RATE_LIMIT`). Audit: `notifications.system_email_test_send`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale: { type: string, enum: [en, tr, de, es, fr, ar, ru, ro, sr-latn], default: tr }
+      responses:
+        "200":
+          description: Gönderildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TestSendEmailTemplateResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: "SMTP gönderimi başarısız (`EMAIL_DELIVERY_FAILED`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
   # ---- §10.16 İletişim Formu — ADMIN ----
 
   /admin/contact/form:

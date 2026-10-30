@@ -35,6 +35,11 @@ function fakeApp(overrides: {
       page: { findMany: vi.fn().mockResolvedValue([]) },
       locale: { findMany: vi.fn().mockResolvedValue([]) },
       contactFormField: { findMany: vi.fn().mockResolvedValue([]) },
+      // Paket AC — kurumsal kabuk bağlamı (loadEmailBrandContext)
+      siteAppearance: { findUnique: vi.fn().mockResolvedValue(null) },
+      contactForm: { findUnique: vi.fn().mockResolvedValue(null) },
+      siteModule: { findUnique: vi.fn().mockResolvedValue(null) },
+      contentSlug: { findMany: vi.fn().mockResolvedValue([]) },
     },
   } as unknown as import("fastify").FastifyInstance;
 }

@@ -13,6 +13,14 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Changed
 
+- **`feat(email)`: Paket AC — Kurumsal e-posta kabuğu (2026-10-31).** Sistemin gönderdiği bütün
+  e-postalar (şablonlu ve koda gömülü) tek kabuktan geçer (`lib/branded-email.ts`,
+  `lib/branded-mail.ts::sendBrandedMail`): logo (yoksa metin), marka rengi şeridi, 600 px tablo,
+  inline CSS, `dir=rtl`, bulletproof buton, preheader, 9 dilde footer (hasta e-postalarında 112 notu;
+  personel/doktor e-postalarında sade footer), `text/plain` sürümü ve Reply-To = iletişim sayfası
+  adresi. E-posta metinleri değişmedi. Admin → Bildirimler'e "Sistem e-postaları önizleme" sekmesi
+  ve "Kendime test gönder" eklendi (`/admin/notifications/templates/system-previews*`). Migration yok.
+
 - **`chore`: Paket H — Node 20 → Node 22 (2026-10-19).** Backend/frontend Docker imajları
   `node:22-alpine`, CI (`ci.yml`) ve deploy (`deploy.yml`) iş akışları Node 22. Yalnızca çalışma
   zamanı sürümü değişti; uygulama kodu, bağımlılıklar (`package*.json`), migration, docker-compose ve

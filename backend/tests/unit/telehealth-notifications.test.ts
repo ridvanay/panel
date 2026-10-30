@@ -27,6 +27,12 @@ const sendMailMock = vi.fn();
 vi.mock("../../src/lib/mail", () => ({
   sendMail: (...args: unknown[]) => sendMailMock(...args),
 }));
+// Paket AC — yedek e-posta artık `sendBrandedMail` (kurumsal kabuk) ile gider; burada gövde
+// (`bodyHtml`) `html` olarak aynı mock'a aktarılır, kabuk ayrıca branded-email testlerinde doğrulanır.
+vi.mock("../../src/lib/branded-mail", () => ({
+  sendBrandedMail: (_app: unknown, input: { to: string; subject: string; bodyHtml: string; audience: string }) =>
+    sendMailMock(_app, { to: input.to, subject: input.subject, html: input.bodyHtml, audience: input.audience }),
+}));
 
 import { NotFoundError } from "../../src/lib/errors";
 import { resendBookingAccessLink, triggerAppointmentConfirmationEmail } from "../../src/modules/telehealth/lib/notifications";

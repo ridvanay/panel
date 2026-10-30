@@ -4,10 +4,9 @@ import { env } from "../../../config/env";
 import { getLocaleSet } from "../../../lib/localization";
 import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
 import { NotFoundError } from "../../../lib/errors";
-import { sendMail } from "../../../lib/mail";
+import { sendBrandedMail } from "../../../lib/branded-mail";
 import { renderTemplate } from "../../../lib/template-render";
-import { renderComplianceFooterFragment } from "../../../lib/email-renderer";
-import { sendTemplateEmail, buildEmailRenderContext } from "../../email-templates/email-templates.service";
+import { sendTemplateEmail } from "../../email-templates/email-templates.service";
 import { formatDoctorSlots, formatPatientRanges } from "../../../lib/dual-time";
 import { doctorDisplayName } from "../../../lib/doctor-display-name";
 
@@ -26,10 +25,10 @@ import { doctorDisplayName } from "../../../lib/doctor-display-name";
  * satırı hâlâ EKSİK sayılır ve `app.log.error` HER ZAMAN (fallback başarılı olsa DA) çağrılır ki
  * ops bunu fark edip gerçek düzeltmeyi (seed) uygulasın — bu yüzden "sessiz" bir fallback DEĞİL.
  */
-const FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT = "Your appointment is confirmed";
-const FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML =
+export const FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT = "Your appointment is confirmed";
+export const FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML =
   '<p>Hello {{patient_name}},</p><p>{{status_message}}</p><p>Booking Number: <strong>{{booking_number}}</strong></p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href="{{join_link}}">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href="{{magic_link}}">View My Booking</a></p>';
-const FALLBACK_APPOINTMENT_CONFIRMATION_KEYS = [
+export const FALLBACK_APPOINTMENT_CONFIRMATION_KEYS = [
   "patient_name",
   "status_message",
   "booking_number",
@@ -141,11 +140,15 @@ export async function triggerAppointmentConfirmationEmail(
         { bookingId: booking.id },
         "Aktif APPOINTMENT_CONFIRMATION e-posta şablonu bulunamadı (muhtemelen `npm run seed` bu ortamda çalıştırılmadı) — koda gömülü yedek şablonla gönderiliyor, DB satırı YİNE DE eksik sayılmalı."
       );
-      const context = await buildEmailRenderContext(app);
-      const html =
-        renderTemplate(FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML, values, FALLBACK_APPOINTMENT_CONFIRMATION_KEYS) +
-        renderComplianceFooterFragment(context);
-      await sendMail(app, { to: booking.patientEmail, subject: FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT, html });
+      // Paket AC — yedek gövde de kurumsal kabukla (logo, KVKK footer'ı, 112 notu, düz metin).
+      await sendBrandedMail(app, {
+        to: booking.patientEmail,
+        subject: FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT,
+        preheader: FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT,
+        bodyHtml: renderTemplate(FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML, values, FALLBACK_APPOINTMENT_CONFIRMATION_KEYS),
+        locale: (await getLocaleSet(app)).default.code,
+        audience: "patient",
+      });
     }
   } catch (err) {
     app.log.error({ err, bookingId: booking.id }, "Randevu onay e-postası gönderilemedi");
@@ -220,13 +223,19 @@ export async function triggerAppointmentRescheduledEmail(
     if (doctorUserId) {
       const doctorUser = await app.prisma.user.findUnique({ where: { id: doctorUserId }, select: { email: true } });
       if (doctorUser) {
-        await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", doctorUser.email, {
-          recipient_name: doctorFullName,
-          booking_number: bookingNumber,
-          old_slot_summary: formatDoctorSlots([oldStartsAt], doctorTimeZone, patientTimeZone),
-          new_slot_summary: formatDoctorSlots([newStartsAt], doctorTimeZone, patientTimeZone),
-          reason: reasonValue,
-        });
+        await sendTemplateEmail(
+          app,
+          "APPOINTMENT_RESCHEDULED",
+          doctorUser.email,
+          {
+            recipient_name: doctorFullName,
+            booking_number: bookingNumber,
+            old_slot_summary: formatDoctorSlots([oldStartsAt], doctorTimeZone, patientTimeZone),
+            new_slot_summary: formatDoctorSlots([newStartsAt], doctorTimeZone, patientTimeZone),
+            reason: reasonValue,
+          },
+          { audience: "staff" }
+        );
       }
     }
   } catch (err) {
@@ -319,13 +328,19 @@ export async function triggerAppointmentReminderEmail(
     if (doctorUserId) {
       const doctorUser = await app.prisma.user.findUnique({ where: { id: doctorUserId }, select: { email: true } });
       if (doctorUser) {
-        await sendTemplateEmail(app, purpose, doctorUser.email, {
-          recipient_name: doctorFullName,
-          booking_number: bookingNumber,
-          doctor_name: doctorNameFormatted,
-          slot_summary: doctorSlotSummary,
-          ...(doctorJoinLink ? { join_link: doctorJoinLink } : {}),
-        });
+        await sendTemplateEmail(
+          app,
+          purpose,
+          doctorUser.email,
+          {
+            recipient_name: doctorFullName,
+            booking_number: bookingNumber,
+            doctor_name: doctorNameFormatted,
+            slot_summary: doctorSlotSummary,
+            ...(doctorJoinLink ? { join_link: doctorJoinLink } : {}),
+          },
+          { audience: "staff" }
+        );
       }
     }
 

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { sendMail } from "./mail";
+import { sendBrandedMail } from "./branded-mail";
 
 /**
  * 2026-10-18 (Paket B1) — "2FA'nız yönetici tarafından sıfırlandı" bilgilendirmesi. Şablon
@@ -38,9 +38,13 @@ export async function sendTwoFactorResetNotice(
   user: { email: string; name: string },
   resetAt: Date
 ): Promise<void> {
-  await sendMail(app, {
+  // Paket AC — kurumsal kabuk; metin TR+EN olduğu için footer site varsayılanı (TR).
+  await sendBrandedMail(app, {
     to: user.email,
     subject: "2FA'nız sıfırlandı / Your 2FA was reset",
-    html: buildTwoFactorResetNoticeHtml(user.name, resetAt),
+    preheader: "2FA'nız sıfırlandı / Your 2FA was reset",
+    bodyHtml: buildTwoFactorResetNoticeHtml(user.name, resetAt),
+    locale: "tr",
+    audience: "user",
   });
 }

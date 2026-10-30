@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { sendMail } from "../../../lib/mail";
+import { sendBrandedMail } from "../../../lib/branded-mail";
+import type { EmailAudience } from "../../../lib/branded-email";
 import { nativeLanguageName } from "./interpreters";
 
 /**
@@ -175,9 +176,20 @@ export function formatInZone(date: Date, locale: NotificationLocale, timeZone: s
   }
 }
 
+/** Paket AC — gövde parçası; logo, footer ve düz metin ortak kurumsal kabuktan (`sendBrandedMail`) gelir. */
 function wrap(locale: NotificationLocale, rows: string[]): string {
   const dir = locale === "ar" ? "rtl" : "ltr";
-  return `<div dir="${dir}" lang="${locale}" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#111827;">${rows.join("")}</div>`;
+  return `<div dir="${dir}" lang="${locale}">${rows.join("")}</div>`;
+}
+
+/** Bildirim: konu, gövde, dil ve alıcı türü (footer bunlara göre). */
+export interface InterpreterMailContent {
+  subject: string;
+  html: string;
+  locale: NotificationLocale;
+  audience: EmailAudience;
+  /** Paket AC — buton kurumsal kabuğun "bulletproof" CTA'sı olarak çizilir. */
+  cta?: { label: string; url: string };
 }
 
 export interface InterpreterEmailInput {
@@ -189,16 +201,15 @@ export interface InterpreterEmailInput {
 }
 
 /** Tercümana: tarih/saat (kendi diliminde + TR saati), dil, panel bağlantısı. Hasta bilgisi YOK. */
-export function buildInterpreterAssignmentEmail(input: InterpreterEmailInput): { subject: string; html: string } {
+export function buildInterpreterAssignmentEmail(input: InterpreterEmailInput): InterpreterMailContent {
   const t = STRINGS[input.locale];
   const rows = [
     `<p>${escapeHtml(t.interpreterIntro)}</p>`,
     `<p><strong>${escapeHtml(t.dateLabel)}:</strong> ${escapeHtml(formatInZone(input.startsAt, input.locale, input.interpreterTimeZone))}<br/>`,
     `<strong>${escapeHtml(t.istanbulTimeLabel)}:</strong> ${escapeHtml(formatInZone(input.startsAt, input.locale, "Europe/Istanbul"))}<br/>`,
     `<strong>${escapeHtml(t.languageLabel)}:</strong> ${escapeHtml(nativeLanguageName(input.language))}</p>`,
-    `<p><a href="${escapeHtml(input.panelUrl)}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#fff;border-radius:6px;text-decoration:none;">${escapeHtml(t.panelCta)}</a></p>`,
   ];
-  return { subject: t.interpreterSubject, html: wrap(input.locale, rows) };
+  return { subject: t.interpreterSubject, html: wrap(input.locale, rows), locale: input.locale, audience: "staff", cta: { label: t.panelCta, url: input.panelUrl } };
 }
 
 export interface ParticipantEmailInput {
@@ -211,22 +222,22 @@ export interface ParticipantEmailInput {
 }
 
 /** Hastaya/doktora: "Görüşmenize tercüman katılacak (dil)" + tercümanın yalnızca görünen adı. */
-export function buildParticipantInterpreterEmail(input: ParticipantEmailInput): { subject: string; html: string } {
+export function buildParticipantInterpreterEmail(input: ParticipantEmailInput): InterpreterMailContent {
   const t = STRINGS[input.locale];
   const rows = [
     `<p>${escapeHtml(input.audience === "patient" ? t.patientIntro : t.doctorIntro)} (${escapeHtml(nativeLanguageName(input.language))})</p>`,
     `<p><strong>${escapeHtml(t.interpreterLabel)}:</strong> ${escapeHtml(input.interpreterDisplayName)}<br/>`,
     `<strong>${escapeHtml(t.dateLabel)}:</strong> ${escapeHtml(formatInZone(input.startsAt, input.locale, input.timeZone))}</p>`,
   ];
-  return { subject: t.participantSubject, html: wrap(input.locale, rows) };
+  return { subject: t.participantSubject, html: wrap(input.locale, rows), locale: input.locale, audience: input.audience === "patient" ? "patient" : "staff" };
 }
 
 /** Best-effort gönderim — hata loglanır, atamayı etkilemez. */
-export async function sendInterpreterEmails(app: FastifyInstance, messages: { to: string | null | undefined; subject: string; html: string }[]): Promise<void> {
+export async function sendInterpreterEmails(app: FastifyInstance, messages: (InterpreterMailContent & { to: string | null | undefined })[]): Promise<void> {
   for (const message of messages) {
     if (!message.to) continue;
     try {
-      await sendMail(app, { to: message.to, subject: message.subject, html: message.html });
+      await sendBrandedMail(app, { to: message.to, subject: message.subject, preheader: message.subject, bodyHtml: message.html, locale: message.locale, audience: message.audience, ...(message.cta ? { cta: message.cta } : {}) });
     } catch (err) {
       app.log.warn({ err }, "Tercüman atama e-postası gönderilemedi (best-effort).");
     }
@@ -331,14 +342,13 @@ const ACCESS_GRANTED: Record<NotificationLocale, AccessGrantedStrings> = {
   },
 };
 
-export function buildInterpreterAccessGrantedEmail(input: { locale: NotificationLocale; panelUrl: string; twoFactorRequired: boolean }): { subject: string; html: string } {
+export function buildInterpreterAccessGrantedEmail(input: { locale: NotificationLocale; panelUrl: string; twoFactorRequired: boolean }): InterpreterMailContent {
   const t = ACCESS_GRANTED[input.locale];
   const steps = [t.stepPanel, ...(input.twoFactorRequired ? [t.step2fa] : []), t.stepConfidentiality];
   const rows = [
     `<p>${escapeHtml(t.intro)}</p>`,
     `<p><strong>${escapeHtml(t.stepsTitle)}</strong></p>`,
     `<ol>${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>`,
-    `<p><a href="${escapeHtml(input.panelUrl)}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#fff;border-radius:6px;text-decoration:none;">${escapeHtml(t.cta)}</a></p>`,
   ];
-  return { subject: t.subject, html: wrap(input.locale, rows) };
+  return { subject: t.subject, html: wrap(input.locale, rows), locale: input.locale, audience: "staff", cta: { label: t.cta, url: input.panelUrl } };
 }

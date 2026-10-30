@@ -13,7 +13,7 @@ import { EmailTemplateSchema, EmailTemplateSummarySchema, EmailVariableDefinitio
 import { toEmailTemplateDto, toEmailTemplateSummaryDto } from "../../mappers";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
-import { sendMail } from "../../lib/mail";
+import { sendRenderedTestMail } from "../../lib/branded-mail";
 import { EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT, EMAIL_TEST_SEND_RATE_LIMIT } from "../../lib/rate-limit";
 import {
   assertCustomVariablesDoNotConflict,
@@ -23,6 +23,8 @@ import {
   type EmailCustomVariable,
 } from "../../lib/email-variables";
 import { renderTemplatePreviewOrTest } from "./email-templates.service";
+import { SYSTEM_EMAILS, findSystemEmail, isBrandLocale, renderSystemEmailSample } from "./system-email-catalog";
+import { BRAND_LOCALES } from "../../lib/branded-email";
 import {
   CreateEmailTemplateRequestSchema,
   EmailBlockInputSchema,
@@ -414,7 +416,7 @@ export async function emailTemplatesRoutes(app: FastifyInstance) {
       // §10.16.6 bağlayıcı güvenlik kararı — `to` gövdeden ASLA okunmaz, alıcı HER ZAMAN isteği
       // yapan kullanıcının kendi e-postasıdır (spam-relay/phishing vektörünü kapatır).
       // `sendMail` SMTP hatasında `EmailDeliveryError` (502) fırlatır — burada YAKALANMAZ, aynen yükselir.
-      const result = await sendMail(app, { to: request.user!.email, subject: rendered.renderedSubject, html: rendered.renderedHtml });
+      const result = await sendRenderedTestMail(app, { to: request.user!.email, subject: rendered.renderedSubject, html: rendered.renderedHtml, text: rendered.renderedText });
 
       // Audit metadata'sına alıcı adresi YAZILMAZ (PII yasağı) — `actorEmail` zaten kayıtta.
       await logAudit(app, {
@@ -426,6 +428,86 @@ export async function emailTemplatesRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
+      return reply.send(ok({ sentTo: request.user!.email, messageId: result.messageId, previewUrl: result.previewUrl ?? null }));
+    }
+  );
+
+  // --- Paket AC — Sistem e-postaları önizleme ------------------------------------------------
+  const SystemEmailParamsSchema = z.object({ id: z.string().min(1).max(80) });
+  const SystemEmailLocaleSchema = z.object({ locale: z.enum(BRAND_LOCALES).default("tr") });
+
+  server.get(
+    "/system-previews",
+    {
+      schema: {
+        response: {
+          200: ApiSuccessSchema(
+            z.object({
+              locales: z.array(z.string()),
+              items: z.array(
+                z.object({ id: z.string(), label: z.string(), audience: z.string(), source: z.string(), languages: z.string() })
+              ),
+            })
+          ),
+        },
+      },
+    },
+    async (_request, reply) =>
+      reply.send(
+        ok({
+          locales: [...BRAND_LOCALES],
+          items: SYSTEM_EMAILS.map(({ id, label, audience, source, languages }) => ({ id, label, audience, source, languages })),
+        })
+      )
+  );
+
+  server.get(
+    "/system-previews/:id",
+    {
+      config: { rateLimit: EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT },
+      schema: {
+        params: SystemEmailParamsSchema,
+        querystring: SystemEmailLocaleSchema,
+        response: {
+          200: ApiSuccessSchema(
+            z.object({ id: z.string(), locale: z.string(), subject: z.string(), html: z.string(), text: z.string(), available: z.boolean() })
+          ),
+        },
+      },
+    },
+    async (request, reply) => {
+      const entry = findSystemEmail(request.params.id);
+      if (!entry) throw new NotFoundError("Sistem e-postası bulunamadı.");
+      const locale = isBrandLocale(request.query.locale) ? request.query.locale : "tr";
+      return reply.send(ok(await renderSystemEmailSample(app, entry, locale)));
+    }
+  );
+
+  server.post(
+    "/system-previews/:id/send-self",
+    {
+      config: { rateLimit: EMAIL_TEST_SEND_RATE_LIMIT },
+      schema: {
+        params: SystemEmailParamsSchema,
+        body: SystemEmailLocaleSchema,
+        response: { 200: ApiSuccessSchema(TestSendEmailTemplateResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const entry = findSystemEmail(request.params.id);
+      if (!entry) throw new NotFoundError("Sistem e-postası bulunamadı.");
+      const locale = isBrandLocale(request.body.locale) ? request.body.locale : "tr";
+      const sample = await renderSystemEmailSample(app, entry, locale);
+      // Alıcı HER ZAMAN oturumdaki admin'in kendi adresidir (gövdeden okunmaz; relay/oltalama vektörü yok).
+      const result = await sendRenderedTestMail(app, { to: request.user!.email, subject: `[Test] ${sample.subject}`, html: sample.html, text: sample.text });
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "notifications.system_email_test_send",
+        targetType: "SystemEmail",
+        targetId: entry.id,
+        ipAddress: request.ip,
+      });
       return reply.send(ok({ sentTo: request.user!.email, messageId: result.messageId, previewUrl: result.previewUrl ?? null }));
     }
   );

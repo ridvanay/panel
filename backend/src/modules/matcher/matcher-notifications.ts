@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { sendMail } from "../../lib/mail";
+import { sendBrandedMail } from "../../lib/branded-mail";
 import { env } from "../../config/env";
 import { sendTemplateEmail } from "../email-templates/email-templates.service";
 import { readCrmSettings } from "../crm/crm.settings";
@@ -102,7 +102,16 @@ export function buildMatcherConfirmationEmail(input: { locale: MatcherEmailLocal
   const rows = [fill(t.intro), input.contactAllowed ? t.contactLine : t.noContactLine, t.disclaimer].map((line) => `<p>${escapeHtml(line)}</p>`);
   return {
     subject: fill(t.subject),
-    html: `<div dir="${dir}" lang="${input.locale}" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#111827;">${rows.join("")}</div>`,
+    // Paket AC — yalnızca gövde; logo/footer/düz metin kurumsal kabuktan.
+    html: `<div dir="${dir}" lang="${input.locale}">${rows.join("")}</div>`,
+  };
+}
+
+/** Şablon yoksa koordinatöre giden yedek metin — yalnızca talep numarası + panel bağlantısı. */
+export function buildMatcherLeadFallbackNotice(number: number, adminUrl: string): { subject: string; bodyHtml: string } {
+  return {
+    subject: `Yeni eşleştirme talebi #${number}`,
+    bodyHtml: `<p>Hekim eşleştirme sihirbazından yeni bir talep geldi: <strong>#${number}</strong>.</p><p><a href="${escapeHtml(adminUrl)}">Talebi panelde aç</a></p>`,
   };
 }
 
@@ -113,15 +122,12 @@ export async function notifyMatcherLead(app: FastifyInstance, input: { number: n
   if (!to) return;
   const adminUrl = `${env.FRONTEND_URL}/admin/crm/leads/${input.leadId}`;
   try {
-    await sendTemplateEmail(app, "MATCHER_NEW_LEAD", to, { submission_number: String(input.number), admin_url: adminUrl });
+    await sendTemplateEmail(app, "MATCHER_NEW_LEAD", to, { submission_number: String(input.number), admin_url: adminUrl }, { locale: "tr", audience: "staff" });
   } catch (err) {
     app.log.warn({ err: (err as Error).message }, "matcher.new_lead şablonu kullanılamadı; yedek metinle gönderiliyor.");
     try {
-      await sendMail(app, {
-        to,
-        subject: `Yeni eşleştirme talebi #${input.number}`,
-        html: `<p>Hekim eşleştirme sihirbazından yeni bir talep geldi: <strong>#${input.number}</strong>.</p><p><a href="${escapeHtml(adminUrl)}">Talebi panelde aç</a></p>`,
-      });
+      const notice = buildMatcherLeadFallbackNotice(input.number, adminUrl);
+      await sendBrandedMail(app, { to, subject: notice.subject, preheader: notice.subject, bodyHtml: notice.bodyHtml, locale: "tr", audience: "staff" });
     } catch (fallbackErr) {
       app.log.warn({ err: (fallbackErr as Error).message }, "Eşleştirme bildirimi gönderilemedi (best-effort).");
     }
@@ -131,7 +137,7 @@ export async function notifyMatcherLead(app: FastifyInstance, input: { number: n
 export async function sendMatcherConfirmation(app: FastifyInstance, input: { to: string; locale: string; number: number; contactAllowed: boolean }): Promise<void> {
   const mail = buildMatcherConfirmationEmail({ locale: toMatcherEmailLocale(input.locale), number: input.number, contactAllowed: input.contactAllowed });
   try {
-    await sendMail(app, { to: input.to, subject: mail.subject, html: mail.html });
+    await sendBrandedMail(app, { to: input.to, subject: mail.subject, preheader: mail.subject, bodyHtml: mail.html, locale: toMatcherEmailLocale(input.locale), audience: "patient" });
   } catch (err) {
     app.log.warn({ err: (err as Error).message }, "Eşleştirme onay e-postası gönderilemedi (best-effort).");
   }
