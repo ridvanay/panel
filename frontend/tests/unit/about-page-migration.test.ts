@@ -19,14 +19,28 @@ const backendTemplateFields = readFileSync(resolve(repoRoot, "backend/src/lib/pa
 function dollarQuoted(tag: string): unknown {
   const match = migrationSql.match(new RegExp(`\\$${tag}\\$([\\s\\S]*?)\\$${tag}\\$`));
   if (!match) throw new Error(`$${tag}$ bloğu bulunamadı`);
-  return JSON.parse(match[1]!);
+  // Paket V — hekim sayfaları `/doctors` → `/physicians` taşındı; uygulanmış migration değişmez, eski
+  // bağlantı sitede render anında yeni yola çevrilir (`canonicalSitePath`).
+  return JSON.parse(match[1]!.replaceAll('"/doctors"', '"/physicians"'));
 }
+
+/**
+ * Paket V'de bilinçli değişen metinlerin migration anındaki değerleri ("doctor" → "physician"/"hekim").
+ * Migration geçmişe ait bir kopyadır; karşılaştırma bu anahtarlar dışında birebir kalır.
+ */
+const EN_BEFORE_V = {
+  metaDescription: "WM Health welcomes patients from different countries to Istanbul. Learn about our treatment areas, our approach and our doctors.",
+  meetDoctorsCta: "Meet our doctors",
+  doctorsTitle: "Meet our doctors",
+  viewAllDoctorsCta: "View all doctors",
+};
+const TR_BEFORE_V = { meetDoctorsCta: "Doktorlarımızla tanışın", doctorsTitle: "Doktorlarımızla tanışın", viewAllDoctorsCta: "Tüm doktorlar" };
 
 describe("about veri migration'ı", () => {
   it("tr içeriği (başlık, blok, SEO) sözlükle birebir aynıdır", () => {
     expect(dollarQuoted("about_tr")).toEqual({
       title: "Hakkımızda",
-      blocks: [buildDefaultAboutBlock(trAboutStrings)],
+      blocks: [buildDefaultAboutBlock({ ...trAboutStrings, ...TR_BEFORE_V })],
       seoTitle: trAboutStrings.metaTitle,
       seoDescription: trAboutStrings.metaDescription,
     });
@@ -35,9 +49,9 @@ describe("about veri migration'ı", () => {
   it("en içeriği (başlık, blok, SEO) sözlükle birebir aynıdır", () => {
     expect(dollarQuoted("about_en")).toEqual({
       title: "About Us",
-      blocks: [buildDefaultAboutBlock(enAboutStrings)],
+      blocks: [buildDefaultAboutBlock({ ...enAboutStrings, ...EN_BEFORE_V })],
       seoTitle: enAboutStrings.metaTitle,
-      seoDescription: enAboutStrings.metaDescription,
+      seoDescription: EN_BEFORE_V.metaDescription,
     });
   });
 

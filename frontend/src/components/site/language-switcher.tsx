@@ -49,12 +49,16 @@ interface LanguageSwitcherProps {
  * Satır kendi dilinde ve yönünde işaretlenir (`lang`/`dir`; ör. العربية sağdan sola). Seçili satır kalın
  * ve koyu marka renginde (`--site-accent`, yoksa #2951A0 — açık birincil renk beyaz zeminde AA geçmez).
  */
-function LocaleRowContent({ locale, active }: { locale: Locale; active: boolean }) {
+export function LocaleRowContent({ locale, active }: { locale: Locale; active: boolean }) {
   return (
     <>
       <LocaleFlag code={locale.code} />
-      <span lang={locale.code} dir={localeDirection(locale.code)} className="min-w-0 flex-1 truncate text-start">
-        {locale.nativeLabel}
+      {/* Paket V — ad, satırın kendi yönünde başa hizalı kalır; yalnızca adın kendisi `<bdi>` ile kendi
+          dilinde/yönünde yalıtılır (önceden `dir="rtl"` tüm esnek kutuya uygulanınca "العربية" sağa kayıyordu). */}
+      <span className="min-w-0 flex-1 truncate text-start">
+        <bdi lang={locale.code} dir={localeDirection(locale.code)}>
+          {locale.nativeLabel}
+        </bdi>
       </span>
       {active && <Check className="h-4 w-4 shrink-0 text-[var(--site-accent,#2951A0)]" aria-hidden="true" />}
     </>
@@ -89,24 +93,7 @@ export function LanguageSwitcher({
 
   if (locales.length <= 1) return null;
 
-  function hrefFor(locale: Locale): string {
-    if (alternates) {
-      // qa-agent bulgusu (2026-09-16) — ana sayfa (`kind: "home"`) kaydının kendi `slug`'ı
-      // (`"anasayfa"`) ASLA URL'e girmez, PREFİX'SİZ kanonik URL'i HER ZAMAN kök path'tir
-      // (`lib/seo.ts::isHomepage` İLE AYNI gerekçe).
-      if (alternates.kind === "home") {
-        return withLocalePrefix("/", locale.code, defaultCode(locales));
-      }
-      const match = alternates.items.find((item) => item.locale === locale.code);
-      if (match) {
-        const base = contentKindBasePath(alternates.kind);
-        const path = base ? `${base}/${match.slug}` : `/${match.slug}`;
-        return withLocalePrefix(path, locale.code, defaultCode(locales));
-      }
-    }
-    // Eşleşen çeviri/alternates yoksa (liste sayfaları, sepet, vb.) o dilin ana sayfasına düş.
-    return withLocalePrefix("/", locale.code, defaultCode(locales));
-  }
+  const hrefFor = (locale: Locale) => localeHref(alternates, locale, locales);
 
   if (variant === "list") {
     return (
@@ -161,7 +148,7 @@ export function LanguageSwitcher({
           aria-hidden="true"
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-80 min-w-56 overflow-y-auto rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-black/5 dark:bg-popover">
+      <DropdownMenuContent align="end" className="max-h-[min(30rem,80vh)] min-w-56 overflow-y-auto rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-black/5 dark:bg-popover">
         {locales.map((l) => {
           const active = l.code === activeLocale.code;
           return (
@@ -177,6 +164,30 @@ export function LanguageSwitcher({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/**
+ * Dil değiştirince gidilecek adres: aynı içeriğin o dildeki karşılığı (`localizations`'tan,
+ * `context/locale-alternates-context.tsx` köprüsüyle); yoksa o dilin ana sayfası. Masaüstü menü,
+ * mobil liste ve Paket V'nin mobil alt sayfası (`language-sheet.tsx`) aynı kuralı kullanır.
+ */
+export function localeHref(alternates: ReturnType<typeof useLocaleAlternates>, locale: Locale, locales: Locale[]): string {
+  if (alternates) {
+    // qa-agent bulgusu (2026-09-16) — ana sayfa (`kind: "home"`) kaydının kendi `slug`'ı
+    // (`"anasayfa"`) ASLA URL'e girmez, PREFİX'SİZ kanonik URL'i HER ZAMAN kök path'tir
+    // (`lib/seo.ts::isHomepage` İLE AYNI gerekçe).
+    if (alternates.kind === "home") {
+      return withLocalePrefix("/", locale.code, defaultCode(locales));
+    }
+    const match = alternates.items.find((item) => item.locale === locale.code);
+    if (match) {
+      const base = contentKindBasePath(alternates.kind);
+      const path = base ? `${base}/${match.slug}` : `/${match.slug}`;
+      return withLocalePrefix(path, locale.code, defaultCode(locales));
+    }
+  }
+  // Eşleşen çeviri/alternates yoksa (liste sayfaları, sepet, vb.) o dilin ana sayfasına düş.
+  return withLocalePrefix("/", locale.code, defaultCode(locales));
 }
 
 function defaultCode(locales: Locale[]): string {

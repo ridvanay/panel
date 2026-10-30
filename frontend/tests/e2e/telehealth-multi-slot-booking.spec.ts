@@ -214,7 +214,7 @@ test("madde 21: iki slot seçilince Hizmet Özeti '2 Slot · 60 Dk' ve toplam = 
 }) => {
   test.setTimeout(90_000);
 
-  await gotoAndWaitReady(page, `/doctors/${bookingDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${bookingDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
   });
   await page.waitForTimeout(500); // hidrasyon sonrası ziyaretçi dilimi yeniden hesaplanır (§4.2).
@@ -272,7 +272,7 @@ let documentedFilename: string;
 test("madde 22: belgeli senaryo — intake adımında rıza + PDF yükle → randevu oluşur, doktor panelinde belge görünür", async ({ page }) => {
   test.setTimeout(90_000);
 
-  await gotoAndWaitReady(page, `/doctors/${bookingDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${bookingDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
   });
   await page.waitForTimeout(500);
@@ -356,7 +356,7 @@ let undocumentedAccessToken: string;
 test("madde 23: belgesiz senaryo — intake adımı atlanır, rezervasyon ve ödeme adımı AYNI ŞEKİLDE tamamlanır", async ({ page }) => {
   test.setTimeout(90_000);
 
-  await gotoAndWaitReady(page, `/doctors/${bookingDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${bookingDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
   });
   await page.waitForTimeout(500);

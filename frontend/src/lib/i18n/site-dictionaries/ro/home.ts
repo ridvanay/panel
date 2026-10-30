@@ -4,7 +4,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "Consultație prin telemedicină",
   heroTitle: "Programați o consultație video cu specialiști de top",
   heroBody: "Programați-vă în câteva clicuri și discutați cu medicul dumneavoastră într-o consultație video securizată — fără să plecați de acasă.",
-  heroPrimaryCta: "Găsiți un medic",
+  heroPrimaryCta: "Consultați un medic",
   heroSecondaryCta: "Cum funcționează",
   heroCardTitle: "Consultație video securizată",
   heroCardText: "Conectați-vă din browser",
@@ -55,6 +55,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "Vezi toți medicii",
 
   closingTitle: "Începeți cu o consultație",
-  closingPrimaryCta: "Găsiți un medic",
+  closingPrimaryCta: "Consultați un medic",
   closingSecondaryCta: "Contactați-ne",
 };

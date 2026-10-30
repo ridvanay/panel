@@ -130,7 +130,7 @@ test("madde 1a: masaüstü (1280px) — sağ 'Hızlı Randevu' kartı BOŞ DEĞ�
   });
   const page = await context.newPage();
   try {
-    await gotoAndWaitReady(page, `/doctors/${richDoctor.slug}`, async () => {
+    await gotoAndWaitReady(page, `/physicians/${richDoctor.slug}`, async () => {
       await expect(page.getByRole("heading", { level: 1 })).toContainText(richDoctor.fullName, { timeout: 5_000 });
     });
     await page.waitForTimeout(500);
@@ -193,7 +193,7 @@ test("madde 1b: masaüstü (1280px) — sticky 'Hızlı Randevu' kartı KENDİ g
   });
   const page = await context.newPage();
   try {
-    await gotoAndWaitReady(page, `/doctors/${richDoctor.slug}`, async () => {
+    await gotoAndWaitReady(page, `/physicians/${richDoctor.slug}`, async () => {
       await expect(page.getByRole("heading", { level: 1 })).toContainText(richDoctor.fullName, { timeout: 5_000 });
     });
     await page.waitForTimeout(500);
@@ -266,7 +266,7 @@ test("madde 2: 4 sekme (Hakkında/Özgeçmiş/Bilimsel Yayınlar/Uzmanlık Alanl
   const pageErrors: Error[] = [];
   page.on("pageerror", (err) => pageErrors.push(err));
 
-  await gotoAndWaitReady(page, `/doctors/${richDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${richDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText(richDoctor.fullName, { timeout: 5_000 });
   });
 
@@ -313,7 +313,7 @@ test("madde 2 (boş-durum): içerik OLMAYAN doktorda 4 sekmenin tümü nötr bo�
   const pageErrors: Error[] = [];
   page.on("pageerror", (err) => pageErrors.push(err));
 
-  await gotoAndWaitReady(page, `/doctors/${emptyDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${emptyDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText(emptyDoctor.fullName, { timeout: 5_000 });
   });
 
@@ -344,7 +344,7 @@ test("madde 3a: mobil (375px) — 'Hızlı Randevu' kartı sekme içeriğinin AL
   });
   const page = await context.newPage();
   try {
-    await gotoAndWaitReady(page, `/doctors/${richDoctor.slug}`, async () => {
+    await gotoAndWaitReady(page, `/physicians/${richDoctor.slug}`, async () => {
       await expect(page.getByRole("heading", { level: 1 })).toContainText(richDoctor.fullName, { timeout: 5_000 });
     });
     await page.waitForTimeout(500);
@@ -410,7 +410,7 @@ test("madde 3b: BUG (frontend-agent/ui-designer) — mobilde (375px) 4 sekmeli T
   });
   const page = await context.newPage();
   try {
-    await gotoAndWaitReady(page, `/doctors/${richDoctor.slug}`, async () => {
+    await gotoAndWaitReady(page, `/physicians/${richDoctor.slug}`, async () => {
       await expect(page.getByRole("heading", { level: 1 })).toContainText(richDoctor.fullName, { timeout: 5_000 });
     });
     await page.waitForTimeout(500);

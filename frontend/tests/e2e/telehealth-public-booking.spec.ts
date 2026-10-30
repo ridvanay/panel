@@ -156,7 +156,7 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   // fazla doktor (leftover fixture verisi, `support/telehealth-fixtures.ts` başlığındaki "leftover
   // satırlar sonraki koşumları BOZMAZ" felsefesi) birikebilir — bu test tek bir doktorun KİMLİĞİNİ
   // değil, listeleme/filtre/rezervasyon AKIŞININ ÇALIŞTIĞINI doğrular.
-  await gotoAndWaitReady(page, "/doctors", async () => {
+  await gotoAndWaitReady(page, "/physicians", async () => {
     await expect(page.getByRole("heading", { name: "Doktorlarımız" })).toBeVisible();
     await expect(page.getByText(bookableDoctorFullName).first()).toBeVisible();
   });
@@ -291,7 +291,7 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
     test.use({ timezoneId: "America/New_York" });
 
     test("rozet ziyaretçi dilimini gösterir + slot New York yerel saatinde etiketlenir", async ({ page }) => {
-      await gotoAndWaitReady(page, `/doctors/${timezoneDoctorSlug}`, async () => {
+      await gotoAndWaitReady(page, `/physicians/${timezoneDoctorSlug}`, async () => {
         await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
       });
       await page.waitForTimeout(500);
@@ -316,7 +316,7 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
     test.use({ timezoneId: "Europe/Istanbul" });
 
     test("AYNI slot Europe/Istanbul yerel saatinde FARKLI bir etiketle gösterilir", async ({ page }) => {
-      await gotoAndWaitReady(page, `/doctors/${timezoneDoctorSlug}`, async () => {
+      await gotoAndWaitReady(page, `/physicians/${timezoneDoctorSlug}`, async () => {
         await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
       });
       await page.waitForTimeout(500);

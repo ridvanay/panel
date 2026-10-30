@@ -91,7 +91,7 @@ describe("FeaturedDoctorsBlockView — pyramid", () => {
 
     const pyramid = screen.getByTestId("featured-doctors-pyramid");
     const founder = within(pyramid).getByTestId("featured-founder-card");
-    expect(founder).toHaveAttribute("href", "/doctors/vahit-mutlu");
+    expect(founder).toHaveAttribute("href", "/physicians/vahit-mutlu");
     expect(founder).toHaveTextContent("Kurucu");
     expect(founder).toHaveTextContent("Doç. Dr. Vahit Mutlu");
     expect(founder).toHaveTextContent("Obezite ve Metabolik Cerrahi");

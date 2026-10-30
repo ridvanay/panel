@@ -4728,6 +4728,25 @@ export interface TelehealthThemeSettings {
   emergencyNotice?: EmergencyNoticeSettings;
   /** Paket M — doktor profil başlığı arka planı (backend `modules/telehealth/lib/doctor-hero.ts`). */
   doctorHero?: DoctorHeroSettings;
+  /** Paket V — "Kendi dilinizde destek" (backend `modules/telehealth/lib/language-support.ts`). */
+  languageSupport?: LanguageSupportSettings;
+}
+
+/**
+ * Paket V — desteklenen diller (kod listesi), dil başına destek saatleri (düz metin) ve tercüman
+ * desteği. Liste boşsa sitede bölüm HİÇ görünmez; "tercüman ücretsiz" yalnızca `interpreterIncluded`.
+ */
+export interface LanguageSupportSettings {
+  supportLanguages: string[];
+  supportHours: Record<string, string>;
+  interpreterIncluded: boolean;
+}
+
+/** `PATCH /admin/telehealth/settings/language-support` — yalnızca ADMIN; `null` o dilin saat metnini siler. */
+export interface UpdateLanguageSupportRequest {
+  supportLanguages?: string[];
+  supportHours?: Record<string, string | null>;
+  interpreterIncluded?: boolean;
 }
 
 /**
@@ -4765,7 +4784,7 @@ export interface UpdateEmergencyNoticeRequest {
 }
 
 /** `PATCH /admin/telehealth/settings` gövdesi — KISMİ, hepsi opsiyonel (0-4 renk alanı). */
-export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeSettings, "emergencyNotice" | "doctorHero">>;
+export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeSettings, "emergencyNotice" | "doctorHero" | "languageSupport">>;
 
 // ---------------------------------------------------------------------------
 // İletişim sayfası (`/contact`) — backend `modules/contact/contact-page.ts`.
@@ -4834,4 +4853,53 @@ export interface ContactPageSubmissionRequest {
   message: string;
   noticeAccepted: boolean;
   explicitConsent?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Paket V (İş 4) — yetki belgeleri ve akreditasyonlar (backend `modules/accreditations`).
+// ---------------------------------------------------------------------------
+
+/** `GET /accreditations?locale=` — yalnızca sitede görünen (aktif + belge no + süresi geçmemiş) belgeler. */
+export interface PublicAccreditation {
+  id: string;
+  name: string;
+  description: string | null;
+  issuer: string;
+  logoUrl: string | null;
+  logoAlt: string | null;
+  certificateNo: string;
+  verificationUrl: string | null;
+  /** `YYYY-MM-DD` ya da `null` (süresiz). */
+  validUntil: string | null;
+}
+
+/** `GET /admin/accreditations` satırı. `expired` → sitede gizli, panelde uyarı. */
+export interface AdminAccreditation {
+  id: string;
+  name: string;
+  issuer: string;
+  logoMediaId: string | null;
+  logoUrl: string | null;
+  certificateNo: string | null;
+  verificationUrl: string | null;
+  validUntil: string | null;
+  translations: Record<string, Record<string, string>>;
+  sortOrder: number;
+  isActive: boolean;
+  expired: boolean;
+  publiclyVisible: boolean;
+  updatedAt: string;
+}
+
+/** `POST /admin/accreditations` / `PATCH /admin/accreditations/:id` (kısmi). Yalnızca ADMIN. */
+export interface AccreditationInput {
+  name?: string;
+  issuer?: string;
+  logoMediaId?: string | null;
+  certificateNo?: string | null;
+  verificationUrl?: string | null;
+  validUntil?: string | null;
+  translations?: Record<string, { name?: string | null; description?: string | null }>;
+  sortOrder?: number;
+  isActive?: boolean;
 }

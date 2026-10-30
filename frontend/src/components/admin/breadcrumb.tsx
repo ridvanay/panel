@@ -17,6 +17,7 @@ const NAV_LABEL_KEYS: { href: string; labelKey: string }[] = [
   { href: "/admin/crm", labelKey: "nav.crm" },
   { href: "/admin/media", labelKey: "nav.media" },
   { href: "/admin/navigation", labelKey: "nav.navigation" },
+  { href: "/admin/accreditations", labelKey: "nav.accreditations" },
   { href: "/admin/import", labelKey: "nav.import" },
   { href: "/admin/users", labelKey: "nav.users" },
   { href: "/admin/system", labelKey: "nav.system" },

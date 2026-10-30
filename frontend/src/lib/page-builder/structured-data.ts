@@ -1,5 +1,5 @@
 import type { AccordionQAItem, PageNode } from "./types";
-import type { SiteSettings, SocialLinkDto } from "@/lib/api/types";
+import type { PublicAccreditation, SiteSettings, SocialLinkDto } from "@/lib/api/types";
 
 /**
  * Sayfa-seviyesi JSON-LD toplayıcı + güvenli serileştirme yardımcıları.
@@ -77,8 +77,24 @@ export function buildFaqPageJsonLd(nodes: PageNode[]): string | null {
  * DEĞİL) — mimar "Kurallar" madde 1/2 (sahte/uydurma alan üretme yasağı) gereği bu iki alan
  * atlanır, ikinci bir veri kaynağı İCAT EDİLMEZ.
  */
-export function buildMedicalOrganizationJsonLd(settings: SiteSettings, socialLinks: SocialLinkDto[], siteUrl: string): string {
+export function buildMedicalOrganizationJsonLd(
+  settings: SiteSettings,
+  socialLinks: SocialLinkDto[],
+  siteUrl: string,
+  accreditations: PublicAccreditation[] = []
+): string {
   const sameAs = socialLinks.map((link) => link.url).filter((url) => url.trim().length > 0);
+  // Paket V — `hasCredential` yalnızca sitede görünen (aktif + belge no + süresi geçmemiş) belgeler;
+  // public uç zaten yalnızca bunları döndürür.
+  const hasCredential = accreditations.map((a) => ({
+    "@type": "EducationalOccupationalCredential",
+    name: a.name,
+    credentialCategory: "license",
+    identifier: a.certificateNo,
+    recognizedBy: { "@type": "Organization", name: a.issuer },
+    ...(a.verificationUrl ? { url: a.verificationUrl } : {}),
+    ...(a.validUntil ? { expires: a.validUntil } : {}),
+  }));
 
   return safeJsonLdString({
     "@context": "https://schema.org",
@@ -88,6 +104,7 @@ export function buildMedicalOrganizationJsonLd(settings: SiteSettings, socialLin
     ...(settings.logoUrl ? { logo: settings.logoUrl } : {}),
     ...(settings.tagline ? { description: settings.tagline } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
+    ...(hasCredential.length > 0 ? { hasCredential } : {}),
   });
 }
 

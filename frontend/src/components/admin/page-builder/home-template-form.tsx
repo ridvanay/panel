@@ -168,7 +168,7 @@ export function HomeTemplateForm({ value, onChange, localeCode, idPrefix = "home
     <div className="space-y-6">
       <p className="admin-text-secondary">
         Bölümlerin sırası sabittir; her birini &quot;Bölümü göster&quot; anahtarıyla gizleyebilirsiniz. Boş bıraktığınız
-        alanlar sitede gri renkte görünen varsayılan metinle gösterilir. Bağlantılar <code>/doctors</code> gibi site içi bir
+        alanlar sitede gri renkte görünen varsayılan metinle gösterilir. Bağlantılar <code>/physicians</code> gibi site içi bir
         yol, <code>#how</code> gibi sayfa içi bir çapa veya <code>https://</code> ile başlayan bir adres olabilir.
       </p>
 

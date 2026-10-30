@@ -44,7 +44,7 @@ test("şerit açıkken kapalı (özet) başlar ve Ayrıntılar ile tam metne ge�
 
   const strip = page.locator(".telehealth-scope > [role=note]");
   await expect(async () => {
-    await page.goto("/doctors", { waitUntil: "domcontentloaded" });
+    await page.goto("/physicians", { waitUntil: "domcontentloaded" });
     await expect(strip).toBeVisible();
   }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
@@ -63,12 +63,12 @@ test("anahtar kapalıyken doktorlar sayfasında şerit yok; görüşme ekranı �
   await patchAdminEmergencyNotice(adminToken, { enabled: false });
 
   await expect(async () => {
-    await page.goto("/doctors", { waitUntil: "domcontentloaded" });
+    await page.goto("/physicians", { waitUntil: "domcontentloaded" });
     await expect(page.locator(".telehealth-scope")).toBeVisible();
     await expect(page.locator(".telehealth-scope > [role=note]")).toHaveCount(0);
   }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
-  await page.goto(`/doctors/${doctorSlug}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/physicians/${doctorSlug}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator(".telehealth-scope > [role=note]")).toHaveCount(0);
   const card = page.locator("main [role=note]").first();
   await expect(card).toBeVisible();

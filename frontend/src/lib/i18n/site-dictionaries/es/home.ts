@@ -4,7 +4,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "Consulta de telemedicina",
   heroTitle: "Reserve una videoconsulta con especialistas de referencia",
   heroBody: "Reserve en pocos clics y reúnase con su médico en una videoconsulta segura, sin salir de casa.",
-  heroPrimaryCta: "Buscar un médico",
+  heroPrimaryCta: "Consultar a un médico",
   heroSecondaryCta: "Cómo funciona",
   heroCardTitle: "Videoconsulta segura",
   heroCardText: "Conéctese desde su navegador",
@@ -55,6 +55,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "Ver todos los médicos",
 
   closingTitle: "Empiece con una consulta",
-  closingPrimaryCta: "Buscar un médico",
+  closingPrimaryCta: "Consultar a un médico",
   closingSecondaryCta: "Contáctenos",
 };

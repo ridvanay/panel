@@ -4,7 +4,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "Telemedizinische Beratung",
   heroTitle: "Buchen Sie eine Videosprechstunde bei ausgewiesenen Fachärzten",
   heroBody: "Mit wenigen Klicks buchen und Ihren Arzt in einer sicheren Videosprechstunde treffen – ganz bequem von zu Hause.",
-  heroPrimaryCta: "Arzt finden",
+  heroPrimaryCta: "Arzt konsultieren",
   heroSecondaryCta: "So funktioniert es",
   heroCardTitle: "Sichere Videosprechstunde",
   heroCardText: "Teilnahme direkt im Browser",
@@ -55,6 +55,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "Alle Ärzte ansehen",
 
   closingTitle: "Beginnen Sie mit einer Beratung",
-  closingPrimaryCta: "Arzt finden",
+  closingPrimaryCta: "Arzt konsultieren",
   closingSecondaryCta: "Kontakt aufnehmen",
 };

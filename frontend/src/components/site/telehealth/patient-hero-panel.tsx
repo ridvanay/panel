@@ -175,7 +175,7 @@ export function PatientHeroPanel() {
       {!loadError && !nearest && (
         <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-foreground/60">{t.patientHero.noAppointments}</p>
-          <Link href={localize("/doctors")}>
+          <Link href={localize("/physicians")}>
             <Button type="button" size="sm">
               {t.common.bookAppointment}
             </Button>

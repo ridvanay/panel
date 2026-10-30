@@ -35,9 +35,9 @@ describe("specialtySlugFromHref", () => {
     ["/specialties/kardiyoloji", "kardiyoloji"],
     ["/specialties/kardiyoloji/", "kardiyoloji"],
     ["/en/specialties/kardiyoloji", "kardiyoloji"],
-    ["/doctors?specialty=dermatoloji", "dermatoloji"],
-    ["/doctors/?specialty=dermatoloji&x=1", "dermatoloji"],
-    ["/doctors", null],
+    ["/physicians?specialty=dermatoloji", "dermatoloji"],
+    ["/physicians/?specialty=dermatoloji&x=1", "dermatoloji"],
+    ["/physicians", null],
     ["/specialties", null],
     ["/about", null],
     ["https://example.com/specialties/x", null],
@@ -55,7 +55,7 @@ describe("NavDropdown", () => {
       href: "/specialties",
       children: [
         { id: "a", label: "Kardiyoloji", href: "/specialties/kardiyoloji" },
-        { id: "b", label: "Dermatoloji", href: "/doctors?specialty=dermatoloji" },
+        { id: "b", label: "Dermatoloji", href: "/physicians?specialty=dermatoloji" },
         { id: "c", label: "FAQ", href: "/faq" },
       ],
     });
@@ -80,12 +80,12 @@ describe("NavDropdown", () => {
     expect(menu.querySelector(".grid-cols-2")).toBeNull();
     // Alt bölüm: kendi linki var → View all; uzmanlık menüsü ve üst öğe /doctors değil → Find a doctor
     expect(within(menu).getByRole("menuitem", { name: "View all Specialties" })).toHaveAttribute("href", "/en/specialties");
-    expect(within(menu).getByRole("menuitem", { name: "Find a doctor" })).toHaveAttribute("href", "/en/doctors");
+    expect(within(menu).getByRole("menuitem", { name: "Find a doctor" })).toHaveAttribute("href", "/en/physicians");
   });
 
   it("4'ten fazla öğede 2 kolon; üst öğe /doctors ise 'Find a doctor' tekrar edilmez; '#' linkte 'View all' yok", async () => {
-    const children = Array.from({ length: 5 }, (_, i) => ({ id: `c${i}`, label: `Item ${i}`, href: `/doctors?specialty=s${i}` }));
-    const { unmount } = renderDropdown({ id: "p", label: "Branşlar", href: "/doctors", children });
+    const children = Array.from({ length: 5 }, (_, i) => ({ id: `c${i}`, label: `Item ${i}`, href: `/physicians?specialty=s${i}` }));
+    const { unmount } = renderDropdown({ id: "p", label: "Branşlar", href: "/physicians", children });
     let menu = await (async () => {
       await open("Branşlar");
       return screen.findByRole("menu");

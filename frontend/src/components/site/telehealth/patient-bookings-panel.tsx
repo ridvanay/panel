@@ -142,7 +142,7 @@ function PatientBookingsPanelContent() {
           description={t.patientBookings[emptyCopy.descriptionKey]}
           action={
             emptyCopy.showAction ? (
-              <Button type="button" size="sm" onClick={() => router.push(localize("/doctors"))}>
+              <Button type="button" size="sm" onClick={() => router.push(localize("/physicians"))}>
                 {t.common.bookAppointment}
               </Button>
             ) : undefined

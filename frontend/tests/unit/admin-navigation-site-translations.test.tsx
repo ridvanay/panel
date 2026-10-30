@@ -36,7 +36,7 @@ const empty = { items: [], meta: { nextCursor: null } };
 const settings = { siteName: "WM Health", logoUrl: null, tagline: "Expert care online", homePageId: null, headerLogoHeight: null, headerLogoMaxWidth: null } as unknown as SiteSettings;
 const navConfig: NavigationConfigDto = {
   headerCtaLabel: "Appointment",
-  headerCtaHref: "/doctors",
+  headerCtaHref: "/physicians",
   footerCopyrightText: "© WM Health",
   siteTranslations: { tr: { headerCtaLabel: "Randevu" } },
   navigationItems: [],

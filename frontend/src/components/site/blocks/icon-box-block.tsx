@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import type { BlockChrome, IconBoxBlock } from "@/lib/page-builder/types";
+import { canonicalSitePath } from "@/lib/i18n/physicians-path";
 
 /** `button-block.tsx`deki AYNI `react-hooks/static-components` yanlış-pozitifi kaçınma deseni. */
 function iconGlyph(name: string, className: string) {
@@ -23,7 +24,7 @@ export function IconBoxBlockView({ block, chrome }: { block: IconBoxBlock; chrom
   return (
     <section className={cn(chrome === "page" && "px-4 py-8 sm:px-6")}>
       {block.data.href ? (
-        <Link href={block.data.href} className="block transition-opacity hover:opacity-80">
+        <Link href={canonicalSitePath(block.data.href)} className="block transition-opacity hover:opacity-80">
           {content}
         </Link>
       ) : (

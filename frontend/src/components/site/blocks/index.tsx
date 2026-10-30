@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { BlockChrome, PageNode } from "@/lib/page-builder/types";
 import { ScrollReveal } from "./scroll-reveal";
 import { HeroBlockView } from "./hero-block";
@@ -54,6 +54,11 @@ import { HOME_PAGE_BLOCK_TYPE } from "@/lib/home-page";
 export interface BlockSiteContext {
   lang: string;
   defaultLocaleCode: string;
+  /**
+   * Paket V — anasayfa şablonunda hero'nun hemen altına yerleşen bölümler (destek bandı, yetki
+   * belgeleri şeridi). Yalnızca ana sayfa rotası verir; diğer bloklar yok sayar.
+   */
+  homeAfterHero?: ReactNode;
 }
 
 function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: BlockSiteContext) {

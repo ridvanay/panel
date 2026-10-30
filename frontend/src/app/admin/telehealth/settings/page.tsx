@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, Palette } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { EmergencyNoticeSettings, TelehealthThemeSettings, UpdateTelehealthThemeSettingsRequest } from "@/lib/api/types";
+import type { EmergencyNoticeSettings, LanguageSupportSettings, TelehealthThemeSettings, UpdateTelehealthThemeSettingsRequest } from "@/lib/api/types";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error"
 import { useAuth } from "@/context/auth-context";
 import { EmergencyNoticeSettingsCard } from "@/components/admin/telehealth/emergency-notice-settings";
 import { DEFAULT_EMERGENCY_NOTICE_SETTINGS } from "@/lib/emergency-notice";
+import { LanguageSupportSettingsCard } from "@/components/admin/telehealth/language-support-settings";
+import { DEFAULT_LANGUAGE_SUPPORT } from "@/lib/language-support";
 
 /**
  * Görev (2026-09-14) Görev 1 — "Arayüz & Tema Renkleri" sekmesi. `/admin/telehealth/overview`
@@ -54,6 +56,7 @@ export default function AdminTelehealthSettingsPage() {
   const [theme, setTheme] = useState<ThemeColorForm | null>(null);
   const [form, setForm] = useState<ThemeColorForm | null>(null);
   const [emergencyNotice, setEmergencyNotice] = useState<EmergencyNoticeSettings>(DEFAULT_EMERGENCY_NOTICE_SETTINGS);
+  const [languageSupport, setLanguageSupport] = useState<LanguageSupportSettings>(DEFAULT_LANGUAGE_SUPPORT);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -66,6 +69,7 @@ export default function AdminTelehealthSettingsPage() {
       setTheme(toColorForm(data));
       setForm(toColorForm(data));
       setEmergencyNotice(data.emergencyNotice ?? DEFAULT_EMERGENCY_NOTICE_SETTINGS);
+      setLanguageSupport(data.languageSupport ?? DEFAULT_LANGUAGE_SUPPORT);
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
@@ -144,7 +148,7 @@ export default function AdminTelehealthSettingsPage() {
       <PageHeading
         icon={Palette}
         title="Arayüz & Tema Renkleri"
-        description="Randevu sihirbazının (/doctors/[slug]) birincil/ikincil/vurgu renklerini ve takvim seçili gün rengini yönetin."
+        description="Randevu sihirbazının (/physicians/[slug]) birincil/ikincil/vurgu renklerini ve takvim seçili gün rengini yönetin."
       />
 
       {saveError && (
@@ -226,6 +230,13 @@ export default function AdminTelehealthSettingsPage() {
         settings={emergencyNotice}
         canEdit={user?.role === "ADMIN"}
         onSaved={setEmergencyNotice}
+      />
+
+      <LanguageSupportSettingsCard
+        key={`ls-${JSON.stringify(languageSupport)}`}
+        settings={languageSupport}
+        canEdit={user?.role === "ADMIN"}
+        onSaved={setLanguageSupport}
       />
     </div>
   );

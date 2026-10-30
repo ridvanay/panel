@@ -67,7 +67,7 @@ const DATA: SitemapData & { siteName: string } = {
     page({ id: "draft", slug: "draft-page", status: "DRAFT" as never }),
   ],
   doctors: [
-    doctor({ slug: "hakan-sofu", fullName: "Hakan Sofu", order: 1 }),
+    doctor({ slug: "hakan-sofu", fullName: "Hakan Sofu", order: 1, specialty: { name: "Obesity and Metabolic Surgery", slug: "obesity-and-metabolic-surgery" } as never }),
     doctor({
       slug: "vahit-mutlu",
       title: "Assoc. Prof. Dr.",
@@ -91,20 +91,20 @@ const allEntries = () => SITEMAP_SECTIONS.flatMap((s) => buildSection(s, DATA));
 describe("sitemap", () => {
   it("index: pages/doctors/specialties alt sitemap'leri; yayımlanmış yazı yoksa blog yok", () => {
     const index = buildIndex(DATA);
-    expect(index.map((i) => i.loc)).toEqual([`${SITE}/sitemaps/pages.xml`, `${SITE}/sitemaps/doctors.xml`, `${SITE}/sitemaps/specialties.xml`]);
+    expect(index.map((i) => i.loc)).toEqual([`${SITE}/sitemaps/pages.xml`, `${SITE}/sitemaps/physicians.xml`, `${SITE}/sitemaps/specialties.xml`]);
     const withPost = buildIndex({ ...DATA, posts: [{ slug: "ilk-yazi", publishedAt: "2026-10-01T00:00:00.000Z", localizations: [] }] });
     expect(withPost.map((i) => i.loc)).toContain(`${SITE}/sitemaps/blog.xml`);
   });
 
   it("hreflang: her dil sürümü kendi <url>'i; yalnızca açık diller + x-default; kapalı dil (es) yok", () => {
-    const doctors = buildSection("doctors", DATA);
+    const doctors = buildSection("physicians", DATA);
     const vahit = doctors.filter((e) => e.loc.includes("vahit-mutlu"));
-    expect(vahit.map((e) => e.loc)).toEqual([`${SITE}/doctors/vahit-mutlu`, `${SITE}/tr/doctors/vahit-mutlu`, `${SITE}/ar/doctors/vahit-mutlu`]);
+    expect(vahit.map((e) => e.loc)).toEqual([`${SITE}/physicians/vahit-mutlu`, `${SITE}/tr/physicians/vahit-mutlu`, `${SITE}/ar/physicians/vahit-mutlu`]);
     expect(vahit[1]!.alternates).toEqual([
-      { hreflang: "en-US", href: `${SITE}/doctors/vahit-mutlu` },
-      { hreflang: "tr-TR", href: `${SITE}/tr/doctors/vahit-mutlu` },
-      { hreflang: "ar", href: `${SITE}/ar/doctors/vahit-mutlu` },
-      { hreflang: "x-default", href: `${SITE}/doctors/vahit-mutlu` },
+      { hreflang: "en-US", href: `${SITE}/physicians/vahit-mutlu` },
+      { hreflang: "tr-TR", href: `${SITE}/tr/physicians/vahit-mutlu` },
+      { hreflang: "ar", href: `${SITE}/ar/physicians/vahit-mutlu` },
+      { hreflang: "x-default", href: `${SITE}/physicians/vahit-mutlu` },
     ]);
     expect(JSON.stringify(allEntries())).not.toMatch(/\/es\/|"hreflang":"es"/);
   });
@@ -125,13 +125,13 @@ describe("sitemap", () => {
     expect(kvkk.lastmod).toBe("2026-09-16T10:00:00.000Z");
     const contact = buildSection("pages", DATA).find((e) => e.loc === `${SITE}/contact`)!;
     expect(contact.lastmod).toBeNull();
-    const vahit = buildSection("doctors", DATA).find((e) => e.loc === `${SITE}/doctors/vahit-mutlu`)!;
+    const vahit = buildSection("physicians", DATA).find((e) => e.loc === `${SITE}/physicians/vahit-mutlu`)!;
     expect(vahit.lastmod).toBe("2026-10-20T08:00:00.000Z");
     expect(vahit.images).toEqual([`${SITE}/uploads/vahit.jpg`]);
   });
 
   it("XML: XSL bağlantısı, sitemaps.org kök elemanları ve namespace'ler, iyi biçimli, mutlak https URL'ler, ≤50.000 URL, changefreq/priority yok", () => {
-    const urlset = renderUrlset(buildSection("doctors", DATA));
+    const urlset = renderUrlset(buildSection("physicians", DATA));
     const index = renderSitemapIndex(buildIndex(DATA));
     for (const xml of [urlset, index]) {
       expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>')).toBe(true);
@@ -173,11 +173,11 @@ describe("llms.txt", () => {
   it("bölümler eksiksiz ve sırayla; kurucu en üstte; acil durum notu; diller ve önekleri; yasal metinler", () => {
     const text = buildLlmsTxt(DATA);
     expect(text.startsWith("# WM Health Istanbul\n\n> ")).toBe(true);
-    const order = ["## Specialties", "## Doctors", "## How it works", "## Languages", "## Legal", "## Contact"].map((h) => text.indexOf(h));
+    const order = ["## Specialties", "## Physicians", "## How it works", "## Languages", "## Legal", "## Contact"].map((h) => text.indexOf(h));
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    const doctorsBlock = text.slice(text.indexOf("## Doctors"), text.indexOf("## How it works"));
-    expect(doctorsBlock.split("\n")[2]).toBe(`- [Assoc. Prof. Dr. Vahit Mutlu](${SITE}/doctors/vahit-mutlu) (founder): General Surgery`);
+    const doctorsBlock = text.slice(text.indexOf("## Physicians"), text.indexOf("## How it works"));
+    expect(doctorsBlock.split("\n")[2]).toBe(`- [Assoc. Prof. Dr. Vahit Mutlu](${SITE}/physicians/vahit-mutlu) (founder): General Surgery`);
     expect(doctorsBlock).not.toMatch(/arsiv-doktor|pasif-doktor/);
     expect(text).toContain(LLMS_EMERGENCY_NOTE);
     expect(text).toContain("Founded by Assoc. Prof. Dr. Vahit Mutlu.");
@@ -230,7 +230,7 @@ describe("robots.txt", () => {
   const robots = buildRobotsTxt(SITE, LOCALES);
 
   it("herkese açık sayfalar engellenmez: /doctors/vahit-mutlu (/doctor/ öneki /doctors/ ile eşleşmez)", () => {
-    for (const path of ["/", "/doctors", "/doctors/vahit-mutlu", "/tr/doctors/vahit-mutlu", "/specialties/dentalcare", "/blog/x", "/kvkk-aydinlatma-metni-2", "/llms.txt", "/sitemap.xml", "/cartilage-repair", "/administration-team", "/tr/checkout-guide"]) {
+    for (const path of ["/", "/physicians", "/physicians/vahit-mutlu", "/tr/physicians/vahit-mutlu", "/specialties/dentalcare", "/blog/x", "/kvkk-aydinlatma-metni-2", "/llms.txt", "/sitemap.xml", "/cartilage-repair", "/administration-team", "/tr/checkout-guide"]) {
       expect(isAllowed(robots, path), path).toBe(true);
     }
   });
@@ -256,7 +256,7 @@ describe("robots.txt", () => {
     for (const path of ["/admin", "/admin/pages", "/login", "/register", "/patient", "/patient/bookings", "/tr/patient/bookings/1", "/doctor", "/en/doctor/schedule", "/consultation/x", "/tr/checkout/success", "/cart", "/ar/hesabim/profil", "/activate-account"]) {
       expect(noindexed(path), path).toBe(true);
     }
-    for (const path of ["/", "/doctors", "/doctors/vahit-mutlu", "/tr/doctors/vahit-mutlu", "/about", "/blog/cart", "/contact", "/kvkk-aydinlatma-metni-2"]) {
+    for (const path of ["/", "/physicians", "/physicians/vahit-mutlu", "/tr/physicians/vahit-mutlu", "/about", "/blog/cart", "/contact", "/kvkk-aydinlatma-metni-2"]) {
       expect(noindexed(path), path).toBe(false);
     }
   });

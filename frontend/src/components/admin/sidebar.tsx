@@ -32,6 +32,7 @@ import {
   CalendarClock,
   CreditCard,
   Radar,
+  BadgeCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -168,6 +169,8 @@ export const navItems: NavItem[] = [
   // Özel CSS/JS sekmesi (yalnızca ADMIN) sayfanın İÇİNDEDİR — sidebar seviyesinde ayrıştırma
   // gerekmez, `/admin/appearance` sayfasının kendisi MANAGER'a görünür kalmalı (§8.2).
   { href: "/admin/appearance", labelKey: "nav.appearance", icon: Palette, roles: ["ADMIN", "MANAGER"] },
+  // Paket V — yetki belgeleri; okuma ADMIN/MANAGER, yazma yalnızca ADMIN (sayfa MANAGER'a salt okunur).
+  { href: "/admin/accreditations", labelKey: "nav.accreditations", icon: BadgeCheck, roles: ["ADMIN", "MANAGER"] },
   // §11 architect-scope-demo-template-import.md — okuma (GET) panel kapısına (ADMIN/MANAGER/EDITOR)
   // açık olsa da, sidebar girdisi yalnızca ADMIN'e gösterilir: yazma (POST .../import) ADMIN-only
   // ve gizleme yalnızca kullanılabilirlik amaçlıdır (güvenlik sınırı DEĞİL, bkz. üstteki not) —

@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   Book,
+  Brain,
   Briefcase,
   Building2,
   Calendar,
@@ -39,6 +40,7 @@ import {
   TrendingUp,
   Truck,
   Users,
+  Wind,
   Wrench,
   Zap,
   type LucideIcon,
@@ -93,6 +95,9 @@ export const ICON_OPTIONS: Record<string, LucideIcon> = {
   CreditCard,
   BarChart3,
   Smile,
+  // Paket V — uzmanlık ikonları (Beyin ve Sinir Cerrahisi, Göğüs Cerrahisi).
+  Brain,
+  Wind,
 };
 
 export const ICON_OPTION_NAMES = Object.keys(ICON_OPTIONS);

@@ -412,13 +412,13 @@ describe("CRM N1 — uçlar", () => {
 
     const get = (dimension: string, key: string) => rows.find((r) => r.dimension === dimension && r.key === key)!;
     expect(get("total", "")).toMatchObject({ visitors: 2, sessions: 2, pageviews: 3, entries: 2, engagedSeconds: 15, phoneClicks: 1, contacts: 1, clicks: 1 });
-    expect(get("page", "/en/doctors/a")).toMatchObject({ visitors: 2, pageviews: 2, entries: 1, scrollSum: 120, scrollCount: 2, contacts: 1 });
+    expect(get("page", "/en/physicians/a")).toMatchObject({ visitors: 2, pageviews: 2, entries: 1, scrollSum: 120, scrollCount: 2, contacts: 1 });
     expect(get("page", "/en")).toMatchObject({ pageviews: 1, entries: 1 });
     expect(get("source", "google|organic|")).toMatchObject({ sessions: 2, entries: 2 });
     expect(get("doctor", "a")).toMatchObject({ visitors: 2, pageviews: 2 });
     expect(get("device", "MOBILE")).toMatchObject({ visitors: 1 });
     expect(get("country", "UNKNOWN")).toMatchObject({ sessions: 2 });
-    expect(rows.filter((r) => r.dimension === "prePage").map((r) => r.key).sort()).toEqual(["/en", "/en/doctors/a"]);
+    expect(rows.filter((r) => r.dimension === "prePage").map((r) => r.key).sort()).toEqual(["/en", "/en/physicians/a"]);
     const clickRows = rows.filter((r) => r.dimension === "click");
     expect(clickRows).toHaveLength(2);
     expect(clickRows.map((r) => JSON.parse(r.label!).text).sort()).toEqual(["Ara", "Randevu"]);

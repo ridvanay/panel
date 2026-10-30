@@ -114,7 +114,7 @@ export async function FeaturedDoctorsBlockView({
   // Paket O — boş bırakılan düğme metni sabit TR/EN yerine site sözlüğünden (6 dil).
   const allButtonLabel = buttonLabel || dict.about.viewAllDoctorsCta;
   const shape = data.imageShape ?? "oval";
-  const renderCard = (doctor: DoctorProfile) => <FeaturedDoctorCard doctor={doctor} href={localizedHref(`/doctors/${doctor.slug}`)} shape={shape} />;
+  const renderCard = (doctor: DoctorProfile) => <FeaturedDoctorCard doctor={doctor} href={localizedHref(`/physicians/${doctor.slug}`)} shape={shape} />;
   const pyramid = data.layout === "pyramid" ? splitFounderPyramid(doctors, data.source) : null;
 
   return (
@@ -146,7 +146,7 @@ export async function FeaturedDoctorsBlockView({
             <div className="w-full sm:max-w-md">
               <FounderCard
                 doctor={pyramid.founder}
-                href={localizedHref(`/doctors/${pyramid.founder.slug}`)}
+                href={localizedHref(`/physicians/${pyramid.founder.slug}`)}
                 badge={dict.telehealth.founderBadge}
               />
             </div>
@@ -178,7 +178,7 @@ export async function FeaturedDoctorsBlockView({
         {data.showAllButton && (
           <div className="mt-10 flex justify-center">
             <Link
-              href={localizedHref("/doctors")}
+              href={localizedHref("/physicians")}
               className="inline-flex items-center justify-center rounded-[var(--site-radius)] border border-[var(--site-primary)] px-6 py-2.5 text-sm font-semibold text-[var(--site-primary)] transition-colors hover:bg-[var(--site-primary)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]"
             >
               {allButtonLabel}

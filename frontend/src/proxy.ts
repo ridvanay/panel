@@ -7,6 +7,7 @@ import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
 import { CACHE_TAGS } from "@/lib/cache-tags";
 import { SITE_LOCALE_COOKIE, SITE_LOCALE_COOKIE_MAX_AGE, resolveAuthLocale } from "@/lib/i18n/auth-locale";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
+import { legacyPhysiciansPath } from "@/lib/i18n/physicians-path";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
@@ -253,6 +254,14 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
   if (DOCTOR_ORIGIN && DOCTOR_PORTAL_ROUTE_PATTERN.test(pathname)) {
     const strippedPath = pathname.replace(LEADING_LOCALE_SEGMENT_PATTERN, "") || "/";
     return NextResponse.redirect(crossOriginUrl(DOCTOR_ORIGIN, strippedPath, request.nextUrl.search), 307);
+  }
+
+  // Paket V — eski `/doctors` adresleri kalıcı olarak `/physicians`'a (301, sorgu dizesi korunur).
+  const physiciansPath = legacyPhysiciansPath(pathname, defaultLocale.code, localeCodes);
+  if (physiciansPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = physiciansPath;
+    return NextResponse.redirect(url, 301);
   }
 
   // [5] LOCALE REDIRECT/REWRITE — MEVCUT KOD, DEĞİŞMEDİ.

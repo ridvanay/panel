@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { env } from "../../config/env";
 import { CRM_HEARTBEAT_SECONDS } from "./crm.collect";
 import { readCrmSettings } from "./crm.settings";
+import { canonicalPathSql } from "./crm.privacy";
 import { anonymizeExpiredLeads, CRM_LEAD_INGEST_INTERVAL_MS, runLeadIngest } from "./crm.leads";
 import { pruneSearchConsoleRows, syncSearchConsole } from "./crm.google";
 
@@ -54,7 +55,8 @@ const DIMENSIONS: DimensionDef[] = [
     keyExpr: `s."source" || '|' || s."medium" || '|' || COALESCE(s."campaign", '')`,
     entryKeyExpr: `s."source" || '|' || s."medium" || '|' || COALESCE(s."campaign", '')`,
   },
-  { name: "page", keyExpr: `e."path"`, entryKeyExpr: `s."landingPath"` },
+  // Paket V — eski `/doctors/...` olayları yeni `/physicians/...` sayfasıyla aynı satıra düşer.
+  { name: "page", keyExpr: canonicalPathSql(`e."path"`), entryKeyExpr: canonicalPathSql(`s."landingPath"`) },
   { name: "country", keyExpr: `COALESCE(s."country", 'UNKNOWN')`, entryKeyExpr: `COALESCE(s."country", 'UNKNOWN')` },
   {
     name: "language",
@@ -64,7 +66,7 @@ const DIMENSIONS: DimensionDef[] = [
   { name: "timezone", keyExpr: `COALESCE(s."timezone", 'unknown')`, entryKeyExpr: `COALESCE(s."timezone", 'unknown')` },
   { name: "device", keyExpr: `s."deviceType"::text`, entryKeyExpr: `s."deviceType"::text` },
   // Paket T — dil öneki `/tr` ya da `/sr-latn` olabilir.
-  { name: "doctor", keyExpr: `substring(e."path" from '^(?:/[a-z]{2}(?:-[a-z]{4})?)?/doctors/([^/]+)')`, entryKeyExpr: null },
+  { name: "doctor", keyExpr: `substring(e."path" from '^(?:/[a-z]{2}(?:-[a-z]{4})?)?/(?:physicians|doctors)/([^/]+)')`, entryKeyExpr: null },
   { name: "specialty", keyExpr: `substring(e."path" from '^(?:/[a-z]{2}(?:-[a-z]{4})?)?/specialties/([^/]+)')`, entryKeyExpr: null },
 ];
 
@@ -112,7 +114,7 @@ function dimensionSql(def: DimensionDef): string {
 /** Temastan (WhatsApp/telefon/e-posta) önce aynı oturumda okunan sayfalar. */
 const PRE_CONTACT_SQL = `
   INSERT INTO "crm_daily_rollups" ${INSERT_COLUMNS}
-  SELECT gen_random_uuid(), $1::date, 'prePage', LEFT(e."path", 300), NULL,
+  SELECT gen_random_uuid(), $1::date, 'prePage', LEFT(${canonicalPathSql(`e."path"`)}, 300), NULL,
     COUNT(DISTINCT e."visitorId")::int, COUNT(DISTINCT e."sessionId")::int, COUNT(*)::int, 0, 0, 0, 0, 0, 0, 0, 0,
     COUNT(DISTINCT e."sessionId")::int, 0
   FROM "crm_events" e
@@ -125,7 +127,7 @@ const PRE_CONTACT_SQL = `
     GROUP BY c."sessionId"
   ) fc ON fc."sessionId" = e."sessionId"
   WHERE e."type" = 'PAGEVIEW' AND e."occurredAt" <= fc.t
-  GROUP BY e."path"`;
+  GROUP BY 4`;
 
 /** Tıklanan öğeler: yol + seçici + metin + hedef birlikte anahtar (md5), ayrıntı `label` JSON'unda. */
 const CLICK_SQL = `

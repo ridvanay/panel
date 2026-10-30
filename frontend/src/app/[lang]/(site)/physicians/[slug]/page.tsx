@@ -22,6 +22,8 @@ import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL, toPublicMediaUrl } from "@/lib/env";
 import type { Locale } from "@/lib/api/types";
 import { publicDoctorName } from "@/lib/doctor-display-name";
+import { resolveLanguageSupport } from "@/lib/language-support";
+import { SupportBadge } from "@/components/site/support/support-badge";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2/§9.5 — doktor profili + saat dilimi
@@ -42,7 +44,7 @@ function truncateForDescription(text: string, maxLength = 160): string {
 }
 
 function resolveCanonicalUrl(lang: string, defaultLocaleCode: string, slug: string): string {
-  return `${SITE_URL}${withLocalePrefix(`/doctors/${slug}`, lang, defaultLocaleCode)}`;
+  return `${SITE_URL}${withLocalePrefix(`/physicians/${slug}`, lang, defaultLocaleCode)}`;
 }
 
 /**
@@ -62,7 +64,7 @@ function buildSelfLanguageAlternates(locales: Locale[], defaultLocaleCode: strin
     const hreflangKey = locale.hreflang ?? locale.code;
     languages[hreflangKey] = resolveCanonicalUrl(locale.code, defaultLocaleCode, slug);
   }
-  languages["x-default"] = `${SITE_URL}/doctors/${slug}`;
+  languages["x-default"] = `${SITE_URL}/physicians/${slug}`;
   return languages;
 }
 
@@ -147,6 +149,8 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const kvkkPage = resolveKvkkConsentPage(pages);
   const explicitConsentPage = resolveExplicitConsentPage(pages);
   const canonicalUrl = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
+  // Paket V — "N dilde destek" rozeti; destek dili seçilmemişse `null` (rozet görünmez).
+  const support = resolveLanguageSupport(telehealthSettings, lang, locales);
 
   /* Grid görevi (2026-09-14) Görev 2a — `DoctorQuickBookingCard`'ın "En erken müsait tarih"
    * gösterimi İÇİN, `BookingWizard`'a ZATEN geçirilen AYNI `slots` dizisinden BAĞIMSIZ, basit bir
@@ -169,6 +173,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
       <DoctorHeroBackground hero={telehealthSettings.doctorHero}>
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
           <DoctorProfileHero doctor={doctor} dict={dict.telehealth} lang={lang} />
+          <SupportBadge support={support} label={dict.common.supportBadge} className="mt-4" />
         </div>
       </DoctorHeroBackground>
 
@@ -212,7 +217,10 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
           </div>
 
           <section id="randevu" className="mt-10 scroll-mt-24">
-            <h2 className="text-xl font-semibold text-foreground">{dict.telehealth.availabilityAndBookingTitle}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-foreground">{dict.telehealth.availabilityAndBookingTitle}</h2>
+              <SupportBadge support={support} label={dict.common.supportBadge} />
+            </div>
             <div className="mt-4">
               {/* Anahtardan BAĞIMSIZ, her zaman TAM metinle (admin metni, yoksa sözlük varsayılanı). */}
               <EmergencyNoticeCard text={resolveEmergencyNotice(telehealthSettings, lang, dict.telehealth).full} />

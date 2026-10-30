@@ -130,7 +130,7 @@ export function buildDefaultAboutContent(dict: AboutStrings): AboutPageContent {
       eyebrow: dict.heroEyebrow,
       title: dict.heroTitle,
       body: dict.heroBody,
-      primaryCta: { label: dict.bookConsultationCta, href: "/doctors" },
+      primaryCta: { label: dict.bookConsultationCta, href: "/physicians" },
       secondaryCta: { label: dict.meetDoctorsCta, href: ABOUT_DOCTORS_ANCHOR },
       imageUrl: "",
       imageAlt: "",
@@ -172,7 +172,7 @@ export function buildDefaultAboutContent(dict: AboutStrings): AboutPageContent {
     },
     closing: {
       title: dict.closingTitle,
-      primaryCta: { label: dict.bookConsultationCta, href: "/doctors" },
+      primaryCta: { label: dict.bookConsultationCta, href: "/physicians" },
       secondaryCta: { label: dict.contactCta, href: "/contact" },
     },
   };

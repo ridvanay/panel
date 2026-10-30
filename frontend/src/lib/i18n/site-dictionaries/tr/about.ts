@@ -17,7 +17,7 @@ export const aboutStrings: AboutStrings = {
   heroBody:
     "Dr. Vahit Mutlu önderliğinde kurulan WM Health, farklı ülkelerden hastaları İstanbul'da ağırlıyor. Güvenli ve bilgiye dayalı bir tedavi süreci için yüksek bakım standartlarını, açık iletişimi ve özenli koordinasyonu bir araya getiriyoruz. İlk konsültasyondan sonraki adımların planlanmasına kadar, kaliteli sağlık hizmetini sınırların ötesinde daha erişilebilir kılmayı amaçlıyoruz.",
   bookConsultationCta: telehealthStrings.bookAppointmentCta,
-  meetDoctorsCta: "Doktorlarımızla tanışın",
+  meetDoctorsCta: "Hekimlerimizle tanışın",
   locationTitle: "İstanbul, Türkiye",
   locationSubtitle: "Farklı ülkelerden hastaları ağırlıyoruz",
 
@@ -42,8 +42,8 @@ export const aboutStrings: AboutStrings = {
   approach3Body: "İstanbul'daki sağlık yolculuğunuzu, ziyaretinizden önce ve ziyaretiniz süresince rehberlik alarak planlayın.",
 
   doctorsEyebrow: "Tıbbi ekibimiz",
-  doctorsTitle: "Doktorlarımızla tanışın",
-  viewAllDoctorsCta: "Tüm doktorlar",
+  doctorsTitle: "Hekimlerimizle tanışın",
+  viewAllDoctorsCta: "Tüm hekimler",
   founderBadge: "Kurucu",
 
   closingTitle: "Bir konsültasyonla başlayın",

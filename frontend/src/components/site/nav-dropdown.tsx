@@ -6,6 +6,7 @@ import { Menu } from "@base-ui/react/menu";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { cn } from "@/lib/utils";
+import { canonicalSitePath } from "@/lib/i18n/physicians-path";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 
 /** Header menüsü için uzmanlık özeti — `(site)/layout.tsx` uzmanlıklar modülünden verir. */
@@ -25,7 +26,7 @@ export interface NavDropdownLink {
 
 /**
  * Alt öğenin bir uzmanlık sayfasına gidip gitmediğini bağlantısından çıkarır. İki biçim tanınır:
- * `/specialties/<slug>` ve `/doctors?specialty=<slug>` (demo şablonun menüsü ikinciyi kullanır).
+ * `/specialties/<slug>` ve `/physicians?specialty=<slug>` (eski kayıtlarda `/doctors?specialty=`).
  * Dil öneki (`/en/...`) ve sondaki `/` göz ardı edilir. Tanınmazsa `null`.
  */
 export function specialtySlugFromHref(href: string): string | null {
@@ -39,7 +40,7 @@ export function specialtySlugFromHref(href: string): string | null {
   const path = url.pathname.replace(/\/+$/, "").replace(new RegExp(`^/${LOCALE_SEGMENT_SOURCE}(?=/)`), "");
   const direct = /^\/specialties\/([^/]+)$/.exec(path);
   if (direct) return decodeURIComponent(direct[1]!);
-  if (path === "/doctors") {
+  if (canonicalSitePath(path) === "/physicians") {
     const slug = url.searchParams.get("specialty");
     if (slug) return slug;
   }
@@ -105,7 +106,7 @@ export function NavDropdown({
   const isSpecialtyMenu = items.some((item) => item.slug !== null);
   const twoColumns = items.length > 4;
   const showViewAll = hasOwnLink(link.href);
-  const showFindDoctor = isSpecialtyMenu && normalizePath(link.href) !== "/doctors";
+  const showFindDoctor = isSpecialtyMenu && canonicalSitePath(normalizePath(link.href)) !== "/physicians";
   const hasFooter = showViewAll || showFindDoctor;
 
   // Panel header'ın ALT KENARININ ~12 px altında açılır (düğmenin değil) — düğme header içinde
@@ -203,7 +204,7 @@ export function NavDropdown({
                 )}
                 {showFindDoctor && (
                   <Menu.Item
-                    render={<Link href={localize("/doctors")} />}
+                    render={<Link href={localize("/physicians")} />}
                     className="ms-auto inline-flex min-h-11 items-center rounded-full bg-[color-mix(in_oklch,var(--site-primary)_7%,var(--site-surface))] px-5 text-sm font-semibold text-[var(--site-primary)] outline-none hover:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))]"
                   >
                     {findDoctorLabel}

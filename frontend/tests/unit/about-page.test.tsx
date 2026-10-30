@@ -164,8 +164,10 @@ describe("getAboutDataForLocale — dil sızıntısı yok", () => {
 
 describe("resolveAboutHref", () => {
   it("site içi yolları aktif dile göre önekler; çapa ve mutlak adresleri olduğu gibi bırakır", () => {
-    expect(resolveAboutHref("/doctors", "en", "tr")).toBe("/en/doctors");
-    expect(resolveAboutHref("/doctors", "tr", "tr")).toBe("/doctors");
+    expect(resolveAboutHref("/physicians", "en", "tr")).toBe("/en/physicians");
+    // Paket V — eski yol yeni yola çevrilir.
+    expect(resolveAboutHref("/doctors", "en", "tr")).toBe("/en/physicians");
+    expect(resolveAboutHref("/physicians", "tr", "tr")).toBe("/physicians");
     expect(resolveAboutHref("#doctors", "en", "tr")).toBe("#doctors");
     expect(resolveAboutHref("https://example.com/a", "en", "tr")).toBe("https://example.com/a");
     expect(resolveAboutHref("//cdn.example.com/a", "en", "tr")).toBe("//cdn.example.com/a");
@@ -183,7 +185,7 @@ describe("toEditableAboutContent — admin formu", () => {
 
 describe("AboutDoctors", () => {
   const baseProps = {
-    doctorsHref: "/en/doctors",
+    doctorsHref: "/en/physicians",
     activeLocaleCode: "en",
     defaultLocaleCode: "tr",
     intlLocale: "en-US",
@@ -198,8 +200,8 @@ describe("AboutDoctors", () => {
     expect(within(cards[0]!).getByText("Founder")).toBeInTheDocument();
     expect(within(cards[1]!).queryByText("Founder")).not.toBeInTheDocument();
     expect(screen.getAllByText("Cardiology")).toHaveLength(3);
-    expect(screen.getByRole("link", { name: "View all doctors" })).toHaveAttribute("href", "/en/doctors");
-    expect(screen.getByRole("heading", { level: 2, name: "Meet our doctors" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View all physicians" })).toHaveAttribute("href", "/en/physicians");
+    expect(screen.getByRole("heading", { level: 2, name: "Meet our physicians" })).toBeInTheDocument();
   });
 
   it("kurucu seçilmemişken ilk 3 aktif doktoru hiçbir etiket olmadan render eder", () => {
@@ -219,7 +221,7 @@ describe("AboutDoctors", () => {
         {...baseProps}
         activeLocaleCode="tr"
         intlLocale="tr-TR"
-        doctorsHref="/doctors"
+        doctorsHref="/physicians"
         section={section}
         telehealthDict={trTelehealthStrings}
         doctors={doctors}
@@ -228,7 +230,7 @@ describe("AboutDoctors", () => {
     );
     expect(screen.getByRole("heading", { level: 2, name: "Ekibimiz" })).toBeInTheDocument();
     expect(screen.getByText("Kurucu Hekim")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Tüm doktorlar" })).toHaveAttribute("href", "/doctors");
+    expect(screen.getByRole("link", { name: "Tüm hekimler" })).toHaveAttribute("href", "/physicians");
   });
 });
 

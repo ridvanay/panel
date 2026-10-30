@@ -3,6 +3,7 @@ import type { DeviceType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { readCrmSettings } from "./crm.settings";
 import { istanbulDayRange } from "./crm.rollup";
+import { canonicalCrmPath, crmPathVariants } from "./crm.privacy";
 
 /**
  * Paket N3 — CRM analitik sorguları. Panel tabloları `crm_daily_rollups`'tan okunur; yalnızca "şu an
@@ -75,7 +76,7 @@ export async function sumRollup(
     orderBy: { _sum: { [orderBy]: "desc" } },
     ...(options.take ? { take: options.take } : {}),
   });
-  return grouped.map((g) => ({
+  const rows = grouped.map((g) => ({
     key: g.key,
     label: g._max.label,
     visitors: g._sum.visitors ?? 0,
@@ -92,6 +93,27 @@ export async function sumRollup(
     contacts: g._sum.contacts ?? 0,
     bookingsStarted: g._sum.bookingsStarted ?? 0,
   }));
+  return dimension === "page" || dimension === "prePage" ? mergeLegacyPageRows(rows) : rows;
+}
+
+/**
+ * Paket V — Paket V öncesi günlerin özet satırları eski `/doctors/...` anahtarıyla duruyor; aynı
+ * sayfanın `/physicians/...` satırıyla birleştirilir (sıra korunur, ilk görülen satır yerinde kalır).
+ */
+export function mergeLegacyPageRows(rows: RollupSum[]): RollupSum[] {
+  const merged = new Map<string, RollupSum>();
+  for (const row of rows) {
+    const key = canonicalCrmPath(row.key);
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...row, key });
+      continue;
+    }
+    for (const field of Object.keys(row) as (keyof RollupSum)[]) {
+      if (field !== "key" && field !== "label") (current[field] as number) += row[field] as number;
+    }
+  }
+  return [...merged.values()];
 }
 
 export function toPageRow(r: RollupSum) {
@@ -369,7 +391,7 @@ export async function clicksReport(app: FastifyInstance, query: z.infer<typeof C
   const rows = await sumRollup(app, "click", query, { orderBy: "clicks", take: 1000 });
   return rows
     .map((c) => ({ ...parseClickLabel(c.label), clicks: c.clicks, contacts: c.contacts, visitors: c.visitors, whatsappClicks: c.whatsappClicks, phoneClicks: c.phoneClicks, emailClicks: c.emailClicks }))
-    .filter((c) => !query.path || c.path === query.path)
+    .filter((c) => !query.path || canonicalCrmPath(c.path) === canonicalCrmPath(query.path))
     .slice(0, 300);
 }
 
@@ -388,7 +410,7 @@ const MOBILE_DEVICES: DeviceType[] = ["MOBILE", "TABLET"];
 export async function heatmap(app: FastifyInstance, query: z.infer<typeof HeatmapQuerySchema>) {
   const { start, end } = rangeBounds(query);
   const deviceWhere: Prisma.CrmEventWhereInput = query.device === "mobile" ? { deviceType: { in: MOBILE_DEVICES } } : { deviceType: { notIn: MOBILE_DEVICES } };
-  const base: Prisma.CrmEventWhereInput = { path: query.path, occurredAt: { gte: start, lt: end }, session: { botFlagged: false }, ...deviceWhere };
+  const base: Prisma.CrmEventWhereInput = { path: { in: crmPathVariants(query.path) }, occurredAt: { gte: start, lt: end }, session: { botFlagged: false }, ...deviceWhere };
   const [clicks, scrolls, pageviews] = await Promise.all([
     app.prisma.crmEvent.findMany({
       where: { ...base, type: { in: ["CLICK", "WHATSAPP_CLICK", "PHONE_CLICK", "EMAIL_CLICK"] }, xPct: { not: null }, yPct: { not: null } },

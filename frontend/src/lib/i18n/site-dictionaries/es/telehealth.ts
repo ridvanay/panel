@@ -28,7 +28,7 @@ export const telehealthStrings: TelehealthStrings = {
   sessionDurationLabel: "{minutes} min",
   freeSessionLabel: "Gratuita / Consulte el precio",
   bookAppointmentCta: "Reservar cita",
-  viewProfileCta: "Ver perfil",
+  viewProfileCta: "Ver médico",
   createAppointmentCta: "Reservar cita",
   socialLinksAriaLabel: "Redes sociales y enlaces web",
   experienceYearsBadge: "{years} años de experiencia",
@@ -95,6 +95,8 @@ export const telehealthStrings: TelehealthStrings = {
   doctorCountOther: "{count} médicos",
   specialtyDoctorsEmptyTitle: "No hay médicos en esta especialidad",
   specialtyDoctorsEmptyDescription: "En este momento no hay médicos publicados en esta especialidad.",
+  specialtyCoordinatorTitle: "Deje que nuestro coordinador encuentre el médico adecuado para usted",
+  specialtyCoordinatorText: "Cuéntenos su situación y un coordinador de pacientes le pondrá en contacto con un médico adecuado en esta especialidad.",
 
   featuredDoctorsCarouselLabel: "Médicos destacados",
   featuredDoctorsPrevious: "Médicos anteriores",

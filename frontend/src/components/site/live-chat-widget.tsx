@@ -20,6 +20,7 @@ import { useAuthOptional } from "@/context/auth-context";
 import type { LiveChatPosition, SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
+import { OPEN_LIVE_CHAT_EVENT } from "@/lib/live-chat-open";
 
 /**
  * `.claude/architect-scope-support-desk-and-reminders.md` §3 — Sağ alt canlı destek widget'ı.
@@ -608,6 +609,13 @@ function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireNam
   const ui = useUiStrings();
   const [open, setOpen] = useState(false);
   const side = position === "BOTTOM_LEFT" ? "left" : "right";
+
+  // Paket V — sayfadaki "Canlı destek" düğmeleri (`openLiveChat`) pencereyi açar.
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_LIVE_CHAT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_LIVE_CHAT_EVENT, onOpen);
+  }, []);
 
   // Aynı köşedeki "yukarı çık" düğmesi sohbet düğmesinin üstüne çıksın diye yığın payını yayınla.
   useEffect(() => {

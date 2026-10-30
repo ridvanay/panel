@@ -149,7 +149,7 @@ function referrerHostOf(referrer: string | undefined): string | null {
 const CONTACT_TYPES = new Set<CrmEventType>(["WHATSAPP_CLICK", "PHONE_CLICK", "EMAIL_CLICK"]);
 
 function isDoctorOrSpecialtyPath(path: string): boolean {
-  return /^\/(doctors|specialties)\/[^/]+/.test(stripLocale(path));
+  return /^\/(physicians|doctors|specialties)\/[^/]+/.test(stripLocale(path));
 }
 
 function clampTimestamp(ts: number, now: number): Date {

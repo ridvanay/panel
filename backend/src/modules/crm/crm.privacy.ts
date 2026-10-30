@@ -34,7 +34,29 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
 // Paket T — dil öneki iki harfli ya da yazı sistemli (`/sr-latn`) olabilir.
 const LOCALE_PREFIX = /^\/[a-z]{2}(?:-[a-z]{4})?(?=\/|$)/;
 
-/** `/en/doctors/x?y#z` → `/doctors/x`. Dil öneki ve sorgu/parça atılır. */
+/**
+ * Paket V — hekim sayfaları `/doctors` → `/physicians` taşındı. Eski olaylar silinmez; raporlarda iki
+ * yol aynı sayfa sayılır (`/en/doctors/x` → `/en/physicians/x`). SQL karşılığı `canonicalPathSql`.
+ */
+const LEGACY_DOCTORS_PATH = /^((?:\/[a-z]{2}(?:-[a-z]{4})?)?)\/doctors(?=\/|$)/;
+
+export function canonicalCrmPath(path: string): string {
+  return path.replace(LEGACY_DOCTORS_PATH, "$1/physicians");
+}
+
+/** Aynı sayfanın yeni ve eski yolu (ısı haritası gibi ham olay sorguları için). */
+export function crmPathVariants(path: string): string[] {
+  const canonical = canonicalCrmPath(path);
+  const legacy = canonical.replace(/^((?:\/[a-z]{2}(?:-[a-z]{4})?)?)\/physicians(?=\/|$)/, "$1/doctors");
+  return legacy === canonical ? [canonical] : [canonical, legacy];
+}
+
+/** `canonicalCrmPath`'in Postgres ifadesi (`col` güvenilir bir sütun adı olmalı). */
+export function canonicalPathSql(col: string): string {
+  return `regexp_replace(${col}, '^((?:/[a-z]{2}(?:-[a-z]{4})?)?)/doctors(?=/|$)', '\\1/physicians')`;
+}
+
+/** `/en/physicians/x?y#z` → `/physicians/x`. Dil öneki ve sorgu/parça atılır. */
 export function stripLocale(path: string): string {
   const clean = path.split(/[?#]/)[0] || "/";
   const stripped = clean.replace(LOCALE_PREFIX, "");

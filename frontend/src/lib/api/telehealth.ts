@@ -3,6 +3,7 @@ import { getAccessToken } from "./token-store";
 import { ApiClientError } from "./error";
 import { apiFetch, apiFetchPage, apiFetchWithMeta } from "./client";
 import type {
+  UpdateLanguageSupportRequest,
   ApiErrorBody,
   QaListenerHistoryEntry,
   QaListenerTokenResponse,
@@ -695,6 +696,11 @@ export function updateTelehealthThemeSettings(input: UpdateTelehealthThemeSettin
 /** `PATCH /admin/telehealth/settings/emergency-notice` — acil durum uyarısı; YALNIZCA ADMIN (diğerleri 403). */
 export function updateEmergencyNoticeSettings(input: UpdateEmergencyNoticeRequest): Promise<TelehealthThemeSettings> {
   return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings/emergency-notice", { method: "PATCH", body: input });
+}
+
+/** Paket V — `PATCH /admin/telehealth/settings/language-support`; YALNIZCA ADMIN. */
+export function updateLanguageSupportSettings(input: UpdateLanguageSupportRequest): Promise<TelehealthThemeSettings> {
+  return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings/language-support", { method: "PATCH", body: input });
 }
 
 /** Paket M — `PATCH /admin/telehealth/settings/doctor-hero`; ADMIN/MANAGER. Görsel yalnızca `imageMediaId`. */

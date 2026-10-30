@@ -19,5 +19,9 @@ export const navStrings: NavStrings = {
   wishlist: "Favorilerim",
   cart: "Sepet",
   dropdownViewAll: "Tüm {label}",
-  dropdownFindDoctor: "Doktor bulun",
+  dropdownFindDoctor: "Hekim bulun",
+  consultPhysicians: "Hekime Danışın",
+  languageSheetTitle: "Dil / Language",
+  languageSheetClose: "Dil seçimini kapat",
+  languageButtonAria: "Dili değiştir, şu an: {language}",
 };

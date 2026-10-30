@@ -4,7 +4,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "استشارة طبية عن بُعد",
   heroTitle: "احجز استشارة بالفيديو مع نخبة من الأطباء الاختصاصيين",
   heroBody: "احجز بنقرات قليلة والتقِ بطبيبك في استشارة آمنة بالفيديو — دون مغادرة منزلك.",
-  heroPrimaryCta: "ابحث عن طبيب",
+  heroPrimaryCta: "استشر طبيبًا",
   heroSecondaryCta: "كيف تعمل الخدمة",
   heroCardTitle: "استشارة آمنة بالفيديو",
   heroCardText: "انضم من متصفحك",
@@ -54,6 +54,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "عرض جميع الأطباء",
 
   closingTitle: "ابدأ باستشارة",
-  closingPrimaryCta: "ابحث عن طبيب",
+  closingPrimaryCta: "استشر طبيبًا",
   closingSecondaryCta: "تواصل معنا",
 };

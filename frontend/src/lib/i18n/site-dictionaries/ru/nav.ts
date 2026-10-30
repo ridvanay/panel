@@ -20,4 +20,8 @@ export const navStrings: NavStrings = {
   cart: "Корзина",
   dropdownViewAll: "Показать все: {label}",
   dropdownFindDoctor: "Найти врача",
+  consultPhysicians: "Консультация врача",
+  languageSheetTitle: "Язык / Language",
+  languageSheetClose: "Закрыть выбор языка",
+  languageButtonAria: "Сменить язык, сейчас: {language}",
 };

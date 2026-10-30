@@ -20,4 +20,8 @@ export const navStrings: NavStrings = {
   cart: "Korpa",
   dropdownViewAll: "Prikaži sve: {label}",
   dropdownFindDoctor: "Pronađite lekara",
+  consultPhysicians: "Konsultujte lekara",
+  languageSheetTitle: "Jezik / Language",
+  languageSheetClose: "Zatvori izbor jezika",
+  languageButtonAria: "Promeni jezik, trenutno: {language}",
 };

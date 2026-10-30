@@ -194,11 +194,11 @@ describe("sayfa ağacı", () => {
 
   it("öneksiz ana sayfa (/) ilk satırda; kapalı düğümün çocukları görünmez", () => {
     const row = (path: string, pageviews: number) => ({ path, pageviews, visitors: pageviews, entries: 1, contacts: 0, clicks: 0, avgEngagedSeconds: 30, avgScrollPct: 50 });
-    const tree = buildPageTree([row("/", 40), row("/doctors/a", 5), row("/en", 10)]);
+    const tree = buildPageTree([row("/", 40), row("/physicians/a", 5), row("/en", 10)]);
     const rows = flattenPageTree(tree, (_path, depth) => depth < 1);
-    expect(rows.map((r) => r.node.path)).toEqual(["/", "/en", "/doctors", "/doctors/a"]);
+    expect(rows.map((r) => r.node.path)).toEqual(["/", "/en", "/physicians", "/physicians/a"]);
     expect(rows[0]!.node.total.pageviews).toBe(40);
-    expect(flattenPageTree(tree, () => false).map((r) => r.node.path)).toEqual(["/", "/en", "/doctors"]);
+    expect(flattenPageTree(tree, () => false).map((r) => r.node.path)).toEqual(["/", "/en", "/physicians"]);
   });
 
   it("ısı haritası önizleme yolu yalnızca site-içi pathname", () => {

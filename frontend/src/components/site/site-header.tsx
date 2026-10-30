@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
+  ChevronRight,
+  Globe,
   Heart,
   LogOut,
   Menu,
@@ -26,6 +28,8 @@ import {
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
+import { LanguageSheet } from "@/components/site/language-sheet";
+import { LocaleFlag } from "@/components/site/locale-flag";
 import { NavDropdown, type NavSpecialty } from "@/components/site/nav-dropdown";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { localeDirection } from "@/lib/i18n/locale-direction";
@@ -36,6 +40,7 @@ import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 import { cn } from "@/lib/utils";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
+import { isPhysiciansListHref } from "@/lib/i18n/physicians-path";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
@@ -128,16 +133,18 @@ interface NavNode {
  * 2 (kök + bir alt seviye) — backend zaten bunu garanti ediyor (kök olmayan bir öğe yalnızca
  * kök bir öğeyi işaret edebilir), bu yüzden tek geçişli bir gruplama yeterlidir.
  */
-function buildNavTree(items: NavigationItemDto[]): NavNode[] {
+function buildNavTree(items: NavigationItemDto[], physiciansLabel: string): NavNode[] {
+  // Paket V — hekim listesine giden öğenin etiketi sözlükten (9 dilde "Consult Physicians").
+  const labelOf = (item: NavigationItemDto) => (isPhysiciansListHref(item.href) ? physiciansLabel : item.label);
   const roots = items.filter((item) => item.parentId === null).sort((a, b) => a.order - b.order);
   return roots.map((root) => ({
     id: root.id,
     href: root.href,
-    label: root.label,
+    label: labelOf(root),
     children: items
       .filter((item) => item.parentId === root.id)
       .sort((a, b) => a.order - b.order)
-      .map((child) => ({ id: child.id, href: child.href, label: child.label })),
+      .map((child) => ({ id: child.id, href: child.href, label: labelOf(child) })),
   }));
 }
 
@@ -175,7 +182,7 @@ function isNavLinkActive(pathname: string | null, href: string): boolean {
  */
 function isDoctorDetailRoute(pathname: string | null): boolean {
   if (!pathname) return false;
-  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?doctors/[^/]+/?$`).test(pathname);
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?physicians/[^/]+/?$`).test(pathname);
 }
 
 /** Mobil menü panelinin `id`'si — hamburger düğmesinin `aria-controls` hedefi. */
@@ -355,7 +362,7 @@ export function SiteHeader({
   const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
   const navTree: NavNode[] =
     navigationItems && navigationItems.length > 0
-      ? buildNavTree(navigationItems)
+      ? buildNavTree(navigationItems, dict.consultPhysicians)
       : [
           ...pages.map((page) => ({ id: `page-${page.id}`, href: `/${page.slug}`, label: page.title, children: [] })),
           { id: "fallback-blog", href: "/blog", label: "Blog", children: [] },
@@ -376,6 +383,15 @@ export function SiteHeader({
     setMobileMenuOpen(false);
   }
   const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  // Paket V (İş 2) — mobil dil seçimi alt sayfası; header'daki bayrak düğmesi ve menüdeki dil satırı açar.
+  const [languageSheetOpen, setLanguageSheetOpen] = useState(false);
+  const showLanguage = Boolean(locales && activeLocale && locales.filter((l) => l.enabled).length > 1);
+  const languageButtonLabel = activeLocale ? formatSiteString(dict.languageButtonAria, { language: activeLocale.nativeLabel }) : dict.languageHeading;
+  const openLanguageSheet = () => {
+    setMobileMenuOpen(false);
+    setLanguageSheetOpen(true);
+  };
 
   // Paket O — masaüstünde (lg+) başlık TEK SATIR. Ölçüm: menü + düğmeler logonun yanına sığmıyorsa
   // (uzun RU/DE etiketleri, çok sayıda menü öğesi) masaüstü satırı gizlenir ve mevcut mobil menü
@@ -614,6 +630,19 @@ export function SiteHeader({
               {ctaLabel}
             </Link>
           )}
+          {showLanguage && activeLocale && (
+            <button
+              type="button"
+              onClick={() => setLanguageSheetOpen(true)}
+              aria-label={languageButtonLabel}
+              aria-haspopup="dialog"
+              aria-expanded={languageSheetOpen}
+              data-testid="mobile-language-button"
+              className={cn("inline-flex h-11 w-10 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
+            >
+              <LocaleFlag code={activeLocale.code} />
+            </button>
+          )}
           {/* Base UI Dialog (`Sheet`): odak panelde tutulur, Esc/dış tıklama kapatır, kapanınca odak
               hamburger'a döner, açıkken arka plan kaydırılamaz. */}
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -715,15 +744,26 @@ export function SiteHeader({
                   })}
                 </ul>
 
-                {locales && activeLocale && locales.length > 1 && (
+                {showLanguage && activeLocale && (
                   <div className="border-t border-border pt-3">
-                    <LanguageSwitcher
-                      variant="list"
-                      locales={locales}
-                      activeLocale={activeLocale}
-                      heading={dict.languageHeading}
-                      onNavigate={closeMobileMenu}
-                    />
+                    {/* Paket V — 9 dilin uzun listesi yerine tek satır: 🌐 bayrak + yerel ad ›; alt sayfayı açar. */}
+                    <button
+                      type="button"
+                      onClick={openLanguageSheet}
+                      aria-haspopup="dialog"
+                      aria-label={languageButtonLabel}
+                      data-testid="mobile-menu-language-row"
+                      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-foreground hover:bg-surface-muted"
+                    >
+                      <Globe className="h-4 w-4 shrink-0 text-foreground/60" aria-hidden="true" />
+                      <LocaleFlag code={activeLocale.code} />
+                      <span className="min-w-0 flex-1 truncate text-start">
+                        <bdi lang={activeLocale.code} dir={localeDirection(activeLocale.code)}>
+                          {activeLocale.nativeLabel}
+                        </bdi>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-foreground/50 rtl:rotate-180" aria-hidden="true" />
+                    </button>
                   </div>
                 )}
 
@@ -785,6 +825,16 @@ export function SiteHeader({
               </div>
             </SheetContent>
           </Sheet>
+          {showLanguage && locales && activeLocale && (
+            <LanguageSheet
+              open={languageSheetOpen}
+              onOpenChange={setLanguageSheetOpen}
+              locales={locales}
+              activeLocale={activeLocale}
+              title={dict.languageSheetTitle}
+              closeLabel={dict.languageSheetClose}
+            />
+          )}
         </div>
       </nav>
     </header>

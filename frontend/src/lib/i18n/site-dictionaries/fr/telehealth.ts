@@ -30,7 +30,7 @@ export const telehealthStrings: TelehealthStrings = {
   sessionDurationLabel: "{minutes} min",
   freeSessionLabel: "Gratuit / Nous contacter pour le tarif",
   bookAppointmentCta: "Prendre rendez-vous",
-  viewProfileCta: "Voir le profil",
+  viewProfileCta: "Voir le médecin",
   createAppointmentCta: "Prendre rendez-vous",
   socialLinksAriaLabel: "Réseaux sociaux et liens web",
   experienceYearsBadge: "{years} ans d’expérience",
@@ -96,6 +96,8 @@ export const telehealthStrings: TelehealthStrings = {
   doctorCountOther: "{count} médecins",
   specialtyDoctorsEmptyTitle: "Aucun médecin trouvé dans cette spécialité",
   specialtyDoctorsEmptyDescription: "Aucun médecin n’est actuellement publié dans cette spécialité.",
+  specialtyCoordinatorTitle: "Laissez notre coordinateur trouver le médecin qui vous convient",
+  specialtyCoordinatorText: "Expliquez-nous votre situation : un coordinateur patients vous orientera vers un médecin adapté dans cette spécialité.",
 
   // --- Öne Çıkan Doktorlar carousel'i (Paket D) ---
   featuredDoctorsCarouselLabel: "Médecins à la une",

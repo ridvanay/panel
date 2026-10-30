@@ -18,6 +18,8 @@ export const CACHE_TAGS = {
   blog: "blog",
   telehealthTheme: "telehealth-theme",
   crmConfig: "crm-config",
+  // Paket V — yetki belgeleri (anasayfa şeridi, footer, Hakkımızda).
+  accreditations: "accreditations",
 } as const;
 
 export type CacheTag = (typeof CACHE_TAGS)[keyof typeof CACHE_TAGS];

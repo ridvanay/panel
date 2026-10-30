@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { Globe } from "lucide-react";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { isPhysiciansListHref } from "@/lib/i18n/physicians-path";
 import { SOCIAL_PLATFORM_ICONS, SOCIAL_PLATFORM_LABELS } from "@/lib/social-platform-icons";
-import type { FooterColumnDto, SocialLinkDto } from "@/lib/api/types";
+import type { FooterColumnDto, PublicAccreditation, SocialLinkDto } from "@/lib/api/types";
+import { AccreditationLogo } from "@/components/site/accreditations/accreditation-logo";
 import { CookiePreferencesButton } from "@/components/site/cookie-preferences-button";
 
 interface SiteFooterProps {
@@ -19,6 +21,14 @@ interface SiteFooterProps {
   defaultLocaleCode?: string;
   /** Paket N — verilirse alt satırda "Çerez tercihleri" bağlantısı (onay bandı açıkken). */
   cookiePreferencesLabel?: string | null;
+  /** Paket V — hekim listesine giden bağlantının etiketi (`nav.consultPhysicians`). Verilmezse kayıttaki etiket. */
+  physiciansNavLabel?: string;
+  /** Paket V — "kendi dilinizde destek" kısa satırı; yalnızca destek dili seçiliyse dolu. */
+  supportLine?: string | null;
+  /** Paket V — sitede görünen yetki belgelerinin küçük logoları (Hakkımızda listesine bağlanır). */
+  accreditations?: PublicAccreditation[];
+  accreditationsHref?: string;
+  accreditationsLabel?: string;
 }
 
 export function SiteFooter({
@@ -32,6 +42,11 @@ export function SiteFooter({
   activeLocaleCode,
   defaultLocaleCode,
   cookiePreferencesLabel,
+  physiciansNavLabel,
+  supportLine,
+  accreditations = [],
+  accreditationsHref,
+  accreditationsLabel,
 }: SiteFooterProps) {
   const localize = (path: string) =>
     activeLocaleCode ? withLocalePrefix(path, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode) : path;
@@ -95,7 +110,7 @@ export function SiteFooter({
                     {column.links.map((link) => (
                       <li key={link.id}>
                         <Link href={localize(link.href)} className="text-sm text-foreground/60 hover:text-[var(--site-link)]">
-                          {link.label}
+                          {physiciansNavLabel && isPhysiciansListHref(link.href) ? physiciansNavLabel : link.label}
                         </Link>
                       </li>
                     ))}
@@ -105,6 +120,30 @@ export function SiteFooter({
             </div>
           )}
         </div>
+
+        {(supportLine || accreditations.length > 0) && (
+          <div className="mt-8 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+            {supportLine ? (
+              <p data-testid="footer-support-line" className="flex items-center gap-2 text-sm text-foreground/70">
+                <Globe className="h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
+                {supportLine}
+              </p>
+            ) : (
+              <span />
+            )}
+            {accreditations.length > 0 && (
+              <ul data-testid="footer-accreditations" aria-label={accreditationsLabel} className="flex flex-wrap items-center gap-4">
+                {accreditations.map((badge) => (
+                  <li key={badge.id}>
+                    <Link href={accreditationsHref ?? "#"} title={badge.name} className="block opacity-80 transition-opacity hover:opacity-100">
+                      <AccreditationLogo badge={badge} className="h-7 max-w-[6rem]" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6 text-sm text-foreground/50">
           <span>{copyrightLine}</span>

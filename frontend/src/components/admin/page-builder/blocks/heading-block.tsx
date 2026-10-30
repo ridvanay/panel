@@ -56,13 +56,13 @@ export function HeadingBlockEditor({
             <p className="text-sm font-medium text-foreground">Hizalama</p>
             <SegmentedToggle value={block.data.align} options={ALIGN_OPTIONS} onChange={(align) => onChange({ ...block, data: { ...block.data, align } })} />
           </div>
-          <Field id={`${block.id}-href`} label="Bağlantı" hint="Opsiyonel — site içi (/doctors) veya https:// ile başlayan dış bağlantı. Dış bağlantı yeni sekmede açılır.">
+          <Field id={`${block.id}-href`} label="Bağlantı" hint="Opsiyonel — site içi (/physicians) veya https:// ile başlayan dış bağlantı. Dış bağlantı yeni sekmede açılır.">
             {(inputProps) => (
               <Input
                 {...inputProps}
                 type="text"
                 inputMode="url"
-                placeholder="/doctors"
+                placeholder="/physicians"
                 value={block.data.href ?? ""}
                 onChange={(e) => onChange({ ...block, data: { ...block.data, href: e.target.value.trim() || undefined } })}
               />

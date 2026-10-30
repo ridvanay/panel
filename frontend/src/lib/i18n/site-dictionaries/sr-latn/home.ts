@@ -5,7 +5,7 @@ export const homeStrings: HomeStrings = {
   heroTitle: "Zakažite video konsultaciju sa vrhunskim specijalistima",
   heroBody:
     "Zakažite u nekoliko klikova i razgovarajte sa svojim lekarom putem bezbedne video konsultacije — bez izlaska iz kuće.",
-  heroPrimaryCta: "Pronađite lekara",
+  heroPrimaryCta: "Konsultujte lekara",
   heroSecondaryCta: "Kako funkcioniše",
   heroCardTitle: "Bezbedna video konsultacija",
   heroCardText: "Pridružite se iz svog pregledača",
@@ -58,6 +58,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "Prikaži sve lekare",
 
   closingTitle: "Počnite konsultacijom",
-  closingPrimaryCta: "Pronađite lekara",
+  closingPrimaryCta: "Konsultujte lekara",
   closingSecondaryCta: "Kontaktirajte nas",
 };

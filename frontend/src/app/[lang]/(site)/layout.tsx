@@ -7,8 +7,12 @@ import { fetchNavigationConfigServer } from "@/lib/api/server-navigation";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
-import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
-import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
+import { fetchSpecialtiesServer, fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
+import { fetchAccreditationsServer } from "@/lib/api/server-accreditations";
+import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { resolveLanguageSupport } from "@/lib/language-support";
+import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
 import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
@@ -55,9 +59,18 @@ export default async function SiteLayout({
     getSiteDictionary(lang),
     fetchCrmConfigServer(),
   ]);
-  const navSpecialties = telehealthModuleEnabled ? await fetchSpecialtiesServer(lang) : [];
+  const [navSpecialties, telehealthSettings, accreditations] = await Promise.all([
+    telehealthModuleEnabled ? fetchSpecialtiesServer(lang) : Promise.resolve([]),
+    // Paket V — footer'daki destek satırı ve yetki belgesi logoları.
+    telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
+    fetchAccreditationsServer(lang),
+  ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
+  const support = resolveLanguageSupport(telehealthSettings, lang, locales);
+  const supportLine = support
+    ? formatSiteString(dict.common.supportFooterLine, { languages: support.languages.map((l) => l.nativeName).join(", ") })
+    : null;
 
   const content = (
     <>
@@ -100,6 +113,11 @@ export default async function SiteLayout({
             activeLocaleCode={activeLocale.code}
             defaultLocaleCode={defaultLocaleCode}
             cookiePreferencesLabel={appearance.cookieBannerEnabled ? dict.consent.footerLink : null}
+            physiciansNavLabel={dict.nav.consultPhysicians}
+            supportLine={supportLine}
+            accreditations={accreditations}
+            accreditationsHref={`${withLocalePrefix(`/${ABOUT_PAGE_SLUG}`, lang, defaultLocaleCode)}#accreditations`}
+            accreditationsLabel={dict.common.accreditationListTitle}
           />
           {appearance.backToTopEnabled && <BackToTopButton />}
           {/* Paket N — açık rızaya dayalı onay bandı (Kabul / Reddet / Tercihler). Bant kapalıysa onay

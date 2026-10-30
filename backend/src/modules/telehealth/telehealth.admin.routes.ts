@@ -52,6 +52,7 @@ import {
   toTelehealthSettingsDto,
 } from "./lib/emergency-notice";
 import { UpdateDoctorHeroRequestSchema, applyDoctorHeroUpdate, parseDoctorHero, resolveDoctorHero } from "./lib/doctor-hero";
+import { UpdateLanguageSupportRequestSchema, applyLanguageSupportUpdate, parseLanguageSupport } from "./lib/language-support";
 import { wallTimeToUtc } from "./lib/timezone";
 import { replaceWeeklyAvailability } from "./lib/weekly-availability";
 import { invalidateEarliestAvailability } from "./lib/earliest-availability";
@@ -1273,6 +1274,48 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
         actorId: request.user!.id,
         actorEmail: request.user!.email,
         action: "telehealth.doctor_hero.update",
+        targetType: "SiteModule",
+        targetId: "telehealth",
+        metadata: { before, after },
+        ipAddress: request.ip,
+      });
+
+      await triggerTagRevalidation(app, [CACHE_TAGS.telehealthTheme]);
+
+      return reply.send(ok(toTelehealthSettingsDto(row.settings, await resolveDoctorHero(app.prisma, row.settings))));
+    }
+  );
+
+  /**
+   * Paket V — "Kendi dilinizde destek" bölümü: desteklenen diller, dil başına destek saatleri ve
+   * tercüman desteği. Sitede hastaya verilen bir taahhüt olduğu için acil durum uyarısı gibi YALNIZCA
+   * `ADMIN`; her değişiklik eski/yeni değerlerle denetim kaydına düşer.
+   */
+  server.patch(
+    "/language-support",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: {
+        body: UpdateLanguageSupportRequestSchema,
+        response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
+      const before = parseLanguageSupport(existing?.settings);
+      const after = applyLanguageSupportUpdate(before, request.body);
+      const merged = mergeTelehealthSettings(existing?.settings, { languageSupport: after });
+
+      const row = await app.prisma.siteModule.upsert({
+        where: { key: "telehealth" },
+        create: { key: "telehealth", settings: merged, updatedById: request.user!.id },
+        update: { settings: merged, updatedById: request.user!.id },
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.language_support.update",
         targetType: "SiteModule",
         targetId: "telehealth",
         metadata: { before, after },

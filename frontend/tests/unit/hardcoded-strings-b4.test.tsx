@@ -143,7 +143,7 @@ describe("sözlük ve regresyon taraması", () => {
       "components/site/blocks/testimonial-block.tsx",
       "components/site/contact-form.tsx",
       "app/[lang]/(site)/activate-account/page.tsx",
-      "app/[lang]/(site)/doctors/page.tsx",
+      "app/[lang]/(site)/physicians/page.tsx",
       "app/[lang]/(site)/specialties/page.tsx",
       "app/[lang]/(site)/specialties/[slug]/page.tsx",
     ];

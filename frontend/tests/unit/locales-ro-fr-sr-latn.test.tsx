@@ -41,7 +41,7 @@ describe("sr-latn — tireli kod uçtan uca", () => {
     expect("/sr-latn".replace(LEADING_LOCALE_SEGMENT, "")).toBe("");
     expect("/sr-latin/x".replace(LEADING_LOCALE_SEGMENT, "")).toBe("/sr-latin/x");
     expect(hasLocalePrefix("/sr-latn/patient")).toBe(true);
-    expect(hasLocalePrefix("/doctors/x")).toBe(false);
+    expect(hasLocalePrefix("/physicians/x")).toBe(false);
   });
 
   it("giriş ekranı dili: next öneki, çerez, Accept-Language (sr-Latn-RS, sr-RS, sr → sr-latn)", () => {
@@ -114,9 +114,9 @@ describe("kapalı diller hiçbir yerde görünmez; açılınca hreflang sr-Latn"
 
   it("sr-latn açıkken: /sr-latn/... URL'leri ve hreflang=\"sr-Latn\"; llms.txt'de Latin dil adı", () => {
     const d = data(true);
-    const entries = buildSection("doctors", d);
-    expect(entries.map((e) => e.loc)).toContain("https://example.com/sr-latn/doctors/vahit-mutlu");
-    expect(entries[0]!.alternates).toEqual(expect.arrayContaining([{ hreflang: "sr-Latn", href: "https://example.com/sr-latn/doctors" }]));
+    const entries = buildSection("physicians", d);
+    expect(entries.map((e) => e.loc)).toContain("https://example.com/sr-latn/physicians/vahit-mutlu");
+    expect(entries[0]!.alternates).toEqual(expect.arrayContaining([{ hreflang: "sr-Latn", href: "https://example.com/sr-latn/physicians" }]));
     expect(buildLlmsTxt(d)).toContain("(sr-latn): https://example.com/sr-latn");
     expect(buildLlmsTxt(d)).not.toMatch(CYRILLIC);
   });

@@ -48,7 +48,7 @@ function renderHeader() {
       pages={[]}
       navigationItems={navigationItems}
       ctaLabel="Appointment"
-      ctaHref="/doctors"
+      ctaHref="/physicians"
       locales={locales}
       activeLocale={locales[0]}
       dict={enNavStrings}
@@ -70,7 +70,7 @@ describe("SiteHeader — mobil menü (lg altı)", () => {
     const ctas = screen.getAllByRole("link", { name: "Appointment" });
     // Masaüstü (lg:flex) ve mobil (lg:hidden) kopyaları — CSS ile yalnızca biri görünür.
     expect(ctas).toHaveLength(2);
-    ctas.forEach((cta) => expect(cta).toHaveAttribute("href", "/doctors"));
+    ctas.forEach((cta) => expect(cta).toHaveAttribute("href", "/physicians"));
   });
 
   it("panel açılınca menü öğeleri, akordeon, dil listesi ve giriş linki görünür; Esc kapatır ve odak düğmeye döner", async () => {
@@ -87,8 +87,9 @@ describe("SiteHeader — mobil menü (lg altı)", () => {
     const p = within(panel);
     expect(p.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
     expect(p.getByRole("link", { name: "About Us" })).toHaveAttribute("href", "/about");
-    // Dil seçici panel içinde düz liste; giriş linki hesap bölümünde.
-    expect(p.getByRole("link", { name: /Türkçe/ })).toHaveAttribute("href", "/tr");
+    // Paket V — dil seçimi panelde tek satır (uzun liste yok); dokununca alt sayfa açılır. Giriş linki hesap bölümünde.
+    expect(p.getByRole("button", { name: "Change language, current: English" })).toHaveAttribute("aria-haspopup", "dialog");
+    expect(p.queryByRole("link", { name: /Türkçe/ })).toBeNull();
     expect(p.getByRole("link", { name: "Sign In" })).toBeInTheDocument();
 
     // Alt menülü öğe akordeon: kapalı başlar, tıklayınca alt öğeler görünür.

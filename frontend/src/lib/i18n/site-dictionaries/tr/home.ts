@@ -5,7 +5,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "Görüntülü sağlık danışmanlığı",
   heroTitle: "Uzman doktorlarla görüntülü görüşün",
   heroBody: "Randevunuzu birkaç tıkla alın, doktorunuzla güvenli bir görüntülü görüşmede buluşun — evinizden çıkmadan.",
-  heroPrimaryCta: "Doktor bulun",
+  heroPrimaryCta: "Hekime danışın",
   heroSecondaryCta: "Nasıl çalışır?",
   heroCardTitle: "Güvenli görüntülü görüşme",
   heroCardText: "Tarayıcınızdan katılın",
@@ -23,7 +23,7 @@ export const homeStrings: HomeStrings = {
 
   howEyebrow: "Nasıl çalışır?",
   howTitle: "Görüşmenize üç adımda ulaşın",
-  step1Title: "Doktor seçin",
+  step1Title: "Hekim seçin",
   step1Text: "Uzmanlık ve dile göre filtreleyin, doktor profillerini inceleyin.",
   step2Title: "Saat seçin",
   step2Text: "Uygun bir saat seçin ve randevunuzu çevrimiçi tamamlayın.",
@@ -52,10 +52,10 @@ export const homeStrings: HomeStrings = {
   journeyIstanbulLabel: "İstanbul",
 
   doctorsEyebrow: "Tıbbi ekibimiz",
-  doctorsTitle: "Doktorlarımızla tanışın",
-  doctorsCta: "Tüm doktorlar",
+  doctorsTitle: "Hekimlerimizle tanışın",
+  doctorsCta: "Tüm hekimler",
 
   closingTitle: "Bir konsültasyonla başlayın",
-  closingPrimaryCta: "Doktor bulun",
+  closingPrimaryCta: "Hekime danışın",
   closingSecondaryCta: "Bize ulaşın",
 };

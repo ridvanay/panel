@@ -165,7 +165,7 @@ describe("HomePageView", () => {
     expect(screen.getByRole("heading", { level: 1, name: en.heroTitle })).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull(); // görsel yok → dekoratif alan
     expect(screen.getByRole("link", { name: en.heroSecondaryCta })).toHaveAttribute("href", "#how");
-    expect(screen.getAllByRole("link", { name: en.heroPrimaryCta })[0]).toHaveAttribute("href", "/en/doctors");
+    expect(screen.getAllByRole("link", { name: en.heroPrimaryCta })[0]).toHaveAttribute("href", "/en/physicians");
     expect(container.querySelector("#how")).not.toBeNull();
     expect(screen.getByText(en.trust2Title)).toBeInTheDocument();
     // Masaüstü (başlık yanında) + mobil (ızgara altında) kopyası — ikisi de aynı hedefe gider.

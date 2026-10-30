@@ -1679,6 +1679,8 @@ model Media {
   doctorAvatars          DoctorProfile[]   @relation("DoctorAvatarMedia")
   // Specialty.imageMediaId için zorunlu karşı-ilişki alanı.
   specialtyImages        Specialty[]       @relation("SpecialtyImageMedia")
+  // Paket V — AccreditationBadge.logoMediaId için zorunlu karşı-ilişki alanı (kolon DEĞİL).
+  accreditationLogos     AccreditationBadge[] @relation("AccreditationBadgeLogo")
 
   @@index([folderId])
   @@map("media")
@@ -3643,4 +3645,32 @@ model CrmSearchConsoleRow {
   @@unique([date, rowKey])
   @@index([date])
   @@map("crm_search_console_rows")
+}
+
+/// Paket V (2026-10-30) — güven ve yetki belgeleri (Health Türkiye, TÜRSAB, T.C. Sağlık Bakanlığı vb.).
+/// Logo dosyası yönetici tarafından medya kütüphanesine yüklenir (repoya eklenmez/üretilmez).
+/// Kurallar (backend doğrulaması + DB CHECK): `isActive=true` için `certificateNo` dolu olmalı;
+/// `validUntil` geçmişse sitede gösterilmez (admin panelinde uyarı). Seed yok; tablo boş başlar.
+model AccreditationBadge {
+  id              String    @id @default(uuid())
+  seq             Int       @unique @default(autoincrement())
+  name            String
+  issuer          String
+  logoMediaId     String?
+  certificateNo   String?
+  verificationUrl String?
+  /// Son geçerlilik günü (dahil). Boş = süresiz.
+  validUntil      DateTime? @db.Date
+  /// Dil başına ad/açıklama: { "<dil>": { "name"?: "...", "description"?: "..." } }. Yoksa kanonik (EN) `name`.
+  translations    Json      @default("{}")
+  sortOrder       Int       @default(0)
+  isActive        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  logoMedia Media? @relation("AccreditationBadgeLogo", fields: [logoMediaId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, sortOrder])
+  @@index([logoMediaId])
+  @@map("accreditation_badges")
 }

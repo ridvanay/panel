@@ -106,7 +106,7 @@ function buildHeroLayers(): SliderLayer[] {
     {
       id: "button",
       type: "button",
-      content: { label: "Doktorları Keşfet", href: "/doctors", variant: "solid", size: "lg" },
+      content: { label: "Doktorları Keşfet", href: "/physicians", variant: "solid", size: "lg" },
       position: { xPercent: 8, yPercent: 95, origin: "bottom-left", offsetX: 0, offsetY: 0 },
       style: {
         color: "#FFFFFF",
@@ -360,7 +360,7 @@ function buildFeaturedDoctorsSection(doctors: DemoTemplateDoctor[]): PageNode {
       {
         id: "th-featured-doctors-cta",
         type: "button",
-        data: { label: "Tüm Doktorları Gör", href: "/doctors", style: "outline", size: "md", align: "center" },
+        data: { label: "Tüm Doktorları Gör", href: "/physicians", style: "outline", size: "md", align: "center" },
       },
     ],
   };
@@ -412,7 +412,7 @@ const ctaSection: PageNode = {
         heading: "Sağlığınız İçin Bir Sonraki Adım",
         description: "Uygun bir uzman ve zaman aralığı seçerek görüntülü randevunuzu birkaç dakikada oluşturun.",
         buttonLabel: "Randevu Al",
-        buttonHref: "/doctors",
+        buttonHref: "/physicians",
       },
     },
   ],
@@ -612,17 +612,17 @@ export const TELEHEALTH_CLINIC_TEMPLATE: DemoTemplateDefinition = {
     siteName: "Global TeleHealth",
     tagline: "Evinizden Uzman Doktorlara Görüntülü Erişim",
     headerCtaLabel: "Randevu Al",
-    headerCtaHref: "/doctors",
+    headerCtaHref: "/physicians",
     footerCopyrightText: "© Global TeleHealth. Tüm hakları saklıdır.",
   },
 
   navigation: [
     { label: "Ana Sayfa", href: "/" },
-    { label: "Doktorlar", href: "/doctors" },
+    { label: "Doktorlar", href: "/physicians" },
     {
       label: "Branşlar",
-      href: "/doctors",
-      children: SPECIALTIES.map((specialty) => ({ label: specialty.name, href: `/doctors?specialty=${specialty.slug}` })),
+      href: "/physicians",
+      children: SPECIALTIES.map((specialty) => ({ label: specialty.name, href: `/physicians?specialty=${specialty.slug}` })),
     },
     // Anchor tabanlı bir href (`/#nasil-calisir`) BİLEREK kullanılmaz — page-builder bloklarının
     // `id` alanının HTML `id` attribute'una BİREBİR yansıdığı garanti DEĞİLDİR (bu şablonun
@@ -637,12 +637,12 @@ export const TELEHEALTH_CLINIC_TEMPLATE: DemoTemplateDefinition = {
         title: "Platform",
         links: [
           { label: "Ana Sayfa", href: "/" },
-          { label: "Doktorlar", href: "/doctors" },
+          { label: "Doktorlar", href: "/physicians" },
         ],
       },
       {
         title: "Branşlar",
-        links: SPECIALTIES.slice(0, 4).map((specialty) => ({ label: specialty.name, href: `/doctors?specialty=${specialty.slug}` })),
+        links: SPECIALTIES.slice(0, 4).map((specialty) => ({ label: specialty.name, href: `/physicians?specialty=${specialty.slug}` })),
       },
       {
         title: "Yasal",

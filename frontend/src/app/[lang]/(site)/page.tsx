@@ -24,6 +24,12 @@ import {
   buildWebSiteJsonLd,
 } from "@/lib/page-builder/structured-data";
 import { JsonLdScript } from "@/components/site/json-ld-script";
+import { fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
+import { fetchAccreditationsServer } from "@/lib/api/server-accreditations";
+import { resolveLanguageSupport } from "@/lib/language-support";
+import { SupportLanguagesBand } from "@/components/site/support/support-languages-band";
+import { AccreditationStrip } from "@/components/site/accreditations/accreditation-strip";
+import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
 
 type PageProps = { params: Promise<{ lang: string }> };
 
@@ -118,6 +124,35 @@ export default async function RootPage({ params }: PageProps) {
   // Boşluk 2: `noIndex`teki sayfada yapılandırılmış veri BASILMAZ.
   const noIndexEffective = page.noIndex || legalMode !== "content";
   const normalizedNodes = normalizePageNodes(page.blocks);
+  const defaultLocaleCode = defaultLocale?.code ?? lang;
+
+  // Paket V — hero'nun hemen altı: "kendi dilinizde destek" bandı (yalnızca destek dili seçiliyse) ve
+  // "Licensed & accredited" şeridi (yalnızca görünür belge varsa). İkisi de boşsa hiçbir şey eklenmez.
+  const [telehealthSettings, accreditations] = await Promise.all([
+    telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
+    fetchAccreditationsServer(lang),
+  ]);
+  const support = resolveLanguageSupport(telehealthSettings, lang, locales);
+  const afterHero =
+    support || accreditations.length > 0 ? (
+      <>
+        <SupportLanguagesBand
+          support={support}
+          dict={dict.common}
+          chatEnabled={settings.liveChatEnabled === true}
+          contactHref={withLocalePrefix("/contact", lang, defaultLocaleCode)}
+        />
+        <AccreditationStrip
+          badges={accreditations}
+          dict={dict.common}
+          detailsHref={`${withLocalePrefix(`/${ABOUT_PAGE_SLUG}`, lang, defaultLocaleCode)}#accreditations`}
+        />
+      </>
+    ) : null;
+  // Anasayfa şablonu hero'yu kendi içinde çizer (yuvaya yerleştirir); serbest bloklu anasayfada ilk
+  // blok hero sayılır.
+  const templateHome = isHomeTemplatePage(page);
+  const [firstNode, ...restNodes] = normalizedNodes;
 
   return (
     <>
@@ -140,7 +175,15 @@ export default async function RootPage({ params }: PageProps) {
             // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
             {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
           >
-            <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
+            {templateHome || !afterHero || !firstNode ? (
+              <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode, homeAfterHero: afterHero }} />
+            ) : (
+              <>
+                <BlockRenderer nodes={[firstNode]} chrome="page" siteContext={{ lang, defaultLocaleCode }} />
+                {afterHero}
+                <BlockRenderer nodes={restNodes} chrome="page" siteContext={{ lang, defaultLocaleCode }} />
+              </>
+            )}
           </div>
           {/* Sayfa başına TEK `FAQPage`/`Place` script — mimar §7.5 Boşluk 1/3, bkz.
               `lib/page-builder/structured-data.ts`. */}
@@ -150,7 +193,7 @@ export default async function RootPage({ params }: PageProps) {
               <JsonLdScript json={buildMapPlaceJsonLd(normalizedNodes)} />
               <JsonLdScript json={buildWebSiteJsonLd(settings, SITE_URL)} />
               {telehealthModuleEnabled && (
-                <JsonLdScript json={buildMedicalOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL)} />
+                <JsonLdScript json={buildMedicalOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL, accreditations)} />
               )}
             </>
           )}

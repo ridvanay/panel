@@ -42,7 +42,7 @@ export async function generateMetadata({
       getSiteDictionary(lang),
     ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
-  const canonical = `${SITE_URL}${withLocalePrefix("/doctors", lang, defaultLocaleCode)}`;
+  const canonical = `${SITE_URL}${withLocalePrefix("/physicians", lang, defaultLocaleCode)}`;
   const isFiltered = Boolean(
     rawSearchParams.specialty || rawSearchParams.language || rawSearchParams.q,
   );

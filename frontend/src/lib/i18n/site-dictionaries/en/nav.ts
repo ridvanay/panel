@@ -29,7 +29,15 @@ export const navStrings = {
   cart: "Cart",
   /** Masaüstü açılır menünün alt bölümü — `{label}` üst menü öğesinin adı (aktif dilde küçük harfle). */
   dropdownViewAll: "View all {label}",
-  dropdownFindDoctor: "Find a doctor",
+  dropdownFindDoctor: "Find a physician",
+  /** Paket V — `/physicians` menü öğesinin etiketi (masaüstü, mobil, footer). */
+  consultPhysicians: "Consult Physicians",
+  /** Paket V — mobil dil seçim alt sayfasının başlığı (yerel ad + "Language"). */
+  languageSheetTitle: "Language",
+  /** Paket V — alt sayfanın kapatma düğmesi. */
+  languageSheetClose: "Close language selection",
+  /** Paket V — dil düğmesinin erişilebilir adı; `{language}` aktif dilin yerel adı. */
+  languageButtonAria: "Change language, current: {language}",
 } as const;
 
 export type NavStrings = Record<keyof typeof navStrings, string>;

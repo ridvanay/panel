@@ -79,7 +79,7 @@ function legalPages(data: LlmsData): SitePage[] {
 function doctorLine(data: LlmsData, d: DoctorProfile): string {
   const name = `${d.title} ${publicDoctorName(d)}`.trim();
   const parts = [d.specialty?.name, d.subSpecialty].filter(Boolean).join(" — ");
-  return `- [${name}](${url(data, `/doctors/${d.slug}`)})${d.isFounder ? " (founder)" : ""}${parts ? `: ${parts}` : ""}`;
+  return `- [${name}](${url(data, `/physicians/${d.slug}`)})${d.isFounder ? " (founder)" : ""}${parts ? `: ${parts}` : ""}`;
 }
 
 export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean } = {}): string {
@@ -111,7 +111,7 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
   }
   out.push("");
 
-  out.push("## Doctors", "");
+  out.push("## Physicians", "");
   for (const d of doctors) {
     out.push(doctorLine(data, d));
     if (full) {
@@ -124,13 +124,13 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
   out.push(
     "## How it works",
     "",
-    `1. Choose a specialty or a doctor: [Doctors](${url(data, "/doctors")}), [Specialties](${url(data, "/specialties")}).`,
-    "2. Pick an available time on the doctor's page. Times are shown in your own time zone and in Istanbul time.",
+    `1. Choose a specialty or a physician: [Consult Physicians](${url(data, "/physicians")}), [Specialties](${url(data, "/specialties")}).`,
+    "2. Pick an available time on the physician's page. Times are shown in your own time zone and in Istanbul time.",
     "3. Confirm your details and identity, then pay securely online.",
     "4. At the appointment time, join the private video consultation from the link in your confirmation email or patient portal.",
     "",
     `- [Home page](${url(data, "/")})`,
-    `- [Book an appointment](${url(data, "/doctors")}): open a doctor's page and use the booking section.`,
+    `- [Book an appointment](${url(data, "/physicians")}): open a physician's page and use the booking section.`,
     ""
   );
 

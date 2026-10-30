@@ -14,7 +14,7 @@ import type { SitemapEntry, SitemapIndexItem } from "./xml";
  *    sayfaları (ana sayfa olmayan ama `home-page` bloğu taşıyan sayfa — canlıdaki `/home1`),
  *    arşivlenmiş/pasif doktorlar, portal/admin/giriş sayfaları (hiç eklenmez).
  */
-export const SITEMAP_SECTIONS = ["pages", "doctors", "specialties", "blog", "products", "portfolio"] as const;
+export const SITEMAP_SECTIONS = ["pages", "physicians", "specialties", "blog", "products", "portfolio"] as const;
 export type SitemapSection = (typeof SITEMAP_SECTIONS)[number];
 
 interface LocalizedContent {
@@ -114,18 +114,26 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       }
       return entries;
     }
-    case "doctors": {
+    case "physicians": {
       const doctors = data.doctors.filter((d) => d.isActive !== false && !d.archivedAt);
       if (doctors.length === 0) return [];
-      const entries = expand(data, allLocaleVariants(data, "/doctors"));
+      const entries = expand(data, allLocaleVariants(data, "/physicians"));
       for (const doctor of doctors) {
         const avatar = mediaUrl(data, doctor.avatarMedia?.url);
-        entries.push(...expand(data, allLocaleVariants(data, `/doctors/${doctor.slug}`), doctor.updatedAt, avatar ? [avatar] : undefined));
+        entries.push(...expand(data, allLocaleVariants(data, `/physicians/${doctor.slug}`), doctor.updatedAt, avatar ? [avatar] : undefined));
       }
       return entries;
     }
     case "specialties": {
-      const specialties = data.specialties.filter((s) => s.isActive !== false);
+      // Paket V — hekimi olmayan uzmanlık sayfası `noindex`; hekim (birincil ya da ek uzmanlık) atanınca
+      // sitemap'e girer. Sayım, aynı veride yüklenen yayındaki doktorlardan yapılır.
+      const staffed = new Set<string>();
+      for (const d of data.doctors) {
+        if (d.isActive === false || d.archivedAt) continue;
+        if (d.specialty?.slug) staffed.add(d.specialty.slug);
+        for (const extra of d.additionalSpecialties ?? []) staffed.add(extra.slug);
+      }
+      const specialties = data.specialties.filter((s) => s.isActive !== false && staffed.has(s.slug));
       if (specialties.length === 0) return [];
       const entries = expand(data, allLocaleVariants(data, "/specialties"));
       for (const s of specialties) entries.push(...expand(data, allLocaleVariants(data, `/specialties/${s.slug}`), (s as { updatedAt?: string }).updatedAt));

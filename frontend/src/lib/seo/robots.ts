@@ -24,7 +24,7 @@ export function buildRobotsTxt(siteUrl: string, locales: Locale[]): string {
     ...ROOT_PRIVATE_PATHS.flatMap(robotsPatterns).map((p) => `Disallow: ${p}`),
     "",
     "# Patient and doctor portals, video consultation, checkout/payment result, cart and account pages.",
-    "# \"/doctor/\" ends with a slash on purpose: it never matches public doctor profiles under \"/doctors/\".",
+    "# \"/doctor/\" ends with a slash on purpose: it never matches public doctor profiles under \"/physicians/\".",
     ...LOCALIZED_PRIVATE_PATHS.flatMap(robotsPatterns).map((p) => `Disallow: ${p}`),
     "",
     ...(prefixes.length

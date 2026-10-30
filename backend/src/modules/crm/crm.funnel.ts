@@ -101,13 +101,13 @@ export async function computeFunnel(app: FastifyInstance, query: FunnelQuery): P
 
   const sessionSql =
     query.groupBy === "doctor"
-      ? `SELECT substring(e."path" from '/doctors/([^/]+)') AS k,
+      ? `SELECT substring(e."path" from '/(?:physicians|doctors)/([^/]+)') AS k,
             COUNT(DISTINCT s."id")::int AS visits,
             COUNT(DISTINCT s."id")::int AS doctor_page,
             (COUNT(DISTINCT s."id") FILTER (WHERE s."bookingStarted"))::int AS booking_started
          FROM "crm_events" e
          JOIN "crm_sessions" s ON s."id" = e."sessionId"
-         WHERE NOT s."botFlagged" AND e."type" = 'PAGEVIEW' AND e."path" ~ '/doctors/[^/]+'
+         WHERE NOT s."botFlagged" AND e."type" = 'PAGEVIEW' AND e."path" ~ '/(physicians|doctors)/[^/]+'
            AND s."startedAt" >= $1::timestamp AND s."startedAt" < $2::timestamp
          GROUP BY 1`
       : `SELECT ${sessionKey(query.groupBy, query.model)} AS k,

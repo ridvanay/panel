@@ -102,7 +102,7 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
       eyebrow: dict.heroEyebrow,
       title: dict.heroTitle,
       body: dict.heroBody,
-      primaryCta: { label: dict.heroPrimaryCta, href: "/doctors" },
+      primaryCta: { label: dict.heroPrimaryCta, href: "/physicians" },
       secondaryCta: { label: dict.heroSecondaryCta, href: HOME_HOW_ANCHOR },
       imageUrl: "",
       imageAlt: "",
@@ -164,7 +164,7 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
     closing: {
       enabled: true,
       title: dict.closingTitle,
-      primaryCta: { label: dict.closingPrimaryCta, href: "/doctors" },
+      primaryCta: { label: dict.closingPrimaryCta, href: "/physicians" },
       secondaryCta: { label: dict.closingSecondaryCta, href: "/contact" },
     },
   };

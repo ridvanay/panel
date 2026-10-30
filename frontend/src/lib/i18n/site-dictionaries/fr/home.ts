@@ -5,7 +5,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "Téléconsultation",
   heroTitle: "Réservez une consultation vidéo avec des spécialistes de premier plan",
   heroBody: "Réservez en quelques clics et retrouvez votre médecin lors d’une consultation vidéo sécurisée — sans quitter votre domicile.",
-  heroPrimaryCta: "Trouver un médecin",
+  heroPrimaryCta: "Consulter un médecin",
   heroSecondaryCta: "Comment ça marche",
   heroCardTitle: "Consultation vidéo sécurisée",
   heroCardText: "Participez depuis votre navigateur",
@@ -62,6 +62,6 @@ export const homeStrings: HomeStrings = {
 
   // --- Closing band ---
   closingTitle: "Commencez par une consultation",
-  closingPrimaryCta: "Trouver un médecin",
+  closingPrimaryCta: "Consulter un médecin",
   closingSecondaryCta: "Nous contacter",
 };

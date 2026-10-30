@@ -17,6 +17,7 @@ import type { HeadingLayerContent } from "@/lib/sliders/types";
 import type { ResolvedSliderLayer } from "./resolve-responsive";
 import { stackAlignSelf } from "./stacked-layout";
 import { cn } from "@/lib/utils";
+import { canonicalSitePath } from "@/lib/i18n/physicians-path";
 
 function buttonIcon(name: string | undefined, className: string) {
   const Icon = resolveIcon(name);
@@ -108,7 +109,7 @@ export function SlideLayerView({
           )}
           {layer.type === "button" && (
             <Link
-              href={layer.content.href}
+              href={canonicalSitePath(layer.content.href)}
               className={cn(
                 "inline-flex items-center font-semibold transition-all duration-300",
                 SLIDER_BUTTON_VARIANT_CLASS[layer.content.variant],

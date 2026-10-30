@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Stethoscope } from "lucide-react";
+import { UserRoundSearch } from "lucide-react";
 import { fetchSpecialtyBySlugServer, fetchDoctorsServer } from "@/lib/api/server-telehealth";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { DoctorCard } from "@/components/site/telehealth/doctor-card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { ContactActions } from "@/components/site/contact-actions";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -61,11 +61,13 @@ function buildSelfLanguageAlternates(locales: Locale[], defaultLocaleCode: strin
 
 export async function generateMetadata({ params }: SpecialtyDetailPageProps): Promise<Metadata> {
   const { lang, slug } = await params;
-  const [specialty, locales, settings, dict] = await Promise.all([
+  const [specialty, locales, settings, dict, doctors] = await Promise.all([
     fetchSpecialtyBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
     getSiteDictionary(lang),
+    // Sayfa gövdesiyle AYNI kaynak (aynı istek, önbellekte tekilleşir): hekim listesi boşsa noindex.
+    fetchDoctorsServer({ specialtySlug: slug, locale: lang }),
   ]);
   if (!specialty) return {};
 
@@ -79,6 +81,9 @@ export async function generateMetadata({ params }: SpecialtyDetailPageProps): Pr
   return {
     title,
     description,
+    // Paket V — hekimi olmayan uzmanlık sayfası yayında ama hekim atanana kadar indekslenmez
+    // (sitemap'e de girmez, bkz. `lib/sitemap/build.ts`).
+    ...(doctors.length === 0 ? { robots: { index: false, follow: true } } : {}),
     alternates: {
       canonical,
       languages: buildSelfLanguageAlternates(locales, defaultLocaleCode, slug),
@@ -101,11 +106,12 @@ export async function generateMetadata({ params }: SpecialtyDetailPageProps): Pr
 export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPageProps) {
   const { lang, slug } = await params;
 
-  const [specialty, doctors, locales, dict] = await Promise.all([
+  const [specialty, doctors, locales, dict, settings] = await Promise.all([
     fetchSpecialtyBySlugServer(slug, lang),
     fetchDoctorsServer({ specialtySlug: slug, locale: lang }),
     fetchLocalesServer(),
     getSiteDictionary(lang),
+    fetchSiteSettingsServer(lang),
   ]);
   if (!specialty) notFound();
 
@@ -130,12 +136,29 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
       </div>
 
       {doctors.length === 0 ? (
-        <EmptyState
-          icon={Stethoscope}
-          title={dict.telehealth.specialtyDoctorsEmptyTitle}
-          description={dict.telehealth.specialtyDoctorsEmptyDescription}
-          className="mt-10"
-        />
+        // Paket V — hekimi olmayan uzmanlıkta liste yerine koordinatöre yönlendirme (W paketinden
+        // sonra eşleştirme sihirbazı da buraya eklenecek).
+        <section
+          data-testid="specialty-coordinator-box"
+          aria-labelledby="specialty-coordinator-title"
+          className="mt-10 flex flex-col items-start gap-4 rounded-[var(--site-radius)] border border-border bg-surface-muted/60 p-6 sm:flex-row sm:items-center sm:p-8"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <UserRoundSearch className="h-6 w-6" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 id="specialty-coordinator-title" className="font-heading text-lg font-semibold text-foreground">
+              {dict.telehealth.specialtyCoordinatorTitle}
+            </h2>
+            <p className="mt-1 text-sm text-foreground/70">{dict.telehealth.specialtyCoordinatorText}</p>
+          </div>
+          <ContactActions
+            chatEnabled={settings.liveChatEnabled === true}
+            contactHref={withLocalePrefix("/contact", lang, defaultLocaleCode)}
+            chatLabel={dict.common.liveChatCta}
+            contactLabel={dict.common.contactUsCta}
+          />
+        </section>
       ) : (
         <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {doctors.map((doctor) => (

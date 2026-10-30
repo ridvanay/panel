@@ -20,4 +20,8 @@ export const navStrings: NavStrings = {
   cart: "Coș",
   dropdownViewAll: "Vezi toate: {label}",
   dropdownFindDoctor: "Găsiți un medic",
+  consultPhysicians: "Consultați un medic",
+  languageSheetTitle: "Limbă / Language",
+  languageSheetClose: "Închideți selectarea limbii",
+  languageButtonAria: "Schimbați limba, curentă: {language}",
 };

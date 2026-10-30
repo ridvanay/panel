@@ -28,7 +28,7 @@ export const telehealthStrings: TelehealthStrings = {
   sessionDurationLabel: "{minutes} min",
   freeSessionLabel: "Besplatno / Kontaktirajte nas za cenu",
   bookAppointmentCta: "Zakažite termin",
-  viewProfileCta: "Pogledajte profil",
+  viewProfileCta: "Pogledajte lekara",
   createAppointmentCta: "Zakažite termin",
   socialLinksAriaLabel: "Društvene mreže i veb-linkovi",
   experienceYearsBadge: "Godine iskustva: {years}",
@@ -95,6 +95,8 @@ export const telehealthStrings: TelehealthStrings = {
   doctorCountOther: "Broj lekara: {count}",
   specialtyDoctorsEmptyTitle: "U ovoj specijalnosti nije pronađen nijedan lekar",
   specialtyDoctorsEmptyDescription: "Trenutno nema objavljenih lekara u ovoj specijalnosti.",
+  specialtyCoordinatorTitle: "Neka naš koordinator pronađe odgovarajućeg lekara za vas",
+  specialtyCoordinatorText: "Opišite nam svoju situaciju i koordinator pacijenata će vas povezati sa odgovarajućim lekarom iz ove oblasti.",
 
   featuredDoctorsCarouselLabel: "Istaknuti lekari",
   featuredDoctorsPrevious: "Prethodni lekari",

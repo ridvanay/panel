@@ -23,6 +23,7 @@ import {
   type DeviceBackground,
 } from "./background";
 import { useUiStrings } from "@/lib/i18n/use-ui-strings";
+import { canonicalSitePath } from "@/lib/i18n/physicians-path";
 
 /** §5.1 architect — eşik 50px VEYA hız > 0.4px/ms; `slide` track sürüklemesinde de AYNI eşik. */
 const SWIPE_THRESHOLD_PX = 50;
@@ -265,7 +266,7 @@ function SlideStage({
       <SlideOverlay slide={slide} />
       {slide.linkHref && (
         <a
-          href={slide.linkHref}
+          href={canonicalSitePath(slide.linkHref)}
           target={slide.linkNewTab ? "_blank" : undefined}
           rel={slide.linkNewTab ? "noopener noreferrer" : undefined}
           className="absolute inset-0 z-0"

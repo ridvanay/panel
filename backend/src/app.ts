@@ -36,6 +36,7 @@ import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appeara
 import { adminDemoTemplatesRoutes } from "./modules/demo-templates/demo-templates.routes";
 import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
 import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
+import { adminAccreditationsRoutes, publicAccreditationsRoutes } from "./modules/accreditations/accreditations.routes";
 import { adminLocalesRoutes, publicLocalesRoutes } from "./modules/localization/localization.routes";
 import { systemRoutes } from "./modules/system/system.routes";
 import { emailTemplatesRoutes } from "./modules/email-templates/email-templates.routes";
@@ -229,6 +230,9 @@ export function buildApp() {
       // .claude/architect-scope-demo-template-import.md §1.4 (appearance kayıtlarından SONRA).
       api.register(adminDemoTemplatesRoutes, { prefix: "/admin/demo-templates" });
       api.register(publicNavigationRoutes, { prefix: "/navigation" });
+      // Paket V — yetki belgeleri ve akreditasyonlar.
+      api.register(publicAccreditationsRoutes, { prefix: "/accreditations" });
+      api.register(adminAccreditationsRoutes, { prefix: "/admin/accreditations" });
       api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
       // §10.5 Çoklu Dil & Yerelleştirme — bkz. .claude/architect-scope-i18n.md.
       api.register(publicLocalesRoutes, { prefix: "/locales" });

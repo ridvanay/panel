@@ -4,7 +4,7 @@ export const homeStrings: HomeStrings = {
   heroEyebrow: "Телемедицинская консультация",
   heroTitle: "Запишитесь на видеоконсультацию к ведущим специалистам",
   heroBody: "Запишитесь в несколько кликов и встретьтесь с врачом на защищённой видеоконсультации — не выходя из дома.",
-  heroPrimaryCta: "Найти врача",
+  heroPrimaryCta: "Консультация врача",
   heroSecondaryCta: "Как это работает",
   heroCardTitle: "Защищённая видеоконсультация",
   heroCardText: "Подключение прямо из браузера",
@@ -55,6 +55,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "Все врачи",
 
   closingTitle: "Начните с консультации",
-  closingPrimaryCta: "Найти врача",
+  closingPrimaryCta: "Консультация врача",
   closingSecondaryCta: "Связаться с нами",
 };

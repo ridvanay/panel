@@ -79,7 +79,7 @@ describe("dil sekmesi yardımcıları", () => {
 
 describe("menü ağacı RU sekmesi", () => {
   function Harness({ onChange }: { onChange: (items: FlatNavItem[]) => void }) {
-    const [items, setItems] = useState<FlatNavItem[]>([{ id: "a", label: "Doctors", href: "/doctors", parentId: null, translations: { tr: { label: "Doktorlar" } } }]);
+    const [items, setItems] = useState<FlatNavItem[]>([{ id: "a", label: "Doctors", href: "/physicians", parentId: null, translations: { tr: { label: "Doktorlar" } } }]);
     return (
       <NavTreeEditor
         items={items}

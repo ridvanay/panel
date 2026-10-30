@@ -223,7 +223,7 @@ export function resolvePageBlockTokens(
           const templateSlug = specialtySlugHrefTemplateSlugFromToken(value);
           const resolvedSlug = specialtySlugByTemplateSlug.get(templateSlug);
           if (resolvedSlug !== undefined) {
-            (frame.container as Record<string | number, unknown>)[key] = `/doctors?specialty=${resolvedSlug}`;
+            (frame.container as Record<string | number, unknown>)[key] = `/physicians?specialty=${resolvedSlug}`;
           } else {
             unresolvedTokens.add(value);
           }

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { DEFAULT_LANGUAGE_SUPPORT } from "../../src/modules/telehealth/lib/language-support";
 
 /**
  * Randevu sihirbazı (`/doctors/[slug]`, frontend) tema renkleri — `GET`/`PATCH
@@ -84,11 +85,11 @@ describe("telehealth theme settings — GET/PATCH /admin/telehealth/settings + G
   it("SiteModule.settings satırı hiç yokken GET varsayılanları döner (bozuk/eksik JSON'a sessizce düşer)", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings", headers: authHeader(adminToken) });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE, doctorHero: DEFAULT_DOCTOR_HERO });
+    expect(res.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE, doctorHero: DEFAULT_DOCTOR_HERO, languageSupport: DEFAULT_LANGUAGE_SUPPORT });
 
     const publicRes = await app.inject({ method: "GET", url: "/api/v1/telehealth/theme" });
     expect(publicRes.statusCode).toBe(200);
-    expect(publicRes.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE, doctorHero: DEFAULT_DOCTOR_HERO });
+    expect(publicRes.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE, doctorHero: DEFAULT_DOCTOR_HERO, languageSupport: DEFAULT_LANGUAGE_SUPPORT });
   });
 
   it("RBAC — GET: ADMIN/MANAGER/EDITOR 200, CUSTOMER 401/403; PATCH: ADMIN/MANAGER 200, EDITOR/CUSTOMER 403", async () => {
@@ -133,6 +134,7 @@ describe("telehealth theme settings — GET/PATCH /admin/telehealth/settings + G
       calendarActiveBg: DEFAULTS.calendarActiveBg,
       emergencyNotice: DEFAULT_EMERGENCY_NOTICE,
       doctorHero: DEFAULT_DOCTOR_HERO,
+      languageSupport: DEFAULT_LANGUAGE_SUPPORT,
     });
 
     const getRes = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings", headers: authHeader(adminToken) });

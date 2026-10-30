@@ -115,9 +115,9 @@ describe("proxy — giriş ekranı dili, dil çerezi, kapalı diller", () => {
 
   it("site sayfaları dil çerezini yazar (yalnızca değiştiyse)", async () => {
     const { proxy } = await import("@/proxy");
-    const ru = await proxy(request("/ru/doctors"));
+    const ru = await proxy(request("/ru/physicians"));
     expect(ru.headers.get("set-cookie")).toMatch(/wm-locale=ru/);
-    const tr = await proxy(request("/doctors", { cookie: "wm-locale=ru" }));
+    const tr = await proxy(request("/physicians", { cookie: "wm-locale=ru" }));
     expect(tr.headers.get("set-cookie")).toMatch(/wm-locale=tr/);
     const same = await proxy(request("/ru", { cookie: "wm-locale=ru" }));
     expect(same.headers.get("set-cookie")).toBeNull();
@@ -125,7 +125,7 @@ describe("proxy — giriş ekranı dili, dil çerezi, kapalı diller", () => {
 
   it("kapalı dil (es) öneki dil sayılmaz: varsayılan dile rewrite edilir (sayfa yok → 404), dil çerezi es olmaz", async () => {
     const { proxy } = await import("@/proxy");
-    for (const path of ["/es", "/es/doctors", "/de/about"]) {
+    for (const path of ["/es", "/es/physicians", "/es/doctors", "/de/about"]) {
       const res = await proxy(request(path));
       expect(res.headers.get("x-middleware-rewrite"), path).toContain(`/tr${path}`);
       expect(activeLocaleOf(res), path).toBe("tr");

@@ -160,7 +160,7 @@ test("madde 1: 5 adımlı sihirbaz — stepper durumu her geçişte doğru günc
 }) => {
   test.setTimeout(120_000);
 
-  await gotoAndWaitReady(page, `/doctors/${doctorFixture.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${doctorFixture.slug}`, async () => {
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
   });
   await page.waitForTimeout(500);
@@ -244,7 +244,7 @@ for (const { label, viewport } of [
     const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100", viewport });
     const page = await context.newPage();
     try {
-      await gotoAndWaitReady(page, `/doctors/${doctorFixture.slug}`, async () => {
+      await gotoAndWaitReady(page, `/physicians/${doctorFixture.slug}`, async () => {
         await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
       });
       await page.waitForTimeout(500);

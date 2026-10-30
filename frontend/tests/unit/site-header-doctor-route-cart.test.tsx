@@ -39,23 +39,23 @@ function renderHeader(pathname: string) {
 }
 
 describe("SiteHeader — doktor detay sayfasında sepet ikonu istisnası", () => {
-  it("prefix'siz doktor detay yolunda (`/doctors/dr-elif-aydemir`) sepet ikonu YOK", () => {
-    renderHeader("/doctors/dr-elif-aydemir");
+  it("prefix'siz doktor detay yolunda (`/physicians/dr-elif-aydemir`) sepet ikonu YOK", () => {
+    renderHeader("/physicians/dr-elif-aydemir");
     expect(screen.queryByLabelText(/^Sepet,/)).not.toBeInTheDocument();
   });
 
-  it("locale prefix'li doktor detay yolunda (`/en/doctors/dr-elif-aydemir`) sepet ikonu YOK", () => {
-    renderHeader("/en/doctors/dr-elif-aydemir");
+  it("locale prefix'li doktor detay yolunda (`/en/physicians/dr-elif-aydemir`) sepet ikonu YOK", () => {
+    renderHeader("/en/physicians/dr-elif-aydemir");
     expect(screen.queryByLabelText(/^Sepet,/)).not.toBeInTheDocument();
   });
 
-  it("doktor IZGARASINDA (`/doctors`, ekstra segment YOK) sepet ikonu HÂLÂ görünür", () => {
-    renderHeader("/doctors");
+  it("doktor IZGARASINDA (`/physicians`, ekstra segment YOK) sepet ikonu HÂLÂ görünür", () => {
+    renderHeader("/physicians");
     expect(screen.getByLabelText(/^Sepet,/)).toBeInTheDocument();
   });
 
-  it("locale prefix'li doktor ızgarasında (`/en/doctors`) sepet ikonu HÂLÂ görünür", () => {
-    renderHeader("/en/doctors");
+  it("locale prefix'li doktor ızgarasında (`/en/physicians`) sepet ikonu HÂLÂ görünür", () => {
+    renderHeader("/en/physicians");
     expect(screen.getByLabelText(/^Sepet,/)).toBeInTheDocument();
   });
 

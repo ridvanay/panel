@@ -5,7 +5,7 @@
 export const aboutStrings = {
   metaTitle: "About Us | WM Health",
   metaDescription:
-    "WM Health welcomes patients from different countries to Istanbul. Learn about our treatment areas, our approach and our doctors.",
+    "WM Health welcomes patients from different countries to Istanbul. Learn about our treatment areas, our approach and our physicians.",
 
   // --- Hero ---
   breadcrumbCurrent: "About Us",
@@ -14,7 +14,7 @@ export const aboutStrings = {
   heroBody:
     "Founded under the leadership of Dr. Vahit Mutlu, WM Health welcomes patients from different countries to Istanbul. We bring together high standards of care, clear communication and careful coordination to support a safe and well-informed treatment journey. From the first consultation to the planning of next steps, we aim to make quality healthcare more accessible across borders.",
   bookConsultationCta: "Book a consultation",
-  meetDoctorsCta: "Meet our doctors",
+  meetDoctorsCta: "Meet our physicians",
   locationTitle: "Istanbul, Türkiye",
   locationSubtitle: "Welcoming patients from different countries",
 
@@ -42,8 +42,8 @@ export const aboutStrings = {
 
   // --- Meet our doctors ---
   doctorsEyebrow: "Our medical team",
-  doctorsTitle: "Meet our doctors",
-  viewAllDoctorsCta: "View all doctors",
+  doctorsTitle: "Meet our physicians",
+  viewAllDoctorsCta: "View all physicians",
   founderBadge: "Founder",
 
   // --- Kapanış bandı ---

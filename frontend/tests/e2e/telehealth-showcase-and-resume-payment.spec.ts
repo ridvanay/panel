@@ -55,7 +55,7 @@ test("madde 1 [vitrin]: ana sayfa (/) hekim/branş CTA'sı ile gerçek tele-sağ
   // "Doktorları Keşfet" CTA'sı /doctors'a giden gerçek bir link — jenerik taslak metni DEĞİL.
   const discoverCta = page.getByRole("link", { name: "Doktorları Keşfet" }).first();
   await expect(discoverCta).toBeVisible({ timeout: 15_000 });
-  await expect(discoverCta).toHaveAttribute("href", "/doctors");
+  await expect(discoverCta).toHaveAttribute("href", "/physicians");
 
   // Branş içeriği (Kardiyoloji vb. `telehealth-clinic.ts::SPECIALTIES`'ten en az biri) sayfada var.
   await expect(page.getByText(/Kardiyoloji|Dermatoloji|Nöroloji|Psikiyatri|Aile Hekimliği|Çocuk Sağlığı/).first()).toBeVisible();

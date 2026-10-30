@@ -95,6 +95,8 @@ export const telehealthStrings: TelehealthStrings = {
   doctorCountOther: "Врачей: {count}",
   specialtyDoctorsEmptyTitle: "В этой специализации нет врачей",
   specialtyDoctorsEmptyDescription: "Сейчас в этой специализации нет опубликованных врачей.",
+  specialtyCoordinatorTitle: "Наш координатор подберёт подходящего врача",
+  specialtyCoordinatorText: "Расскажите о своей ситуации, и координатор пациентов подберёт вам подходящего врача этого профиля.",
 
   featuredDoctorsCarouselLabel: "Рекомендуемые врачи",
   featuredDoctorsPrevious: "Предыдущие врачи",

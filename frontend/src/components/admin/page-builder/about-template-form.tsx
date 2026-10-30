@@ -235,7 +235,7 @@ export function AboutTemplateForm({ value, onChange, localeCode, idPrefix = "abo
     <div className="space-y-6">
       <p className="admin-text-secondary">
         Boş bıraktığınız alanlar sitede gri renkte görünen varsayılan metinle gösterilir. Bağlantılar{" "}
-        <code>/doctors</code> gibi site içi bir yol, <code>#doctors</code> gibi sayfa içi bir çapa veya{" "}
+        <code>/physicians</code> gibi site içi bir yol, <code>#doctors</code> gibi sayfa içi bir çapa veya{" "}
         <code>https://</code> ile başlayan bir adres olabilir; site içi yollar ziyaretçinin diline göre otomatik uyarlanır.
       </p>
 

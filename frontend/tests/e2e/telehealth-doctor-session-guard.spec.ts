@@ -209,7 +209,7 @@ test.fixme("madde 1b: doktor oturumuyla /doctors/[slug]'da uyarı banner'ı gör
 }) => {
   const { page, close } = await loginDoctorWithTwoFactor(browser);
   try {
-    await page.goto(`/doctors/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/physicians/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("doctor-session-booking-blocked-notice")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Hekim oturumu ile randevu alınamaz.")).toBeVisible();
 
@@ -245,12 +245,12 @@ test("madde 2a: doktor 2FA ile düz /login'den giriş yapınca /doctor'a düşer
 test("madde 2b: /login?next=/doctors/{slug} (doktor-olmayan güvenli next) ile giriş yapılırsa next YOK SAYILIR, sonuç /doctor'dur", async ({
   browser,
 }) => {
-  const { page, close } = await loginDoctorWithTwoFactor(browser, { next: `/doctors/${doctorFixture.slug}` });
+  const { page, close } = await loginDoctorWithTwoFactor(browser, { next: `/physicians/${doctorFixture.slug}` });
   try {
     // `loginDoctorWithTwoFactor` zaten `expectFinalUrl` varsayılanı (`/doctor$`) ile
     // `waitForURL` yaptı — `next`'in GERÇEKTEN görmezden gelindiğinin ek/açık kanıtı.
     await expect(page).toHaveURL(/\/doctor$/);
-    await expect(page).not.toHaveURL(new RegExp(`/doctors/${doctorFixture.slug}$`));
+    await expect(page).not.toHaveURL(new RegExp(`/physicians/${doctorFixture.slug}$`));
   } finally {
     await close();
   }

@@ -49,7 +49,7 @@ describe("kapalı diller görünmez", () => {
     const all = JSON.stringify(entries);
     expect(all).not.toMatch(/\/es\/|sobre-wm|"hreflang":"es"/);
     expect(all).toMatch(/\/ar\/about-wm/);
-    expect(all).toMatch(/\/ar\/doctors\/vahit-mutlu|\/ar\/specialties\/obesity/);
+    expect(all).toMatch(/\/ar\/physicians\/vahit-mutlu|\/ar\/specialties\/obesity/);
   });
 
   it("dil seçici: yalnızca açık diller listelenir", () => {

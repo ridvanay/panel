@@ -28,7 +28,7 @@ export const telehealthStrings: TelehealthStrings = {
   sessionDurationLabel: "{minutes} min",
   freeSessionLabel: "Gratuit / Contactați-ne pentru tarife",
   bookAppointmentCta: "Programați-vă",
-  viewProfileCta: "Vezi profilul",
+  viewProfileCta: "Vezi medicul",
   createAppointmentCta: "Faceți o programare",
   socialLinksAriaLabel: "Rețele sociale și linkuri web",
   experienceYearsBadge: "{years} ani de experiență",
@@ -95,6 +95,8 @@ export const telehealthStrings: TelehealthStrings = {
   doctorCountOther: "{count} medici",
   specialtyDoctorsEmptyTitle: "Nu au fost găsiți medici în această specialitate",
   specialtyDoctorsEmptyDescription: "Momentan nu există medici publicați în această specialitate.",
+  specialtyCoordinatorTitle: "Lăsați coordonatorul nostru să găsească medicul potrivit pentru dumneavoastră",
+  specialtyCoordinatorText: "Spuneți-ne despre situația dumneavoastră, iar un coordonator de pacienți vă va pune în legătură cu un medic potrivit din acest domeniu.",
 
   featuredDoctorsCarouselLabel: "Medici recomandați",
   featuredDoctorsPrevious: "Medicii anteriori",

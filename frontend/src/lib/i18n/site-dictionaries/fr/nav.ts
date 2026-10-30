@@ -20,4 +20,8 @@ export const navStrings: NavStrings = {
   cart: "Panier",
   dropdownViewAll: "Voir tout : {label}",
   dropdownFindDoctor: "Trouver un médecin",
+  consultPhysicians: "Consulter un médecin",
+  languageSheetTitle: "Langue / Language",
+  languageSheetClose: "Fermer le choix de la langue",
+  languageButtonAria: "Changer de langue, actuelle : {language}",
 };

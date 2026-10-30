@@ -78,7 +78,7 @@ describe("pickFeaturedDoctors", () => {
 });
 
 describe("FeaturedDoctorsBlockView", () => {
-  it("seçili doktorları sırayla, dile göre başlıkla ve /doctors/<slug> bağlantısıyla render eder", async () => {
+  it("seçili doktorları sırayla, dile göre başlıkla ve /physicians/<slug> bağlantısıyla render eder", async () => {
     fetchDoctorsServer.mockResolvedValue([
       doctor({ id: ID_A, fullName: "Ayşe Yılmaz", slug: "ayse-yilmaz" }),
       doctor({ id: ID_B, title: "Prof. Dr.", fullName: "Mehmet Kaya", slug: "mehmet-kaya", specialty: { name: "Kardiyoloji" } as DoctorProfile["specialty"] }),
@@ -86,14 +86,14 @@ describe("FeaturedDoctorsBlockView", () => {
     render(await FeaturedDoctorsBlockView({ block: block({ doctorIds: [ID_B, ID_A] }), chrome: "page", siteContext: { lang: "en", defaultLocaleCode: "tr" } }));
 
     expect(screen.getByRole("heading", { level: 2, name: "Featured Doctors" })).toBeInTheDocument();
-    const cards = screen.getAllByRole("link").filter((link) => link.getAttribute("href")?.startsWith("/en/doctors/"));
-    expect(cards.map((c) => c.getAttribute("href"))).toEqual(["/en/doctors/mehmet-kaya", "/en/doctors/ayse-yilmaz"]);
+    const cards = screen.getAllByRole("link").filter((link) => link.getAttribute("href")?.startsWith("/en/physicians/"));
+    expect(cards.map((c) => c.getAttribute("href"))).toEqual(["/en/physicians/mehmet-kaya", "/en/physicians/ayse-yilmaz"]);
     expect(cards[0]).toHaveAccessibleName("Prof. Dr. Mehmet Kaya");
     expect(within(cards[0]!).getByText("Kardiyoloji")).toBeInTheDocument();
     // Hover: kart yükselir, fotoğraf yakınlaşır.
     expect(cards[0]!.className).toContain("hover:-translate-y-1");
     expect(cards[0]!.innerHTML).toContain("group-hover:scale-105");
-    expect(screen.getByRole("link", { name: "All Doctors" })).toHaveAttribute("href", "/en/doctors");
+    expect(screen.getByRole("link", { name: "All Doctors" })).toHaveAttribute("href", "/en/physicians");
   });
 
   it("fotoğraf şekli ve sütun sayısı sınıflara yansır; buton kapatılabilir", async () => {
@@ -152,7 +152,7 @@ describe("metin hizalama ve bağlantılar", () => {
 
   it("dış bağlantı yeni sekme + rel=noopener, site içi bağlantı aynı sekme", () => {
     expect(linkAttrs("https://example.com")).toEqual({ href: "https://example.com", target: "_blank", rel: "noopener noreferrer" });
-    expect(linkAttrs("/doctors/ayse")).toEqual({ href: "/doctors/ayse" });
+    expect(linkAttrs("/physicians/ayse")).toEqual({ href: "/physicians/ayse" });
   });
 
   it("başlık ve görsel blokları `href` verildiğinde bağlantı olur", () => {
@@ -161,10 +161,10 @@ describe("metin hizalama ve bağlantılar", () => {
     const headingLink = screen.getByRole("link", { name: "Doktorlar" });
     expect(headingLink).toHaveAttribute("rel", expect.stringContaining("noopener"));
 
-    const image: ImageBlock = { id: "i", type: "image", data: { url: "/x.png", alt: "Dr. Ayşe", href: "/doctors/ayse", lightbox: true } };
+    const image: ImageBlock = { id: "i", type: "image", data: { url: "/x.png", alt: "Dr. Ayşe", href: "/physicians/ayse", lightbox: true } };
     render(<ImageBlockView block={image} chrome="page" />);
     const imageLink = screen.getByRole("link", { name: "Dr. Ayşe" });
-    expect(imageLink).toHaveAttribute("href", "/doctors/ayse");
+    expect(imageLink).toHaveAttribute("href", "/physicians/ayse");
     expect(imageLink).not.toHaveAttribute("target");
     expect(screen.queryByRole("button", { name: /Görseli büyüt/ })).not.toBeInTheDocument();
   });
@@ -191,7 +191,7 @@ describe("Paket D — eşit kart yapısı", () => {
         siteContext: { lang: "en", defaultLocaleCode: "en" },
       })
     );
-    const cards = screen.getAllByRole("link").filter((link) => /\/doctors\/[a-z]/.test(link.getAttribute("href") ?? ""));
+    const cards = screen.getAllByRole("link").filter((link) => /\/physicians\/[a-z]/.test(link.getAttribute("href") ?? ""));
     expect(cards).toHaveLength(3);
 
     for (const card of cards) {
@@ -242,7 +242,7 @@ describe("Paket D — carousel", () => {
     pause: "Pause automatic scrolling",
     play: "Resume automatic scrolling",
   };
-  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `k${i}`, node: <a href={`/doctors/${i}`}>Doktor {i}</a> }));
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `k${i}`, node: <a href={`/physicians/${i}`}>Doktor {i}</a> }));
 
   function mockMatchMedia(matching: string[]) {
     const original = window.matchMedia;
@@ -268,8 +268,8 @@ describe("Paket D — carousel", () => {
     );
     const region = screen.getByRole("region", { name: "Öne Çıkan Doktorlarımız" });
     expect(region).toHaveAttribute("aria-roledescription", "carousel");
-    expect(screen.getByRole("button", { name: "Önceki doktorlar" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Sonraki doktorlar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Önceki hekimler" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sonraki hekimler" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sayfa 2 / 2" })).toBeInTheDocument();
     expect(within(region).getAllByRole("link")).toHaveLength(6);
   });

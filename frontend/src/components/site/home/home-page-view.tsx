@@ -91,6 +91,7 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
       {content.hero.enabled && (
         <HomeHero hero={content.hero} primaryHref={href(content.hero.primaryCta.href)} secondaryHref={heroSecondaryHref} />
       )}
+      {siteContext?.homeAfterHero}
       {content.trust.enabled && content.trust.items.length > 0 && <TrustStrip items={content.trust.items} />}
       {content.journey.enabled && content.journey.steps.length > 0 && (
         <HomeJourney journey={content.journey} stepLabel={dict.home.stepLabel} istanbulLabel={dict.home.journeyIstanbulLabel} />
@@ -130,7 +131,7 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
           telehealthDict={dict.telehealth}
           doctors={doctors}
           founderId={null}
-          doctorsHref={href("/doctors")}
+          doctorsHref={href("/physicians")}
           activeLocaleCode={lang}
           defaultLocaleCode={defaultLocaleCode}
           intlLocale={contentLocaleToIntl(lang)}

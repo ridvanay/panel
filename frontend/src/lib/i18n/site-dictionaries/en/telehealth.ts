@@ -23,12 +23,12 @@ export const telehealthStrings = {
   emergencyNoticeHideDetails: "Hide details",
 
   // --- /doctors ızgarası (madde 4/5/6) ---
-  doctorsPageTitle: "Our Doctors",
+  doctorsPageTitle: "Physicians",
   doctorsPageSubtitle: "Filter by specialty, choose a convenient time and book your online appointment.",
   doctorsEmptyTitle: "No results found",
-  doctorsEmptyDescription: "No doctors match these filters. Try adjusting your filters.",
-  searchPlaceholder: "Search by doctor name...",
-  searchAriaLabel: "Search doctors",
+  doctorsEmptyDescription: "No physicians match these filters. Try adjusting your filters.",
+  searchPlaceholder: "Search by physician name...",
+  searchAriaLabel: "Search physicians",
   specialtyFilterAriaLabel: "Filter by specialty",
   languageFilterAriaLabel: "Filter by language",
   allSpecialties: "All specialties",
@@ -50,7 +50,7 @@ export const telehealthStrings = {
   /** `doctor.sessionPriceCents === null` — ücret bilgisi tanımlanmamış doktorlarda fiyat yerine gösterilir. */
   freeSessionLabel: "Free / Contact for pricing",
   bookAppointmentCta: "Book Appointment",
-  viewProfileCta: "View Profile",
+  viewProfileCta: "View physician",
   /** `doctor-quick-booking-card.tsx` — büyük CTA, `bookAppointmentCta`'dan BİLİNÇLİ OLARAK ayrı (kaynakta da farklı metin). */
   createAppointmentCta: "Book Appointment",
   /** `{years}` yer tutucusu. */
@@ -58,14 +58,14 @@ export const telehealthStrings = {
   experienceYearsBadge: "{years} Years of Experience",
 
   // --- doctor-profile-tabs.tsx (madde 9) ---
-  tabAbout: "About the Doctor",
+  tabAbout: "About the Physician",
   tabCv: "CV",
   tabPublications: "Publications",
   tabExpertise: "Areas of Expertise",
-  aboutEmpty: "No biography information has been shared for this doctor yet.",
-  cvEmpty: "No CV information has been shared for this doctor yet.",
-  publicationsEmpty: "No scientific publications have been shared for this doctor yet.",
-  expertiseEmpty: "No area-of-expertise information has been shared for this doctor yet.",
+  aboutEmpty: "No biography information has been shared for this physician yet.",
+  cvEmpty: "No CV information has been shared for this physician yet.",
+  publicationsEmpty: "No scientific publications have been shared for this physician yet.",
+  expertiseEmpty: "No area-of-expertise information has been shared for this physician yet.",
   cvOngoing: "Ongoing",
   /** Paket L — CV kalemine ekli belge (sertifika PDF'i), yeni sekmede açılır. */
   cvViewCertificate: "View certificate",
@@ -114,25 +114,28 @@ export const telehealthStrings = {
   // --- /specialties (madde 10) ---
   specialtiesPageTitle: "Our Areas of Expertise",
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
-  doctorsMetaDescription: "Book an online consultation with our doctors in specialties such as {specialties}.",
-  doctorsMetaDescriptionDefault: "Book an online consultation with our doctors.",
-  specialtiesMetaDescription: "Explore our doctors in specialties such as {specialties}.",
+  doctorsMetaDescription: "Book an online consultation with our physicians in specialties such as {specialties}.",
+  doctorsMetaDescriptionDefault: "Book an online consultation with our physicians.",
+  specialtiesMetaDescription: "Explore our physicians in specialties such as {specialties}.",
   specialtiesMetaDescriptionDefault: "Explore our specialties and book an online consultation.",
-  specialtyMetaDescription: "Book an online consultation with our doctors in {specialty}.",
-  specialtiesPageSubtitle: "Discover our doctors by specialty and book your online appointment.",
+  specialtyMetaDescription: "Book an online consultation with our physicians in {specialty}.",
+  specialtiesPageSubtitle: "Discover our physicians by specialty and book your online appointment.",
   specialtiesEmptyTitle: "No specialty found",
   specialtiesEmptyDescription: "There are currently no specialties to list.",
   /** `{count}` yer tutucusu — tekil (1 doctor). */
-  doctorCountOne: "{count} doctor",
+  doctorCountOne: "{count} physician",
   /** `{count}` yer tutucusu — çoğul (0, 2, 3... doctors). */
-  doctorCountOther: "{count} doctors",
-  specialtyDoctorsEmptyTitle: "No doctors found in this specialty",
-  specialtyDoctorsEmptyDescription: "There are currently no published doctors in this specialty.",
+  doctorCountOther: "{count} physicians",
+  specialtyDoctorsEmptyTitle: "No physicians found in this specialty",
+  specialtyDoctorsEmptyDescription: "There are currently no published physicians in this specialty.",
+  /** Paket V — hekimi olmayan uzmanlık sayfasında doktor listesinin yerine. */
+  specialtyCoordinatorTitle: "Let our coordinator find the right physician for you",
+  specialtyCoordinatorText: "Tell us about your situation and a patient coordinator will match you with a suitable physician in this field.",
 
   // --- Öne Çıkan Doktorlar carousel'i (Paket D) ---
-  featuredDoctorsCarouselLabel: "Featured doctors",
-  featuredDoctorsPrevious: "Previous doctors",
-  featuredDoctorsNext: "Next doctors",
+  featuredDoctorsCarouselLabel: "Featured physicians",
+  featuredDoctorsPrevious: "Previous physicians",
+  featuredDoctorsNext: "Next physicians",
   /** `{page}`/`{total}` yer tutucuları. */
   featuredDoctorsPause: "Pause automatic scrolling",
   featuredDoctorsPlay: "Resume automatic scrolling",

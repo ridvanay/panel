@@ -109,7 +109,7 @@ test("Adım 4'e geçip ödeme tamamlanmadan sayfa yenilenirse (F5) booking KURTA
   const availableBefore = new Set((slotsBefore.data ?? []).filter((s) => s.available).map((s) => s.startsAt));
   expect(availableBefore.size).toBeGreaterThan(0);
 
-  await page.goto(`/doctors/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/physicians/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
 
   await selectAnyAvailableSlot(page);
@@ -152,7 +152,7 @@ test("Adım 4'e geçip SPA-içi (uygulama içi link ile) başka bir sayfaya gidi
   const availableBefore = new Set((slotsBefore.data ?? []).filter((s) => s.available).map((s) => s.startsAt));
   expect(availableBefore.size).toBeGreaterThan(0);
 
-  await page.goto(`/doctors/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/physicians/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
 
   await selectAnyAvailableSlot(page);

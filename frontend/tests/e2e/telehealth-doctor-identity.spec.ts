@@ -298,7 +298,7 @@ test("madde (a)/(b) UI: adım 2→3 geçişi 'Hasta & Kimlik' adımını AÇAR a
     await route.continue();
   });
 
-  await gotoAndWaitReady(page, `/doctors/${fixtureDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${fixtureDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
   });
   await page.waitForTimeout(500);
@@ -631,7 +631,7 @@ test("madde (h): kurumsal profil sayfasının üç sekmesi (aboutHtml/cvEntries 
   });
   richDoctorId = richDoctor.id;
 
-  await gotoAndWaitReady(page, `/doctors/${richDoctor.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${richDoctor.slug}`, async () => {
     await expect(page.getByRole("heading", { level: 1, name: new RegExp(richDoctor.fullName) })).toBeVisible();
   });
 
@@ -675,7 +675,7 @@ test("madde (h): kurumsal profil sayfasının üç sekmesi (aboutHtml/cvEntries 
 
   // ---- boş içerik — `otherDoctorFixture`'ın (madde d) `aboutHtml`/`cvEntries`/`publications`'ı
   // YOK — nötr "henüz paylaşılmamış" notu, sekme YİNE DE GÖRÜNÜR (tıklanabilir) kalmalı. ----
-  await gotoAndWaitReady(page, `/doctors/${otherDoctorFixture.slug}`, async () => {
+  await gotoAndWaitReady(page, `/physicians/${otherDoctorFixture.slug}`, async () => {
     await expect(page.getByRole("heading", { level: 1, name: new RegExp(otherDoctorFixture.fullName) })).toBeVisible();
   });
   await page.getByRole("tab", { name: "Özgeçmiş" }).click();

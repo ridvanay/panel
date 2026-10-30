@@ -24,6 +24,8 @@ import { WhyWmHealth } from "@/components/site/about/why-wm-health";
 import { AboutDoctors } from "@/components/site/about/about-doctors";
 import { ClosingBand } from "@/components/site/about/closing-band";
 import { cn } from "@/lib/utils";
+import { fetchAccreditationsServer } from "@/lib/api/server-accreditations";
+import { AccreditationList } from "@/components/site/accreditations/accreditation-list";
 
 /**
  * "About Us" — içerik admin → Sayfalar'daki `slug = "about"` CMS kaydının `about-page` bloğundan
@@ -101,7 +103,7 @@ export async function generateMetadata({ params }: AboutPageProps): Promise<Meta
 
 export default async function AboutPage({ params }: AboutPageProps) {
   const { lang } = await params;
-  const [locales, dict, page, allDoctors, specialties] = await Promise.all([
+  const [locales, dict, page, allDoctors, specialties, accreditations] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
     // Yalnızca YAYINDAKİ kaydı döner; yoksa/hata olursa `null` → sözlük metinleri.
@@ -110,6 +112,8 @@ export default async function AboutPage({ params }: AboutPageProps) {
     fetchDoctorsServer({ locale: lang }),
     // Aynı şekilde `[]` döner → "Tedavi alanları" kutuları hiçbirinde bağlantı olmaz, sade kutu kalır.
     fetchSpecialtiesServer(lang),
+    // Paket V — yetki belgeleri; boşsa liste hiç render edilmez.
+    fetchAccreditationsServer(lang),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
@@ -148,12 +152,13 @@ export default async function AboutPage({ params }: AboutPageProps) {
           telehealthDict={dict.telehealth}
           doctors={doctors}
           founderId={founderId}
-          doctorsHref={withLocalePrefix("/doctors", lang, defaultLocaleCode)}
+          doctorsHref={withLocalePrefix("/physicians", lang, defaultLocaleCode)}
           activeLocaleCode={lang}
           defaultLocaleCode={defaultLocaleCode}
           intlLocale={contentLocaleToIntl(lang)}
         />
       )}
+      <AccreditationList badges={accreditations} dict={dict.common} intlLocale={contentLocaleToIntl(lang)} />
       <ClosingBand
         closing={content.closing}
         primaryHref={href(content.closing.primaryCta.href)}

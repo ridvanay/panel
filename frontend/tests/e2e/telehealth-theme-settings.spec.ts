@@ -57,7 +57,7 @@ function hexToRgb(hex: string): string {
 
 async function gotoDoctorDetail(page: Page, ready: () => Promise<void>): Promise<void> {
   await expect(async () => {
-    await page.goto(`/doctors/${doctorSlug}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/physicians/${doctorSlug}`, { waitUntil: "domcontentloaded" });
     await ready();
   }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 }

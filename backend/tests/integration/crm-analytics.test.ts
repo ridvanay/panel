@@ -97,9 +97,9 @@ describe("CRM N3 — analitik", () => {
     const data = res.json().data;
     expect(data.kpis).toMatchObject({ liveNow: 2, visitors: 2, pageviews: 3, whatsappClicks: 1, phoneClicks: 0, leads: 1, conversionRate: 50 });
     expect(data.sources.map((s: { source: string; medium: string }) => `${s.source}/${s.medium}`).sort()).toEqual(["(direct)/(none)", "google/organic"]);
-    expect(data.contactPages[0]).toMatchObject({ path: "/de/doctors/analiz-hekim", contacts: 1 });
-    expect(data.entryPages.map((p: { path: string }) => p.path).sort()).toEqual(["/de", "/de/doctors/analiz-hekim"]);
-    expect(data.prePages.map((p: { path: string }) => p.path).sort()).toEqual(["/de", "/de/doctors/analiz-hekim"]);
+    expect(data.contactPages[0]).toMatchObject({ path: "/de/physicians/analiz-hekim", contacts: 1 });
+    expect(data.entryPages.map((p: { path: string }) => p.path).sort()).toEqual(["/de", "/de/physicians/analiz-hekim"]);
+    expect(data.prePages.map((p: { path: string }) => p.path).sort()).toEqual(["/de", "/de/physicians/analiz-hekim"]);
     expect(data.hotVisitors.map((v: { id: string }) => v.id)).toEqual([hot]);
     expect(data.topClicks.find((c: { text: string | null }) => c.text === "WhatsApp")).toMatchObject({ target: "wa.me/90", contacts: 1 });
     expect(data.series).toEqual([expect.objectContaining({ date: today, visitors: 2, pageviews: 3, contacts: 1 })]);
@@ -133,7 +133,7 @@ describe("CRM N3 — analitik", () => {
 
   it("sayfa haritası: ortalama okuma süresi, kaydırma derinliği, giriş, temas", async () => {
     const pages = (await get(`/analytics/pages?from=${today}&to=${today}`)).json().data;
-    const doctor = pages.find((p: { path: string }) => p.path === "/de/doctors/analiz-hekim");
+    const doctor = pages.find((p: { path: string }) => p.path === "/de/physicians/analiz-hekim");
     expect(doctor).toMatchObject({ pageviews: 2, visitors: 2, entries: 1, contacts: 1, avgEngagedSeconds: 60, avgScrollPct: 60 });
   });
 
@@ -165,7 +165,7 @@ describe("CRM N3 — analitik", () => {
     expect(mobile.scrollReach.find((b: { depth: number }) => b.depth === 30).pct).toBe(100);
 
     const pages = (await get(`/analytics/heatmap/pages?from=${today}&to=${today}`)).json().data;
-    expect(pages[0]).toMatchObject({ path: "/de/doctors/analiz-hekim", pageviews: 2 });
+    expect(pages[0]).toMatchObject({ path: "/de/physicians/analiz-hekim", pageviews: 2 });
     expect((await get(`/analytics/heatmap?from=${today}&to=${today}`)).statusCode).toBe(422);
   });
 

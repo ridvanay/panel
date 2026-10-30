@@ -79,8 +79,8 @@ export function DoctorCard({
   badge?: ReactNode;
 }) {
   const href = activeLocaleCode
-    ? withLocalePrefix(`/doctors/${doctor.slug}`, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode)
-    : `/doctors/${doctor.slug}`;
+    ? withLocalePrefix(`/physicians/${doctor.slug}`, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode)
+    : `/physicians/${doctor.slug}`;
 
   let languageNames: Intl.DisplayNames | null = null;
   try {

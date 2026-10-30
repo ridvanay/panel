@@ -236,7 +236,7 @@ test("madde 1: doktor detay sayfası — doktorun KENDİ para biriminde biçimle
   expect(james, "currency=GBP olan bir James Whitfield demo doktoru bulunamadı").toBeTruthy();
 
   await expect(async () => {
-    await page.goto(`/doctors/${laura!.slug}`);
+    await page.goto(`/physicians/${laura!.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Laura Bennett", { timeout: 5_000 });
     // `DoctorPricePanel` fiyatı İKİ YERDE render eder (masaüstü sticky panel + mobil sabit alt bar,
     // biri CSS ile gizli ama DOM'da HALA VAR) — `.first()` strict-mode ihlalini önler.
@@ -244,7 +244,7 @@ test("madde 1: doktor detay sayfası — doktorun KENDİ para biriminde biçimle
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 
   await expect(async () => {
-    await page.goto(`/doctors/${james!.slug}`);
+    await page.goto(`/physicians/${james!.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("James Whitfield", { timeout: 5_000 });
     await expect(page.getByText(/£450,00/).first()).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
@@ -253,7 +253,7 @@ test("madde 1: doktor detay sayfası — doktorun KENDİ para biriminde biçimle
 test("madde 2 (detay sayfası): doktor bazında gerçek `sessionDurationMin` — sabit değer DEĞİL", async ({ page }, testInfo) => {
   testInfo.setTimeout(180_000);
   await expect(async () => {
-    await page.goto(`/doctors/${durationDoctorShort.slug}`);
+    await page.goto(`/physicians/${durationDoctorShort.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(durationDoctorShort.fullName, { timeout: 5_000 });
     // qa-agent notu — bu turda §2.4 "Hizmet Özeti" paneli (`doctor-service-summary.tsx`) eski
     // `doctor-price-panel.tsx`'in "{dk} dakika görüşme" metnini "{dk} Dk." ile DEĞİŞTİRDİ
@@ -262,7 +262,7 @@ test("madde 2 (detay sayfası): doktor bazında gerçek `sessionDurationMin` —
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 
   await expect(async () => {
-    await page.goto(`/doctors/${durationDoctorLong.slug}`);
+    await page.goto(`/physicians/${durationDoctorLong.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(durationDoctorLong.fullName, { timeout: 5_000 });
     await expect(page.getByText("75 Dk.", { exact: true })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
@@ -271,7 +271,7 @@ test("madde 2 (detay sayfası): doktor bazında gerçek `sessionDurationMin` —
 test("madde 4: doktor detay — avatar YOKSA monogram fallback TAŞMADAN render olur", async ({ page }, testInfo) => {
   testInfo.setTimeout(120_000);
   await expect(async () => {
-    await page.goto(`/doctors/${noAvatarDoctor.slug}`);
+    await page.goto(`/physicians/${noAvatarDoctor.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(noAvatarDoctor.fullName, { timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 
@@ -311,7 +311,7 @@ test("madde 5: doktor DETAY sayfasında (header dahil) sepet ikonu HİÇ görün
   const anyDoctor = doctors.find((d) => d.fullName === "Felix Braun" && d.currency === "EUR") ?? doctors[0]!;
 
   await expect(async () => {
-    await page.goto(`/doctors/${anyDoctor.slug}`);
+    await page.goto(`/physicians/${anyDoctor.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 
@@ -319,7 +319,7 @@ test("madde 5: doktor DETAY sayfasında (header dahil) sepet ikonu HİÇ görün
 });
 
 test("REGRESYON — /doctors (liste) ve /products sayfalarında sepet ikonu HÂLÂ görünür (yanlışlıkla kaldırılmadı)", async ({ page }) => {
-  await page.goto("/doctors");
+  await page.goto("/physicians");
   await expect(cartLink(page)).toBeVisible({ timeout: 15_000 });
 
   await page.goto("/products");
@@ -338,7 +338,7 @@ test("REGRESYON — /doctors (liste) ve /products sayfalarında sepet ikonu HÂL
 test("madde 6 (bug fix): doktor detay hero — ham `alt` metni ASLA görünmez, gerçek görsel VEYA monogram render olur", async ({ page }, testInfo) => {
   testInfo.setTimeout(120_000);
   await expect(async () => {
-    await page.goto("/doctors/elif-aydemir");
+    await page.goto("/physicians/elif-aydemir");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Elif Aydemir", { timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 
@@ -368,7 +368,7 @@ test("madde 6 (bug fix): doktor detay hero — ham `alt` metni ASLA görünmez, 
 test("regresyon: doktor detay (/doctors/elif-aydemir) — ücret doktorun KENDİ para biriminde (₺450,00), sabit değer DEĞİL", async ({ page }, testInfo) => {
   testInfo.setTimeout(120_000);
   await expect(async () => {
-    await page.goto("/doctors/elif-aydemir");
+    await page.goto("/physicians/elif-aydemir");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Elif Aydemir", { timeout: 5_000 });
     // `DoctorPricePanel` fiyatı İKİ YERDE render eder (masaüstü sticky panel + mobil sabit alt
     // bar) — `.first()` strict-mode ihlalini önler (bkz. madde 1 testinin AYNI notu).
@@ -429,7 +429,7 @@ test("takvim: en yakın müsait günde 'Erken' mikro-etiketi görünür, ay navi
 }, testInfo) => {
   testInfo.setTimeout(60_000);
   await expect(async () => {
-    await page.goto(`/doctors/${calendarDoctor.slug}`);
+    await page.goto(`/physicians/${calendarDoctor.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(calendarDoctor.fullName, { timeout: 5_000 });
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
@@ -481,7 +481,7 @@ test("randevu tarih-saat tasarımı: takvim hücresinden gün seçimi, saat ızg
   testInfo.setTimeout(120_000);
 
   await expect(async () => {
-    await page.goto(`/doctors/${calendarDoctor.slug}`);
+    await page.goto(`/physicians/${calendarDoctor.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(calendarDoctor.fullName, { timeout: 5_000 });
     await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
