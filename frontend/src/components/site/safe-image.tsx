@@ -1,5 +1,6 @@
 import Image, { type ImageProps } from "next/image";
 import { isOptimizableImageUrl } from "@/lib/image-hosts";
+import { toNextImageSrc, toPublicMediaUrl } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 type SafeImageProps = Omit<ImageProps, "src" | "alt"> & { src: string; alt: string };
@@ -24,7 +25,7 @@ export function SafeImage({ src, alt, className, style, fill, onError, ...rest }
     return (
       // eslint-disable-next-line @next/next/no-img-element -- host next.config.ts remotePatterns dışında, next/image ÇALIŞMA ZAMANINDA hata fırlatırdı
       <img
-        src={src}
+        src={toPublicMediaUrl(src) ?? src}
         alt={alt}
         className={cn(fill && "absolute inset-0 h-full w-full", className)}
         style={style}
@@ -33,5 +34,6 @@ export function SafeImage({ src, alt, className, style, fill, onError, ...rest }
       />
     );
   }
-  return <Image src={src} alt={alt} className={className} style={style} fill={fill} onError={onError} {...rest} />;
+  // Optimize edici görseli sunucuda çeker → iç adres (Docker ağı); tarayıcı yalnızca `/_next/image?url=…` görür.
+  return <Image src={toNextImageSrc(src)} alt={alt} className={className} style={style} fill={fill} onError={onError} {...rest} />;
 }

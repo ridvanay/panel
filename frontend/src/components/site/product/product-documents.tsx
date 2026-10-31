@@ -3,6 +3,7 @@ import type { ProductDocument } from "@/lib/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format-bytes";
 import { cn } from "@/lib/utils";
+import { toPublicMediaUrl } from "@/lib/env";
 
 /**
  * PDF döküman kartları — `.claude/design-notes-ecommerce-storefront.md` §8 BİREBİR. Backend
@@ -34,7 +35,7 @@ export function ProductDocuments({ documents, showHeading = true }: { documents:
               <p className="text-xs text-foreground/60">{formatBytes(doc.media.sizeBytes)}</p>
             </div>
             <a
-              href={doc.media.url}
+              href={toPublicMediaUrl(doc.media.url) ?? undefined}
               download
               target="_blank"
               rel="noopener noreferrer"

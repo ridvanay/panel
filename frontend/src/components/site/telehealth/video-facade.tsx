@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import type { DoctorShowcaseVideo } from "@/lib/api/types";
 import { fillReview, useReviewStrings } from "@/lib/i18n/use-review-strings";
+import { toPublicMediaUrl } from "@/lib/env";
 
 /** Savunma: iframe yalnızca bu host'lardan yüklenir. */
 const EMBED_HOSTS = new Set(["www.youtube-nocookie.com", "player.vimeo.com"]);
@@ -26,7 +27,7 @@ export function localThumbnail(raw: string | null | undefined): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw, "http://local.invalid");
-    return /^https?:$/.test(url.protocol) && !THIRD_PARTY_HOST.test(url.hostname) ? raw : null;
+    return /^https?:$/.test(url.protocol) && !THIRD_PARTY_HOST.test(url.hostname) ? toPublicMediaUrl(raw) : null;
   } catch {
     return null;
   }
@@ -37,7 +38,8 @@ export function safeMediaUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw, "http://local.invalid");
-    return /^https?:$/.test(url.protocol) ? raw : null;
+    // Tarayıcı doğrudan yükler (<video src>, <track>) → iç/loopback adres asla gitmez.
+    return /^https?:$/.test(url.protocol) ? toPublicMediaUrl(raw) : null;
   } catch {
     return null;
   }

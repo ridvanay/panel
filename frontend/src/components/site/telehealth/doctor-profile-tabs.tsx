@@ -1,6 +1,7 @@
 import { Award, ExternalLink, FileQuestion, GraduationCap, Briefcase, Stethoscope, Trophy, Users } from "lucide-react";
 import type { DoctorCvEntry, DoctorCvEntryKind, DoctorProfile, DoctorPublication } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
+import { toPublicMediaUrl } from "@/lib/env";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 import { DoctorPublicationsExplorer } from "@/components/site/telehealth/doctor-publications-explorer";
@@ -63,7 +64,7 @@ function CvDocumentLink({ entry, dict }: { entry: DoctorCvEntry; dict: Telehealt
   if (!entry.url) return null;
   return (
     <a
-      href={entry.url}
+      href={toPublicMediaUrl(entry.url) ?? undefined}
       target="_blank"
       rel="noopener noreferrer"
       className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-[var(--site-primary)] hover:underline"

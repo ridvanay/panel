@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { ReviewCard } from "@/components/site/reviews/review-card";
 import { selectProfileTab } from "@/components/site/telehealth/doctor-section-nav";
 import { localThumbnail } from "@/components/site/telehealth/video-facade";
+import { toPublicMediaUrl } from "@/lib/env";
 
 const MEDIA_PREVIEW_COUNT = 4;
 const REVIEW_PREVIEW_COUNT = 2;
@@ -148,7 +149,7 @@ export function DoctorOverviewPanel({ doctor, media, latestReviews, dict, telehe
         >
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {previewMedia.map((item) => {
-              const src = item.kind === "photo" ? item.url : localThumbnail(item.thumbnailUrl);
+              const src = item.kind === "photo" ? toPublicMediaUrl(item.url) : localThumbnail(item.thumbnailUrl);
               return (
                 <li key={item.id}>
                   <button

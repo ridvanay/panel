@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toPublicMediaUrl } from "@/lib/env";
 import { fillUi, useUiStrings } from "@/lib/i18n/use-ui-strings";
 
 interface GalleryLightboxProps {
@@ -151,7 +152,7 @@ export function GalleryLightbox({ images, index, onIndexChange }: GalleryLightbo
               // eslint-disable-next-line @next/next/no-img-element -- URL, medya kütüphanesinden geliyor, next/image remotePatterns henüz tanımlı değil
               <img
                 key={currentImage.url}
-                src={currentImage.url}
+                src={toPublicMediaUrl(currentImage.url) ?? currentImage.url}
                 alt={currentImage.alt}
                 onClick={(event) => event.stopPropagation()}
                 className="max-h-full max-w-full object-contain"

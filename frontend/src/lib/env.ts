@@ -73,6 +73,8 @@ export const INTERNAL_MEDIA_ORIGIN = process.env.NEXT_PUBLIC_INTERNAL_MEDIA_URL 
  *  medya alanını (`coverMedia.url`, `images[].media.url`, `variants[].media.url`, `documents[].media.url`,
  *  `ogImageUrl` vb.) tek tek dolaşmak yerine tek noktadan, yeni bir alan eklendiğinde GÜNCELLENMESİ
  *  GEREKMEYEN bir çözüm. */
+// 2026-10-31: sunucu fetch'lerinde ARTIK KULLANILMIYOR (iç adres tarayıcıya/RSC verisine sızıyordu) — yerine
+// next/image src'i için `toNextImageSrc`. Geriye dönük uyumluluk için duruyor.
 export function toInternalMediaUrl(rawJsonText: string): string {
   if (!INTERNAL_MEDIA_ORIGIN || !PUBLIC_MEDIA_ORIGIN) return rawJsonText;
   return rawJsonText.split(PUBLIC_MEDIA_ORIGIN).join(INTERNAL_MEDIA_ORIGIN);
@@ -109,6 +111,20 @@ export function toPublicMediaUrl(url: string | null | undefined): string | null 
     // Zaten göreceli bir yol (mutlak URL DEĞİL) — dokunma, olduğu gibi bırak.
   }
   return result;
+}
+
+/**
+ * 2026-10-31 (acil düzeltme) — medya adresleri artık sunucu fetch'lerinde iç adrese ÇEVRİLMEZ (tarayıcıya ve RSC
+ * verisine `http://backend:4000` sızıyordu). İç adres yalnızca `next/image`'e verilen `src` için gerekir: optimize
+ * edici görseli SUNUCUDA (Docker ağı içinden) çeker, tarayıcı ise yalnızca aynı-origin `/_next/image?url=…` ister.
+ * Bu fonksiyon YALNIZCA `next/image`/`getImageProps` `src`'i için kullanılır (SafeImage); `<img>`, `<video>`,
+ * `<track>`, `<a href>` gibi tarayıcının doğrudan yüklediği adresler `toPublicMediaUrl`'den geçer.
+ */
+export function toNextImageSrc(url: string): string {
+  if (INTERNAL_MEDIA_ORIGIN && PUBLIC_MEDIA_ORIGIN && url.startsWith(`${PUBLIC_MEDIA_ORIGIN}/`)) {
+    return INTERNAL_MEDIA_ORIGIN.replace(/\/+$/, "") + url.slice(PUBLIC_MEDIA_ORIGIN.length);
+  }
+  return url;
 }
 
 /**

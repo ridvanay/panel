@@ -1,4 +1,4 @@
-import { SERVER_API_BASE_URL, toInternalMediaUrl } from "../env";
+import { SERVER_API_BASE_URL } from "../env";
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
 import type { FeaturedReviewsData, ReviewsListResponse } from "../review-types";
@@ -26,7 +26,6 @@ export async function fetchDoctorsServer(filters: ListDoctorsServerFilters = {})
   if (filters.locale) query.set("locale", filters.locale);
   const json = await fetchServerJson<{ data: DoctorProfile[] }>(`/doctors?${query.toString()}`, {
     tags: [CACHE_TAGS.doctors],
-    transformText: toInternalMediaUrl,
   });
   return json?.data ?? [];
 }
@@ -45,7 +44,6 @@ export async function fetchAllDoctorsServer(maxPages = 10, locale?: string): Pro
     if (locale) query.set("locale", locale);
     const json: { data: DoctorProfile[]; meta?: { nextCursor?: string | null } } | null = await fetchServerJson(`/doctors?${query.toString()}`, {
       tags: [CACHE_TAGS.doctors],
-      transformText: toInternalMediaUrl,
     });
     doctors.push(...(json?.data ?? []));
     cursor = json?.meta?.nextCursor ?? null;
@@ -58,7 +56,6 @@ export async function fetchDoctorBySlugServer(slug: string, locale?: string): Pr
   const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
   const json = await fetchServerJson<{ data: DoctorProfile }>(`/doctors/${encodeURIComponent(slug)}${query}`, {
     tags: [CACHE_TAGS.doctors],
-    transformText: toInternalMediaUrl,
   });
   return json?.data ?? null;
 }
@@ -72,7 +69,6 @@ export async function fetchDoctorShowcaseServer(slug: string, locale?: string): 
   try {
     const json = await fetchServerJson<{ data: DoctorShowcase }>(`/doctors/${encodeURIComponent(slug)}/showcase${query}`, {
       tags: [CACHE_TAGS.doctors],
-      transformText: toInternalMediaUrl,
     });
     return json?.data ?? { procedures: [], media: [] };
   } catch {
@@ -166,7 +162,6 @@ const TELEHEALTH_THEME_DEFAULTS: TelehealthThemeSettings = {
 export async function fetchTelehealthThemeServer(): Promise<TelehealthThemeSettings> {
   const json = await fetchServerJson<{ data: TelehealthThemeSettings }>("/telehealth/theme", {
     tags: [CACHE_TAGS.telehealthTheme],
-    transformText: toInternalMediaUrl,
   });
   return json?.data ?? TELEHEALTH_THEME_DEFAULTS;
 }
