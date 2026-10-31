@@ -23,6 +23,11 @@ interface ImageUploadFieldProps {
    * (bkz. `.claude/design-notes-account-page.md` Karar 2).
    */
   previewShape?: "square" | "circle";
+  /**
+   * Paket AE-ek — sunucuya `purpose` olarak iletilir: `"logo"` (PNG uyumluluk kopyası; e-posta logosu) ya da
+   * `"icon"` (favicon/apple-touch-icon: PNG kalır, WebP'ye çevrilmez). Verilmezse varsayılan davranış.
+   */
+  purpose?: mediaApi.MediaUploadPurpose;
 }
 
 /** Kapak görseli / blok görselleri için: önizleme + kütüphaneden seçim + bilgisayardan yükleme + manuel URL girişi. */
@@ -33,6 +38,7 @@ export function ImageUploadField({
   onChange,
   required,
   previewShape = "square",
+  purpose,
 }: ImageUploadFieldProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -47,7 +53,9 @@ export function ImageUploadField({
     setError(null);
     setUploading(true);
     try {
-      const media = await mediaApi.uploadMedia(file, null, showMediaNotice);
+      const media = purpose
+        ? await mediaApi.uploadMedia(file, null, showMediaNotice, { purpose })
+        : await mediaApi.uploadMedia(file, null, showMediaNotice);
       onChange(media.url);
       toast.success("Görsel yüklendi.");
     } catch (err) {

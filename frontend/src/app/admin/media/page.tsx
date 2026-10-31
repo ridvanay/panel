@@ -779,7 +779,7 @@ export default function AdminMediaPage() {
                             className="block aspect-square w-full cursor-zoom-in overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             {!isImageMimeType(media.mimeType) ? (
-                              <MediaFileTile mimeType={media.mimeType} className="h-full w-full" />
+                              <MediaFileTile mimeType={media.mimeType} className="h-full w-full" processingStatus={media.processingStatus} />
                             ) : failedThumbnailIds.has(media.id) ? (
                               <MediaThumbnailFallback alt={media.filename} className="h-full w-full" />
                             ) : (

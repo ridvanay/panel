@@ -11,11 +11,13 @@ import {
 } from "@/lib/video-upload";
 
 describe("validateVideoFile", () => {
-  it("yalnızca MP4 ve azami boyuta kadar kabul eder", () => {
+  it("MP4 ve MOV'u, azami boyuta kadar kabul eder", () => {
     expect(validateVideoFile({ name: "a.mp4", type: "video/mp4", size: 1024 }, 100)).toBeNull();
     expect(validateVideoFile({ name: "a.mp4", type: "", size: 1024 }, 100)).toBeNull();
-    expect(validateVideoFile({ name: "a.mov", type: "video/quicktime", size: 1024 }, 100)).toMatch(/Yalnızca MP4/);
-    expect(validateVideoFile({ name: "a.mp4", type: "video/webm", size: 1024 }, 100)).toMatch(/Yalnızca MP4/);
+    expect(validateVideoFile({ name: "a.mov", type: "video/quicktime", size: 1024 }, 100)).toBeNull();
+    expect(validateVideoFile({ name: "IMG_1.MOV", type: "", size: 1024 }, 100)).toBeNull();
+    expect(validateVideoFile({ name: "a.mp4", type: "video/webm", size: 1024 }, 100)).toMatch(/MP4 ya da MOV/);
+    expect(validateVideoFile({ name: "a.avi", type: "", size: 1024 }, 100)).toMatch(/MP4 ya da MOV/);
     expect(validateVideoFile({ name: "a.mp4", type: "video/mp4", size: 101 * 1024 * 1024 }, 100)).toMatch(/en fazla 100 MB/);
   });
   it("altyazı: .vtt ve 512 KB sınırı", () => {

@@ -756,7 +756,7 @@ function AdminNavigationPageContent() {
                         Logo yüklenmemişse header ve footer&apos;da bu metin gösterilir. Boş bırakılırsa &quot;Site&quot; kullanılır.
                       </p>
                     </div>
-                    <ImageUploadField id="logoUrl" label="Logo" value={logoUrl} onChange={setLogoUrl} />
+                    <ImageUploadField id="logoUrl" label="Logo" value={logoUrl} onChange={setLogoUrl} purpose="logo" />
 
                     <div className="grid grid-cols-2 gap-4 sm:col-span-2">
                       <div className="space-y-1.5">
@@ -829,7 +829,7 @@ function AdminNavigationPageContent() {
                     {/* Site simgesi — yalnızca PNG (SVG ayrı bir iş). Backend de `.png` dışını 422 ile reddeder. */}
                     <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
                       <div className="space-y-1.5">
-                        <ImageUploadField id="faviconUrl" label="Site simgesi (favicon)" value={faviconUrl} onChange={setFaviconUrl} />
+                        <ImageUploadField id="faviconUrl" label="Site simgesi (favicon)" value={faviconUrl} onChange={setFaviconUrl} purpose="icon" />
                         <p className="text-xs text-foreground/60">
                           Tarayıcı sekmesinde görünür. Kare PNG, en az 48×48 px (önerilen 512×512). Boş bırakılırsa varsayılan simge kullanılır.
                         </p>
@@ -843,6 +843,7 @@ function AdminNavigationPageContent() {
                           label="Apple touch icon (opsiyonel)"
                           value={appleTouchIconUrl}
                           onChange={setAppleTouchIconUrl}
+          purpose="icon"
                         />
                         <p className="text-xs text-foreground/60">
                           iPhone/iPad ana ekranına eklenince görünür. Kare PNG, önerilen 180×180 px. Boş bırakılırsa site simgesi kullanılır.

@@ -574,7 +574,7 @@ export default function AdminSettingsPage() {
             <motion.div variants={cardVariants} className="lg:col-span-3">
               <Card className="space-y-4">
                 <SectionHeader icon={ImageIcon} title="Görünüm" description="Sitenizin logosu ve marka görseli." />
-                <ImageUploadField id="logoUrl" label="Logo" value={logoUrl} onChange={setLogoUrl} />
+                <ImageUploadField id="logoUrl" label="Logo" value={logoUrl} onChange={setLogoUrl} purpose="logo" />
               </Card>
             </motion.div>
 

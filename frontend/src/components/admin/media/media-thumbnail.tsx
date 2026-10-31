@@ -11,13 +11,27 @@ export function isImageMimeType(mimeType: string | null | undefined): boolean {
 
 export function mediaTypeLabel(mimeType: string): string {
   if (mimeType === "video/mp4") return "Video · MP4";
+  if (mimeType === "video/quicktime") return "Video · MOV";
   if (mimeType === "text/vtt") return "Altyazı · VTT";
   if (mimeType === "application/pdf") return "Döküman · PDF";
   return (mimeType.split("/")[1] ?? mimeType).toUpperCase();
 }
 
 /** Görsel olmayan medya (video/altyazı/PDF) için `<img>` yerine simge + tür etiketi. */
-export function MediaFileTile({ mimeType, className, iconClassName }: { mimeType: string; className?: string; iconClassName?: string }) {
+/** Paket AE-ek — video dönüştürme rozeti (yalnızca "processing"/"failed" gösterilir). */
+export const PROCESSING_BADGE_LABEL = { processing: "İşleniyor", failed: "Başarısız" } as const;
+
+export function MediaFileTile({
+  mimeType,
+  className,
+  iconClassName,
+  processingStatus,
+}: {
+  mimeType: string;
+  className?: string;
+  iconClassName?: string;
+  processingStatus?: "processing" | "ready" | "failed" | null;
+}) {
   const Icon = mimeType.startsWith("video/") ? Film : FileText;
   const label = mediaTypeLabel(mimeType);
   return (
@@ -29,6 +43,17 @@ export function MediaFileTile({ mimeType, className, iconClassName }: { mimeType
     >
       <Icon className={cn("h-6 w-6 shrink-0", iconClassName)} aria-hidden="true" />
       <span className="px-1 text-center text-[10px] leading-tight">{label}</span>
+      {(processingStatus === "processing" || processingStatus === "failed") && (
+        <span
+          data-testid="media-processing-badge"
+          className={cn(
+            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+            processingStatus === "failed" ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning",
+          )}
+        >
+          {PROCESSING_BADGE_LABEL[processingStatus]}
+        </span>
+      )}
     </div>
   );
 }
@@ -49,6 +74,8 @@ interface MediaThumbnailProps {
    */
   fallbackClassName?: string;
   iconClassName?: string;
+  /** Paket AE-ek — video kutucuğunda "İşleniyor"/"Başarısız" rozeti. */
+  processingStatus?: "processing" | "ready" | "failed" | null;
 }
 
 interface MediaThumbnailFallbackProps {
@@ -98,11 +125,11 @@ export function MediaThumbnailFallback({ alt, className, iconClassName }: MediaT
  * yalnızca `onError` + fallback state eklenir (aynı `doctor-avatar.tsx`'teki desenin özü: gerçek
  * bir yükleme hatasında ham/kırık görsel yerine kontrollü bir placeholder'a düş).
  */
-export function MediaThumbnail({ src, mimeType, alt, className, fallbackClassName, iconClassName }: MediaThumbnailProps) {
+export function MediaThumbnail({ src, mimeType, alt, className, fallbackClassName, iconClassName, processingStatus }: MediaThumbnailProps) {
   const [failed, setFailed] = useState(false);
 
   if (mimeType && !isImageMimeType(mimeType)) {
-    return <MediaFileTile mimeType={mimeType} className={fallbackClassName ?? className} iconClassName={iconClassName} />;
+    return <MediaFileTile mimeType={mimeType} className={fallbackClassName ?? className} iconClassName={iconClassName} processingStatus={processingStatus} />;
   }
 
   if (failed) {

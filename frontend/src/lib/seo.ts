@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ContentLocalization, Locale } from "@/lib/api/types";
 import { SITE_URL } from "@/lib/env";
+import { ogCompatibleImageUrl } from "@/lib/og-image";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 
 /**
@@ -53,7 +54,7 @@ export function buildContentMetadata(fields: SeoContentFields, options: BuildCon
   const description = fields.description ?? undefined;
   const ogTitle = fields.ogTitle || fields.title;
   const imageUrl = fields.ogImageUrl || options.fallbackImageUrl || null;
-  const images = imageUrl ? [imageUrl] : undefined;
+  const images = imageUrl ? [ogCompatibleImageUrl(imageUrl)] : undefined;
   const canonical = fields.canonicalUrl || options.fallbackCanonicalUrl;
 
   const metadata: Metadata = {

@@ -46,6 +46,7 @@ function ContentFields({
               label="Özel logo"
               value={block.data.logoUrl ?? ""}
               onChange={(logoUrl) => onChange({ ...block, data: { ...block.data, logoUrl: logoUrl || null } })}
+              purpose="logo"
             />
           )}
           <Field id={`${block.id}-logo-height`} label="Yükseklik (px)">

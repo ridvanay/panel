@@ -838,6 +838,10 @@ export interface Media {
    */
   folderId: string | null;
   createdAt: string;
+  /** Paket AE-ek — sunucu uyumluluk kopyaları (WebP ana sürümün JPEG/PNG karşılığı). */
+  variants?: { format: "jpeg" | "png"; url: string; width: number; height: number; sizeBytes: number }[];
+  /** Paket AE-ek — video dönüştürme durumu (görseller için yok/null). */
+  processingStatus?: "processing" | "ready" | "failed" | null;
 }
 
 /**

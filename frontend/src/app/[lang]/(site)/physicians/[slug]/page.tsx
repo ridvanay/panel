@@ -27,6 +27,7 @@ import type { Locale } from "@/lib/api/types";
 import { publicDoctorName } from "@/lib/doctor-display-name";
 import { resolveLanguageSupport } from "@/lib/language-support";
 import { SupportBadge } from "@/components/site/support/support-badge";
+import { ogCompatibleImageUrl } from "@/lib/og-image";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2/§9.5 — doktor profili + saat dilimi
@@ -96,7 +97,7 @@ export async function generateMetadata({ params }: DoctorDetailPageProps): Promi
   // bir host taşıyor olabilir; og:image dış sosyal paylaşım bot'larının DOĞRUDAN erişmesi gereken
   // GERÇEK genel URL'i taşımalıdır.
   const publicAvatarUrl = toPublicMediaUrl(doctor.avatarMedia?.url);
-  const images = publicAvatarUrl ? [publicAvatarUrl] : undefined;
+  const images = publicAvatarUrl ? [ogCompatibleImageUrl(publicAvatarUrl)] : undefined;
 
   return {
     title,

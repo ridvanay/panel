@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, Film, ImageIcon, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import * as showcaseApi from "@/lib/api/doctor-showcase";
+import * as mediaApi from "@/lib/api/media";
 import { MEDIA_CATEGORY_LABELS, requiresPatientConsent, type DoctorMediaCategory, type DoctorMediaKind } from "@/lib/api/doctor-showcase";
 import { DEFAULT_MAX_VIDEO_MB, formatDuration, warningsFromVideoInfo } from "@/lib/video-upload";
 import { VideoUploadPanel, type VideoUploadValue } from "@/components/admin/telehealth/video-upload-panel";
+import { VideoProcessingStatus } from "@/components/admin/telehealth/video-processing-status";
 import type { Media } from "@/lib/api/types";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { extractVideoRef } from "@/lib/video-ref";
@@ -24,12 +26,15 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { ShowcaseLocaleTabs } from "@/components/admin/telehealth/showcase-locale-tabs";
 
+/** İşlenen video varken liste bu aralıkla (ms) kendini yeniler; hepsi bitince durur. */
+export const PROCESSING_POLL_MS = 10_000;
+
 export const LARGE_VIDEO_NOTE = "Büyük videoları sunucuya yüklemeyin; YouTube/Vimeo'ya yükleyip bağlantısını girin.";
 
 type LinkProvider = "youtube" | "vimeo";
 export type VideoSource = "link" | "upload";
 
-const EMPTY_UPLOAD: VideoUploadValue = { video: null, info: null, poster: null, captions: null, captionsLang: "tr" };
+const EMPTY_UPLOAD: VideoUploadValue = { video: null, info: null, poster: null, captions: null, captionsLang: "tr", processing: null };
 export const CONSENT_REQUIRED_NOTE = "Hastanın göründüğü içerik, hastadan yazılı onay alınmadan yayınlanamaz. Önce “Hastadan yazılı onay alındı” kutusunu işaretleyip onay notunu yazın.";
 
 const EMPTY_TEXT: showcaseApi.DoctorMediaText = { title: "", description: "", alt: "" };
@@ -93,7 +98,7 @@ export function buildMediaInput(form: MediaFormState): { input?: showcaseApi.Doc
     if (!form.photo) errors.mediaId = "Bir görsel seçin.";
     if (!Object.values(translations).some((t) => t.alt)) errors.translations = "Fotoğraf için en az bir dilde alt metin zorunlu.";
   } else if (isUpload) {
-    if (!form.upload.video) errors.mediaId = "Bir MP4 video yükleyin.";
+    if (!form.upload.video) errors.mediaId = "Bir MP4 ya da MOV video yükleyin.";
     else videoProvider = "upload";
   } else {
     const ref = extractVideoRef(form.videoInput, form.videoProvider);
@@ -148,6 +153,8 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
   const [pendingDelete, setPendingDelete] = useState<showcaseApi.AdminDoctorMedia | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [maxVideoMb, setMaxVideoMb] = useState(DEFAULT_MAX_VIDEO_MB);
+  const [queuePositions, setQueuePositions] = useState<Record<string, number | null>>({});
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   useEffect(() => {
     // Ayar okunamazsa varsayılan (100 MB) ile devam edilir; sunucu yine son karar verir.
@@ -174,6 +181,42 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
     })();
   }, [load]);
 
+  // İşlenen (dönüştürülen) video varsa liste + kuyruk sırası 10 sn'de bir yenilenir; hepsi bitince durur.
+  const hasProcessing = !!items?.some((m) => m.processing?.status === "processing");
+  useEffect(() => {
+    if (!hasProcessing) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const jobs = await mediaApi.listTranscodeJobs();
+        if (!cancelled) setQueuePositions(Object.fromEntries(jobs.map((j) => [j.mediaId, j.queuePosition])));
+      } catch {
+        // Sıra bilgisi yardımcıdır; alınamazsa rozet sırasız gösterilir.
+      }
+      if (!cancelled) await load();
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), PROCESSING_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [hasProcessing, load]);
+
+  async function retryTranscode(m: showcaseApi.AdminDoctorMedia) {
+    if (!m.media) return;
+    setRetryingId(m.id);
+    try {
+      await mediaApi.retryTranscode(m.media.id);
+      toast.success("Video yeniden kuyruğa alındı.");
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setRetryingId(null);
+      await load();
+    }
+  }
+
   function openNew() {
     setForm({ ...EMPTY_FORM, sortOrder: items?.length ?? 0 });
     setLocale("tr");
@@ -192,8 +235,9 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
       upload:
         m.videoProvider === "upload"
           ? {
-              video: m.media ? ({ altText: null, sizeBytes: 0, mimeType: "video/mp4", folderId: null, createdAt: m.createdAt, ...m.media } as Media) : null,
+              video: m.media ? ({ altText: null, sizeBytes: 0, mimeType: "video/mp4", folderId: null, createdAt: m.createdAt, ...m.media } as unknown as Media) : null,
               info: m.video ?? null,
+              processing: m.processing ?? null,
               poster: m.thumbnailMediaId && m.thumbnailUrl ? ({ id: m.thumbnailMediaId, url: m.thumbnailUrl, filename: "poster", mimeType: "image/jpeg", sizeBytes: 0, altText: null, width: null, height: null, folderId: null, createdAt: m.createdAt } as Media) : null,
               captions: m.captionsMediaId ? ({ id: m.captionsMediaId, url: m.captionsUrl ?? "", filename: "altyazi.vtt", mimeType: "text/vtt", sizeBytes: 0, altText: null, width: null, height: null, folderId: null, createdAt: m.createdAt } as Media) : null,
               captionsLang: m.captionsLang ?? "tr",
@@ -341,7 +385,7 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
                       <Badge tone="neutral" size="sm">
                         MP4{m.video?.codec ? ` · ${m.video.codec}` : ""}
                       </Badge>
-                      {warningsFromVideoInfo(m.video ?? null).map((w) => (
+                      {(m.processing ? [] : warningsFromVideoInfo(m.video ?? null)).map((w) => (
                         <span key={w.code} title={w.message}>
                           <Badge tone="warning" size="sm">
                             {w.code === "HEVC_CODEC" ? "HEVC uyarısı" : "Optimize değil"}
@@ -349,6 +393,14 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
                         </span>
                       ))}
                     </p>
+                  )}
+                  {m.videoProvider === "upload" && m.processing && (
+                    <VideoProcessingStatus
+                      processing={m.processing}
+                      queuePosition={m.media ? queuePositions[m.media.id] : null}
+                      retrying={retryingId === m.id}
+                      onRetry={() => void retryTranscode(m)}
+                    />
                   )}
                 </div>
               </div>
@@ -415,7 +467,7 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
                 {(inputProps) => (
                   <Select {...inputProps} value={form.videoSource} onChange={(e) => patch({ videoSource: e.target.value as VideoSource })}>
                     <option value="link">YouTube/Vimeo bağlantısı</option>
-                    <option value="upload">Video yükle (MP4)</option>
+                    <option value="upload">Video yükle (MP4 ya da MOV)</option>
                   </Select>
                 )}
               </Field>

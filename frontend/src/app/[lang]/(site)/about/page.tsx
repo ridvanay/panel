@@ -26,6 +26,7 @@ import { ClosingBand } from "@/components/site/about/closing-band";
 import { cn } from "@/lib/utils";
 import { fetchAccreditationsServer } from "@/lib/api/server-accreditations";
 import { AccreditationList } from "@/components/site/accreditations/accreditation-list";
+import { ogCompatibleImageUrl } from "@/lib/og-image";
 
 /**
  * "About Us" — içerik admin → Sayfalar'daki `slug = "about"` CMS kaydının `about-page` bloğundan
@@ -90,7 +91,7 @@ export async function generateMetadata({ params }: AboutPageProps): Promise<Meta
       type: "website",
       siteName: settings.siteName,
       url: canonical,
-      ...(ogImage ? { images: [ogImage] } : {}),
+      ...(ogImage ? { images: [ogCompatibleImageUrl(ogImage)] } : {}),
     },
     twitter: {
       card: ogImage ? "summary_large_image" : "summary",

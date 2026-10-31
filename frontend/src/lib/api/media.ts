@@ -12,9 +12,20 @@ import type {
 
 /** `POST /admin/media` `meta.notice` — ör. beyan edilen tür içerikle uyuşmadığında `TYPE_CORRECTED`. */
 export interface MediaUploadNotice {
+  /** `CONVERTED` | `TYPE_CORRECTED` — arayüz koda bakmaz, yalnızca `message` gösterilir. */
   code: string;
   message: string;
   detectedMimeType?: string;
+}
+
+/**
+ * `purpose` — `"logo"`: saydam olmasa da PNG uyumluluk kopyası (e-posta logosu kullanır); `"icon"`: favicon /
+ * apple-touch-icon, ana sürüm PNG kalır (WebP'ye çevrilmez). Verilmezse varsayılan davranış.
+ */
+export type MediaUploadPurpose = "logo" | "icon";
+
+export interface UploadMediaOptions {
+  purpose?: MediaUploadPurpose;
 }
 
 /**
@@ -22,10 +33,16 @@ export interface MediaUploadNotice {
  * `onNotice`, sunucu `meta.notice` döndürdüğünde (dosya türü düzeltildi vb.) çağrılır; dönüş tipi
  * (Media) değişmez, mevcut çağıranlar etkilenmez.
  */
-export async function uploadMedia(file: File, folderId?: string | null, onNotice?: (notice: MediaUploadNotice) => void): Promise<Media> {
+export async function uploadMedia(
+  file: File,
+  folderId?: string | null,
+  onNotice?: (notice: MediaUploadNotice) => void,
+  options: UploadMediaOptions = {},
+): Promise<Media> {
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folderId", folderId);
+  if (options.purpose) formData.append("purpose", options.purpose);
   const { data, meta } = await apiFetchWithMeta<Media>("/admin/media", { method: "POST", body: formData });
   const notice = (meta as { notice?: MediaUploadNotice } | undefined)?.notice;
   if (notice?.message && onNotice) onNotice(notice);
@@ -88,6 +105,14 @@ export function moveMedia(mediaIds: string[], folderId: string | null): Promise<
 // Paket AE — MP4 video ve .vtt altyazı yükleme (ilerleme çubuklu XHR).
 // ---------------------------------------------------------------------------
 
+export type VideoProcessingStatus = "processing" | "ready" | "failed";
+
+/** `POST /admin/media/video` yanıtındaki `processing` — video kuyrukta H.264 MP4'e çevrilir. */
+export interface VideoUploadProcessing {
+  status: VideoProcessingStatus;
+  queuePosition: number | null;
+}
+
 export type VideoWarningCode = "HEVC_CODEC" | "MOOV_AT_END";
 
 export interface VideoUploadWarning {
@@ -105,12 +130,45 @@ export interface VideoUploadResult {
   media: Media;
   video: VideoUploadInfo;
   warnings: VideoUploadWarning[];
+  processing: VideoUploadProcessing | null;
 }
 
-/** `POST /admin/media/video` — yalnızca MP4; `signal` ile iptal edilebilir. */
+/** `POST /admin/media/video` — MP4 ya da MOV (iPhone); `signal` ile iptal edilebilir. */
 export async function uploadVideo(file: File, options: Pick<UploadOptions, "onProgress" | "signal"> = {}): Promise<VideoUploadResult> {
   const { data } = await uploadWithProgress<VideoUploadResult>("/admin/media/video", file, options);
-  return { media: data.media, video: data.video, warnings: data.warnings ?? [] };
+  return { media: data.media, video: data.video, warnings: data.warnings ?? [], processing: data.processing ?? null };
+}
+
+// Paket AE-ek — video dönüştürme işleri.
+export type TranscodeJobStatus = "queued" | "running" | "done" | "failed";
+
+export interface TranscodeJob {
+  id: string;
+  mediaId: string;
+  status: TranscodeJobStatus;
+  sourceContainer: "mp4" | "mov";
+  sourceSizeBytes: number | null;
+  sourceCodec: string | null;
+  sourceDurationSec: number | null;
+  outputSizeBytes: number | null;
+  attempts: number;
+  error: string | null;
+  canRetry: boolean;
+  queuedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  sourceDeleteAfter: string | null;
+  queuePosition: number | null;
+}
+
+/** `GET /admin/media/transcode-jobs` — bekleyen/çalışan/başarısız + son 7 günde biten işler. */
+export function listTranscodeJobs(): Promise<TranscodeJob[]> {
+  return apiFetch<TranscodeJob[]>("/admin/media/transcode-jobs");
+}
+
+/** `POST /admin/media/:mediaId/transcode/retry` — 409: orijinal silinmiş ya da iş başarısız değil. */
+export function retryTranscode(mediaId: string): Promise<TranscodeJob> {
+  return apiFetch<TranscodeJob>(`/admin/media/${encodeURIComponent(mediaId)}/transcode/retry`, { method: "POST" });
 }
 
 /** `POST /admin/media/captions` — `.vtt` (WEBVTT ile başlamalı, ≤ 512 KB). */

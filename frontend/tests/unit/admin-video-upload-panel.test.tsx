@@ -60,7 +60,7 @@ describe("VideoUploadPanel", () => {
         }),
     );
     render(<Harness />);
-    await user.upload(screen.getByLabelText("Bilgisayardan MP4 video yükle"), mp4());
+    await user.upload(screen.getByLabelText("Bilgisayardan MP4 ya da MOV video yükle"), mp4());
 
     act(() => progressCb?.({ loaded: 2 * 1024 * 1024, total: 8 * 1024 * 1024, percent: 25 }));
     const bar = await screen.findByRole("progressbar", { name: "Video yükleme ilerlemesi" });
@@ -73,11 +73,11 @@ describe("VideoUploadPanel", () => {
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
-  it("istemci ön kontrolü: MP4 olmayan dosya sunucuya gitmeden reddedilir", async () => {
+  it("istemci ön kontrolü: MP4/MOV olmayan dosya sunucuya gitmeden reddedilir", async () => {
     const user = userEvent.setup({ applyAccept: false });
     render(<Harness />);
-    await user.upload(screen.getByLabelText("Bilgisayardan MP4 video yükle"), new File(["x"], "a.mov", { type: "video/quicktime" }));
-    expect(await screen.findByText("Yalnızca MP4 video yükleyebilirsiniz.")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("Bilgisayardan MP4 ya da MOV video yükle"), new File(["x"], "a.webm", { type: "video/webm" }));
+    expect(await screen.findByText("Yalnızca MP4 ya da MOV video yükleyebilirsiniz.")).toBeInTheDocument();
     expect(api.uploadVideo).not.toHaveBeenCalled();
   });
 
@@ -89,7 +89,7 @@ describe("VideoUploadPanel", () => {
     ];
     api.uploadVideo.mockResolvedValue({ media: videoMedia, video: { codec: "hvc1", faststart: false, durationSec: 12.4 }, warnings });
     render(<Harness />);
-    await user.upload(screen.getByLabelText("Bilgisayardan MP4 video yükle"), mp4());
+    await user.upload(screen.getByLabelText("Bilgisayardan MP4 ya da MOV video yükle"), mp4());
 
     const list = await screen.findByTestId("video-warnings");
     expect(list).toHaveTextContent("Bu video iPhone'un HEVC biçiminde. (sunucu metni)");
@@ -104,7 +104,7 @@ describe("VideoUploadPanel", () => {
     api.uploadMedia.mockResolvedValue(poster);
     let latest: VideoUploadValue | undefined;
     render(<Harness onValue={(v) => (latest = v)} />);
-    await user.upload(screen.getByLabelText("Bilgisayardan MP4 video yükle"), mp4());
+    await user.upload(screen.getByLabelText("Bilgisayardan MP4 ya da MOV video yükle"), mp4());
 
     expect(await screen.findByAltText("Videodan yakalanan kare önizlemesi")).toBeInTheDocument();
     expect(capture).toHaveBeenCalledWith(expect.any(File), 1);
@@ -122,7 +122,7 @@ describe("VideoUploadPanel", () => {
     capture.mockRejectedValue(new Error("x"));
     api.uploadVideo.mockResolvedValue({ media: videoMedia, video: { codec: "hvc1", faststart: true, durationSec: null }, warnings: [] });
     render(<Harness />);
-    await user.upload(screen.getByLabelText("Bilgisayardan MP4 video yükle"), mp4());
+    await user.upload(screen.getByLabelText("Bilgisayardan MP4 ya da MOV video yükle"), mp4());
     expect(await screen.findByText(/kare yakalayamadı/)).toBeInTheDocument();
     expect(screen.getByTestId("media-select")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bu kareyi kullan" })).toBeDisabled();

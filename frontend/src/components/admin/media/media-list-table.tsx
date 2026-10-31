@@ -111,11 +111,16 @@ export function MediaListTable({
                   <span className="truncate text-sm font-medium text-foreground" title={media.filename}>
                     {media.filename}
                   </span>
+                  {(media.processingStatus === "processing" || media.processingStatus === "failed") && (
+                    <Badge tone={media.processingStatus === "failed" ? "danger" : "warning"} size="sm">
+                      {media.processingStatus === "failed" ? "Başarısız" : "İşleniyor"}
+                    </Badge>
+                  )}
                 </div>
               </TableCell>
               <TableCell className="w-24">
                 <Badge tone="neutral" size="sm">
-                  {media.mimeType === "video/mp4" ? "VIDEO" : media.mimeType === "text/vtt" ? "VTT" : mimeSubtype(media.mimeType)}
+                  {media.mimeType === "video/mp4" || media.mimeType === "video/quicktime" ? "VIDEO" : media.mimeType === "text/vtt" ? "VTT" : mimeSubtype(media.mimeType)}
                 </Badge>
               </TableCell>
               <TableCell className="w-24 text-foreground/70">{formatSize(media.sizeBytes)}</TableCell>

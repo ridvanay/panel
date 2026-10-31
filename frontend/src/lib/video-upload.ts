@@ -18,6 +18,11 @@ export function formatMegabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Türkçe ondalık virgüllü boyut: "48,2 MB". */
+export function formatMegabytesTr(bytes: number): string {
+  return formatMegabytes(bytes).replace(".", ",");
+}
+
 /** Ayar alanı doğrulaması: 1–500 arası tam sayı. Hata yoksa `null`. */
 export function validateMaxVideoMb(value: number): string | null {
   if (!Number.isInteger(value)) return "Azami video boyutu tam sayı olmalıdır.";
@@ -25,12 +30,16 @@ export function validateMaxVideoMb(value: number): string | null {
   return null;
 }
 
-/** Yalnızca .mp4 / video/mp4 ve ayardaki azami boyut. Hata yoksa `null`. */
+export const VIDEO_TYPE_ERROR = "Yalnızca MP4 ya da MOV video yükleyebilirsiniz.";
+export const VIDEO_ACCEPT = "video/mp4,video/quicktime,.mp4,.mov";
+const VIDEO_TYPES = ["video/mp4", "video/quicktime"];
+
+/** .mp4/.mov (video/mp4, video/quicktime) ve ayardaki azami boyut. Hata yoksa `null`. */
 export function validateVideoFile(file: Pick<File, "name" | "type" | "size">, maxMb: number): string | null {
-  const isMp4Name = /\.mp4$/i.test(file.name);
-  const isMp4Type = file.type === "video/mp4";
-  if (!isMp4Name && !isMp4Type) return "Yalnızca MP4 video yükleyebilirsiniz.";
-  if (file.type && file.type !== "video/mp4") return "Yalnızca MP4 video yükleyebilirsiniz.";
+  const isKnownName = /\.(mp4|mov)$/i.test(file.name);
+  const isKnownType = VIDEO_TYPES.includes(file.type);
+  if (!isKnownName && !isKnownType) return VIDEO_TYPE_ERROR;
+  if (file.type && !isKnownType) return VIDEO_TYPE_ERROR;
   if (file.size > maxMb * 1024 * 1024) return `Video en fazla ${maxMb} MB olabilir (seçilen dosya ${formatMegabytes(file.size)}).`;
   return null;
 }

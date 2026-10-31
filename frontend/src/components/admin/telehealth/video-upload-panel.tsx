@@ -6,11 +6,12 @@ import { AlertTriangle, Film, UploadCloud, X } from "lucide-react";
 import * as mediaApi from "@/lib/api/media";
 import type { VideoUploadInfo, VideoUploadWarning } from "@/lib/api/media";
 import { isUploadAborted } from "@/lib/api/upload";
-import { SHOWCASE_LOCALES } from "@/lib/api/doctor-showcase";
+import { SHOWCASE_LOCALES, type DoctorMediaProcessing } from "@/lib/api/doctor-showcase";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { Media } from "@/lib/api/types";
 import {
   FRAME_CAPTURE_FAILED_MESSAGE,
+  VIDEO_ACCEPT,
   captureVideoFrame,
   formatDuration,
   formatMegabytes,
@@ -21,6 +22,7 @@ import {
 import { showMediaNotice } from "@/components/admin/media/media-notice";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { Alert } from "@/components/ui/alert";
+import { VideoProcessingStatus } from "@/components/admin/telehealth/video-processing-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -32,7 +34,12 @@ export interface VideoUploadValue {
   poster: Media | null;
   captions: Media | null;
   captionsLang: string;
+  /** Sunucu tarafı dönüştürme durumu (yükleme sonrası "processing"; kayıtlı öğede DTO'dan). */
+  processing?: DoctorMediaProcessing | null;
 }
+
+export const SERVER_TRANSCODE_NOTE = "Sunucu videoyu H.264'e dönüştürecek, kapak otomatik üretilecek.";
+export const SERVER_COVER_NOTE = "Sunucu kapağı otomatik üretecek; isterseniz kendi kapağınızı yükleyebilirsiniz.";
 
 interface Props {
   value: VideoUploadValue;
@@ -58,6 +65,7 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<VideoUploadWarning[]>([]);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
 
   const [seconds, setSeconds] = useState(1);
   const [duration, setDuration] = useState<number | null>(value.info?.durationSec ?? null);
@@ -125,7 +133,23 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
     setWarnings([]);
     try {
       const result = await mediaApi.uploadVideo(file, { signal: controller.signal, onProgress: setProgress });
-      onChange({ video: result.media, info: result.video, poster: null });
+      onChange({
+        video: result.media,
+        info: result.video,
+        poster: null,
+        processing: result.processing
+          ? {
+              status: result.processing.status,
+              error: null,
+              canRetry: false,
+              sourceSizeBytes: file.size,
+              sourceDurationSec: result.video.durationSec,
+              sourceCodec: result.video.codec,
+              outputSizeBytes: null,
+            }
+          : null,
+      });
+      setQueuePosition(result.processing?.queuePosition ?? null);
       setWarnings(result.warnings);
       setDuration(result.video.durationSec);
       setFrame(null);
@@ -153,7 +177,8 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
   }
 
   function removeVideo() {
-    onChange({ video: null, info: null, poster: null });
+    onChange({ video: null, info: null, poster: null, processing: null });
+    setQueuePosition(null);
     setLocalFile(null);
     setFrame(null);
     setWarnings([]);
@@ -199,14 +224,15 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
     }
   }
 
-  const shownWarnings = warnings.length > 0 ? warnings : warningsFromVideoInfo(value.info);
+  // Sunucu videoyu H.264'e çevirdiği için codec'ten türetilen HEVC/moov uyarısı yalnızca dönüştürme bilgisi olmayan öğelerde gösterilir.
+  const shownWarnings = warnings.length > 0 ? warnings : value.processing ? [] : warningsFromVideoInfo(value.info);
   const maxSeconds = duration && duration > 0 ? Math.max(0, Math.floor(duration * 10) / 10) : 0;
 
   return (
     <div className="space-y-4" data-testid="video-upload-panel">
       <div className="space-y-2">
         <span className="block text-sm font-medium text-foreground">
-          MP4 video
+          Video (MP4 ya da MOV)
           <span className="ml-0.5 text-danger" aria-hidden="true">
             *
           </span>
@@ -232,6 +258,10 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
               <X className="h-4 w-4" />
             </Button>
           </div>
+        )}
+
+        {value.video && !uploading && value.processing && (
+          <VideoProcessingStatus processing={value.processing} queuePosition={queuePosition} />
         )}
 
         {uploading && progress && (
@@ -261,10 +291,13 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
           <div>
             <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()}>
               <UploadCloud className="h-4 w-4" />
-              {value.video ? "Videoyu değiştir" : "MP4 seç ve yükle"}
+              {value.video ? "Videoyu değiştir" : "Video seç ve yükle"}
             </Button>
-            <input ref={fileRef} type="file" accept="video/mp4,.mp4" aria-label="Bilgisayardan MP4 video yükle" className="hidden" onChange={handleVideoChange} />
-            <p className="mt-1 text-xs text-foreground/60">Yalnızca MP4, en fazla {maxVideoMb} MB.</p>
+            <input ref={fileRef} type="file" accept={VIDEO_ACCEPT} aria-label="Bilgisayardan MP4 ya da MOV video yükle" className="hidden" onChange={handleVideoChange} />
+            <p className="mt-1 text-xs text-foreground/60">MP4 ya da MOV (iPhone), en fazla {maxVideoMb} MB.</p>
+            <p className="mt-1 text-xs text-foreground/60" data-testid="server-transcode-note">
+              {SERVER_TRANSCODE_NOTE}
+            </p>
           </div>
         )}
 
@@ -299,7 +332,7 @@ export function VideoUploadPanel({ value, onChange, maxVideoMb, error }: Props) 
               ) : (
                 !frameError && <p className="text-xs text-foreground/60">{capturing ? "Kare yakalanıyor…" : "Kare hazırlanıyor…"}</p>
               )}
-              {frameError && <Alert variant="warning">{frameError}</Alert>}
+              {frameError && <Alert variant="warning">{frameError} {SERVER_COVER_NOTE}</Alert>}
               {maxSeconds > 0 && (
                 <div className="flex flex-wrap items-center gap-3">
                   <label htmlFor="poster-seconds" className="text-xs text-foreground/70">

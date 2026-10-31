@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { VideoUploadInfo } from "./media";
+import type { TranscodeJobStatus, VideoProcessingStatus, VideoUploadInfo } from "./media";
 
 /** Paket Y — hekim vitrini (İşlemler + Foto/Video) ve önce/sonra ayarı. Yalnızca admin uçları; fiyat alanı YOKTUR. */
 
@@ -65,15 +65,29 @@ export interface DoctorMediaInput {
   sortOrder: number;
 }
 
+/** Paket AE-ek — yüklenen videonun sunucu tarafı dönüştürme durumu (`null`: YouTube/Vimeo/foto). */
+export interface DoctorMediaProcessing {
+  status: VideoProcessingStatus;
+  jobStatus?: TranscodeJobStatus | null;
+  error: string | null;
+  canRetry: boolean;
+  sourceSizeBytes: number | null;
+  sourceDurationSec: number | null;
+  sourceCodec: string | null;
+  outputSizeBytes: number | null;
+}
+
 export interface AdminDoctorMedia extends DoctorMediaInput {
   id: string;
   doctorId: string;
-  media: { id: string; url: string; width: number | null; height: number | null; filename: string; mimeType?: string } | null;
+  /** `url` dönüşüm bitene kadar `null` olabilir. */
+  media: { id: string; url: string | null; width: number | null; height: number | null; filename: string; mimeType?: string } | null;
   /** Poster ya da YouTube/Vimeo yerel küçük resmi. */
   thumbnailUrl?: string | null;
   thumbnailMediaId?: string | null;
   captionsUrl?: string | null;
   video?: VideoUploadInfo | null;
+  processing?: DoctorMediaProcessing | null;
   createdAt: string;
   updatedAt: string;
 }
