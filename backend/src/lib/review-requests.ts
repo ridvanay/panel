@@ -9,6 +9,7 @@ import { REVIEW_REQUEST_DELAY_MS, REVIEW_REQUEST_MAX_AGE_MS, purgeReviewData, se
  * biten görüşmeler: yayına alındığı gün eski hastalara toplu e-posta gitmez.
  */
 export const REVIEW_REQUEST_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+export const REVIEW_REQUEST_FIRST_RUN_DELAY_MS = 60 * 1000;
 const BATCH = 50;
 
 export async function runReviewRequestSweep(app: FastifyInstance, now = new Date()): Promise<{ claimed: number; sent: number; failed: number }> {
@@ -53,8 +54,14 @@ export function registerReviewRequestSweeper(app: FastifyInstance): void {
       })
       .catch((err) => app.log.error({ err }, "Yorum daveti (review-requests) taraması başarısız oldu"));
   };
-  runSweep();
+  // İlk tur açılıştan 60 sn sonra: açılış anındaki diğer işlerle (ve testlerde veritabanı sıfırlamasıyla)
+  // kilit yarışına girmesin; 24 saatlik gecikmeli bir iş için açılışta hemen çalışmaya gerek yok.
+  const first = setTimeout(runSweep, REVIEW_REQUEST_FIRST_RUN_DELAY_MS);
+  first.unref();
   const timer = setInterval(runSweep, REVIEW_REQUEST_SWEEP_INTERVAL_MS);
   timer.unref();
-  app.addHook("onClose", async () => clearInterval(timer));
+  app.addHook("onClose", async () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  });
 }
