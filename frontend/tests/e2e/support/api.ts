@@ -79,8 +79,10 @@ export async function ensureAdminSession(
 
   // §2.1 (bağlayıcı) — `POST /auth/register` artık `202 verificationRequired` döner, token YOKTUR.
   // 409 (zaten kayıtlı) DIŞINDA bir hata varsa (register YENİ kullanıcı için 202 dışında bir şey
-  // dönerse) `json()` fırlatır — sessizce login'e düşülmez.
-  if (!registerRes.ok && registerRes.status !== 409) {
+  // dönerse) `json()` fırlatır — sessizce login'e düşülmez. İstisna: şifre kuralı (`notPersonal`: şifre "Admin"
+  // adını içeriyor) VAR OLAN hesabın kayıt denemesini 409'dan önce 422 ile reddeder; hesap varsa aşağıdaki login
+  // başarılı olur, yoksa login hatası testi yine düşürür.
+  if (!registerRes.ok && registerRes.status !== 409 && registerRes.status !== 422) {
     await json(registerRes);
   }
   if (registerRes.status === 202) {

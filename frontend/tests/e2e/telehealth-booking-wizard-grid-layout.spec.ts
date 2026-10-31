@@ -97,8 +97,10 @@ for (const { label, viewport } of [
     const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100", viewport });
     const page = await context.newPage();
     try {
-      await gotoAndWaitReady(page, `/physicians/${doctorFixture.slug}`, async () => {
+      await gotoAndWaitReady(page, `/physicians/${doctorFixture.slug}#randevu`, async () => {
         await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+        // Paket AE: başlık sunucuda çizilir; sihirbaz hidrasyonda #randevu ile açılır — takvimden önce onu bekle.
+        await expect(page.getByTestId("booking-stepper-bar")).toBeVisible({ timeout: 15_000 });
       });
       await page.waitForTimeout(500);
 
@@ -160,8 +162,10 @@ test('madde 2: yoğun bir gün seçildiğinde slot kartı KENDİ İÇİNDE scrol
   const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100", viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   try {
-    await gotoAndWaitReady(page, `/physicians/${doctorFixture.slug}`, async () => {
+    await gotoAndWaitReady(page, `/physicians/${doctorFixture.slug}#randevu`, async () => {
       await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+      // Paket AE: başlık sunucuda çizilir; sihirbaz hidrasyonda #randevu ile açılır — takvimden önce onu bekle.
+      await expect(page.getByTestId("booking-stepper-bar")).toBeVisible({ timeout: 15_000 });
     });
     await page.waitForTimeout(500);
 

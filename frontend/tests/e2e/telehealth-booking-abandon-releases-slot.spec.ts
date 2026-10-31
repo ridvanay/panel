@@ -109,8 +109,10 @@ test("Adım 4'e geçip ödeme tamamlanmadan sayfa yenilenirse (F5) booking KURTA
   const availableBefore = new Set((slotsBefore.data ?? []).filter((s) => s.available).map((s) => s.startsAt));
   expect(availableBefore.size).toBeGreaterThan(0);
 
-  await page.goto(`/physicians/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/physicians/${doctorFixture.slug}#randevu`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+  // Paket AE: başlık sunucuda çizilir; sihirbaz hidrasyonda #randevu ile açılır — takvimden önce onu bekle.
+  await expect(page.getByTestId("booking-stepper-bar")).toBeVisible({ timeout: 15_000 });
 
   await selectAnyAvailableSlot(page);
   const continueButton = page.getByRole("button", { name: "Devam Et" }).first();
@@ -152,8 +154,10 @@ test("Adım 4'e geçip SPA-içi (uygulama içi link ile) başka bir sayfaya gidi
   const availableBefore = new Set((slotsBefore.data ?? []).filter((s) => s.available).map((s) => s.startsAt));
   expect(availableBefore.size).toBeGreaterThan(0);
 
-  await page.goto(`/physicians/${doctorFixture.slug}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/physicians/${doctorFixture.slug}#randevu`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+  // Paket AE: başlık sunucuda çizilir; sihirbaz hidrasyonda #randevu ile açılır — takvimden önce onu bekle.
+  await expect(page.getByTestId("booking-stepper-bar")).toBeVisible({ timeout: 15_000 });
 
   await selectAnyAvailableSlot(page);
   const continueButton = page.getByRole("button", { name: "Devam Et" }).first();
