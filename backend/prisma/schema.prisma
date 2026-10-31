@@ -1639,22 +1639,22 @@ model FooterLink {
 }
 
 model Media {
-  id        String   @id @default(uuid())
-  seq       Int      @unique @default(autoincrement())
+  id               String             @id @default(uuid())
+  seq              Int                @unique @default(autoincrement())
   // Diskteki fiziksel yol (uploads/ altında) — DB kaydı silinirken dosyayı bulmak için.
-  path      String
+  path             String
   // /uploads/... göreli URL; DTO'da PUBLIC_URL ile mutlaklaştırılır.
-  url       String
-  filename  String
-  mimeType  String
-  sizeBytes Int
+  url              String
+  filename         String
+  mimeType         String
+  sizeBytes        Int
   // Görsel piksel boyutu (kart üzerinde "1920×1080" etiketi için) — upload anında hesaplanır, migration ÖNCESİ yüklenmiş görsellerde null kalır, geriye dönük backfill YAPILMAZ.
-  width     Int?
-  height    Int?
+  width            Int?
+  height           Int?
   // Paket AE — yalnızca yüklenen MP4 için (kutu ayrıştırmasıyla): kodek fourcc'si, moov'un mdat'tan önce olması, süre.
-  videoCodec     String?
-  videoFaststart Boolean?
-  durationSec    Float?
+  videoCodec       String?
+  videoFaststart   Boolean?
+  durationSec      Float?
   // Paket AE-ek — fotoğraf uyumluluk kopyaları (aynı UUID adıyla `.jpg` ve gerekiyorsa `.png`):
   // [{ format: "jpeg"|"png", path, url, sizeBytes, width, height }]. E-posta ve Open Graph bunları kullanır.
   variants         Json?
@@ -1662,44 +1662,46 @@ model Media {
   processingStatus String?
   transcodeJob     MediaTranscodeJob?
   // a11y — editör içi içerik görseli eklerken zorunlu (bkz. modules/blog/post-editor.tsx); kapak görseli/avatar gibi diğer kullanımlarda opsiyonel.
-  altText   String?
+  altText          String?
   // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz" (bu bir klasör
   // KAYDI değil, klasörsüzlüğün ta kendisidir). Klasör silinirse SetNull ile boşalır —
   // görsel/disk dosyası ASLA silinmez (bkz. ARCHITECTURE.md §10.11.3).
-  folderId  String?
-  createdAt DateTime @default(now())
+  folderId         String?
+  createdAt        DateTime           @default(now())
 
   folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
-  productCovers          Product[]            @relation("ProductCoverMedia")
-  productGalleryItems    ProductImage[]       @relation("ProductGalleryImage")
+  productCovers          Product[]              @relation("ProductCoverMedia")
+  productGalleryItems    ProductImage[]         @relation("ProductGalleryImage")
   // §1/§2 (.claude/architect-scope-ecommerce-pro-template.md) — varyasyon görseli ve
   // teknik döküman (PDF) karşı-ilişkileri.
-  productVariantImages   ProductVariant[]     @relation("ProductVariantImage")
-  productDocuments       ProductDocument[]    @relation("ProductDocumentMedia")
+  productVariantImages   ProductVariant[]       @relation("ProductVariantImage")
+  productDocuments       ProductDocument[]      @relation("ProductDocumentMedia")
   // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
-  portfolioCovers        PortfolioItem[]      @relation("PortfolioCoverMedia")
-  portfolioGalleryItems  PortfolioImage[]     @relation("PortfolioGalleryImage")
+  portfolioCovers        PortfolioItem[]        @relation("PortfolioCoverMedia")
+  portfolioGalleryItems  PortfolioImage[]       @relation("PortfolioGalleryImage")
   // §10.12.2 Site Özelleştirme — SiteAppearance.pageHeaderBackgroundMediaId için
   // zorunlu karşı-ilişki alanı.
-  pageHeaderBackgrounds  SiteAppearance[]     @relation("SiteAppearancePageHeaderBackground")
+  pageHeaderBackgrounds  SiteAppearance[]       @relation("SiteAppearancePageHeaderBackground")
   // Gelişmiş Slider — Slide.bgMediaId / Slide.bgVideoPosterMediaId karşı-ilişkileri.
-  slideBackgrounds       Slide[]              @relation("SlideBackgroundMedia")
-  slideVideoPosters      Slide[]              @relation("SlideVideoPosterMedia")
-  slideTabletBackgrounds Slide[]              @relation("SlideTabletBackgroundMedia")
-  slideMobileBackgrounds Slide[]              @relation("SlideMobileBackgroundMedia")
+  slideBackgrounds       Slide[]                @relation("SlideBackgroundMedia")
+  slideVideoPosters      Slide[]                @relation("SlideVideoPosterMedia")
+  slideTabletBackgrounds Slide[]                @relation("SlideTabletBackgroundMedia")
+  slideMobileBackgrounds Slide[]                @relation("SlideMobileBackgroundMedia")
   // Tele-Sağlık — bkz. .claude/architect-scope-telehealth-template.md §3.3/§3.7.
   // DoctorProfile.avatarMediaId için zorunlu karşı-ilişki alanı.
-  doctorAvatars          DoctorProfile[]      @relation("DoctorAvatarMedia")
+  doctorAvatars          DoctorProfile[]        @relation("DoctorAvatarMedia")
   // Specialty.imageMediaId için zorunlu karşı-ilişki alanı.
-  specialtyImages        Specialty[]          @relation("SpecialtyImageMedia")
+  specialtyImages        Specialty[]            @relation("SpecialtyImageMedia")
   // Paket V — AccreditationBadge.logoMediaId için zorunlu karşı-ilişki alanı (kolon DEĞİL).
-  accreditationLogos     AccreditationBadge[] @relation("AccreditationBadgeLogo")
+  accreditationLogos     AccreditationBadge[]   @relation("AccreditationBadgeLogo")
   /// Paket Y — hekim galerisi.
-  doctorGallery          DoctorMedia[]        @relation("DoctorGalleryMedia")
-  doctorVideoThumbnails  DoctorMedia[]        @relation("DoctorVideoThumbnail")
-  doctorVideoCaptions    DoctorMedia[]        @relation("DoctorVideoCaptions")
+  doctorGallery          DoctorMedia[]          @relation("DoctorGalleryMedia")
+  doctorVideoThumbnails  DoctorMedia[]          @relation("DoctorVideoThumbnail")
+  doctorVideoCaptions    DoctorMedia[]          @relation("DoctorVideoCaptions")
+  healthPackageCovers    HealthPackage[]        @relation("HealthPackageCover")
+  destinationCovers      DestinationHighlight[] @relation("DestinationCover")
 
   @@index([folderId])
   @@map("media")
@@ -3606,6 +3608,8 @@ enum CrmLeadChannel {
   ADS_IMPORT
   /// Paket W — "Find my physician" eşleştirme sihirbazı (ayrıntılar `MatcherSubmission`).
   MATCHER
+  /// Paket X — sağlık paketi "Plan my package" talebi (ayrıntılar `PackageInquiry`).
+  PACKAGE
 }
 
 /// Paket N2 — talep (lead). Kaynak kayıtlara (iletişim formu, canlı destek, randevu) YALNIZCA düz
@@ -3648,6 +3652,7 @@ model CrmLead {
 
   notes             CrmLeadNote[]
   matcherSubmission MatcherSubmission?
+  packageInquiry    PackageInquiry?
 
   @@unique([channel, sourceRefId])
   @@index([status, createdAt])
@@ -4082,4 +4087,92 @@ model ReviewRequestOptOut {
   createdAt DateTime @default(now())
 
   @@map("review_request_opt_outs")
+}
+
+/// Paket X — sağlık paketi (check-up, estetik, wellness …). SATIN ALINMAZ, sepete eklenmez; yalnızca planlama talebi
+/// toplanır. Fiyat yalnızca bilgi amaçlıdır ve `showPrice` (varsayılan kapalı) açıkken gösterilir. Uydurma veri yok:
+/// seed yalnızca taslak (isActive=false) kayıt üretir.
+model HealthPackage {
+  id                  String   @id @default(uuid())
+  seq                 Int      @unique @default(autoincrement())
+  slug                String   @unique
+  /// "check-up" | "aesthetic" | "wellness" | "longevity" | "dental" | "women" | "men" | "other" (Zod ile zorlanır)
+  category            String
+  coverMediaId        String?
+  /// { "<dil>": { title, summary, includes[], notIncluded[], duration, idealFor, faq[{question, answer}] } }
+  translations        Json     @default("{}")
+  priceFrom           Decimal? @db.Decimal(10, 2)
+  currency            String   @default("EUR")
+  showPrice           Boolean  @default(false)
+  relatedSpecialtyIds String[] @default([])
+  relatedDoctorIds    String[] @default([])
+  isActive            Boolean  @default(false)
+  isFeatured          Boolean  @default(false)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  coverMedia Media?           @relation("HealthPackageCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  inquiries  PackageInquiry[]
+
+  @@index([isActive, isFeatured, sortOrder])
+  @@index([coverMediaId])
+  @@map("health_packages")
+}
+
+/// Paket X — "Plan my package" talebi (CRM lead `channel=PACKAGE`). Not alanı sağlık bilgisi içerebileceği için yalnızca
+/// sağlık rızasıyla saklanır; iletişim izni yoksa hiçbir kayıt oluşmaz. Lead anonimleştirilince bu kayıt da temizlenir.
+model PackageInquiry {
+  id                 String    @id @default(uuid())
+  seq                Int       @unique @default(autoincrement())
+  leadId             String    @unique
+  packageId          String?
+  /// Paket silinse de talepte hangi paketin istendiği görünsün diye anlık görüntü.
+  packageSlug        String
+  packageTitle       String
+  /// Serbest metin tarih aralığı ("2026-12-01 – 2026-12-10" gibi), en çok 100 karakter.
+  preferredDates     String?
+  travellers         Int?
+  /// En çok 500 karakter; yalnızca `consentHealthAt` doluysa saklanır.
+  note               String?
+  consentContactAt   DateTime
+  consentHealthAt    DateTime?
+  /// Onay verilirken gösterilen metnin sürümü (ispat için; ör. "package-v1").
+  consentTextVersion String?
+  anonymizedAt       DateTime?
+  createdAt          DateTime  @default(now())
+
+  lead    CrmLead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  package HealthPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+
+  @@index([packageId])
+  @@index([createdAt])
+  @@map("package_inquiries")
+}
+
+/// Paket X — anasayfa "Top destinations" kartı. Bütün rakamlar (hasta sayısı, fiyatlar, dönem) yönetici tarafından
+/// girilir; seed YOKTUR. Aktif kayıt yoksa bölüm görünmez; `showPrices` varsayılan kapalı.
+model DestinationHighlight {
+  id                   String   @id @default(uuid())
+  slug                 String   @unique
+  city                 String
+  coverMediaId         String?
+  /// { "<dil>": { title, summary, highlights[] } }
+  translations         Json     @default("{}")
+  /// [{ label: { "<dil>": string }, priceFrom: number|null, currency: string }]
+  topTreatments        Json     @default("[]")
+  patientCountLastYear Int?
+  /// Örn. "Nov 2025 – Oct 2026"; doluysa başlığın altında gösterilir.
+  dataPeriodLabel      String?
+  showPrices           Boolean  @default(false)
+  isActive             Boolean  @default(false)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  coverMedia Media? @relation("DestinationCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, sortOrder])
+  @@index([coverMediaId])
+  @@map("destination_highlights")
 }

@@ -100,6 +100,8 @@ import { registerCrmSchedulers } from "./modules/crm/crm.rollup";
 import { matcherPublicRoutes } from "./modules/matcher/matcher.routes";
 import { matcherAdminRoutes } from "./modules/matcher/matcher.admin.routes";
 import { reviewsPublicRoutes } from "./modules/reviews/reviews.routes";
+import { packagesPublicRoutes } from "./modules/packages/packages.routes";
+import { adminContactChannelsRoutes, adminDestinationsRoutes, adminPackagesRoutes } from "./modules/packages/packages.admin.routes";
 import { reviewsPatientRoutes } from "./modules/reviews/reviews.patient.routes";
 import { reviewsAdminRoutes } from "./modules/reviews/reviews.admin.routes";
 import { adminDoctorMediaSettingsRoutes, adminTelehealthShowcaseRoutes, telehealthShowcasePublicRoutes } from "./modules/telehealth/telehealth.showcase.routes";
@@ -391,6 +393,11 @@ export function buildApp() {
       api.register(matcherAdminRoutes, { prefix: "/admin/matcher" });
       // Paket Y — hasta memnuniyet yorumları (herkese açık, hasta portalı, admin moderasyonu).
       api.register(reviewsPublicRoutes);
+      // Paket X — sağlık paketleri, destinasyonlar, iletişim kanalları ve admin CRUD.
+      api.register(packagesPublicRoutes);
+      api.register(adminPackagesRoutes, { prefix: "/admin/packages" });
+      api.register(adminDestinationsRoutes, { prefix: "/admin/destinations" });
+      api.register(adminContactChannelsRoutes, { prefix: "/admin/telehealth/settings/contact-channels" });
       api.register(reviewsPatientRoutes, { prefix: "/patient" });
       api.register(reviewsAdminRoutes, { prefix: "/admin/testimonials" });
       // Paket Y — hekim vitrini (işlemler, foto/video) ve önce/sonra ayarı.

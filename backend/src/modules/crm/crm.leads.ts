@@ -35,6 +35,7 @@ export const CRM_LEAD_CHANNELS = [
   "MANUAL",
   "ADS_IMPORT",
   "MATCHER",
+  "PACKAGE",
 ] as const satisfies readonly CrmLeadChannel[];
 
 export const CRM_LEAD_STATUS_LABELS: Record<CrmLeadStatus, string> = {
@@ -59,6 +60,7 @@ export const CRM_LEAD_CHANNEL_LABELS: Record<CrmLeadChannel, string> = {
   MANUAL: "Manuel",
   ADS_IMPORT: "Google Ads",
   MATCHER: "Eşleştirme sihirbazı",
+  PACKAGE: "Sağlık paketi",
 };
 
 /** Sonuçlanmış durumlar — "bugün aranacaklar" listesine girmez. */
@@ -421,14 +423,23 @@ export async function findVisitorCandidates(app: FastifyInstance, lead: Pick<Crm
 // --- Saklama: anonimleştirme -------------------------------------------------------------------
 
 /** Süresi dolan talepler: kişi alanları ve notlar silinir, istatistik için satır (kanal/durum/kaynak) kalır. */
+export const PACKAGE_NOTE_RETENTION_DAYS = 365;
+
 export async function anonymizeExpiredLeads(app: FastifyInstance, now: Date = new Date()): Promise<number> {
   const settings = await readCrmSettings(app.prisma);
   const cutoff = new Date(now.getTime() - settings.leadRetentionDays * 86_400_000);
+  // Paket X — paket talebindeki not sağlık bilgisi içerebilir: lead süresinden bağımsız olarak 365 gün sonra silinir
+  // (eşleştirme sihirbazının sağlık verisi süresiyle aynı).
+  await app.prisma.packageInquiry.updateMany({
+    where: { createdAt: { lt: new Date(now.getTime() - PACKAGE_NOTE_RETENTION_DAYS * 86_400_000) }, note: { not: null } },
+    data: { note: null },
+  });
   const expired = await app.prisma.crmLead.findMany({ where: { createdAt: { lt: cutoff }, anonymizedAt: null }, select: { id: true } });
   if (expired.length === 0) return 0;
   const ids = expired.map((l) => l.id);
   await app.prisma.$transaction([
     app.prisma.crmLeadNote.deleteMany({ where: { leadId: { in: ids } } }),
+    app.prisma.packageInquiry.updateMany({ where: { leadId: { in: ids } }, data: { note: null, preferredDates: null, travellers: null, anonymizedAt: now } }),
     app.prisma.crmLead.updateMany({
       where: { id: { in: ids } },
       data: {

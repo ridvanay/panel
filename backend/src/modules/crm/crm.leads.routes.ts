@@ -232,7 +232,7 @@ export async function registerCrmLeadRoutes(app: FastifyInstance) {
 
   app.get("/leads/:id", async (request, reply) => {
     const { id } = parseOr422(IdParam, request.params);
-    const lead = await app.prisma.crmLead.findUnique({ where: { id }, include: { notes: { orderBy: { createdAt: "desc" } } } });
+    const lead = await app.prisma.crmLead.findUnique({ where: { id }, include: { notes: { orderBy: { createdAt: "desc" } }, packageInquiry: true } });
     if (!lead) throw new NotFoundError("Talep bulunamadı.");
     const [settings, assignees, bookingSuggestions, linkedBooking] = await Promise.all([
       readCrmSettings(app.prisma),
@@ -245,7 +245,16 @@ export async function registerCrmLeadRoutes(app: FastifyInstance) {
           })
         : Promise.resolve(null),
     ]);
-    await logAudit(app, { actorId: actor(request).id, actorEmail: actor(request).email, action: "crm.lead.viewed", targetType: "CrmLead", targetId: lead.id, ipAddress: request.ip });
+    await logAudit(app, {
+      actorId: actor(request).id,
+      actorEmail: actor(request).email,
+      action: "crm.lead.viewed",
+      targetType: "CrmLead",
+      targetId: lead.id,
+      // Paket X — özel nitelikli veriye (sağlık notu) erişimin kanıtı.
+      ...(lead.packageInquiry?.note ? { metadata: { healthNoteViewed: true } } : {}),
+      ipAddress: request.ip,
+    });
     return reply.send(
       ok({
         ...toLeadDto(lead, settings.slaHours, assignees),
@@ -254,8 +263,34 @@ export async function registerCrmLeadRoutes(app: FastifyInstance) {
         linkedBooking: linkedBooking
           ? { ...linkedBooking, createdAt: linkedBooking.createdAt.toISOString() }
           : null,
+        // Paket X — "Plan my package" ayrıntısı (yalnızca yetkili CRM görüntüleyicisi; not yalnızca sağlık onayıyla saklanır).
+        packageInquiry: lead.packageInquiry
+          ? {
+              number: lead.packageInquiry.seq,
+              packageId: lead.packageInquiry.packageId,
+              packageSlug: lead.packageInquiry.packageSlug,
+              packageTitle: lead.packageInquiry.packageTitle,
+              preferredDates: lead.packageInquiry.preferredDates,
+              travellers: lead.packageInquiry.travellers,
+              note: lead.packageInquiry.note,
+              consentContactAt: lead.packageInquiry.consentContactAt.toISOString(),
+              consentHealthAt: lead.packageInquiry.consentHealthAt?.toISOString() ?? null,
+              consentTextVersion: lead.packageInquiry.consentTextVersion,
+              anonymizedAt: lead.packageInquiry.anonymizedAt?.toISOString() ?? null,
+            }
+          : null,
       })
     );
+  });
+
+  /** Paket X — hasta sağlık onayını geri çekti: not ve sağlık onay zamanı silinir (denetim izli). */
+  app.post("/leads/:id/package-inquiry/withdraw-health-consent", async (request, reply) => {
+    const { id } = parseOr422(IdParam, request.params);
+    const inquiry = await app.prisma.packageInquiry.findUnique({ where: { leadId: id }, select: { id: true } });
+    if (!inquiry) throw new NotFoundError("Paket talebi bulunamadı.");
+    await app.prisma.packageInquiry.update({ where: { id: inquiry.id }, data: { note: null, consentHealthAt: null } });
+    await logAudit(app, { actorId: actor(request).id, actorEmail: actor(request).email, action: "crm.package_inquiry.health_consent_withdrawn", targetType: "CrmLead", targetId: id, ipAddress: request.ip });
+    return reply.send(ok({ withdrawn: true }));
   });
 
   app.get("/leads/:id/visitor-candidates", async (request, reply) => {

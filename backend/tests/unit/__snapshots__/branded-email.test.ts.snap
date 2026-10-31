@@ -789,6 +789,201 @@ Bu e-posta otomatik olarak gönderilmiştir.",
 }
 `;
 
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-confirmation · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">تلقّينا طلب الباقة رقم 1024</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><div dir="rtl" lang="ar"><p>شكرًا لك. تلقّينا طلب التخطيط رقم 1024 الخاص بـ «Executive Check-up».</p><p>سيتواصل معك منسق المرضى خلال يوم عمل واحد لتخطيط الخطوات التالية.</p><p>الأسعار المعروضة على موقعنا أسعار بداية إرشادية؛ ويُؤكَّد السعر النهائي بعد التقييم الطبي.</p><p>إذا رغبت في حذف طلبك أو سحب موافقتك، فما عليك سوى الرد على هذه الرسالة.</p></div></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "تلقّينا طلب الباقة رقم 1024",
+  "text": "شكرًا لك. تلقّينا طلب التخطيط رقم 1024 الخاص بـ «Executive Check-up».
+سيتواصل معك منسق المرضى خلال يوم عمل واحد لتخطيط الخطوات التالية.
+الأسعار المعروضة على موقعنا أسعار بداية إرشادية؛ ويُؤكَّد السعر النهائي بعد التقييم الطبي.
+إذا رغبت في حذف طلبك أو سحب موافقتك، فما عليك سوى الرد على هذه الرسالة.
+
+----
+WM Health Istanbul
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-confirmation · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">We have received your package request #1024</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Thank you. We have received your planning request #1024 for “Executive Check-up”.</p><p>Our patient coordinator will contact you within 1 business day to plan the next steps.</p><p>Any price shown on our website is an indicative starting price; the final price is confirmed after a medical evaluation.</p><p>If you would like us to delete your request or to withdraw your consent, simply reply to this email.</p></div></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "We have received your package request #1024",
+  "text": "Thank you. We have received your planning request #1024 for “Executive Check-up”.
+Our patient coordinator will contact you within 1 business day to plan the next steps.
+Any price shown on our website is an indicative starting price; the final price is confirmed after a medical evaluation.
+If you would like us to delete your request or to withdraw your consent, simply reply to this email.
+
+----
+WM Health Istanbul
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-confirmation · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Paket talebinizi aldık #1024</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="tr"><p>Teşekkür ederiz. “Executive Check-up” için #1024 numaralı planlama talebinizi aldık.</p><p>Hasta koordinatörümüz sonraki adımları planlamak için 1 iş günü içinde sizinle iletişime geçecek.</p><p>Sitemizde gösterilen fiyatlar yalnızca başlangıç fiyatıdır; kesin fiyat tıbbi değerlendirmeden sonra belirlenir.</p><p>Talebinizin silinmesini ya da onayınızı geri çekmek isterseniz bu e-postayı yanıtlamanız yeterli.</p></div></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Örnek Mah. 1, İstanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/tr/contact" style="color:#6b7280;text-decoration:underline;">Bize ulaşın</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/tr/kvkk-aydinlatma-metni" style="color:#6b7280;text-decoration:underline;">KVKK Aydınlatma Metni</a> &middot; <a href="http://localhost:3000/tr/gizlilik-politikasi" style="color:#6b7280;text-decoration:underline;">Gizlilik Politikası</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">Acil durumda 112&#39;yi (ya da bulunduğunuz ülkenin acil numarasını) arayın.</strong></p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Paket talebinizi aldık #1024",
+  "text": "Teşekkür ederiz. “Executive Check-up” için #1024 numaralı planlama talebinizi aldık.
+Hasta koordinatörümüz sonraki adımları planlamak için 1 iş günü içinde sizinle iletişime geçecek.
+Sitemizde gösterilen fiyatlar yalnızca başlangıç fiyatıdır; kesin fiyat tıbbi değerlendirmeden sonra belirlenir.
+Talebinizin silinmesini ya da onayınızı geri çekmek isterseniz bu e-postayı yanıtlamanız yeterli.
+
+----
+WM Health Istanbul
+Örnek Mah. 1, İstanbul
++90 212 000 00 00 · info@example.com · Bize ulaşın (http://localhost:3000/tr/contact)
+KVKK Aydınlatma Metni (http://localhost:3000/tr/kvkk-aydinlatma-metni) · Gizlilik Politikası (http://localhost:3000/tr/gizlilik-politikasi)
+Acil durumda 112'yi (ya da bulunduğunuz ülkenin acil numarasını) arayın.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-new-inquiry · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Yeni paket talebi #1024</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>“Executive Check-up” paketi için yeni bir planlama talebi geldi: <strong>#1024</strong>.</p><p>Ayrıntılar yalnızca yetkili panelde görüntülenir.</p><p><a href="http://localhost:3000/admin/crm/leads/sample">Talebi panelde aç</a></p></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">إشعار داخلي — مخصص للموظفين المصرح لهم فقط.</p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Yeni paket talebi #1024",
+  "text": "“Executive Check-up” paketi için yeni bir planlama talebi geldi: #1024.
+Ayrıntılar yalnızca yetkili panelde görüntülenir.
+Talebi panelde aç (http://localhost:3000/admin/crm/leads/sample)
+----
+WM Health Istanbul
+إشعار داخلي — مخصص للموظفين المصرح لهم فقط.
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-new-inquiry · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Yeni paket talebi #1024</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>“Executive Check-up” paketi için yeni bir planlama talebi geldi: <strong>#1024</strong>.</p><p>Ayrıntılar yalnızca yetkili panelde görüntülenir.</p><p><a href="http://localhost:3000/admin/crm/leads/sample">Talebi panelde aç</a></p></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Internal notification — for authorised staff only.</p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Yeni paket talebi #1024",
+  "text": "“Executive Check-up” paketi için yeni bir planlama talebi geldi: #1024.
+Ayrıntılar yalnızca yetkili panelde görüntülenir.
+Talebi panelde aç (http://localhost:3000/admin/crm/leads/sample)
+----
+WM Health Istanbul
+Internal notification — for authorised staff only.
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-new-inquiry · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Yeni paket talebi #1024</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>“Executive Check-up” paketi için yeni bir planlama talebi geldi: <strong>#1024</strong>.</p><p>Ayrıntılar yalnızca yetkili panelde görüntülenir.</p><p><a href="http://localhost:3000/admin/crm/leads/sample">Talebi panelde aç</a></p></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Kurum içi bildirim — yalnızca yetkili personel içindir.</p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Yeni paket talebi #1024",
+  "text": "“Executive Check-up” paketi için yeni bir planlama talebi geldi: #1024.
+Ayrıntılar yalnızca yetkili panelde görüntülenir.
+Talebi panelde aç (http://localhost:3000/admin/crm/leads/sample)
+----
+WM Health Istanbul
+Kurum içi bildirim — yalnızca yetkili personel içindir.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
 exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:review-request · ar 1`] = `
 {
   "html": "<!doctype html>

@@ -165,6 +165,10 @@ export const CACHE_TAGS = {
   crmConfig: "crm-config",
   // Paket V — yetki belgeleri (anasayfa şeridi, footer, Hakkımızda).
   accreditations: "accreditations",
+  // Paket X — sağlık paketleri, "Top destinations", iletişim kanalları (WhatsApp).
+  packages: "packages",
+  destinations: "destinations",
+  contactChannels: "contact-channels",
 } as const;
 
 /** Slider başına etiket — frontend `sliderCacheTag` ile aynı biçim. */

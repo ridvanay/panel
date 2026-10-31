@@ -21,6 +21,7 @@ import {
 } from "../telehealth/lib/notifications";
 import { TEST_EMAIL_HTML, TEST_EMAIL_SUBJECT } from "../settings/settings.email.routes";
 import { buildReviewInviteEmail } from "../reviews/reviews.service";
+import { buildPackageConfirmationEmail, buildPackageInquiryNotice, toPackageEmailLocale } from "../packages/packages.notifications";
 import { renderTemplatePreviewOrTest } from "./email-templates.service";
 
 /**
@@ -63,6 +64,8 @@ const CODE_ENTRIES: SystemEmailEntry[] = [
   { id: "code:matcher-confirmation", label: "Eşleştirme talebi alındı (hasta)", audience: "patient", source: "code", languages: "9" },
   { id: "code:review-request", label: "Deneyiminizi paylaşın (hasta, görüşmeden 24 saat sonra)", audience: "patient", source: "code", languages: "9" },
   { id: "code:matcher-new-lead-fallback", label: "Eşleştirme talebi — yedek metin (koordinatör)", audience: "staff", source: "code", languages: "tr" },
+  { id: "code:package-confirmation", label: "Paket planlama talebi alındı (hasta)", audience: "patient", source: "code", languages: "9" },
+  { id: "code:package-new-inquiry", label: "package.new_inquiry — yeni paket talebi (koordinatör)", audience: "staff", source: "code", languages: "tr" },
   { id: "code:interpreter-assignment", label: "Tercüman ataması (tercüman)", audience: "staff", source: "code", languages: "9" },
   { id: "code:interpreter-participant-patient", label: "Görüşmeye tercüman katılacak (hasta)", audience: "patient", source: "code", languages: "9" },
   { id: "code:interpreter-participant-doctor", label: "Görüşmeye tercüman katılacak (doktor)", audience: "staff", source: "code", languages: "9" },
@@ -123,6 +126,12 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
     }
     case "code:matcher-new-lead-fallback":
       return buildMatcherLeadFallbackNotice(1024, `${base}/admin/crm/leads/sample`);
+    case "code:package-confirmation": {
+      const mail = buildPackageConfirmationEmail({ locale: toPackageEmailLocale(locale), number: 1024, packageTitle: "Executive Check-up" });
+      return { subject: mail.subject, bodyHtml: mail.html };
+    }
+    case "code:package-new-inquiry":
+      return buildPackageInquiryNotice({ number: 1024, packageTitle: "Executive Check-up", adminUrl: `${base}/admin/crm/leads/sample` });
     case "code:interpreter-assignment":
       return fromInterpreter(
         buildInterpreterAssignmentEmail({ locale, startsAt: SAMPLE_DATE, interpreterTimeZone: "Europe/Berlin", language: "ar", panelUrl: `${base}/${locale}/interpreter` })
