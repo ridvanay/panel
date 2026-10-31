@@ -35,7 +35,7 @@ export function ContactActions({ chatEnabled, contactHref, chatLabel, contactLab
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
       {chatEnabled && (
-        <button type="button" onClick={openLiveChat} className={cn(base, solid)}>
+        <button type="button" onClick={() => openLiveChat()} className={cn(base, solid)}>
           <MessageCircle className="h-4 w-4" aria-hidden="true" />
           {chatLabel}
         </button>

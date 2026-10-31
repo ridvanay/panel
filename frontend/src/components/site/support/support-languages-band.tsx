@@ -1,6 +1,6 @@
 import { Globe } from "lucide-react";
 import { LocaleFlag } from "@/components/site/locale-flag";
-import { ContactActions } from "@/components/site/contact-actions";
+import { ContactCta } from "@/components/site/contact/contact-cta";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import type { CommonStrings } from "@/lib/i18n/site-dictionaries";
@@ -8,9 +8,9 @@ import type { ResolvedLanguageSupport } from "@/lib/language-support";
 
 interface SupportLanguagesBandProps {
   support: ResolvedLanguageSupport | null;
-  dict: Pick<CommonStrings, "supportBandTitle" | "supportInterpreterIncluded" | "supportLanguagesLabel" | "supportHoursLabel" | "liveChatCta" | "contactUsCta" | "talkToUsCta">;
-  chatEnabled: boolean;
-  contactHref: string;
+  dict: Pick<CommonStrings, "supportBandTitle" | "supportInterpreterIncluded" | "supportLanguagesLabel" | "supportHoursLabel">;
+  /** Paket X — WhatsApp mesajına ve sohbet bağlamına giren ad (site adı); kişisel veri değil. */
+  topic?: string;
 }
 
 /**
@@ -18,7 +18,7 @@ interface SupportLanguagesBandProps {
  * (desteklenen dil seçilmemiş) HİÇBİR ŞEY render edilmez. Bayraklar dekoratif; dil adları kendi
  * dilinde ve yönünde işaretlenir (`lang`/`dir`).
  */
-export function SupportLanguagesBand({ support, dict, chatEnabled, contactHref }: SupportLanguagesBandProps) {
+export function SupportLanguagesBand({ support, dict, topic = "Support" }: SupportLanguagesBandProps) {
   if (!support) return null;
   return (
     // Hero ile aynı genişlik: aynı kapsayıcı (`aboutContainerClass`); renkli alan o genişlikte bir kutu.
@@ -51,7 +51,8 @@ export function SupportLanguagesBand({ support, dict, chatEnabled, contactHref }
             )}
           </div>
           <div className="shrink-0">
-            <ContactActions tone="onPrimary" chatEnabled={chatEnabled} contactHref={contactHref} chatLabel={dict.liveChatCta} contactLabel={dict.talkToUsCta} />
+            {/* Paket X — WhatsApp (yalnızca açıksa) / canlı destek / "Sizi arayalım"; kanallar ContactChannelsProvider'dan gelir. */}
+            <ContactCta topic={topic} tone="onPrimary" />
           </div>
         </div>
       </div>

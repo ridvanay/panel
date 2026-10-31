@@ -20,7 +20,18 @@ import { useAuthOptional } from "@/context/auth-context";
 import type { LiveChatPosition, SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
-import { OPEN_LIVE_CHAT_EVENT } from "@/lib/live-chat-open";
+import { OPEN_LIVE_CHAT_EVENT, type OpenLiveChatDetail } from "@/lib/live-chat-open";
+import { useContactChannels } from "@/components/site/contact/contact-channels-context";
+
+/**
+ * Paket X — sohbet bağlamı (ör. paket adı) mesaj kutusu BOŞSA düzenlenebilir bir taslak olarak konur
+ * ("Executive Check-up — "); doluysa kullanıcının yazdığına dokunulmaz. Kişisel veri içermez.
+ */
+export function applyChatContext(current: string, context: string | null | undefined): string {
+  const ctx = context?.trim();
+  if (!ctx || current.trim() !== "") return current;
+  return `${ctx} — `;
+}
 
 /**
  * `.claude/architect-scope-support-desk-and-reminders.md` §3 — Sağ alt canlı destek widget'ı.
@@ -52,7 +63,7 @@ interface LiveChatWidgetProps {
  * de düşünen `/consultation/{id}` regex'i) — widget video oda kontrollerinin ÜSTÜNE BİNMESİN diye
  * bu rotalarda HİÇ render edilmez. Guard'ın KENDİSİNE dokunulmaz, bu tamamen AYRI bir kontrol.
  */
-function isConsultationRoute(pathname: string | null): boolean {
+export function isConsultationRoute(pathname: string | null): boolean {
   if (!pathname) return false;
   return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?consultation(?:/|$)`).test(pathname);
 }
@@ -160,9 +171,11 @@ interface InternalChatPanelProps {
   requireName: boolean;
   requirePhone: boolean;
   requireEmail: boolean;
+  /** Paket X — açılış bağlamı; `nonce` her yeni istekte değişir (pencere zaten açıksa da uygulanır). */
+  prefill?: { text: string; nonce: number } | null;
 }
 
-function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, requirePhone, requireEmail }: InternalChatPanelProps) {
+function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, requirePhone, requireEmail, prefill = null }: InternalChatPanelProps) {
   const localize = useLocalizePath();
   const ui = useUiStrings();
   // `favorite-button.tsx` İLE AYNI desen: `status === "loading"` da `unauthenticated` gibi ele
@@ -175,7 +188,13 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
   const [messages, setMessages] = useState<SupportChatMessagePublic[]>([]);
   const [status, setStatus] = useState<SupportSessionStatus | null>(null);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(() => Boolean(readStoredSession()));
-  const [draft, setDraft] = useState("");
+  // Paket X — bağlam taslağı: açılışta (lazy) ve pencere zaten açıkken gelen yeni istekte (render sırasında) uygulanır.
+  const [draft, setDraft] = useState(() => applyChatContext("", prefill?.text));
+  const [seenPrefillNonce, setSeenPrefillNonce] = useState(prefill?.nonce);
+  if (prefill && prefill.nonce !== seenPrefillNonce) {
+    setSeenPrefillNonce(prefill.nonce);
+    setDraft((prev) => applyChatContext(prev, prefill.text));
+  }
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   // §7.4 — ön görüşme formu YALNIZCA misafir (`!authenticated`) VE henüz açık bir oturum
@@ -188,13 +207,25 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
   );
   const {
     register: registerPreChat,
+    getValues: getPreChatValues,
+    setValue: setPreChatValue,
     handleSubmit: handlePreChatFormSubmit,
     formState: { errors: preChatErrors, isSubmitting: preChatSubmitting },
   } = useForm<PreChatFormValues>({
     resolver: zodResolver(preChatFormSchema),
-    defaultValues: { visitorName: "", visitorPhone: "", visitorEmail: "", message: "" },
+    defaultValues: { visitorName: "", visitorPhone: "", visitorEmail: "", message: applyChatContext("", prefill?.text) },
   });
   const [preChatError, setPreChatError] = useState<string | null>(null);
+
+  // Paket X — ön görüşme formundaki mesaj kutusu (yalnızca boşsa doldurulur).
+  const prefillText = prefill?.text;
+  const prefillNonce = prefill?.nonce;
+  useEffect(() => {
+    if (!prefillText) return;
+    const current = getPreChatValues("message") ?? "";
+    const next = applyChatContext(current, prefillText);
+    if (next !== current) setPreChatValue("message", next);
+  }, [prefillText, prefillNonce, getPreChatValues, setPreChatValue]);
   // §4 (compliance-notes-support-desk.md) — mevcut, site genelindeki KVKK Aydınlatma Metni
   // sayfasına link verir (`telehealth-şablonundaki `kvkk-aydinlatma-metni` sayfasıyla AYNI
   // kaynak) — yoksa düz metin bırakılır (yeni bir sayfa İCAT EDİLMEZ).
@@ -608,14 +639,31 @@ interface InternalLiveChatWidgetProps {
 function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireName, requirePhone, requireEmail }: InternalLiveChatWidgetProps) {
   const ui = useUiStrings();
   const [open, setOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const side = position === "BOTTOM_LEFT" ? "left" : "right";
 
   // Paket V — sayfadaki "Canlı destek" düğmeleri (`openLiveChat`) pencereyi açar.
   useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = (event: Event) => {
+      const context = (event as CustomEvent<OpenLiveChatDetail | undefined>).detail?.context;
+      setPrefill(context ? { text: context, nonce: Date.now() } : null);
+      setOpen(true);
+    };
     window.addEventListener(OPEN_LIVE_CHAT_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_LIVE_CHAT_EVENT, onOpen);
   }, []);
+
+  // Paket X — mobildeki birleşik "Contact" düğmesi, pencere açıkken kendini gizlemek için bu işareti okur.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (open) root.setAttribute("data-live-chat-open", "");
+    else root.removeAttribute("data-live-chat-open");
+    return () => root.removeAttribute("data-live-chat-open");
+  }, [open]);
+
+  // Paket X — WhatsApp açıkken mobilde kapalı sohbet balonu yerine birleşik "Contact" düğmesi çizilir.
+  const { whatsapp } = useContactChannels();
+  const hideTriggerOnMobile = whatsapp !== null;
 
   // Aynı köşedeki "yukarı çık" düğmesi sohbet düğmesinin üstüne çıksın diye yığın payını yayınla.
   useEffect(() => {
@@ -650,6 +698,7 @@ function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireNam
               requireName={requireName}
               requirePhone={requirePhone}
               requireEmail={requireEmail}
+              prefill={prefill}
             />
           </motion.div>
         ) : (
@@ -662,7 +711,10 @@ function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireNam
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.3 }}
-            className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            className={cn(
+              "relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+              hideTriggerOnMobile && "max-lg:hidden"
+            )}
           >
             <MessageCircle className="h-6 w-6" aria-hidden="true" />
             <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-success ring-2 ring-surface" aria-hidden="true" />

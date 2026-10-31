@@ -24,6 +24,7 @@ import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import { getInterpreterAccess } from "@/lib/api/interpreter";
 import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
+import { HeaderContactLinks } from "@/components/site/contact/header-contact-links";
 import { MoreMenu } from "@/components/site/header/more-menu";
 import { useDesktopNavLayout } from "@/components/site/header/use-desktop-nav-layout";
 import { useScrolledPast } from "@/components/site/header/use-scrolled-past";
@@ -492,6 +493,7 @@ export function SiteHeader({
               <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
               {dict.topbarContact}
             </Link>
+            <HeaderContactLinks topic={settings.siteName} />
           </div>
           <div role="group" aria-label={dict.topbarAriaLabel} className="flex shrink-0 items-center gap-1">
             {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compact={false} />}

@@ -11,6 +11,9 @@ import { portalStrings } from "./portal";
 import { consentStrings } from "./consent";
 import { uiStrings } from "./ui";
 import { reviewsStrings } from "./reviews";
+import { contactCtaStrings } from "./contact-cta";
+import { packagesStrings } from "./packages";
+import { destinationsStrings } from "./destinations";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -25,4 +28,7 @@ export const siteDictionary: SiteDictionary = {
   consent: consentStrings,
   ui: uiStrings,
   reviews: reviewsStrings,
+  contactCta: contactCtaStrings,
+  packages: packagesStrings,
+  destinations: destinationsStrings,
 };

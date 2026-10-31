@@ -10,6 +10,9 @@ import type { PortalStrings } from "./en/portal";
 import type { ConsentStrings } from "./en/consent";
 import type { UiStrings } from "./en/ui";
 import type { ReviewsStrings } from "./en/reviews";
+import type { ContactCtaStrings } from "./en/contact-cta";
+import type { PackagesStrings } from "./en/packages";
+import type { DestinationsStrings } from "./en/destinations";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -34,6 +37,10 @@ export type SiteDictionary = {
   ui: UiStrings;
   /** Paket Y — zengin hekim profili ve hasta yorumları. */
   reviews: ReviewsStrings;
+  /** Paket X — ortak iletişim eylemleri, sağlık paketleri, "Top destinations". */
+  contactCta: ContactCtaStrings;
+  packages: PackagesStrings;
+  destinations: DestinationsStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings };

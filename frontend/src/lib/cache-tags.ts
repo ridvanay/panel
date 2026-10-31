@@ -20,6 +20,10 @@ export const CACHE_TAGS = {
   crmConfig: "crm-config",
   // Paket V — yetki belgeleri (anasayfa şeridi, footer, Hakkımızda).
   accreditations: "accreditations",
+  // Paket X — sağlık paketleri, "Top destinations", iletişim kanalları (WhatsApp). Backend `CACHE_TAGS` ile aynı.
+  packages: "packages",
+  destinations: "destinations",
+  contactChannels: "contact-channels",
 } as const;
 
 export type CacheTag = (typeof CACHE_TAGS)[keyof typeof CACHE_TAGS];
