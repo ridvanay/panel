@@ -565,6 +565,10 @@ function ReportCard() {
             <ul className="space-y-0.5 text-sm">
               {report.unmatchedTerms.length === 0 ? <li className="text-foreground/60">Kayıt yok.</li> : report.unmatchedTerms.map((t) => <li key={t.key}>{t.key} — {t.count}</li>)}
             </ul>
+            <p className="mt-1 text-xs text-foreground/60">
+              Yalnızca en az 3 kez geçen terimler görünür. Daha seyrek terimlerin metni 30 gün sonra silinir, yalnızca adedi kalır
+              {report.unmatchedRareCount ? ` (bu aralıkta ${report.unmatchedRareCount})` : ""}.
+            </p>
           </div>
           <div>
             <h3 className="mb-1 text-sm font-semibold">Adım bazında terk</h3>

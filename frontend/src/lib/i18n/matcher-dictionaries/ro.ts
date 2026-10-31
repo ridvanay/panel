@@ -94,6 +94,8 @@ export const matcherStrings: MatcherStrings = {
   ageModeYear: "Anul nașterii",
   under18Note: "Pacientul are sub 18 ani. Vă rugăm să completați formularul în calitate de părinte sau tutore legal.",
   guardianLabel: "Numele și prenumele părintelui sau tutorelui",
+  childGuardianNote: "Ați ales un subiect pentru un copil. Completați formularul ca părinte sau tutore legal și scrieți-vă numele.",
+  guardianDeclarationLabel: "Completez acest formular ca părinte sau tutore legal al copilului.",
   emailLabel: "E-mail",
   phoneLabel: "Număr de telefon",
   phoneCountryLabel: "Prefixul țării",

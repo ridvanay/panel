@@ -94,6 +94,8 @@ export const matcherStrings: MatcherStrings = {
   ageModeYear: "Geburtsjahr",
   under18Note: "Die Person ist unter 18 Jahre alt. Bitte füllen Sie dieses Formular als Elternteil oder gesetzlicher Vormund aus.",
   guardianLabel: "Vor- und Nachname des Elternteils oder Vormunds",
+  childGuardianNote: "Sie haben ein Thema für ein Kind gewählt. Bitte füllen Sie das Formular als Elternteil oder Vormund aus und geben Sie Ihren Namen an.",
+  guardianDeclarationLabel: "Ich fülle dieses Formular als Elternteil oder Vormund des Kindes aus.",
   emailLabel: "E-Mail",
   phoneLabel: "Telefonnummer",
   phoneCountryLabel: "Ländervorwahl",

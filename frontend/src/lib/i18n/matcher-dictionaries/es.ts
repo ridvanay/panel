@@ -94,6 +94,8 @@ export const matcherStrings: MatcherStrings = {
   ageModeYear: "Año de nacimiento",
   under18Note: "El paciente es menor de 18 años. Rellene este formulario como padre, madre o tutor legal.",
   guardianLabel: "Nombre y apellidos del padre, la madre o el tutor legal",
+  childGuardianNote: "Ha elegido un tema para un menor. Rellene este formulario como madre, padre o tutor legal e indique su nombre.",
+  guardianDeclarationLabel: "Relleno este formulario como madre, padre o tutor legal del menor.",
   emailLabel: "Correo electrónico",
   phoneLabel: "Número de teléfono",
   phoneCountryLabel: "Prefijo del país",

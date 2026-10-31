@@ -301,7 +301,7 @@ export function clearTopicPopularityCache(): void {
 // ------------------------------------------------------------------------------------------------
 // Anonim sayaçlar
 // ------------------------------------------------------------------------------------------------
-export type MatcherStatKind = "step" | "topic" | "unmatched_term" | "red_flag" | "submit" | "search_pick";
+export type MatcherStatKind = "step" | "topic" | "unmatched_term" | "unmatched_term_rare" | "red_flag" | "submit" | "search_pick";
 
 /** Güvenlik/uyumluluk incelemesi — günde en çok bu kadar farklı eşleşmeyen terim; sayaç satırları 90 günde silinir. */
 export const MATCHER_UNMATCHED_DAILY_CAP = 500;
@@ -315,10 +315,46 @@ export async function incrementUnmatchedTerm(app: FastifyInstance, term: string,
   await incrementMatcherStat(app, "unmatched_term", term, now);
 }
 
-/** Saklama: 90 günden eski anonim sayaç satırları silinir (eşleşmeyen ham terimler dahil). */
+/** Kullanıcı kararı (2026-10-31): eşleşmeyen ham terim en çok 30 gün; toplamda 3'ten az geçenler sonra silinir. */
+export const MATCHER_UNMATCHED_RAW_DAYS = 30;
+export const MATCHER_UNMATCHED_MIN_COUNT = 3;
+
+/**
+ * Saklama: 90 günden eski anonim sayaç satırları silinir. Ayrıca 30 günden eski ve (saklanan dönemin
+ * tamamında) 3'ten az geçen eşleşmeyen ham terimler silinir; o gün için yalnızca adet sayacı
+ * (`unmatched_term_rare` / `count`) kalır. Sık geçen terimler (raporda görünenler) 90 güne kadar kalır.
+ */
 export async function purgeOldMatcherStats(app: FastifyInstance, now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - MATCHER_STAT_RETENTION_DAYS * 86_400_000);
-  return (await app.prisma.matcherStat.deleteMany({ where: { day: { lt: cutoff } } })).count;
+  const deleted = (await app.prisma.matcherStat.deleteMany({ where: { day: { lt: cutoff } } })).count;
+  return deleted + (await purgeRareUnmatchedTerms(app, now));
+}
+
+export async function purgeRareUnmatchedTerms(app: FastifyInstance, now = new Date()): Promise<number> {
+  const rawCutoff = new Date(now.getTime() - MATCHER_UNMATCHED_RAW_DAYS * 86_400_000);
+  const totals = await app.prisma.matcherStat.groupBy({ by: ["key"], where: { kind: "unmatched_term" }, _sum: { count: true } });
+  const rare = totals.filter((t) => (t._sum.count ?? 0) < MATCHER_UNMATCHED_MIN_COUNT).map((t) => t.key);
+  if (rare.length === 0) return 0;
+  const rows = await app.prisma.matcherStat.findMany({ where: { kind: "unmatched_term", key: { in: rare }, day: { lt: rawCutoff } }, select: { day: true, key: true, count: true } });
+  if (rows.length === 0) return 0;
+  const perDay = new Map<string, { day: Date; count: number }>();
+  for (const row of rows) {
+    const k = row.day.toISOString();
+    const entry = perDay.get(k) ?? { day: row.day, count: 0 };
+    entry.count += row.count;
+    perDay.set(k, entry);
+  }
+  await app.prisma.$transaction([
+    app.prisma.matcherStat.deleteMany({ where: { kind: "unmatched_term", key: { in: rare }, day: { lt: rawCutoff } } }),
+    ...[...perDay.values()].map(({ day, count }) =>
+      app.prisma.matcherStat.upsert({
+        where: { day_kind_key: { day, kind: "unmatched_term_rare", key: "count" } },
+        create: { day, kind: "unmatched_term_rare", key: "count", count },
+        update: { count: { increment: count } },
+      })
+    ),
+  ]);
+  return rows.length;
 }
 
 export async function incrementMatcherStat(app: FastifyInstance, kind: MatcherStatKind, key: string, now = new Date()): Promise<void> {

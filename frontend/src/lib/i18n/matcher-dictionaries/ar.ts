@@ -94,6 +94,8 @@ export const matcherStrings: MatcherStrings = {
   ageModeYear: "سنة الميلاد",
   under18Note: "عمر المريض أقل من 18 عاما. يرجى تعبئة هذا النموذج بصفتك أحد الوالدين أو الولي القانوني.",
   guardianLabel: "الاسم الكامل لأحد الوالدين أو الولي",
+  childGuardianNote: "اخترت موضوعًا يخص طفلًا. يرجى تعبئة هذا النموذج بصفتك الوالد أو الوصي القانوني وكتابة اسمك.",
+  guardianDeclarationLabel: "أملأ هذا النموذج بصفتي الوالد أو الوصي القانوني على الطفل.",
   emailLabel: "البريد الإلكتروني",
   phoneLabel: "رقم الهاتف",
   phoneCountryLabel: "رمز الدولة",

@@ -80,6 +80,8 @@ const SubmitBodySchema = z
     age: z.number().int().min(0).max(120).optional(),
     birthYear: z.number().int().min(1900).max(2100).optional(),
     guardianName: z.string().trim().min(2).max(120).optional(),
+    /** Çocuk (children) bölgesinden konu seçildiyse zorunlu: "Bu formu veli/vasi olarak dolduruyorum". */
+    guardianDeclaration: z.boolean().default(false),
     email: z.string().trim().toLowerCase().email().max(200).optional(),
     phoneCountry: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).optional(),
     phoneNumber: z.string().trim().max(30).optional(),
@@ -258,12 +260,19 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
       if (age !== undefined && (age < 0 || age > 120)) errors.age = ["Geçersiz yaş."];
       if (age !== undefined && age < 18 && !body.guardianName) errors.guardianName = ["18 yaş altı için veli/vasi adı gerekli."];
       const freeText = cleanFreeText(body.freeText);
-      if (Object.keys(errors).length > 0) throw new ValidationError("Girdi doğrulama hatası.", errors);
 
-      // Kırmızı bayrak: seçilen konu ya da serbest metin. "Acil değil, devam et" onayı olmadan kayıt yok.
       const topics = await loadActiveTopics(app);
       const known = new Set(topics.map((t) => t.id));
       const topicIds = body.topicIds.filter((id) => known.has(id));
+      // Kullanıcı kararı (2026-10-31): çocuk bölgesinden bir konu seçildiyse YAŞA BAKILMAKSIZIN veli/vasi adı ve
+      // "veli/vasi olarak dolduruyorum" beyanı zorunlu.
+      const childTopic = topics.some((t) => t.bodyArea === "children" && topicIds.includes(t.id));
+      if (childTopic && !body.guardianName) errors.guardianName = ["Çocuk için yapılan başvuruda veli/vasi adı gerekli."];
+      if (childTopic && !body.guardianDeclaration) errors.guardianDeclaration = ["Formu veli/vasi olarak doldurduğunuzu onaylayın."];
+      const guardianRequired = childTopic || (age !== undefined && age < 18);
+      if (Object.keys(errors).length > 0) throw new ValidationError("Girdi doğrulama hatası.", errors);
+
+      // Kırmızı bayrak: seçilen konu ya da serbest metin. "Acil değil, devam et" onayı olmadan kayıt yok.
       const selectedRedFlag = topics.some((t) => t.isRedFlag && topicIds.includes(t.id));
       const textRedFlags = freeText ? await detectRedFlagsInText(app, freeText) : [];
       if ((selectedRedFlag || textRedFlags.length > 0) && !body.redFlagAcknowledged) {
@@ -311,7 +320,8 @@ export async function matcherPublicRoutes(app: FastifyInstance) {
             ageBand: healthAllowed && age !== undefined ? ageBandFor(age) : null,
             // Veri minimizasyonu (uyumluluk incelemesi): doğum yılı saklanmaz, yalnızca yaş aralığı.
             birthYear: null,
-            guardianName: age !== undefined && age < 18 && body.guardianName ? sanitizeText(body.guardianName, 120) : null,
+            guardianName: guardianRequired && body.guardianName ? sanitizeText(body.guardianName, 120) : null,
+            guardianDeclaredAt: childTopic && body.guardianDeclaration ? now : null,
             forWhom: body.forWhom,
             duration: healthAllowed ? (body.duration ?? null) : null,
             priorDiagnosis: healthAllowed ? (body.priorDiagnosis ?? null) : null,

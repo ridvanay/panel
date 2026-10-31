@@ -117,6 +117,8 @@ interface ContactForm {
   phoneNumber: string;
   country: string;
   consentHealth: boolean;
+  /** Çocuk konusu seçildiyse zorunlu: "veli/vasi olarak dolduruyorum". */
+  guardianDeclaration: boolean;
   consentContact: boolean;
   website: string;
 }
@@ -169,6 +171,7 @@ export function PhysicianMatcher({
     country: "",
     consentHealth: false,
     consentContact: false,
+    guardianDeclaration: false,
     website: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -407,6 +410,9 @@ export function PhysicianMatcher({
   const ageValue = Number(form.age);
   const age = form.age.trim() && Number.isFinite(ageValue) ? (form.ageMode === "age" ? ageValue : new Date().getFullYear() - ageValue) : null;
   const under18 = age !== null && age >= 0 && age < 18;
+  // Kullanıcı kararı (2026-10-31): çocuk bölgesinden konu seçildiyse yaşa bakılmaksızın veli adı + beyan zorunlu.
+  const childTopic = selected.some((t) => t.bodyArea === "children");
+  const guardianRequired = under18 || childTopic;
 
   function validateContact(contactAllowed: boolean): Record<string, string> {
     const e: Record<string, string> = {};
@@ -414,7 +420,8 @@ export function PhysicianMatcher({
     if (!contactAllowed) return e;
     if (form.name.trim().length < 2) e.name = m.required;
     if (age === null || age < 0 || age > 120) e.age = m.required;
-    if (under18 && form.guardianName.trim().length < 2) e.guardianName = m.required;
+    if (guardianRequired && form.guardianName.trim().length < 2) e.guardianName = m.required;
+    if (childTopic && !form.guardianDeclaration) e.guardianDeclaration = m.required;
     if (!form.email.trim() && !form.phoneNumber.trim()) e.email = m.contactOneRequired;
     if (form.phoneNumber.trim() && !/^[+0-9 ()-]{6,20}$/.test(form.phoneNumber.trim())) e.phoneNumber = m.invalidPhone;
     return e;
@@ -431,7 +438,16 @@ export function PhysicianMatcher({
     setErrors(e);
     if (Object.keys(e).length > 0) {
       const first = Object.keys(e)[0];
-      const id = first === "age" ? "matcher-age" : first === "guardianName" ? "matcher-guardian" : first === "phoneNumber" ? "matcher-phone" : `matcher-${first}`;
+      const id =
+        first === "age"
+          ? "matcher-age"
+          : first === "guardianName"
+            ? "matcher-guardian"
+            : first === "guardianDeclaration"
+              ? "matcher-guardian-declaration"
+              : first === "phoneNumber"
+                ? "matcher-phone"
+                : `matcher-${first}`;
       document.getElementById(id)?.focus();
       return;
     }
@@ -457,7 +473,8 @@ export function PhysicianMatcher({
         locale: lang,
         name: form.name.trim(),
         ...(form.ageMode === "age" ? { age: ageValue } : { birthYear: ageValue }),
-        ...(under18 ? { guardianName: form.guardianName.trim() } : {}),
+        ...(guardianRequired ? { guardianName: form.guardianName.trim() } : {}),
+        ...(childTopic ? { guardianDeclaration: form.guardianDeclaration } : {}),
         ...(form.email.trim() ? { email: form.email.trim() } : {}),
         ...(form.phoneNumber.trim() ? { phoneNumber: form.phoneNumber.trim(), phoneCountry } : {}),
         ...(country ? { country } : {}),
@@ -919,12 +936,29 @@ export function PhysicianMatcher({
               </div>
               {errors.age && <span className="block text-xs text-danger">{errors.age}</span>}
             </fieldset>
-            {under18 && (
+            {guardianRequired && (
               <>
-                <Alert variant="info">{m.under18Note}</Alert>
+                <Alert variant="info">{childTopic ? m.childGuardianNote : m.under18Note}</Alert>
                 <Field label={m.guardianLabel} error={errors.guardianName} id="matcher-guardian">
                   <input id="matcher-guardian" value={form.guardianName} onChange={(e) => setForm({ ...form, guardianName: e.target.value })} className={inputClass} />
                 </Field>
+                {childTopic && (
+                  <div className="space-y-1 text-sm">
+                    <label className="flex items-start gap-2">
+                      <input
+                        id="matcher-guardian-declaration"
+                        type="checkbox"
+                        className="mt-1 accent-[var(--site-primary)]"
+                        checked={form.guardianDeclaration}
+                        onChange={(e) => setForm({ ...form, guardianDeclaration: e.target.checked })}
+                        aria-invalid={!!errors.guardianDeclaration}
+                        data-testid="matcher-guardian-declaration"
+                      />
+                      <span>{m.guardianDeclarationLabel}</span>
+                    </label>
+                    {errors.guardianDeclaration && <span className="block text-xs text-danger">{errors.guardianDeclaration}</span>}
+                  </div>
+                )}
               </>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -957,7 +991,7 @@ export function PhysicianMatcher({
               <label className="flex items-start gap-2">
                 <input type="checkbox" className="mt-1 accent-[var(--site-primary)]" checked={form.consentHealth} onChange={(e) => setForm({ ...form, consentHealth: e.target.checked })} data-testid="matcher-consent-health" />
                 <span>
-                  {under18 ? m.consentHealthGuardian : m.consentHealth}{" "}
+                  {guardianRequired ? m.consentHealthGuardian : m.consentHealth}{" "}
                   {legalLinks?.consent && (
                     <Link href={legalLinks.consent} target="_blank" className="font-medium text-[var(--site-link,var(--site-primary))] underline">
                       {m.consentHealthLink}

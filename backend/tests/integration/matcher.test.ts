@@ -668,4 +668,47 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       expect(await app.prisma.auditLog.count({ where: { action: "matcher.topics_bulk_weight" } })).toBe(1);
     });
   });
+
+  describe("Paket W-ek — kullanıcı kararları (veli kuralı, seyrek terim saklama)", () => {
+    it("çocuk bölgesinden konu seçilince yaşa bakılmaksızın veli adı ve veli/vasi beyanı zorunlu; kayda geçer", async () => {
+      const child = await app.prisma.careTopic.findUniqueOrThrow({ where: { slug: "child-ent" } });
+      const missing = await submit(submitPayload({ age: 40, topicIds: [child.id] }));
+      expect(missing.statusCode).toBe(422);
+      expect(Object.keys(missing.json().error.details).sort()).toEqual(["guardianDeclaration", "guardianName"]);
+      const noDecl = await submit(submitPayload({ age: 40, topicIds: [child.id], guardianName: "Veli Kişi" }));
+      expect(Object.keys(noDecl.json().error.details)).toEqual(["guardianDeclaration"]);
+      const ok = await submit(submitPayload({ age: 40, topicIds: [child.id], guardianName: "Veli Kişi", guardianDeclaration: true }));
+      expect(ok.statusCode).toBe(201);
+      const row = await app.prisma.matcherSubmission.findFirstOrThrow({ where: { seq: ok.json().data.number } });
+      expect(row.guardianName).toBe("Veli Kişi");
+      expect(row.guardianDeclaredAt).toBeInstanceOf(Date);
+      // Çocuk konusu yoksa yetişkinde veli alanı gerekmez ve kaydedilmez.
+      const adult = await submit(submitPayload({ age: 40, guardianName: "Gereksiz" }));
+      const adultRow = await app.prisma.matcherSubmission.findFirstOrThrow({ where: { seq: adult.json().data.number } });
+      expect([adultRow.guardianName, adultRow.guardianDeclaredAt]).toEqual([null, null]);
+    });
+
+    it("eşleşmeyen ham terim 30 gün; toplamda 3'ten az geçenler sonra silinir, yalnızca günlük adet kalır", async () => {
+      const { purgeOldMatcherStats } = await import("../../src/modules/matcher/matcher.service");
+      const now = new Date("2026-12-15T12:00:00Z");
+      const day = (daysAgo: number) => new Date(`${new Date(now.getTime() - daysAgo * 86_400_000).toISOString().slice(0, 10)}T00:00:00Z`);
+      await app.prisma.matcherStat.createMany({
+        data: [
+          { day: day(40), kind: "unmatched_term", key: "nadirterimx", count: 1 },
+          { day: day(40), kind: "unmatched_term", key: "nadirterimy", count: 1 },
+          { day: day(40), kind: "unmatched_term", key: "sikterimx", count: 2 },
+          { day: day(5), kind: "unmatched_term", key: "sikterimx", count: 1 },
+          { day: day(10), kind: "unmatched_term", key: "yeniterimx", count: 1 },
+        ],
+      });
+      await purgeOldMatcherStats(app, now);
+      const keys = (await app.prisma.matcherStat.findMany({ where: { kind: "unmatched_term", key: { in: ["nadirterimx", "nadirterimy", "sikterimx", "yeniterimx"] } } })).map((r) => r.key);
+      expect([...new Set(keys)].sort()).toEqual(["sikterimx", "yeniterimx"]);
+      const rare = await app.prisma.matcherStat.findUniqueOrThrow({ where: { day_kind_key: { day: day(40), kind: "unmatched_term_rare", key: "count" } } });
+      expect(rare.count).toBe(2);
+      // İkinci çalıştırma adet sayacını yeniden artırmaz.
+      await purgeOldMatcherStats(app, now);
+      expect((await app.prisma.matcherStat.findUniqueOrThrow({ where: { day_kind_key: { day: day(40), kind: "unmatched_term_rare", key: "count" } } })).count).toBe(2);
+    });
+  });
 });

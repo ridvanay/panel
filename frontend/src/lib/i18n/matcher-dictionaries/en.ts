@@ -97,6 +97,8 @@ export const matcherStrings = {
   ageModeYear: "Year of birth",
   under18Note: "The patient is under 18. Please fill in this form as the parent or legal guardian.",
   guardianLabel: "Parent or guardian’s full name",
+  childGuardianNote: "You selected a topic for a child. Please fill in this form as the parent or legal guardian and enter your name.",
+  guardianDeclarationLabel: "I am filling in this form as the child’s parent or legal guardian.",
   emailLabel: "Email",
   phoneLabel: "Phone number",
   phoneCountryLabel: "Country code",

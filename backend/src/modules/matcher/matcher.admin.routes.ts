@@ -18,6 +18,7 @@ import { registerCrmRetentionStep } from "../crm/crm.rollup";
 import {
   MATCHER_MAX_SPECIALTIES_LIMIT,
   MATCHER_POPULARITY_DAYS,
+  MATCHER_UNMATCHED_MIN_COUNT,
   MATCHER_RETENTION_MAX,
   MATCHER_RETENTION_MIN,
   MATCHER_THRESHOLD_MAX,
@@ -239,9 +240,11 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
             .map((t) => ({ ...t, label: topicLabels.get(t.key) ?? t.key })),
           // Kişi adı gibi tekil terimler görünmesin diye yalnızca en az 3 kez geçenler.
           unmatchedTerms: of("unmatched_term")
-            .filter((t) => t.count >= 3)
+            .filter((t) => t.count >= MATCHER_UNMATCHED_MIN_COUNT)
             .sort((a, b) => b.count - a.count)
             .slice(0, 30),
+          // 30 günden sonra silinen seyrek terimlerin adedi (metin yok).
+          unmatchedRareCount: of("unmatched_term_rare").reduce((sum, t) => sum + t.count, 0),
           funnel,
           redFlags: of("red_flag"),
           // Gönderim sonucu: "stored" (iletişim izni var → talep kaydedildi) / "not_stored" (izin yok → yalnızca sayaç).
@@ -402,6 +405,7 @@ export async function matcherAdminRoutes(app: FastifyInstance) {
           ageBand: submission.ageBand,
           birthYear: submission.birthYear,
           guardianName: submission.guardianName,
+          guardianDeclaredAt: submission.guardianDeclaredAt?.toISOString() ?? null,
           forWhom: submission.forWhom,
           duration: submission.duration,
           priorDiagnosis: submission.priorDiagnosis,

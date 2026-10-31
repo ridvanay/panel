@@ -94,6 +94,8 @@ export const matcherStrings: MatcherStrings = {
   ageModeYear: "Godina rođenja",
   under18Note: "Pacijent je mlađi od 18 godina. Molimo vas da ovaj obrazac popunite kao roditelj ili zakonski staratelj.",
   guardianLabel: "Ime i prezime roditelja ili staratelja",
+  childGuardianNote: "Izabrali ste temu za dete. Popunite obrazac kao roditelj ili zakonski staratelj i upišite svoje ime.",
+  guardianDeclarationLabel: "Popunjavam ovaj obrazac kao roditelj ili zakonski staratelj deteta.",
   emailLabel: "Imejl",
   phoneLabel: "Broj telefona",
   phoneCountryLabel: "Pozivni broj zemlje",

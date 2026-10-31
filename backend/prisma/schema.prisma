@@ -3822,8 +3822,10 @@ model MatcherSubmission {
   freeText                String?
   ageBand                 String?
   birthYear               Int?
-  /// 18 yaş altı: formu dolduran veli/vasinin adı.
+  /// 18 yaş altı ya da çocuk konusu seçildiyse: formu dolduran veli/vasinin adı.
   guardianName            String?
+  /// Çocuk (children) bölgesinden konu seçildiyse "veli/vasi olarak dolduruyorum" beyanı (yaşa bakılmaksızın zorunlu).
+  guardianDeclaredAt      DateTime?
   forWhom                 String
   duration                String?
   priorDiagnosis          String?

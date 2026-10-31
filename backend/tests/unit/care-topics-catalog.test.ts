@@ -87,6 +87,20 @@ describe("care-topics kataloğu (Paket W-ek)", () => {
   });
 });
 
+describe("açıklamalar tanı çağrıştırmaz (kullanıcı kararı 2026-10-31)", () => {
+  it("şikayeti kesin bir nedene bağlayan kalıplar yok (EN 'caused by/because of', TR 'nedeniyle', DE 'durch Magensäure')", () => {
+    const offenders: string[] = [];
+    for (const topic of CARE_TOPIC_CATALOG) {
+      if (/caused by|because of/i.test(CARE_TOPIC_TEXTS.en![topic.slug]!.description)) offenders.push(`en:${topic.slug}`);
+      if (/nedeniyle/i.test(CARE_TOPIC_TEXTS.tr![topic.slug]!.description)) offenders.push(`tr:${topic.slug}`);
+    }
+    expect(offenders).toEqual([]);
+    expect(CARE_TOPIC_TEXTS.en!["reflux-heartburn"]!.description).toContain("may be related to");
+    expect(CARE_TOPIC_TEXTS.en!["celiac-disease"]!.description).toContain("may be related to");
+    expect(CARE_TOPIC_TEXTS.tr!["reflux-heartburn"]!.description).toContain("ilişkili olabilen");
+  });
+});
+
 describe("seed içerik özeti", () => {
   it("anahtar sırası özeti değiştirmez (Postgres jsonb yeniden sıralar); içerik değişince özet değişir", () => {
     expect(stableStringify({ b: 1, a: { d: [1, { y: 2, x: 1 }], c: null } })).toBe(stableStringify({ a: { c: null, d: [1, { x: 1, y: 2 }] }, b: 1 }));

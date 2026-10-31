@@ -94,6 +94,8 @@ export const matcherStrings: MatcherStrings = {
   ageModeYear: "Doğum yılı",
   under18Note: "Hasta 18 yaşından küçük. Lütfen formu veli ya da vasi olarak doldurun.",
   guardianLabel: "Veli/vasinin adı soyadı",
+  childGuardianNote: "Çocuğunuz için bir konu seçtiniz. Formu veli/vasi olarak doldurmanız ve adınızı yazmanız gerekir.",
+  guardianDeclarationLabel: "Bu formu çocuğun velisi/vasisi olarak dolduruyorum.",
   emailLabel: "E-posta",
   phoneLabel: "Telefon numarası",
   phoneCountryLabel: "Ülke kodu",

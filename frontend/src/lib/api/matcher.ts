@@ -98,6 +98,8 @@ export interface MatcherSubmitInput {
   age?: number;
   birthYear?: number;
   guardianName?: string;
+  /** Çocuk bölgesinden konu seçildiyse zorunlu (yaşa bakılmaksızın). */
+  guardianDeclaration?: boolean;
   email?: string;
   phoneCountry?: string;
   phoneNumber?: string;
@@ -225,6 +227,8 @@ export interface MatcherPreview {
 export interface MatcherReport {
   topTopics: { key: string; label: string; count: number }[];
   unmatchedTerms: { key: string; count: number }[];
+  /** 30 gün sonra metni silinen seyrek (3'ten az) terimlerin adedi. */
+  unmatchedRareCount?: number;
   funnel: { step: string; reached: number; dropOffRate: number | null }[];
   redFlags: { key: string; count: number }[];
   submissions: { key: string; count: number }[];
@@ -245,6 +249,7 @@ export interface MatcherLeadCard {
   ageBand: string | null;
   birthYear: number | null;
   guardianName: string | null;
+  guardianDeclaredAt: string | null;
   forWhom: string;
   duration: string | null;
   priorDiagnosis: string | null;

@@ -386,3 +386,36 @@ describe("Paket W-ek — çok konulu katalog", () => {
     expect(MATCHER_DICTIONARIES.ar.showMoreTopics).toContain("{count}");
   });
 });
+
+describe("Paket W-ek — çocuk konusu veli kuralı", () => {
+  it("çocuk bölgesinden konu seçilince (yaş 40 olsa bile) veli adı ve 'veli/vasi olarak dolduruyorum' zorunlu; gönderime eklenir", async () => {
+    const child = { ...topic("c1", "child-ent", "Çocuğum: bademcik / kulak", []), bodyArea: "children" as const };
+    api.catalog = { contactRequired: true, topics: [...TOPICS, child] };
+    const user = userEvent.setup();
+    const { rerender } = render(<PhysicianMatcher mode="page" />);
+    await user.click(await screen.findByTestId("matcher-area-children"));
+    await user.click(screen.getByRole("button", { name: "Çocuğum: bademcik / kulak" }));
+    await user.click(screen.getByTestId("matcher-continue"));
+    rerender(<PhysicianMatcher mode="page" />);
+    await user.click(await screen.findByLabelText("1–6 ay"));
+    await user.click(screen.getByLabelText("Hayır"));
+    await user.click(screen.getByTestId("matcher-continue"));
+    rerender(<PhysicianMatcher mode="page" />);
+    await user.click(await screen.findByLabelText("Online görüşme"));
+    await user.click(screen.getByTestId("matcher-continue"));
+    rerender(<PhysicianMatcher mode="page" />);
+    await user.type(await screen.findByLabelText("Ad soyad"), "Ayşe Yılmaz");
+    await user.type(screen.getByTestId("matcher-age"), "40");
+    await user.type(screen.getByLabelText("E-posta"), "a@example.com");
+    expect(screen.getByText(/Formu veli\/vasi olarak doldurmanız/)).toBeInTheDocument();
+    await user.click(screen.getByTestId("matcher-consent-health"));
+    await user.click(screen.getByTestId("matcher-consent-contact"));
+    await user.click(screen.getByTestId("matcher-continue"));
+    expect(api.submit).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("Veli/vasinin adı soyadı"), "Veli Kişi");
+    await user.click(screen.getByTestId("matcher-guardian-declaration"));
+    await user.click(screen.getByTestId("matcher-continue"));
+    await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+    expect(api.submit.mock.calls[0]![0]).toMatchObject({ guardianName: "Veli Kişi", guardianDeclaration: true, topicIds: ["c1"] });
+  });
+});

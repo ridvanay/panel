@@ -76,6 +76,7 @@ export function MatcherLeadCard({ leadId }: { leadId: string }) {
             {row("Kimin için", FOR_WHOM[data.forWhom] ?? data.forWhom)}
             {row("Yaş aralığı", data.ageBand ?? (data.birthYear ? String(data.birthYear) : null))}
             {row("Veli/vasi", data.guardianName)}
+            {row("Veli/vasi beyanı", data.guardianDeclaredAt ? formatDateTime(data.guardianDeclaredAt) : null)}
             {row("Süre", data.duration ? DURATION[data.duration] : null)}
             {row("Önceki tanı", data.priorDiagnosis ? PRIOR[data.priorDiagnosis] : null)}
             {row("Tercih", PREFERENCE[data.preference] ?? data.preference)}
