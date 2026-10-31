@@ -84,13 +84,18 @@ function formatSlotsSummary(appointments: readonly { startsAt: Date; endsAt?: Da
 }
 
 /**
- * Hastanın kendi rezervasyon bağlantısı — site genelindeki VARSAYILAN dil segmentiyle
- * (`getLocaleSet`, `buildEmailRenderContext`'teki KVKK footer linkleriyle AYNI kaynak/desen)
- * kurulur. Booking'in hangi dilde oluşturulduğunu ayrıca TAŞIYAN bir alan şemada YOKTUR.
+ * Paket Y (kullanıcı kararı) — hastaya giden randevu e-postalarının dili: randevu anında kaydedilen
+ * `AppointmentBooking.locale`; yoksa (eski kayıt / booking'siz randevu) TR. Bağlantıların dil
+ * segmenti ve kurumsal kabuğun (footer, yön) dili budur; şablon gövdesi admin'in yazdığı dildedir.
  */
-async function buildMagicLink(app: FastifyInstance, bookingId: string, rawAccessToken: string): Promise<string> {
-  const localeSet = await getLocaleSet(app);
-  return `${env.FRONTEND_URL}/${localeSet.default.code}/patient/bookings/${bookingId}?t=${rawAccessToken}`;
+export const PATIENT_EMAIL_FALLBACK_LOCALE = "tr";
+export function patientEmailLocale(booking: { locale?: string | null } | null | undefined): string {
+  return booking?.locale || PATIENT_EMAIL_FALLBACK_LOCALE;
+}
+
+/** Hastanın kendi rezervasyon bağlantısı — hastanın dil segmentiyle. */
+async function buildMagicLink(app: FastifyInstance, bookingId: string, rawAccessToken: string, locale: string): Promise<string> {
+  return `${env.FRONTEND_URL}/${locale}/patient/bookings/${bookingId}?t=${rawAccessToken}`;
 }
 
 /**
@@ -100,9 +105,8 @@ async function buildMagicLink(app: FastifyInstance, bookingId: string, rawAccess
  * randevunun KENDİ `accessTokenHash`'i YOKSA (silinmemiş normal akış) booking'in
  * `accessTokenHash`'ine düşer (bkz. o dosyanın başındaki yorum), yani AYNI token burada da geçerli.
  */
-async function buildConsultationJoinLink(app: FastifyInstance, appointmentId: string, rawAccessToken: string): Promise<string> {
-  const localeSet = await getLocaleSet(app);
-  return `${env.FRONTEND_URL}/${localeSet.default.code}/consultation/${appointmentId}?t=${rawAccessToken}`;
+async function buildConsultationJoinLink(app: FastifyInstance, appointmentId: string, rawAccessToken: string, locale: string): Promise<string> {
+  return `${env.FRONTEND_URL}/${locale}/consultation/${appointmentId}?t=${rawAccessToken}`;
 }
 
 export async function triggerAppointmentConfirmationEmail(
@@ -115,10 +119,11 @@ export async function triggerAppointmentConfirmationEmail(
     // `confirmBookingPayment`/`resendBookingAccessLink`) — `JoinMeetingButton`'ın `firstAppointment`
     // seçimiyle AYNI kural (§ dosya başı yorum).
     const firstAppointment = appointments[0];
+    const locale = patientEmailLocale(booking);
 
     const [magicLink, joinLink] = await Promise.all([
-      buildMagicLink(app, booking.id, rawAccessToken),
-      firstAppointment ? buildConsultationJoinLink(app, firstAppointment.id, rawAccessToken) : Promise.resolve(undefined),
+      buildMagicLink(app, booking.id, rawAccessToken, locale),
+      firstAppointment ? buildConsultationJoinLink(app, firstAppointment.id, rawAccessToken, locale) : Promise.resolve(undefined),
     ]);
 
     const values: Record<string, string> = {
@@ -132,7 +137,7 @@ export async function triggerAppointmentConfirmationEmail(
     };
 
     try {
-      await sendTemplateEmail(app, "APPOINTMENT_CONFIRMATION", booking.patientEmail, values);
+      await sendTemplateEmail(app, "APPOINTMENT_CONFIRMATION", booking.patientEmail, values, { locale });
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err;
       // DB'de aktif APPOINTMENT_CONFIRMATION şablonu YOK — yukarıdaki sabit yorum, gerekçe.
@@ -146,7 +151,9 @@ export async function triggerAppointmentConfirmationEmail(
         subject: FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT,
         preheader: FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT,
         bodyHtml: renderTemplate(FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML, values, FALLBACK_APPOINTMENT_CONFIRMATION_KEYS),
-        locale: (await getLocaleSet(app)).default.code,
+        locale,
+        // Yedek metin İngilizcedir; gövde yönü ona göre (footer hastanın dilinde).
+        bodyLocale: "en",
         audience: "patient",
       });
     }
@@ -194,6 +201,7 @@ export async function triggerAppointmentRescheduledEmail(
     let patientName: string;
     let patientEmail: string;
     let patientTimeZone: string | null = null;
+    let patientLocale = PATIENT_EMAIL_FALLBACK_LOCALE;
 
     if (appointment.bookingId) {
       const booking = await app.prisma.appointmentBooking.findUnique({ where: { id: appointment.bookingId } });
@@ -204,6 +212,7 @@ export async function triggerAppointmentRescheduledEmail(
       patientName = booking?.patientName ?? appointment.patientName;
       patientEmail = booking?.patientEmail ?? appointment.patientEmail;
       patientTimeZone = booking?.patientTimeZone ?? null;
+      patientLocale = patientEmailLocale(booking);
     } else {
       bookingNumber = `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
       patientName = appointment.patientName;
@@ -212,13 +221,19 @@ export async function triggerAppointmentRescheduledEmail(
 
     const reasonValue = reason ?? "";
 
-    await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", patientEmail, {
-      recipient_name: patientName,
-      booking_number: bookingNumber,
-      old_slot_summary: formatSlotsSummary([{ startsAt: oldStartsAt, endsAt: oldEndsAt }], patientTimeZone),
-      new_slot_summary: formatSlotsSummary([{ startsAt: newStartsAt, endsAt: newEndsAt }], patientTimeZone),
-      reason: reasonValue,
-    });
+    await sendTemplateEmail(
+      app,
+      "APPOINTMENT_RESCHEDULED",
+      patientEmail,
+      {
+        recipient_name: patientName,
+        booking_number: bookingNumber,
+        old_slot_summary: formatSlotsSummary([{ startsAt: oldStartsAt, endsAt: oldEndsAt }], patientTimeZone),
+        new_slot_summary: formatSlotsSummary([{ startsAt: newStartsAt, endsAt: newEndsAt }], patientTimeZone),
+        reason: reasonValue,
+      },
+      { locale: patientLocale }
+    );
 
     if (doctorUserId) {
       const doctorUser = await app.prisma.user.findUnique({ where: { id: doctorUserId }, select: { email: true } });
@@ -285,6 +300,7 @@ export async function triggerAppointmentReminderEmail(
     let patientName: string;
     let patientEmail: string;
     let patientTimeZone: string | null = null;
+    let patientLocale = PATIENT_EMAIL_FALLBACK_LOCALE;
 
     if (appointment.bookingId) {
       const booking = await app.prisma.appointmentBooking.findUnique({ where: { id: appointment.bookingId } });
@@ -295,6 +311,7 @@ export async function triggerAppointmentReminderEmail(
       patientName = booking?.patientName ?? appointment.patientName;
       patientEmail = booking?.patientEmail ?? appointment.patientEmail;
       patientTimeZone = booking?.patientTimeZone ?? null;
+      patientLocale = patientEmailLocale(booking);
     } else {
       bookingNumber = `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
       patientName = appointment.patientName;
@@ -310,20 +327,25 @@ export async function triggerAppointmentReminderEmail(
     let doctorJoinLink: string | undefined;
     if (kind === "30m") {
       const localeSet = await getLocaleSet(app);
-      const langCode = localeSet.default.code;
       patientJoinLink = appointment.bookingId
-        ? `${env.FRONTEND_URL}/${langCode}/patient/bookings/${appointment.bookingId}`
-        : `${env.FRONTEND_URL}/${langCode}/patient/appointments`;
-      doctorJoinLink = `${env.FRONTEND_URL}/${langCode}/doctor`;
+        ? `${env.FRONTEND_URL}/${patientLocale}/patient/bookings/${appointment.bookingId}`
+        : `${env.FRONTEND_URL}/${patientLocale}/patient/appointments`;
+      doctorJoinLink = `${env.FRONTEND_URL}/${localeSet.default.code}/doctor`;
     }
 
-    await sendTemplateEmail(app, purpose, patientEmail, {
-      recipient_name: patientName,
-      booking_number: bookingNumber,
-      doctor_name: patientFacingDoctorName,
-      slot_summary: slotSummary,
-      ...(patientJoinLink ? { join_link: patientJoinLink } : {}),
-    });
+    await sendTemplateEmail(
+      app,
+      purpose,
+      patientEmail,
+      {
+        recipient_name: patientName,
+        booking_number: bookingNumber,
+        doctor_name: patientFacingDoctorName,
+        slot_summary: slotSummary,
+        ...(patientJoinLink ? { join_link: patientJoinLink } : {}),
+      },
+      { locale: patientLocale }
+    );
 
     if (doctorUserId) {
       const doctorUser = await app.prisma.user.findUnique({ where: { id: doctorUserId }, select: { email: true } });

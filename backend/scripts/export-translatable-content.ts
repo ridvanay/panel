@@ -1,12 +1,13 @@
 /**
  * Paket L (2026-10-23) — çevrilecek tüm içeriğin EN kanonik metnini TEK bir JSON dosyasına yazar.
  * SALT OKUMA: veritabanına hiçbir şey yazmaz. Kapsam: yayındaki sayfalar ve blok metinleri (SSS dahil),
- * doktor profilleri; bilgi amaçlı (içe aktarılmaz): uzmanlıklar, menü, footer, site ayarları.
+ * doktor profilleri (SSS dahil), hekim prosedürleri ve galeri öğeleri (Paket Y); bilgi amaçlı (içe aktarılmaz): uzmanlıklar, menü, footer, site ayarları.
  * Yasal sayfalar (`isLegalDocument`) HARİÇ. Mantık: `src/lib/content-translations.ts`.
  *
  * ÇALIŞTIRMA (backend/ dizininden):
  *   npx tsx scripts/export-translatable-content.ts [--out=storage/translations/export.json]
  *   npx tsx scripts/export-translatable-content.ts --only=page:home[,doctor:vahit-mutlu]   # Paket O: yalnızca seçilen kalemler (tip:ref ya da tip:id)
+ *   npx tsx scripts/export-translatable-content.ts --only=doctor:vahit-mutlu,doctorProcedure:<id>,doctorMedia:<id>   # Paket Y
  *   npx tsx scripts/export-translatable-content.ts --locales=ro,fr,sr-latn               # Paket T: yalnızca bu dillerin yuvaları
  */
 import fs from "node:fs/promises";

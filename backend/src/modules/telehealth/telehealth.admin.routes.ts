@@ -366,6 +366,8 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           cvEntries: ((await resolveCvEntryMedia(app.prisma, body.cvEntries)) ?? []) as Prisma.InputJsonValue,
           publications: (body.publications ?? []) as Prisma.InputJsonValue,
           socialLinks: (body.socialLinks ?? []) as Prisma.InputJsonValue,
+          hospitalName: body.hospitalName?.trim() || null,
+          faq: (body.faq ?? []) as Prisma.InputJsonValue,
           languages: body.languages,
           timeZone: body.timeZone,
           specialtyId: body.specialtyId ?? null,
@@ -470,6 +472,8 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         socialLinks,
         practiceStartYear,
         additionalSpecialtyIds,
+        hospitalName,
+        faq,
         ...rest
       } = request.body;
       if (avatarMediaId) await assertImageMedia(app, avatarMediaId);
@@ -487,6 +491,8 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...(cvEntries !== undefined ? { cvEntries: (await resolveCvEntryMedia(app.prisma, cvEntries)) as Prisma.InputJsonValue } : {}),
           ...(publications !== undefined ? { publications: publications as Prisma.InputJsonValue } : {}),
           ...(socialLinks !== undefined ? { socialLinks: socialLinks as Prisma.InputJsonValue } : {}),
+          ...(hospitalName !== undefined ? { hospitalName: hospitalName?.trim() || null } : {}),
+          ...(faq !== undefined ? { faq: faq as Prisma.InputJsonValue } : {}),
         },
       }).catch(rethrowFounderConflict);
       if (rest.isFounder === true) await enforceSingleFounderAfterWrite(app, request.params.doctorId);

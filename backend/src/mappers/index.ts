@@ -1775,6 +1775,8 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations, audience:
     cvEntries: (doctor.cvEntries as unknown as DoctorCvEntryDto[]) ?? [],
     publications: (doctor.publications as unknown as DoctorPublicationDto[]) ?? [],
     socialLinks: (doctor.socialLinks as unknown as DoctorSocialLinkDto[]) ?? [],
+    hospitalName: doctor.hospitalName ?? null,
+    faq: Array.isArray(doctor.faq) ? (doctor.faq as unknown as { question: string; answer: string }[]) : [],
     languages: doctor.languages,
     timeZone: doctor.timeZone,
     sessionDurationMin: doctor.sessionDurationMin,

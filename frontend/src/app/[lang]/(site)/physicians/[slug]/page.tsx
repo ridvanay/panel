@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { fetchDoctorBySlugServer, fetchDoctorSlotsServer } from "@/lib/api/server-telehealth";
+import { fetchDoctorBySlugServer, fetchDoctorReviewsServer, fetchDoctorShowcaseServer, fetchDoctorSlotsServer } from "@/lib/api/server-telehealth";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { resolveExplicitConsentPage, resolveKvkkConsentPage } from "@/lib/legal-pages";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
 import { DoctorHeroBackground } from "@/components/site/telehealth/doctor-hero-background";
-import { DoctorProfileTabs } from "@/components/site/telehealth/doctor-profile-tabs";
+import { DoctorProfileSections } from "@/components/site/telehealth/doctor-profile-sections";
+import { DoctorMobileBookBar } from "@/components/site/telehealth/doctor-mobile-book-bar";
 import { DoctorQuickBookingCard } from "@/components/site/telehealth/doctor-quick-booking-card";
 import { BookingSelectionProvider } from "@/components/site/telehealth/booking-selection-context";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
@@ -18,6 +19,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { buildDoctorJsonLd } from "@/lib/doctor-json-ld";
+import { buildDoctorFaqJsonLd } from "@/lib/doctor-faq-json-ld";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL, toPublicMediaUrl } from "@/lib/env";
 import type { Locale } from "@/lib/api/types";
@@ -131,13 +133,16 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const { lang, slug } = await params;
   const { from, to } = defaultSlotRange();
 
-  const [doctorWithAlternateName, locales, pages, slots, dict, telehealthSettings] = await Promise.all([
+  const [doctorWithAlternateName, locales, pages, slots, dict, telehealthSettings, showcase, reviews] = await Promise.all([
     fetchDoctorBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchPublishedPagesServer(lang),
     fetchDoctorSlotsServer(slug, from, to),
     getSiteDictionary(lang),
     fetchTelehealthThemeServer(),
+    // Paket Y — vitrin (işlemler, foto/video) ve yorumların ilk sayfası (yorum metinleri SEO için ilk HTML'de).
+    fetchDoctorShowcaseServer(slug, lang),
+    fetchDoctorReviewsServer(slug, lang),
   ]);
   if (!doctorWithAlternateName) notFound();
   // Paket U (SEO kararı) — tam ad YALNIZCA JSON-LD `alternateName`'de; bileşenlere (ve sayfa verisine)
@@ -177,7 +182,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
         </div>
       </DoctorHeroBackground>
 
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 pb-24 pt-10 sm:px-6 lg:pb-10">
         {/* Grid görevi (2026-09-14) Görev 1 — eski iki-sütun (takvim solda/hizmet özeti sağda,
             AYRI "Randevu Al" ANKOR + AYRI "Randevu Oluştur" SUBMIT butonlu) yapı `BookingWizard`'a
             (`booking-wizard.tsx`) DEVREDİLDİ — kurumsal, TEK butonlu, 5 adımlı numaralandırılmış
@@ -204,7 +209,17 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
               `booking-wizard.tsx`'te de İKİSİ BİRLİKTE var). */}
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
             <div className="lg:col-span-8">
-              <DoctorProfileTabs doctor={doctor} dict={dict.telehealth} />
+              {/* Paket Y — sekmeli düzen yerine bölümlü düzen (boş bölümler gösterilmez); eski `DoctorProfileTabs` dosyası korunur. */}
+              <DoctorProfileSections
+                doctor={doctor}
+                showcase={showcase}
+                reviews={reviews}
+                dict={dict.reviews}
+                lang={lang}
+                telehealthDict={dict.telehealth}
+                commonDict={dict.common}
+                support={support}
+              />
             </div>
             <aside className="lg:col-span-4 lg:sticky lg:top-6 lg:self-start">
               <DoctorQuickBookingCard
@@ -244,6 +259,9 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
         </BookingSelectionProvider>
 
         <JsonLdScript json={buildDoctorJsonLd(doctor, canonicalUrl, alternateName)} />
+        {/* Paket Y — yalnızca SSS doluysa AYRI `FAQPage` script'i. `Review`/`AggregateRating` BİLİNÇLİ OLARAK yoktur. */}
+        <JsonLdScript json={buildDoctorFaqJsonLd(doctor.faq)} />
+        <DoctorMobileBookBar />
       </div>
     </>
   );

@@ -20,6 +20,7 @@ import {
   FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT,
 } from "../telehealth/lib/notifications";
 import { TEST_EMAIL_HTML, TEST_EMAIL_SUBJECT } from "../settings/settings.email.routes";
+import { buildReviewInviteEmail } from "../reviews/reviews.service";
 import { renderTemplatePreviewOrTest } from "./email-templates.service";
 
 /**
@@ -60,6 +61,7 @@ const TEMPLATE_ENTRIES: SystemEmailEntry[] = [
 const CODE_ENTRIES: SystemEmailEntry[] = [
   { id: "code:appointment-confirmation-fallback", label: "Randevu onayı — yedek metin (şablon yoksa)", audience: "patient", source: "code", languages: "en" },
   { id: "code:matcher-confirmation", label: "Eşleştirme talebi alındı (hasta)", audience: "patient", source: "code", languages: "9" },
+  { id: "code:review-request", label: "Deneyiminizi paylaşın (hasta, görüşmeden 24 saat sonra)", audience: "patient", source: "code", languages: "9" },
   { id: "code:matcher-new-lead-fallback", label: "Eşleştirme talebi — yedek metin (koordinatör)", audience: "staff", source: "code", languages: "tr" },
   { id: "code:interpreter-assignment", label: "Tercüman ataması (tercüman)", audience: "staff", source: "code", languages: "9" },
   { id: "code:interpreter-participant-patient", label: "Görüşmeye tercüman katılacak (hasta)", audience: "patient", source: "code", languages: "9" },
@@ -114,6 +116,10 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
     case "code:matcher-confirmation": {
       const mail = buildMatcherConfirmationEmail({ locale, number: 1024, contactAllowed: true });
       return { subject: mail.subject, bodyHtml: mail.html };
+    }
+    case "code:review-request": {
+      const mail = buildReviewInviteEmail({ locale, patientName: "Ayşe Yılmaz", doctorName: "Op. Dr. M. Demir", url: `${base}/${locale}/review/sample-token`, optOutUrl: `${base}/${locale}/review/sample-token?optout=1` });
+      return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
     }
     case "code:matcher-new-lead-fallback":
       return buildMatcherLeadFallbackNotice(1024, `${base}/admin/crm/leads/sample`);

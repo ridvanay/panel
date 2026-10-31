@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, Archive, ChevronLeft, Stethoscope, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { DoctorAvailabilityRuleInput, DoctorProfile, DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
+import type { DoctorAvailabilityRuleInput, DoctorFaqItem, DoctorProfile, DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -40,6 +40,9 @@ import {
 } from "@/components/site/telehealth/doctor-cv-fields";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { DoctorPublicNameField } from "@/components/admin/telehealth/doctor-public-name-field";
+import { DoctorFaqEditor, cleanFaq } from "@/components/admin/telehealth/doctor-faq-editor";
+import { DoctorProceduresManager } from "@/components/admin/telehealth/doctor-procedures-manager";
+import { DoctorMediaManager } from "@/components/admin/telehealth/doctor-media-manager";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
@@ -48,6 +51,8 @@ const formSchema = z.object({
   fullName: z.string().min(1, "Ad soyad gerekli.").max(120),
   // Paket U (C2) — sitede görünen ad (boş = otomatik kısaltma).
   publicName: z.string().max(120),
+  // Paket Y — görev yaptığı hastane/klinik (boş = gösterilmez).
+  hospitalName: z.string().max(160, "En çok 160 karakter."),
   slug: z.string().min(1, "Slug gerekli.").max(80),
   bio: z.string().min(1, "Kısa özet gerekli.").max(5000),
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
@@ -75,6 +80,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
   const [avatar, setAvatar] = useState<Media | null>(null);
   const [socialLinks, setSocialLinks] = useState<DoctorSocialLink[]>([]);
   const [additionalSpecialtyIds, setAdditionalSpecialtyIds] = useState<string[]>([]);
+  const [faq, setFaq] = useState<DoctorFaqItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveErrorDetails, setSaveErrorDetails] = useState<string[]>([]);
@@ -120,6 +126,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
       setSpecialties(specialtyList);
       setAvatar(doc.avatarMedia);
       setSocialLinks(doc.socialLinks);
+      setFaq(doc.faq ?? []);
       setCv(doctorCvValueFromProfile(doc));
       setAdditionalSpecialtyIds(doc.additionalSpecialties?.map((s) => s.id) ?? []);
       setRules(availability.map((rule) => ({ dayOfWeek: rule.dayOfWeek, startMinute: rule.startMinute, endMinute: rule.endMinute, isActive: rule.isActive })));
@@ -127,6 +134,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         title: doc.title,
         fullName: doc.fullName,
         publicName: doc.publicName ?? "",
+        hospitalName: doc.hospitalName ?? "",
         slug: doc.slug,
         bio: doc.bio,
         languages: doc.languages,
@@ -163,6 +171,8 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         title: values.title,
         fullName: values.fullName,
         publicName: values.publicName.trim() || null,
+        hospitalName: values.hospitalName.trim() || null,
+        faq: cleanFaq(faq),
         slug: values.slug,
         bio: values.bio,
         languages: values.languages,
@@ -181,6 +191,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
       });
       setDoctor(updated);
       setSocialLinks(updated.socialLinks);
+      setFaq(updated.faq ?? []);
       setCv(doctorCvValueFromProfile(updated));
       setAdditionalSpecialtyIds(updated.additionalSpecialties?.map((s) => s.id) ?? []);
       toast.success("Doktor güncellendi.");
@@ -330,6 +341,10 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                 {(inputProps) => <Textarea {...inputProps} rows={5} {...register("bio")} />}
               </Field>
 
+              <Field id="hospitalName" label="Görev yaptığı hastane / klinik" error={errors.hospitalName?.message} hint="Profilin Genel Bakış bölümünde gösterilir. Boşsa gösterilmez.">
+                {(inputProps) => <Input {...inputProps} maxLength={160} {...register("hospitalName")} />}
+              </Field>
+
               <DoctorCvBasicFields value={cv} onChange={(patch) => setCv((prev) => ({ ...prev, ...patch }))} errors={cvErrors} />
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -417,6 +432,8 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                 sectionClassName="space-y-3 rounded-lg border border-border p-3"
               />
 
+              <DoctorFaqEditor items={faq} onChange={setFaq} />
+
               {/* K8 — bağlama/çözme SADECE `/admin/users`'ta yapılır (ADMIN-only, backend
                * `PATCH .../doctors/{id}` gövdesinde `userId` alanı ADMIN'e kilitli); burada
                * salt-okunur bir durum satırı + oraya yönlendiren bir bağlantı gösterilir. */}
@@ -472,6 +489,10 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
               </Button>
             </form>
           </Card>
+
+          {/* Paket Y — hekim vitrini: işlemler ve foto/video galerisi (kendi kaydetme akışları vardır). */}
+          <DoctorProceduresManager doctorId={doctorId} />
+          <DoctorMediaManager doctorId={doctorId} />
 
           <Card>
             <h2 className="admin-h2">Haftalık Müsaitlik</h2>

@@ -18,6 +18,7 @@ import { DEFAULT_EMERGENCY_NOTICE_SETTINGS } from "@/lib/emergency-notice";
 import { LanguageSupportSettingsCard } from "@/components/admin/telehealth/language-support-settings";
 import { DEFAULT_LANGUAGE_SUPPORT } from "@/lib/language-support";
 import { MatcherSettingsCard } from "@/components/admin/matcher/matcher-settings-card";
+import { DoctorMediaSettingsCard } from "@/components/admin/telehealth/doctor-media-settings-card";
 
 /**
  * Görev (2026-09-14) Görev 1 — "Arayüz & Tema Renkleri" sekmesi. `/admin/telehealth/overview`
@@ -242,6 +243,9 @@ export default function AdminTelehealthSettingsPage() {
 
       {/* Paket W — eşleştirme sihirbazı ayarları (eşik, uzmanlık sayısı, iletişim adımı, saklama); audit'li. */}
       <MatcherSettingsCard canEdit={user?.role === "ADMIN"} />
+
+      {/* Paket Y — önce/sonra görselleri (varsayılan kapalı; PUT yalnızca ADMIN). */}
+      <DoctorMediaSettingsCard canEdit={user?.role === "ADMIN"} />
     </div>
   );
 }

@@ -2518,6 +2518,22 @@ export const DoctorSocialLinkPlatformSchema = z.enum([
 ]);
 export type DoctorSocialLinkPlatform = z.infer<typeof DoctorSocialLinkPlatformSchema>;
 
+/** Paket Y — hekim profili SSS öğesi (düz metin; HTML kabul edilmez). */
+export const DoctorFaqItemSchema = z.object({
+  question: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .refine((v) => !/<[a-z!/]/i.test(v), "HTML kullanılamaz."),
+  answer: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2000)
+    .refine((v) => !/<[a-z!/]/i.test(v), "HTML kullanılamaz."),
+});
+
 export const DoctorSocialLinkSchema = z.object({
   platform: DoctorSocialLinkPlatformSchema,
   url: httpsOnlyField(z.string().trim().max(500).url()),
@@ -2556,6 +2572,10 @@ export const DoctorProfileSchema = z.object({
   cvEntries: z.array(DoctorCvEntrySchema),
   publications: z.array(DoctorPublicationSchema),
   socialLinks: z.array(DoctorSocialLinkSchema),
+  /** Paket Y — görev yaptığı hastane/klinik (boşsa gösterilmez). */
+  hospitalName: z.string().nullable().optional(),
+  /** Paket Y — profil SSS (istenen dilde; çeviri yoksa kanonik). */
+  faq: z.array(DoctorFaqItemSchema).optional(),
   languages: z.array(z.string()),
   // IANA saat dilimi ("Europe/Istanbul") — bkz. modules/telehealth/lib/timezone.ts.
   timeZone: z.string(),

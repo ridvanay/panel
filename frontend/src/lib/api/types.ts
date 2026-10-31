@@ -4004,6 +4004,16 @@ export interface DoctorProfile {
    * `include` yapılmadan dönen eski/özet sorgularda alan hiç gelmeyebilir.
    */
   additionalSpecialties?: { id: string; name: string; slug: string }[];
+  /** Paket Y — görev yaptığı hastane/klinik; boşsa gösterilmez. Public profil detayında gelir. */
+  hospitalName?: string | null;
+  /** Paket Y — profil SSS; istenen dilde (çeviri yoksa kanonik). Doluysa `FAQPage` JSON-LD eklenir. */
+  faq?: DoctorFaqItem[];
+}
+
+/** Paket Y — `DoctorProfile.faq` öğesi (düz metin, HTML yok). */
+export interface DoctorFaqItem {
+  question: string;
+  answer: string;
 }
 
 export interface CreateDoctorRequest {
@@ -4043,6 +4053,9 @@ export interface CreateDoctorRequest {
   /** Paket P (İş 3) — kurucu (tek; başka kurucu varsa 409) ve kadro katmanı (1–9). */
   isFounder?: boolean;
   rosterTier?: number | null;
+  /** Paket Y — hastane/klinik (en çok 160 karakter) ve SSS (en çok 20 soru; soru ≤200, cevap ≤2000, HTML yok). */
+  hospitalName?: string | null;
+  faq?: DoctorFaqItem[];
 }
 
 export type UpdateDoctorRequest = Partial<CreateDoctorRequest>;
@@ -4244,6 +4257,8 @@ export interface CreateBookingRequest {
   consentVersion?: string;
   /** Paket P — yalnızca gösterim: hastanın o anki IANA dilimi (e-posta/portal çift saat). */
   patientTimeZone?: string;
+  /** Paket Y — hastanın aktif site dili (`[lang]`); e-postalar bu dilde gider. Randevu kurallarını etkilemez. */
+  locale?: string;
 }
 
 /** `POST /appointments/bookings` yanıtı — ham `accessToken`'ı BİR KEZ döner. */
@@ -5022,4 +5037,130 @@ export interface InterpreterUserSearchResult {
 /** Paket AA-ek — `/admin/telehealth/interpreters/settings`. */
 export interface InterpreterSettings {
   require2fa: boolean;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paket Y — hekim vitrini (işlemler, foto/video) ve hasta memnuniyet yorumları (public + hasta).
+// Kaynak: docs/prompts/2026-10-30-Y-api-kontrat.md
+// ---------------------------------------------------------------------------------------------
+
+export type DoctorMediaCategory = "about" | "clinic" | "procedure" | "interview" | "before-after";
+
+export interface DoctorShowcaseProcedure {
+  id: string;
+  title: string;
+  description: string | null;
+  duration: string | null;
+  anesthesia: string | null;
+  hospitalStay: string | null;
+  recovery: string | null;
+  relatedCareTopicIds: string[];
+}
+
+interface DoctorShowcaseMediaBase {
+  id: string;
+  category: DoctorMediaCategory;
+  title: string | null;
+  description: string | null;
+  alt: string;
+}
+
+export interface DoctorShowcasePhoto extends DoctorShowcaseMediaBase {
+  kind: "photo";
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
+export interface DoctorShowcaseVideo extends DoctorShowcaseMediaBase {
+  kind: "video";
+  videoProvider: "youtube" | "vimeo";
+  videoId: string;
+  /** YouTube: `i.ytimg.com`; Vimeo: `null` (yer tutucu gösterilir). */
+  thumbnailUrl: string | null;
+  /** `youtube-nocookie.com` / `player.vimeo.com?dnt=1` — YALNIZCA "Oynat"a basılınca yüklenir. */
+  embedUrl: string;
+}
+
+export type DoctorShowcaseMedia = DoctorShowcasePhoto | DoctorShowcaseVideo;
+
+export interface DoctorShowcase {
+  procedures: DoctorShowcaseProcedure[];
+  media: DoctorShowcaseMedia[];
+}
+
+export type ReviewDisplayMode = "initials" | "first_initial" | "anonymous" | "custom";
+
+export interface ReviewItem {
+  id: string;
+  authorDisplay: string | null;
+  displayMode: ReviewDisplayMode;
+  /** ISO-2; ad `Intl.DisplayNames` ile gösterilir. */
+  country: string | null;
+  language: string;
+  rating: number;
+  title: string;
+  body: string;
+  translation: { title: string | null; body: string } | null;
+  /** `true` ise "Verified patient" rozeti. */
+  verified: boolean;
+  publishedAt: string;
+  doctorReply: string | null;
+}
+
+export interface ReviewSummary {
+  count: number;
+  /** 3'ten az onaylı yorumda `null` → ortalama ve dağılım GÖSTERİLMEZ. */
+  average: number | null;
+  distribution: Record<"1" | "2" | "3" | "4" | "5", number> | null;
+}
+
+export type ReviewSort = "newest" | "highest";
+
+export interface DoctorReviewsResponse {
+  summary: ReviewSummary;
+  languages: { code: string; count: number }[];
+  page: number;
+  pageSize: number;
+  total: number;
+  items: ReviewItem[];
+}
+
+export interface FeaturedReviewItem extends ReviewItem {
+  doctor: { name: string; slug: string } | null;
+}
+
+export interface FeaturedReviewsResponse {
+  summary: ReviewSummary;
+  items: FeaturedReviewItem[];
+}
+
+export type ReviewFormDisplayMode = "initials" | "first_initial" | "anonymous";
+
+export interface SubmitReviewRequest {
+  rating: number;
+  title: string;
+  body: string;
+  displayMode: ReviewFormDisplayMode;
+  /** ISO-2; yalnızca hasta seçtiyse gönderilir ("Ülkemi gösterme" = alan hiç gönderilmez). */
+  country?: string;
+  publishConsent: true;
+  /** Rıza metninin sürümü — sabit `REVIEW_CONSENT_TEXT_VERSION`. */
+  consentTextVersion: string;
+}
+
+export interface ReviewInviteInfo {
+  doctorName: string;
+}
+
+export interface SubmitReviewResult {
+  id: string;
+  status: "pending";
+}
+
+export type PatientReviewStatus = "pending" | "approved" | "rejected" | "hidden";
+
+export interface PatientBookingReviewState {
+  eligible: boolean;
+  review: { id: string; status: PatientReviewStatus; rating: number; title: string; createdAt: string } | null;
 }

@@ -7,6 +7,7 @@ import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, LocaleQuerySchema } from "../../schemas/common";
 import { getLocaleSet } from "../../lib/localization";
+import { localizedFaq } from "./lib/doctor-showcase";
 import { localizeDoctor, localizeDoctorSpecialties, localizeSpecialty } from "./lib/doctor-localization";
 import { resolveContentLocaleCode } from "../../lib/entity-translations";
 import {
@@ -261,6 +262,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
       return reply.send(
         ok({
           ...toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, contentLocale), contentLocale)),
+          // Paket Y — SSS çevirisi `translations.<dil>.faq`; yoksa kanonik.
+          ...(contentLocale ? localizedFaq(doctor.translations, contentLocale) : {}),
           ...(alternateName ? { alternateName } : {}),
           earliestAvailableAt: earliest.get(doctor.id) ?? null,
         })
@@ -521,7 +524,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       schema: { body: CreateBookingRequestSchema, response: { 201: ApiSuccessSchema(CreateBookingResultSchema) } },
     },
     async (request, reply) => {
-      const { doctorSlug, slots, patientName, patientEmail, identity, consentVersion, patientTimeZone } = request.body;
+      const { doctorSlug, slots, patientName, patientEmail, identity, consentVersion, patientTimeZone, locale } = request.body;
 
       // §9.7.7 KARAR K (bu tur) — hekim profiline sahip bir kullanıcı KENDİ adına hasta
       // randevusu oluşturamaz (yanlışlıkla/kötüye kullanım yüzeyi). `authenticateOptional`
@@ -566,8 +569,13 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       // Paket P — gösterim amaçlı hasta saat dilimi, onay e-postasından ÖNCE yazılır (rezervasyon
       // kurallarına — `lib/booking.ts` — dokunulmaz; ayrı ve yalnızca görüntüleme alanı).
-      if (patientTimeZone) {
-        booking = await app.prisma.appointmentBooking.update({ where: { id: booking.id }, data: { patientTimeZone } });
+      // Paket Y — hastanın site dili de aynı yolla (yalnızca etkin bir dilse) yazılır; e-postalar bu dilde gider.
+      const bookingLocale = locale && (await getLocaleSet(app)).enabled.some((l) => l.code === locale) ? locale : null;
+      if (patientTimeZone || bookingLocale) {
+        booking = await app.prisma.appointmentBooking.update({
+          where: { id: booking.id },
+          data: { ...(patientTimeZone ? { patientTimeZone } : {}), ...(bookingLocale ? { locale: bookingLocale } : {}) },
+        });
       }
 
       // Doktorun `sessionPriceCents`'i `null`sa (ücretsiz/bilgi-alınız seans) `createBooking`

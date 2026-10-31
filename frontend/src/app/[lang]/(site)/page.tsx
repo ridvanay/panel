@@ -30,6 +30,7 @@ import { resolveLanguageSupport } from "@/lib/language-support";
 import { SupportLanguagesBand } from "@/components/site/support/support-languages-band";
 import { AccreditationStrip } from "@/components/site/accreditations/accreditation-strip";
 import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
+import { HomeReviewsSection } from "@/components/site/reviews/home-reviews-section";
 
 type PageProps = { params: Promise<{ lang: string }> };
 
@@ -184,6 +185,8 @@ export default async function RootPage({ params }: PageProps) {
                 <BlockRenderer nodes={restNodes} chrome="page" siteContext={{ lang, defaultLocaleCode }} />
               </>
             )}
+            {/* Paket Y — "What our patients say": veri kaynaklı, öne çıkan yorum yoksa HİÇ görünmez. */}
+            {telehealthModuleEnabled && <HomeReviewsSection lang={lang} defaultLocaleCode={defaultLocaleCode} />}
           </div>
           {/* Sayfa başına TEK `FAQPage`/`Place` script — mimar §7.5 Boşluk 1/3, bkz.
               `lib/page-builder/structured-data.ts`. */}

@@ -1686,6 +1686,8 @@ model Media {
   specialtyImages        Specialty[]          @relation("SpecialtyImageMedia")
   // Paket V — AccreditationBadge.logoMediaId için zorunlu karşı-ilişki alanı (kolon DEĞİL).
   accreditationLogos     AccreditationBadge[] @relation("AccreditationBadgeLogo")
+  /// Paket Y — hekim galerisi.
+  doctorGallery          DoctorMedia[]        @relation("DoctorGalleryMedia")
 
   @@index([folderId])
   @@map("media")
@@ -2228,6 +2230,7 @@ model Specialty {
   translations Json     @default("{}")
 
   doctors           DoctorProfile[]
+  testimonials      Testimonial[]               @relation("SpecialtyTestimonials")
   imageMedia        Media?                      @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
   /// Birincil (`specialtyId`) DIŞINDA, doktorun İKİNCİL/EK uzmanlık bağlantıları —
   /// bkz. `DoctorAdditionalSpecialty`. `doctors` (yukarıdaki, tekil FK üzerinden) İLE
@@ -2288,6 +2291,11 @@ model DoctorProfile {
   /// desen: ayrı bir ilişkisel tablo/Prisma enum DEĞİL (JSON içinde enum yaşamaz, platform
   /// string olarak saklanır). Kök `SocialLink` modeliyle (site-wide footer/header) İLİŞKİSİZ.
   socialLinks       Json     @default("[]")
+  /// Paket Y — görev yaptığı hastane/klinik (özel ad; çevrilmez). Boşsa profilde gösterilmez.
+  hospitalName      String?
+  /// Paket Y — profil SSS: `[{ question, answer }]` (kanonik dil). Çeviriler `translations.<dil>.faq`.
+  /// Düz metin; HTML kabul edilmez. Doluysa sayfada `FAQPage` JSON-LD eklenir.
+  faq               Json     @default("[]")
   /// Paket L (2026-10-23) — içerik çevirileri, `Page.translations` İLE AYNI desen: BCP-47 anahtarlı
   /// (`{ "tr": { title, bio, aboutHtml, subSpecialty }, "es": {...} }`). Kanonik (varsayılan dil)
   /// değerler kendi kolonlarında kalır; çeviri yoksa kanonik değere düşülür. `cvEntries`/
@@ -2346,6 +2354,10 @@ model DoctorProfile {
   /// sekmesinde/listesinde görünebilsin diye (ör. Obesity & Metabolic Surgery +
   /// Surgical Oncology) eklendi; `specialtyId`'nin anlamı/davranışı DEĞİŞMEDİ.
   additionalSpecialties DoctorAdditionalSpecialty[]
+  /// Paket Y — işlemler, medya (foto/video) ve hasta yorumları.
+  procedures            DoctorProcedure[]
+  media                 DoctorMedia[]
+  testimonials          Testimonial[]
 
   @@index([specialtyId])
   @@index([avatarMediaId])
@@ -2472,10 +2484,13 @@ model Appointment {
   /// (Cart.tokenHash / lib/tokens.ts ile AYNI desen). HAM DEĞER SAKLANMAZ.
   accessTokenHash String @unique
 
-  startedAt    DateTime?
-  endedAt      DateTime?
-  cancelledAt  DateTime?
-  cancelReason String?
+  startedAt         DateTime?
+  endedAt           DateTime?
+  /// Paket Y — "Deneyiminizi paylaşın" e-postası için sahiplenme damgası (çift gönderim yok). Süpürücü için
+  /// kısmi indeks `appointments_review_sweep_idx` yalnızca migration'da (Prisma ifade edemez).
+  reviewRequestedAt DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
 
   /// [ASD] §2.2/§2.3 — hatırlatma süpürücüsü damgası ("1 saat kaldı" e-postası gönderildi,
   /// veya çoklu-slot kuralıyla bilinçli olarak bastırıldı). NULL = henüz gönderilmedi.
@@ -2597,6 +2612,9 @@ model AppointmentBooking {
   /// Paket P — randevu anında hastanın IANA saat dilimi (ör. "Europe/Berlin"). E-posta/portal
   /// saatleri bununla + Türkiye saatiyle birlikte üretilir. NULL = bilinmiyor (yalnız Türkiye saati).
   patientTimeZone String?
+  /// Paket Y — randevu anında hastanın aktif site dili (ör. "de"). Onay/hatırlatma/yeniden planlama ve
+  /// "Deneyiminizi paylaşın" e-postaları bu dilde gider; NULL ise TR'ye düşülür. Randevu kurallarını etkilemez.
+  locale          String?
 
   slotCount      Int
   /// DoctorProfile.sessionPriceCents SNAPSHOT'ı — istemciden ASLA alınmaz (§8 madde 3).
@@ -2638,6 +2656,9 @@ model AppointmentBooking {
   updatedAt DateTime @updatedAt
 
   doctor                 DoctorProfile            @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  /// Paket Y — hasta yorumları ve "Deneyiminizi paylaşın" daveti.
+  testimonials           Testimonial[]            @relation("BookingTestimonials")
+  testimonialInvite      TestimonialInvite?       @relation("BookingTestimonialInvite")
   patientUser            User?                    @relation("AppointmentBookingPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
   appointments           Appointment[]
   intake                 AppointmentIntake?
@@ -3864,4 +3885,146 @@ model MatcherStat {
   @@id([day, kind, key])
   @@index([kind, day])
   @@map("matcher_stats")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paket Y — zengin hekim profili (işlemler, foto/video) ve hasta memnuniyet yorumları.
+// Tür alanları Prisma enum DEĞİL (ALTER TYPE geri alınamaz); değerler zod ile doğrulanır.
+// UYDURMA YORUM YOK: seed/demo yorum verisi yoktur; testler fixture kullanır.
+// ---------------------------------------------------------------------------------------------
+
+/// Hekimin yaptığı işlem/tedavi (fiyat YOK). `translations`: { "<dil>": { title, description, duration,
+/// anesthesia, hospitalStay, recovery } } — en az bir dilde `title` zorunlu.
+model DoctorProcedure {
+  id                  String   @id @default(uuid())
+  doctorId            String
+  translations        Json     @default("{}")
+  /// Paket W — ilgili eşleştirme konuları (CareTopic.id).
+  relatedCareTopicIds String[] @default([])
+  sortOrder           Int      @default(0)
+  isPublished         Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, isPublished, sortOrder])
+  @@map("doctor_procedures")
+}
+
+/// Hekim galerisi: fotoğraf (Media) ya da YouTube/Vimeo videosu. Hastanın görünebildiği içerik
+/// (`before-after` ve hasta tanınabilen her şey) `patientConsentConfirmed=true` olmadan YAYINLANAMAZ.
+model DoctorMedia {
+  id                      String    @id @default(uuid())
+  doctorId                String
+  /// "photo" | "video"
+  kind                    String
+  /// Fotoğraf için Media satırı.
+  mediaId                 String?
+  /// "youtube" | "vimeo" (yalnızca video). Sunucuya video yüklenmez; küçük resim sağlayıcıdan gelir.
+  videoProvider           String?
+  videoId                 String?
+  /// "about" | "clinic" | "procedure" | "interview" | "before-after"
+  category                String
+  /// { "<dil>": { title, description, alt } } — fotoğrafta alt metin zorunlu.
+  translations            Json      @default("{}")
+  /// Hastanın görünebildiği içerik mi (admin işaretler). before-after daima hasta içeriği sayılır.
+  showsPatient            Boolean   @default(false)
+  patientConsentConfirmed Boolean   @default(false)
+  consentNote             String?
+  /// Onay kutusunu işaretleyen admin ve zamanı (sunucu yazar; onay kaldırılınca boşalır).
+  consentRecordedAt       DateTime?
+  consentRecordedById     String?
+  isPublished             Boolean   @default(false)
+  sortOrder               Int       @default(0)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  media  Media?        @relation("DoctorGalleryMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@index([doctorId, isPublished, sortOrder])
+  @@index([mediaId])
+  @@map("doctor_media")
+}
+
+/// DB güvenceleri (migration `20261103091000_physician_profile_reviews_hardening`, Prisma'da ifade edilemez):
+/// `rating` 1..5 ve `status` CHECK'leri, booking başına TEK yorum (`bookingId` kısmi benzersiz indeksi).
+/// `authorUserId`/`moderatedById` bilinçli olarak FK'sız (kullanıcı silinse de yorum kalır; join yapılmaz).
+/// Hasta memnuniyet yorumu. Her yorum `pending` başlar; admin metni DÜZENLEYEMEZ, yalnızca kişisel/
+/// sağlık bilgisini maskeleyebilir (audit'e yazılır). "Verified patient" yalnızca `verified_booking`.
+model Testimonial {
+  id                  String    @id @default(uuid())
+  /// Kurum yorumu için boş.
+  doctorId            String?
+  specialtyId         String?
+  /// Doğrulanmış hasta yorumu için booking (anonimleştirmede boşaltılır).
+  bookingId           String?
+  /// Yalnızca hasta portalından gelen yorumda: "Yorumumu sil" yetkisi için.
+  authorUserId        String?
+  /// Görünen ad (ör. "M. K., Germany" / "Anonim").
+  authorDisplay       String
+  /// Seçilen görünen ad biçimi: "initials" | "first_initial" | "anonymous" | "custom" (manuel)
+  displayMode         String    @default("initials")
+  country             String?
+  /// Yorumun orijinal dili (BCP-47 kısa kod).
+  language            String
+  rating              Int
+  title               String
+  body                String
+  /// Yönetici çevirisi: { "<dil>": { title, body } }.
+  translations        Json      @default("{}")
+  /// "verified_booking" | "manual_with_consent" | "imported"
+  source              String
+  consentAt           DateTime
+  /// Hastanın onay verdiği rıza metninin sürümü (ör. "2026-11-review-v1"); manuelde boş.
+  consentTextVersion  String?
+  /// Manuel/içe aktarılan yorumda zorunlu: onayın kanıtı (nerede/nasıl alındı).
+  consentEvidenceNote String?
+  /// "pending" | "approved" | "rejected" | "hidden"
+  status              String    @default("pending")
+  moderatedById       String?
+  moderatedAt         DateTime?
+  /// Maskeleme sayısı (içerik değil). Ayrıntı audit log'da.
+  redactionCount      Int       @default(0)
+  featuredOnHome      Boolean   @default(false)
+  publishedAt         DateTime?
+  doctorReply         String?
+  /// Hasta isteğiyle kaldırıldı: metin ve kimlik izleri silindi.
+  anonymizedAt        DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  doctor    DoctorProfile?      @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  specialty Specialty?          @relation("SpecialtyTestimonials", fields: [specialtyId], references: [id], onDelete: SetNull)
+  booking   AppointmentBooking? @relation("BookingTestimonials", fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([doctorId, status, publishedAt])
+  @@index([status, featuredOnHome])
+  @@index([bookingId])
+  @@map("testimonials")
+}
+
+/// "Deneyiminizi paylaşın" daveti — booking başına bir tane, tek kullanımlık, 30 gün geçerli.
+/// Ham token SAKLANMAZ (SHA-256).
+model TestimonialInvite {
+  id        String    @id @default(uuid())
+  bookingId String    @unique
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  booking AppointmentBooking @relation("BookingTestimonialInvite", fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("testimonial_invites")
+}
+
+/// "Bir daha yorum isteği gönderme" — e-posta adresinin SHA-256 özeti (ham adres saklanmaz).
+model ReviewRequestOptOut {
+  emailHash String   @id
+  createdAt DateTime @default(now())
+
+  @@map("review_request_opt_outs")
 }

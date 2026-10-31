@@ -39,6 +39,8 @@ export const LOCALIZED_PRIVATE_PATHS = [
   "/activate-account",
   // Paket AA — tercüman paneli ve görüşme ekranı.
   "/interpreter",
+  // Paket Y — tek kullanımlık yorum daveti (token URL'de; dizinlenmez, robots'ta kapalı).
+  "/review/",
 ] as const;
 
 /** `next.config.ts::headers()` kaynakları — dil önekli ve öneksiz hâller. */

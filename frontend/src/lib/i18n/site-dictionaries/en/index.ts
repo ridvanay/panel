@@ -10,6 +10,7 @@ import { homeStrings } from "./home";
 import { portalStrings } from "./portal";
 import { consentStrings } from "./consent";
 import { uiStrings } from "./ui";
+import { reviewsStrings } from "./reviews";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -24,4 +25,5 @@ export const siteDictionary: SiteDictionary = {
   portal: portalStrings,
   consent: consentStrings,
   ui: uiStrings,
+  reviews: reviewsStrings,
 };

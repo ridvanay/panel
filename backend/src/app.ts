@@ -99,6 +99,11 @@ import { crmAdminRoutes } from "./modules/crm/crm.admin.routes";
 import { registerCrmSchedulers } from "./modules/crm/crm.rollup";
 import { matcherPublicRoutes } from "./modules/matcher/matcher.routes";
 import { matcherAdminRoutes } from "./modules/matcher/matcher.admin.routes";
+import { reviewsPublicRoutes } from "./modules/reviews/reviews.routes";
+import { reviewsPatientRoutes } from "./modules/reviews/reviews.patient.routes";
+import { reviewsAdminRoutes } from "./modules/reviews/reviews.admin.routes";
+import { adminDoctorMediaSettingsRoutes, adminTelehealthShowcaseRoutes, telehealthShowcasePublicRoutes } from "./modules/telehealth/telehealth.showcase.routes";
+import { registerReviewRequestSweeper } from "./lib/review-requests";
 import { warnIfRevalidationDisabled } from "./lib/revalidate";
 
 export function buildApp() {
@@ -383,6 +388,14 @@ export function buildApp() {
       // Paket W — "Find my physician" eşleştirme sihirbazı.
       api.register(matcherPublicRoutes, { prefix: "/matcher" });
       api.register(matcherAdminRoutes, { prefix: "/admin/matcher" });
+      // Paket Y — hasta memnuniyet yorumları (herkese açık, hasta portalı, admin moderasyonu).
+      api.register(reviewsPublicRoutes);
+      api.register(reviewsPatientRoutes, { prefix: "/patient" });
+      api.register(reviewsAdminRoutes, { prefix: "/admin/testimonials" });
+      // Paket Y — hekim vitrini (işlemler, foto/video) ve önce/sonra ayarı.
+      api.register(telehealthShowcasePublicRoutes);
+      api.register(adminTelehealthShowcaseRoutes, { prefix: "/admin/telehealth/doctors" });
+      api.register(adminDoctorMediaSettingsRoutes, { prefix: "/admin/telehealth/settings/doctor-media" });
     },
     { prefix: "/api/v1" }
   );
@@ -524,6 +537,13 @@ export function buildApp() {
       registerInterpreterSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Tercüman temizleyicisi (interpreter-sweeper) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket Y — 30 dakikalık kadans, tamamlanmış görüşmeden 24 saat sonra "Deneyiminizi paylaşın" daveti.
+      registerReviewRequestSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Yorum daveti (review-requests) scheduler kurulumu başarısız oldu.");
     }
 
     try {

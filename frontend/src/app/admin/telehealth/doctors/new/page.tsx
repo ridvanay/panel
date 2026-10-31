@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, ChevronLeft, Stethoscope } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
+import type { DoctorFaqItem, DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -35,6 +35,7 @@ import {
 } from "@/components/site/telehealth/doctor-cv-fields";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { DoctorPublicNameField } from "@/components/admin/telehealth/doctor-public-name-field";
+import { DoctorFaqEditor, cleanFaq } from "@/components/admin/telehealth/doctor-faq-editor";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
@@ -58,6 +59,8 @@ const formSchema = z.object({
   fullName: z.string().min(1, "Ad soyad gerekli.").max(120),
   // Paket U (C2) — sitede görünen ad (boş = otomatik kısaltma).
   publicName: z.string().max(120),
+  // Paket Y — görev yaptığı hastane/klinik (boş = gösterilmez).
+  hospitalName: z.string().max(160, "En çok 160 karakter."),
   slug: z.string().max(80).optional(),
   bio: z.string().min(1, "Kısa özet gerekli.").max(5000),
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
@@ -78,6 +81,7 @@ export default function NewDoctorPage() {
   const [avatar, setAvatar] = useState<Media | null>(null);
   const [socialLinks, setSocialLinks] = useState<DoctorSocialLink[]>([]);
   const [additionalSpecialtyIds, setAdditionalSpecialtyIds] = useState<string[]>([]);
+  const [faq, setFaq] = useState<DoctorFaqItem[]>([]);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
@@ -97,6 +101,7 @@ export default function NewDoctorPage() {
       title: "Dr.",
       fullName: "",
       publicName: "",
+      hospitalName: "",
       slug: "",
       bio: "",
       languages: ["tr"],
@@ -147,6 +152,8 @@ export default function NewDoctorPage() {
         title: values.title,
         fullName: values.fullName,
         publicName: values.publicName.trim() || null,
+        hospitalName: values.hospitalName.trim() || null,
+        faq: cleanFaq(faq),
         slug: values.slug || undefined,
         bio: values.bio,
         languages: values.languages,
@@ -229,6 +236,10 @@ export default function NewDoctorPage() {
 
             <Field id="bio" label="Biyografi (kısa özet)" error={errors.bio?.message} required hint="Doktor kartında ve arama sonuçlarında görünür.">
               {(inputProps) => <Textarea {...inputProps} rows={5} {...register("bio")} />}
+            </Field>
+
+            <Field id="hospitalName" label="Görev yaptığı hastane / klinik" error={errors.hospitalName?.message} hint="Profilin Genel Bakış bölümünde gösterilir. Boşsa gösterilmez.">
+              {(inputProps) => <Input {...inputProps} maxLength={160} {...register("hospitalName")} />}
             </Field>
 
             <DoctorCvBasicFields value={cv} onChange={(patch) => setCv((prev) => ({ ...prev, ...patch }))} errors={cvErrors} />
@@ -317,6 +328,10 @@ export default function NewDoctorPage() {
                 onChange={(patch) => setCv((prev) => ({ ...prev, ...patch }))}
                 sectionClassName="space-y-3 rounded-lg border border-border p-3"
               />
+
+            <DoctorFaqEditor items={faq} onChange={setFaq} />
+
+            <p className="text-xs text-foreground/60">İşlemler ve foto/videolar, doktor oluşturulduktan sonra düzenleme sayfasından eklenir.</p>
 
             <Button type="submit" loading={isSubmitting} disabled={!fullName?.trim()}>
               Oluştur ve müsaitliği ayarla

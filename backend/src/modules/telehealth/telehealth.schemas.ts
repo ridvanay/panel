@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DoctorCvEntrySchema, DoctorPublicationSchema, DoctorSocialLinkSchema } from "../../schemas/entities";
+import { DoctorCvEntrySchema, DoctorFaqItemSchema, DoctorPublicationSchema, DoctorSocialLinkSchema } from "../../schemas/entities";
 import { textTranslationsSchema } from "../../lib/entity-translations";
 import { TimeZoneSchema } from "../../lib/dual-time";
 
@@ -166,6 +166,8 @@ export const CreateBookingRequestSchema = z.object({
   // Paket P — yalnızca GÖSTERİM: hastanın o anki saat dilimi (e-posta/portal çift saat). Rezervasyon
   // kurallarını etkilemez; geçersiz IANA kimliği 422.
   patientTimeZone: TimeZoneSchema.optional(),
+  // Paket Y — hastanın aktif site dili (e-postalar bu dilde). Etkin olmayan dil sessizce yok sayılır.
+  locale: z.string().trim().toLowerCase().max(12).optional(),
 });
 export type CreateBookingRequest = z.infer<typeof CreateBookingRequestSchema>;
 
@@ -331,6 +333,9 @@ const DoctorRequestBaseSchema = z.object({
   cvEntries: z.array(DoctorCvEntrySchema).max(60).optional(),
   publications: z.array(DoctorPublicationSchema).max(200).optional(),
   socialLinks: z.array(DoctorSocialLinkSchema).max(8).optional(),
+  // Paket Y — hastane/klinik ve profil SSS (düz metin, en çok 20 soru; `translations.<dil>.faq` çevirisi).
+  hospitalName: z.string().trim().max(160).nullable().optional(),
+  faq: z.array(DoctorFaqItemSchema).max(20).optional(),
   languages: LANGUAGES_SCHEMA,
   // 2026-10-18 (Paket A4) — doktorun kendi profil formundaki (`UpdateDoctorSelfProfileRequestSchema`)
   // IANA doğrulaması admin formunda da uygulanır (fonksiyon bildirimi hoisted, aşağıda tanımlı).

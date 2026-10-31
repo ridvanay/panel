@@ -36,6 +36,7 @@ import {
   SlidersHorizontal,
   Languages,
   ListChecks,
+  MessageSquareQuote,
 } from "lucide-react";
 import {
   Sidebar,
@@ -156,6 +157,8 @@ export const navItems: NavItem[] = [
   { href: "/admin/telehealth/interpreters", labelKey: "nav.telehealthInterpreters", icon: Languages, module: "telehealth", roles: ["ADMIN", "MANAGER"] },
   // Paket W — eşleştirme sihirbazı kataloğu, önizleme, raporlar ve ayarlar.
   { href: "/admin/telehealth/matcher", labelKey: "nav.telehealthMatcher", icon: ListChecks, module: "telehealth", roles: ["ADMIN", "MANAGER"] },
+  // Paket Y — hasta yorumları moderasyonu (ADMIN/MANAGER; yorumlar hasta verisi içerebilir, EDITOR/tercüman görmez).
+  { href: "/admin/telehealth/testimonials", labelKey: "nav.telehealthTestimonials", icon: MessageSquareQuote, module: "telehealth", roles: ["ADMIN", "MANAGER"] },
   {
     href: "/admin/telehealth/settings",
     labelKey: "nav.telehealthSettings",

@@ -343,6 +343,8 @@ export function BookingWizard({
         consentVersion: BOOKING_CONSENT_VERSION,
         // Paket P — yalnızca gösterim (e-posta/portal çift saat); rezervasyon kurallarını etkilemez.
         ...(visitorTimeZone ? { patientTimeZone: visitorTimeZone } : {}),
+        // Paket Y — aktif site dili; e-postalar hastanın dilinde gider (randevu kurallarını etkilemez).
+        locale: lang,
       });
       setBookingResult(result);
       persistPendingBooking(doctorSlug, { bookingId: result.bookingId, accessToken: result.accessToken });

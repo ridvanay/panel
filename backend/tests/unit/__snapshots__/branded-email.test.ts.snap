@@ -789,6 +789,114 @@ Bu e-posta otomatik olarak gönderilmiştir.",
 }
 `;
 
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:review-request · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">كيف كانت استشارتك؟</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>مرحبا Ayşe Yılmaz،</p><p>شكرا لاستشارتك مع Op. Dr. M. Demir. مشاركة تجربتك تساعد مرضى آخرين.</p><p>يمكن استخدام هذا الرابط مرة واحدة فقط، وهو صالح لمدة 30 يوما.</p><p>يرجى عدم ذكر تشخيص أو دواء أو أي معلومات تكشف هوية أحد. تتم مراجعة تقييمك قبل نشره.</p><p style="font-size:12px;color:#6b7280;"><a href="http://localhost:3000/ar/review/sample-token?optout=1" style="color:#6b7280;">إذا كنت لا ترغب في تلقي طلبات تقييم مرة أخرى، اضغط هنا</a></p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/review/sample-token" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">شارك تجربتك</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "كيف كانت استشارتك؟",
+  "text": "مرحبا Ayşe Yılmaz،
+شكرا لاستشارتك مع Op. Dr. M. Demir. مشاركة تجربتك تساعد مرضى آخرين.
+يمكن استخدام هذا الرابط مرة واحدة فقط، وهو صالح لمدة 30 يوما.
+يرجى عدم ذكر تشخيص أو دواء أو أي معلومات تكشف هوية أحد. تتم مراجعة تقييمك قبل نشره.
+إذا كنت لا ترغب في تلقي طلبات تقييم مرة أخرى، اضغط هنا (http://localhost:3000/ar/review/sample-token?optout=1)
+شارك تجربتك (http://localhost:3000/ar/review/sample-token)
+----
+WM Health Istanbul
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:review-request · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">How was your consultation?</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>Hello Ayşe Yılmaz,</p><p>Thank you for your consultation with Op. Dr. M. Demir. Sharing your experience helps other patients.</p><p>This link can be used once and is valid for 30 days.</p><p>Please do not include a diagnosis, medication or details that identify anyone. Your review is checked before it is published.</p><p style="font-size:12px;color:#6b7280;"><a href="http://localhost:3000/en/review/sample-token?optout=1" style="color:#6b7280;">If you do not want to receive review requests again, click here</a></p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/review/sample-token" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Share your experience</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "How was your consultation?",
+  "text": "Hello Ayşe Yılmaz,
+Thank you for your consultation with Op. Dr. M. Demir. Sharing your experience helps other patients.
+This link can be used once and is valid for 30 days.
+Please do not include a diagnosis, medication or details that identify anyone. Your review is checked before it is published.
+If you do not want to receive review requests again, click here (http://localhost:3000/en/review/sample-token?optout=1)
+Share your experience (http://localhost:3000/en/review/sample-token)
+----
+WM Health Istanbul
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:review-request · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Görüşmenizi değerlendirir misiniz?</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>Merhaba Ayşe Yılmaz,</p><p>Op. Dr. M. Demir ile yaptığınız görüşme için teşekkür ederiz. Deneyiminizi paylaşırsanız diğer hastalara yol göstermiş olursunuz.</p><p>Bu bağlantı yalnızca bir kez kullanılabilir ve 30 gün geçerlidir.</p><p>Lütfen yorumunuza tanı, ilaç ya da başkasını tanıtan bilgi yazmayın. Yorumunuz yayınlanmadan önce incelenir.</p><p style="font-size:12px;color:#6b7280;"><a href="http://localhost:3000/tr/review/sample-token?optout=1" style="color:#6b7280;">Bundan sonra yorum isteği almak istemiyorsanız buraya tıklayın</a></p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/tr/review/sample-token" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Deneyiminizi paylaşın</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Örnek Mah. 1, İstanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/tr/contact" style="color:#6b7280;text-decoration:underline;">Bize ulaşın</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/tr/kvkk-aydinlatma-metni" style="color:#6b7280;text-decoration:underline;">KVKK Aydınlatma Metni</a> &middot; <a href="http://localhost:3000/tr/gizlilik-politikasi" style="color:#6b7280;text-decoration:underline;">Gizlilik Politikası</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">Acil durumda 112&#39;yi (ya da bulunduğunuz ülkenin acil numarasını) arayın.</strong></p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Görüşmenizi değerlendirir misiniz?",
+  "text": "Merhaba Ayşe Yılmaz,
+Op. Dr. M. Demir ile yaptığınız görüşme için teşekkür ederiz. Deneyiminizi paylaşırsanız diğer hastalara yol göstermiş olursunuz.
+Bu bağlantı yalnızca bir kez kullanılabilir ve 30 gün geçerlidir.
+Lütfen yorumunuza tanı, ilaç ya da başkasını tanıtan bilgi yazmayın. Yorumunuz yayınlanmadan önce incelenir.
+Bundan sonra yorum isteği almak istemiyorsanız buraya tıklayın (http://localhost:3000/tr/review/sample-token?optout=1)
+Deneyiminizi paylaşın (http://localhost:3000/tr/review/sample-token)
+----
+WM Health Istanbul
+Örnek Mah. 1, İstanbul
++90 212 000 00 00 · info@example.com · Bize ulaşın (http://localhost:3000/tr/contact)
+KVKK Aydınlatma Metni (http://localhost:3000/tr/kvkk-aydinlatma-metni) · Gizlilik Politikası (http://localhost:3000/tr/gizlilik-politikasi)
+Acil durumda 112'yi (ya da bulunduğunuz ülkenin acil numarasını) arayın.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
 exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:security-2fa-reset · ar 1`] = `
 {
   "html": "<!doctype html>

@@ -1,7 +1,7 @@
 import { SERVER_API_BASE_URL, toInternalMediaUrl } from "../env";
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
-import type { AvailabilitySlot, DoctorProfile, Specialty, SpecialtyWithDoctorCount, TelehealthThemeSettings } from "./types";
+import type { AvailabilitySlot, DoctorProfile, DoctorReviewsResponse, DoctorShowcase, FeaturedReviewsResponse, Specialty, SpecialtyWithDoctorCount, TelehealthThemeSettings } from "./types";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2 — public `/doctors*` sunucu bileşenleri
@@ -60,6 +60,48 @@ export async function fetchDoctorBySlugServer(slug: string, locale?: string): Pr
     transformText: toInternalMediaUrl,
   });
   return json?.data ?? null;
+}
+
+/**
+ * Paket Y — hekim vitrini (işlemler + foto/video). Geçici hatada fırlatmak yerine boş vitrin
+ * dönülür: profil sayfası vitrin yüzünden düşmemeli (bölümler zaten boşsa gizlenir).
+ */
+export async function fetchDoctorShowcaseServer(slug: string, locale?: string): Promise<DoctorShowcase> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  try {
+    const json = await fetchServerJson<{ data: DoctorShowcase }>(`/doctors/${encodeURIComponent(slug)}/showcase${query}`, {
+      tags: [CACHE_TAGS.doctors],
+      transformText: toInternalMediaUrl,
+    });
+    return json?.data ?? { procedures: [], media: [] };
+  } catch {
+    return { procedures: [], media: [] };
+  }
+}
+
+/** Paket Y — yorumların İLK sayfası (SEO için sunucuda); sonraki sayfalar/filtreler istemcide. Hata → `null`. */
+export async function fetchDoctorReviewsServer(slug: string, locale?: string): Promise<DoctorReviewsResponse | null> {
+  const query = new URLSearchParams({ sort: "newest", page: "1" });
+  if (locale) query.set("locale", locale);
+  try {
+    const json = await fetchServerJson<{ data: DoctorReviewsResponse }>(`/doctors/${encodeURIComponent(slug)}/reviews?${query.toString()}`, {
+      tags: [CACHE_TAGS.doctors],
+    });
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Paket Y — anasayfa karuseli (`GET /reviews/featured`). Hata/boş → `null` (bölüm görünmez). */
+export async function fetchFeaturedReviewsServer(locale?: string): Promise<FeaturedReviewsResponse | null> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  try {
+    const json = await fetchServerJson<{ data: FeaturedReviewsResponse }>(`/reviews/featured${query}`);
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

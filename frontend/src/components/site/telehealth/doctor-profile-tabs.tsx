@@ -73,7 +73,7 @@ function CvDocumentLink({ entry, dict }: { entry: DoctorCvEntry; dict: Telehealt
   );
 }
 
-function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: TelehealthStrings }) {
+export function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: TelehealthStrings }) {
   if (entries.length === 0) return <EmptyTabState dict={dict} tab="cv" />;
 
   return (
@@ -126,7 +126,7 @@ function publicationGroupLabel(dict: TelehealthStrings, kind: DoctorPublicationK
   return map[kind];
 }
 
-function PublicationsList({ publications, dict }: { publications: DoctorPublication[]; dict: TelehealthStrings }) {
+export function PublicationsList({ publications, dict }: { publications: DoctorPublication[]; dict: TelehealthStrings }) {
   if (publications.length === 0) return <EmptyTabState dict={dict} tab="publications" />;
 
   const grouped = new Map<DoctorPublicationKind, DoctorPublication[]>();

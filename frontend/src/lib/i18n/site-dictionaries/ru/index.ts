@@ -10,6 +10,7 @@ import { homeStrings } from "./home";
 import { portalStrings } from "./portal";
 import { consentStrings } from "./consent";
 import { uiStrings } from "./ui";
+import { reviewsStrings } from "./reviews";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -23,4 +24,5 @@ export const siteDictionary: SiteDictionary = {
   portal: portalStrings,
   consent: consentStrings,
   ui: uiStrings,
+  reviews: reviewsStrings,
 };

@@ -17,6 +17,7 @@ import { BookingIntakeStep } from "@/components/site/telehealth/booking-intake-s
 import { BookingPaymentStep } from "@/components/site/telehealth/booking-payment-step";
 import { DocumentUploader } from "@/components/site/telehealth/document-uploader";
 import { RecordingAccessPanel } from "@/components/site/telehealth/recording-access-panel";
+import { PatientBookingReview } from "@/components/site/reviews/patient-booking-review";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.7.10 — `/{lang}/patient/bookings/{bookingId}`.
@@ -310,6 +311,9 @@ export function PatientBookingDetailPanel({
       {booking.appointments.map((appointment) => (
         <RecordingAccessPanel key={appointment.id} appointmentId={appointment.id} accessToken={accessToken} canDelete />
       ))}
+
+      {/* Paket Y — tamamlanmış görüşme için yorum formu / durumu (yalnızca oturum açmış hasta; magic-link erişiminde uç 401 verir). */}
+      {auth.status === "authenticated" && booking.appointments.some((a) => a.status === "COMPLETED") && <PatientBookingReview bookingId={booking.id} />}
 
       {(booking.paymentStatus === "PENDING" || booking.paymentStatus === "FAILED") && !polling && (
         <BookingPaymentStep
