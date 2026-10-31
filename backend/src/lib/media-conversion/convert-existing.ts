@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { UPLOAD_DIR } from "../../plugins/uploads";
-import { processSiteImage, type ImagePurpose, type MediaVariant } from "../image-pipeline";
+import { describeImageDecision, parseVariants, processSiteImage, type ImageDecision, type ImagePurpose, type MediaVariant } from "../image-pipeline";
 import { extensionForMimeType, filenameForMimeType } from "../mime-detect";
 
 /**
@@ -81,6 +81,10 @@ export interface ConvertSummary {
   skipped: { mediaId: string; reason: string }[];
   bytesBefore: number;
   bytesAfter: number;
+  /** Karar başına dosya sayısı (dönüştür / olduğu gibi bırak / kayıpsız yeniden yaz / orijinal format). */
+  decisions: Record<ImageDecision, number>;
+  /** Yalnızca site görselleri (Media'daki image/* kayıtları; ana dosya + uyumluluk kopyaları) toplam boyutu. */
+  siteImageBytes: { before: number; after: number };
   referenceUpdates: { table: string; column: string; rows: number }[];
   /** Listede olmayan ama `/uploads/` içeren kolonlar (bilgi; güncellenmez). */
   unlistedColumnsWithUploads: { table: string; column: string; rows: number }[];
@@ -158,6 +162,7 @@ export async function convertExistingMedia(prisma: PrismaClient, opts: Options):
   const log = opts.log ?? (() => undefined);
   if (opts.apply && !opts.operator?.trim()) throw new Error("--operator=<ad> zorunlu (gerçek çalışma kim tarafından yapıldı?).");
 
+  let siteImageBytesBefore = 0;
   const settings = await prisma.siteSettings.findFirst({ select: { logoUrl: true, faviconUrl: true, appleTouchIconUrl: true } });
   const iconUrls = new Set([settings?.faviconUrl, settings?.appleTouchIconUrl].filter((u): u is string => !!u).map((u) => u.replace(/^https?:\/\/[^/]+/, "")));
   const logoUrl = settings?.logoUrl?.replace(/^https?:\/\/[^/]+/, "") ?? null;
@@ -167,6 +172,11 @@ export async function convertExistingMedia(prisma: PrismaClient, opts: Options):
     orderBy: { seq: "asc" },
     ...(opts.limit ? { take: opts.limit } : {}),
   });
+
+  // Özet: yalnızca site görselleri (Media'daki image/* kayıtları; hasta belgeleri Media'da değildir).
+  for (const img of await prisma.media.findMany({ where: { mimeType: { startsWith: "image/" } }, select: { sizeBytes: true, variants: true } })) {
+    siteImageBytesBefore += img.sizeBytes + parseVariants(img.variants).reduce((n, v) => n + (v.sizeBytes ?? 0), 0);
+  }
 
   const runId = opts.apply ? new Date().toISOString().replace(/[:.]/g, "-") : null;
   const backupDir = runId ? path.join(opts.backupRoot, runId) : null;
@@ -184,6 +194,8 @@ export async function convertExistingMedia(prisma: PrismaClient, opts: Options):
     skipped: [],
     bytesBefore: 0,
     bytesAfter: 0,
+    decisions: { convert: 0, keep: 0, "keep-lossless-rewrite": 0, "keep-original-format": 0 },
+    siteImageBytes: { before: 0, after: 0 },
     referenceUpdates: [],
     unlistedColumnsWithUploads: [],
     backupDir,
@@ -216,15 +228,19 @@ export async function convertExistingMedia(prisma: PrismaClient, opts: Options):
       continue;
     }
 
-    // Uyumluluk kopyaları: JPEG her zaman; PNG saydam/logo ise. Eski dosya PNG ise eski yolda PNG kopya da yazılır.
+    // Karar (image-pipeline): JPEG/PNG → WebP; zaten WebP → yeniden sıkıştırılmaz (meta veri varsa kayıpsız yeniden
+    // yazılır, yoksa dosyaya dokunulmaz); WebP orijinalden büyükse orijinal format korunur. Yalnızca "dönüştür"
+    // kararında ana dosyanın adresi (ve metin referansları) değişir.
+    const converting = processed.decision === "convert";
     const compat = [...processed.compat];
-    if (oldExt === ".png" && !compat.some((c) => c.mimeType === "image/png")) {
+    // Dönüştürülen PNG'nin eski yolu PNG olarak yaşamaya devam etsin (eski bağlantılar aynı biçimi görsün).
+    if (converting && oldExt === ".png" && !compat.some((c) => c.mimeType === "image/png")) {
       const sharp = (await import("sharp")).default;
       const jpeg = compat.find((c) => c.mimeType === "image/jpeg")!;
       const png = await sharp(fs.readFileSync(full), { limitInputPixels: 50_000_000 }).rotate().resize({ width: jpeg.width, height: jpeg.height, fit: "inside" }).keepIccProfile().png({ compressionLevel: 9 }).toBuffer({ resolveWithObject: true });
       compat.push({ buffer: png.data, mimeType: "image/png", width: png.info.width, height: png.info.height });
     }
-    const newPath = `${base}.webp`;
+    const newPath = converting ? `${base}.webp` : name;
     const newUrl = `/uploads/${newPath}`;
     const variants: MediaVariant[] = compat.map((c) => {
       const p = `${base}${extensionForMimeType(c.mimeType)}`;
@@ -233,23 +249,38 @@ export async function convertExistingMedia(prisma: PrismaClient, opts: Options):
     const sizeAfter = processed.main.buffer.byteLength + compat.reduce((n, c) => n + c.buffer.byteLength, 0);
     summary.bytesBefore += m.sizeBytes;
     summary.bytesAfter += sizeAfter;
+    summary.decisions[processed.decision]++;
+    const decisionText = describeImageDecision({ ...processed, compat });
+    const line = `${m.id} ${name} ${(m.sizeBytes / 1024).toFixed(0)} KB → ${decisionText} (${(sizeAfter / 1024).toFixed(0)} KB)`;
 
     if (!opts.apply || !backupDir || !manifest) {
       if (m.url !== newUrl) mergeCounts(summary.referenceUpdates, await countRefs(prisma, m.url));
       summary.converted++;
-      log(`[kuru] ${m.id} ${name} ${m.sizeBytes} B → webp ${processed.main.buffer.byteLength} B (+${compat.length} kopya)`);
+      log(`[kuru] ${line}`);
       continue;
     }
 
-    // 1) Eski dosya yedeğe KOPYALANIR ve bildirim dosyası yazılır; ancak SONRA yeni sürümler yazılır (eski yol
-    //    uyumluluk kopyasıyla üzerine yazılır). Yarıda kalan bir çalışma `--restore` ile geri alınabilir.
+    // 1) Eski dosya yedeğe KOPYALANIR ve bildirim dosyası yazılır; ancak SONRA yeni sürümler yazılır. Dokunulmayan
+    //    ("olduğu gibi bırak") ana dosya yeniden YAZILMAZ; yalnızca eksik kopyalar eklenir.
     fs.copyFileSync(full, path.join(backupDir, name));
-    const files: { p: string; buf: Buffer }[] = [{ p: newPath, buf: processed.main.buffer }, ...compat.map((c, i) => ({ p: variants[i]!.path, buf: c.buffer }))];
+    const files: { p: string; buf: Buffer }[] = [
+      ...(processed.mainUnchanged ? [] : [{ p: newPath, buf: processed.main.buffer }]),
+      ...compat.map((c, i) => ({ p: variants[i]!.path, buf: c.buffer })),
+    ];
     const createdPaths = files.map((f) => f.p).filter((p) => p !== name);
     const item: ManifestItem = {
       mediaId: m.id,
       old: { path: m.path, url: m.url, mimeType: m.mimeType, sizeBytes: m.sizeBytes, width: m.width, height: m.height, filename: m.filename },
-      new: { path: newPath, url: newUrl, mimeType: "image/webp", sizeBytes: processed.main.buffer.byteLength, width: processed.main.width, height: processed.main.height, filename: filenameForMimeType(m.filename, "image/webp"), variants },
+      new: {
+        path: newPath,
+        url: newUrl,
+        mimeType: processed.main.mimeType,
+        sizeBytes: processed.main.buffer.byteLength,
+        width: processed.main.width,
+        height: processed.main.height,
+        filename: converting ? filenameForMimeType(m.filename, "image/webp") : m.filename,
+        variants,
+      },
       createdPaths,
       backupFile: name,
       replacements: [],
@@ -261,15 +292,16 @@ export async function convertExistingMedia(prisma: PrismaClient, opts: Options):
     // 3) Media satırı (FK referansları — avatarMediaId, coverMediaId, slider vb. — aynı satırı gösterdiği için kendiliğinden güncellenir).
     await prisma.media.update({
       where: { id: m.id },
-      data: { path: newPath, url: newUrl, mimeType: "image/webp", sizeBytes: item.new.sizeBytes, width: item.new.width, height: item.new.height, filename: item.new.filename, variants: variants as unknown as Prisma.InputJsonValue },
+      data: { path: newPath, url: newUrl, mimeType: item.new.mimeType, sizeBytes: item.new.sizeBytes, width: item.new.width, height: item.new.height, filename: item.new.filename, variants: variants as unknown as Prisma.InputJsonValue },
     });
     // 4) Metin referansları (yalnızca sabit liste).
     item.replacements = await replaceRefs(prisma, m.url, newUrl);
     writeManifest(backupDir, manifest);
     mergeCounts(summary.referenceUpdates, item.replacements);
     summary.converted++;
-    log(`[dönüştürüldü] ${m.id} ${name} → ${newPath}`);
+    log(`[uygulandı] ${line}`);
   }
+  summary.siteImageBytes = { before: siteImageBytesBefore, after: siteImageBytesBefore - summary.bytesBefore + summary.bytesAfter };
 
   summary.unlistedColumnsWithUploads = await scanUnlistedColumns(prisma);
   if (backupDir && manifest) {

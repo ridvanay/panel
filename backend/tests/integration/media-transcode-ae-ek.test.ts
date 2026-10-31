@@ -219,6 +219,44 @@ describe("Paket AE-ek — otomatik medya dönüştürme", () => {
       expect(res.json().data.mimeType).toBe("image/png");
     });
 
+    it("kaynak zaten WebP ve meta veri yok: dosya BAYT BAYT aynı kalır, yeniden sıkıştırılmaz; yalnızca JPEG kopyası eklenir", async () => {
+      const webp = await realSharp({ create: { width: 320, height: 200, channels: 3, background: "#2a6" } }).webp({ quality: 60 }).toBuffer();
+      const res = await uploadImage(webp, { filename: "hazir.webp", contentType: "image/webp" });
+      expect(res.statusCode).toBe(201);
+      const row = await app.prisma.media.findUniqueOrThrow({ where: { id: res.json().data.id } });
+      expect(readUpload(row.path).equals(webp)).toBe(true);
+      expect([row.mimeType, row.sizeBytes, row.width, row.height]).toEqual(["image/webp", webp.length, 320, 200]);
+      expect((row.variants as { format: string }[]).map((v) => v.format)).toEqual(["jpeg"]);
+      expect(res.json().meta.notice.message).toMatch(/^Görsel zaten WebP; olduğu gibi kaydedildi/);
+    });
+
+    it("kaynak WebP ama EXIF/GPS var: kayıpsız yeniden yazılır (pikseller aynı, meta veri yok); logo ise PNG kopyası", async () => {
+      const webp = await realSharp({ create: { width: 64, height: 48, channels: 4, background: { r: 10, g: 120, b: 200, alpha: 1 } } })
+        .webp({ lossless: true })
+        .withExif({ IFD0: { Make: "Apple", Model: "iPhone 15" }, IFD3: { GPSLatitudeRef: "N", GPSLatitude: "41/1 0/1 0/1" } })
+        .toBuffer();
+      expect((await realSharp(webp).metadata()).exif).toBeDefined();
+      const res = await uploadImage(webp, { filename: "logo.webp", contentType: "image/webp", purpose: "logo" });
+      const row = await app.prisma.media.findUniqueOrThrow({ where: { id: res.json().data.id } });
+      const out = readUpload(row.path);
+      const meta = await realSharp(out).metadata();
+      expect([meta.format, meta.exif, out.includes(Buffer.from("iPhone"))]).toEqual(["webp", undefined, false]);
+      const px = async (b: Buffer) => (await realSharp(b).ensureAlpha().raw().toBuffer()).toString("hex");
+      expect(await px(out)).toBe(await px(webp)); // kayıpsız: çözülmüş pikseller birebir aynı
+      expect((row.variants as { format: string }[]).map((v) => v.format).sort()).toEqual(["jpeg", "png"]);
+      expect(res.json().meta.notice.message).toMatch(/meta veriler kayıpsız silindi/);
+    });
+
+    it("JPEG'den çıkan WebP orijinalden büyükse orijinal format (JPEG) korunur; JPEG kopyası ayrıca yazılmaz", async () => {
+      const jpeg = await realSharp({ create: { width: 400, height: 300, channels: 3, noise: { type: "gaussian", mean: 128, sigma: 60 } } }).jpeg({ quality: 10 }).toBuffer();
+      const res = await uploadImage(jpeg, { filename: "gurultu.jpg" });
+      const row = await app.prisma.media.findUniqueOrThrow({ where: { id: res.json().data.id } });
+      expect([row.mimeType, row.url.endsWith(".jpg")]).toEqual(["image/jpeg", true]);
+      expect(readUpload(row.path).equals(jpeg)).toBe(true); // meta veri yok → dosyaya dokunulmadı
+      expect(row.variants).toEqual([]);
+      expect(res.json().meta.notice.message).toMatch(/WebP daha büyük olacağı için JPEG olarak kaldı/);
+    });
+
     it("piksel bombası (400 MP başlık) reddedilir; HEIC anlaşılır mesajla reddedilir; SVG reddi sürer", async () => {
       const bomb = await uploadImage(pixelBombPng(), { filename: "bomb.png", contentType: "image/png" });
       expect(bomb.statusCode).toBe(422);
@@ -481,12 +519,31 @@ describe("Paket AE-ek — otomatik medya dönüştürme", () => {
         const mJpg = await app.prisma.media.create({ data: { path: `${jpgId}.jpg`, url: `/uploads/${jpgId}.jpg`, filename: "kapak.jpg", mimeType: "image/jpeg", sizeBytes: jpg.length, width: 3000, height: 2000 } });
         const mPng = await app.prisma.media.create({ data: { path: `${pngId}.png`, url: `/uploads/${pngId}.png`, filename: "logo.png", mimeType: "image/png", sizeBytes: png.length, width: 300, height: 100 } });
         await app.prisma.siteSettings.upsert({ where: { id: "singleton" }, create: { id: "singleton", logoUrl: mPng.url }, update: { logoUrl: mPng.url, faviconUrl: null, appleTouchIconUrl: null } });
+        // Zaten WebP (meta verisiz) ve WebP'si daha büyük çıkacak düşük kaliteli JPEG.
+        const webpId = crypto.randomUUID();
+        const noisyId = crypto.randomUUID();
+        const webpSrc = await realSharp({ create: { width: 200, height: 100, channels: 3, background: "#963" } }).webp({ quality: 50 }).toBuffer();
+        const noisy = await realSharp({ create: { width: 400, height: 300, channels: 3, noise: { type: "gaussian", mean: 128, sigma: 60 } } }).jpeg({ quality: 10 }).toBuffer();
+        fs.writeFileSync(path.join(tmpUploads, `${webpId}.webp`), webpSrc);
+        fs.writeFileSync(path.join(tmpUploads, `${noisyId}.jpg`), noisy);
+        const mWebp = await app.prisma.media.create({ data: { path: `${webpId}.webp`, url: `/uploads/${webpId}.webp`, filename: "hazir.webp", mimeType: "image/webp", sizeBytes: webpSrc.length, width: 200, height: 100 } });
+        const mNoisy = await app.prisma.media.create({ data: { path: `${noisyId}.jpg`, url: `/uploads/${noisyId}.jpg`, filename: "gurultu.jpg", mimeType: "image/jpeg", sizeBytes: noisy.length, width: 400, height: 300 } });
+        const imageBytesBefore = jpg.length + png.length + webpSrc.length + noisy.length;
         const post = await app.prisma.blogPost.create({
           data: { title: "Yazı", slug: `aeek-${crypto.randomUUID().slice(0, 6)}`, contentHtml: `<p><img src="https://site.example${mJpg.url}"></p>`, coverImageUrl: mJpg.url, ogImageUrl: mJpg.url },
         });
 
-        const dry = await convertExistingMedia(app.prisma, { apply: false, backupRoot, uploadDir: tmpUploads });
-        expect([dry.mode, dry.candidates, dry.converted, dry.bytesBefore]).toEqual(["dry-run", 2, 2, jpg.length + png.length]);
+        const dryLines: string[] = [];
+        const dry = await convertExistingMedia(app.prisma, { apply: false, backupRoot, uploadDir: tmpUploads, log: (l) => dryLines.push(l) });
+        expect([dry.mode, dry.candidates, dry.converted, dry.bytesBefore]).toEqual(["dry-run", 4, 4, imageBytesBefore]);
+        expect(dry.decisions).toEqual({ convert: 2, keep: 1, "keep-lossless-rewrite": 0, "keep-original-format": 1 });
+        // Her dosya için karar satırı.
+        expect(dryLines.find((l) => l.includes(`${jpgId}.jpg`))).toMatch(/dönüştür → WebP \+ kopya \(JPEG\)/);
+        expect(dryLines.find((l) => l.includes(`${webpId}.webp`))).toMatch(/olduğu gibi bırak \+ kopya \(JPEG\)/);
+        expect(dryLines.find((l) => l.includes(`${noisyId}.jpg`))).toMatch(/orijinal format korunur \(WebP daha büyük\)/);
+        // "Toplam görüntü boyutu (yalnızca site görselleri)": Media'daki image/* kayıtları.
+        expect(dry.siteImageBytes.before).toBe(imageBytesBefore);
+        expect(dry.siteImageBytes.after).toBe(dry.bytesAfter);
         expect(dry.referenceUpdates).toEqual(
           expect.arrayContaining([
             { table: "blog_posts", column: "contentHtml", rows: 1 },
@@ -494,12 +551,21 @@ describe("Paket AE-ek — otomatik medya dönüştürme", () => {
             { table: "site_settings", column: "logoUrl", rows: 1 },
           ])
         );
-        expect(fs.readdirSync(tmpUploads).sort()).toEqual([`${jpgId}.jpg`, `${pngId}.png`].sort());
+        expect(fs.readdirSync(tmpUploads).sort()).toEqual([`${jpgId}.jpg`, `${pngId}.png`, `${webpId}.webp`, `${noisyId}.jpg`].sort());
         expect((await app.prisma.media.findUniqueOrThrow({ where: { id: mJpg.id } })).mimeType).toBe("image/jpeg");
         await expect(convertExistingMedia(app.prisma, { apply: true, backupRoot, uploadDir: tmpUploads })).rejects.toThrow(/operator/);
 
         const real = await convertExistingMedia(app.prisma, { apply: true, operator: "test", backupRoot, uploadDir: tmpUploads });
-        expect([real.mode, real.converted]).toEqual(["apply", 2]);
+        expect([real.mode, real.converted]).toEqual(["apply", 4]);
+        // WebP kaynak: dosya ve DB adresi değişmez; yalnızca JPEG kopyası eklenir.
+        const webpAfter = await app.prisma.media.findUniqueOrThrow({ where: { id: mWebp.id } });
+        expect([webpAfter.url, webpAfter.mimeType, webpAfter.sizeBytes]).toEqual([mWebp.url, "image/webp", webpSrc.length]);
+        expect(fs.readFileSync(path.join(tmpUploads, `${webpId}.webp`)).equals(webpSrc)).toBe(true);
+        expect((webpAfter.variants as { format: string; path: string }[]).map((v) => [v.format, v.path])).toEqual([["jpeg", `${webpId}.jpg`]]);
+        // WebP'si büyük çıkan JPEG: JPEG kalır, dosya ve adres aynı, kopya yok.
+        const noisyAfter = await app.prisma.media.findUniqueOrThrow({ where: { id: mNoisy.id } });
+        expect([noisyAfter.url, noisyAfter.mimeType, noisyAfter.variants]).toEqual([mNoisy.url, "image/jpeg", []]);
+        expect(fs.readFileSync(path.join(tmpUploads, `${noisyId}.jpg`)).equals(noisy)).toBe(true);
         expect(real.bytesAfter).toBeLessThan(real.bytesBefore);
         const after = await app.prisma.media.findUniqueOrThrow({ where: { id: mJpg.id } });
         expect([after.mimeType, after.url, after.width]).toEqual(["image/webp", `/uploads/${jpgId}.webp`, 2560]);
@@ -517,8 +583,9 @@ describe("Paket AE-ek — otomatik medya dönüştürme", () => {
         expect((await convertExistingMedia(app.prisma, { apply: false, backupRoot, uploadDir: tmpUploads })).candidates).toBe(0);
 
         const restored = await restoreConvertedMedia(app.prisma, { runId: real.runId!, backupRoot, uploadDir: tmpUploads });
-        expect(restored).toEqual({ restored: 2, missingBackups: [] });
-        expect(fs.readdirSync(tmpUploads).sort()).toEqual([`${jpgId}.jpg`, `${pngId}.png`].sort());
+        expect(restored).toEqual({ restored: 4, missingBackups: [] });
+        expect(fs.readdirSync(tmpUploads).sort()).toEqual([`${jpgId}.jpg`, `${pngId}.png`, `${webpId}.webp`, `${noisyId}.jpg`].sort());
+        expect((await app.prisma.media.findUniqueOrThrow({ where: { id: mWebp.id } })).variants).toBeNull();
         expect(fs.readFileSync(path.join(tmpUploads, `${jpgId}.jpg`)).equals(jpg)).toBe(true);
         const back = await app.prisma.media.findUniqueOrThrow({ where: { id: mJpg.id } });
         expect([back.mimeType, back.url, back.variants]).toEqual(["image/jpeg", mJpg.url, null]);

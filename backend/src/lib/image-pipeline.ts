@@ -32,12 +32,27 @@ export interface EncodedImage {
   height: number;
 }
 
+/**
+ * Kaynağa göre karar:
+ * - `convert`: JPEG/PNG/HEIC → WebP.
+ * - `keep`: kaynak zaten WebP ve meta veri yok → dosyaya HİÇ dokunulmaz (yeniden sıkıştırma yok).
+ * - `keep-lossless-rewrite`: kaynak WebP ama EXIF/GPS/XMP/IPTC var → kayıpsız WebP olarak yeniden yazılır (meta veri silinir).
+ * - `keep-original-format`: JPEG/PNG'den çıkan WebP orijinalden büyük → orijinal format korunur (meta veri varsa
+ *   yalnızca o silinerek aynı formatta yeniden yazılır, yoksa dosyaya dokunulmaz).
+ */
+export type ImageDecision = "convert" | "keep" | "keep-lossless-rewrite" | "keep-original-format";
+
 export interface ProcessedImage {
-  /** Sitede kullanılan ana sürüm (WebP; `icon` amacında PNG). */
+  /** Sitede kullanılan ana sürüm (çoğunlukla WebP; `icon` amacında ya da `keep-original-format`'ta PNG/JPEG). */
   main: EncodedImage;
-  /** Uyumluluk kopyaları: daima JPEG, saydam/logo ise ayrıca PNG. */
+  /** Eksik uyumluluk kopyaları: JPEG (+ saydam/logo ise PNG); ana sürümle aynı formattaki kopya yazılmaz. */
   compat: EncodedImage[];
   hadAlpha: boolean;
+  decision: ImageDecision;
+  /** Ana sürüm kaynak dosyanın baytlarıyla birebir aynı (hiç dokunulmadı). */
+  mainUnchanged: boolean;
+  /** Kaynakta EXIF/GPS/XMP/IPTC vardı. */
+  hadMetadata: boolean;
 }
 
 export class ImageProcessingError extends Error {
@@ -75,32 +90,103 @@ async function encode(buffer: Buffer, maxEdge: number, format: "webp" | "jpeg" |
   return { buffer: data, mimeType, width: info.width, height: info.height };
 }
 
+function asIs(buffer: Buffer, mimeType: EncodedImage["mimeType"], width: number, height: number): EncodedImage {
+  return { buffer, mimeType, width, height };
+}
+
+/** Meta veriyi silerek kaynağın KENDİ formatında yeniden yazar (WebP ve PNG kayıpsız; JPEG yüksek kalite). */
+async function rewriteWithoutMetadata(buffer: Buffer, format: "webp" | "jpeg" | "png"): Promise<EncodedImage> {
+  let p = pipelineFor(buffer).rotate().keepIccProfile();
+  if (format === "webp") p = p.webp({ lossless: true });
+  else if (format === "jpeg") p = p.jpeg({ quality: 92, mozjpeg: true });
+  else p = p.png({ compressionLevel: 9, adaptiveFiltering: true });
+  const { data, info } = await p.toBuffer({ resolveWithObject: true });
+  return { buffer: data, mimeType: format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png", width: info.width, height: info.height };
+}
+
 /** Site fotoğrafını işler. Hata durumunda kullanıcıya gösterilebilir mesajlı `ImageProcessingError` fırlatır. */
 export async function processSiteImage(buffer: Buffer, opts: { purpose?: ImagePurpose; isHeif?: boolean } = {}): Promise<ProcessedImage> {
   const purpose = opts.purpose ?? "default";
   const isHeif = opts.isHeif ?? false;
-  let hadAlpha = false;
   try {
+    // Önce YALNIZCA meta veri okunur (piksel çözülmez).
     const meta = await pipelineFor(buffer).metadata();
     if (!meta.format || !ALLOWED_INPUT_FORMATS.has(meta.format)) {
       throw new ImageProcessingError("Desteklenmeyen görsel biçimi.", "UNSUPPORTED_FORMAT");
     }
-    if ((meta.width ?? 0) * (meta.height ?? 0) > MAX_INPUT_PIXELS) {
+    const width = meta.width ?? 0;
+    const height = meta.height ?? 0;
+    if (width * height > MAX_INPUT_PIXELS) {
       throw new ImageProcessingError(`Görsel çok büyük (en çok ${MAX_INPUT_PIXELS / 1_000_000} megapiksel).`, "TOO_MANY_PIXELS");
     }
-    hadAlpha = Boolean(meta.hasAlpha);
-    // `icon` (favicon/apple-touch-icon): tarayıcı uyumu için ana sürüm PNG kalır.
-    let main = purpose === "icon" ? await encode(buffer, MAX_EDGE_PX, "png") : await encode(buffer, MAX_EDGE_PX, "webp");
-    if (main.mimeType === "image/webp" && main.buffer.byteLength >= buffer.byteLength) {
-      const smaller = await encode(buffer, MAX_EDGE_PX, "webp", WEBP_FALLBACK_QUALITY);
-      if (smaller.buffer.byteLength < main.buffer.byteLength) main = smaller;
+    const hadAlpha = Boolean(meta.hasAlpha);
+    const hadMetadata = Boolean(meta.exif || meta.xmp || meta.iptc);
+    // EXIF yönü 1 değilse görüntü döndürülmüş gösterilir; asIs'te boyutlar görüntülenen yöne göre verilir.
+    const rotated = (meta.orientation ?? 1) >= 5;
+    const [shownW, shownH] = rotated ? [height, width] : [width, height];
+
+    let main: EncodedImage;
+    let decision: ImageDecision = "convert";
+    let mainUnchanged = false;
+    if (purpose === "icon") {
+      // `icon` (favicon/apple-touch-icon): tarayıcı uyumu için ana sürüm PNG kalır.
+      main = await encode(buffer, MAX_EDGE_PX, "png");
+    } else if (meta.format === "webp") {
+      // Zaten WebP: yeniden sıkıştırılmaz. Meta veri varsa kayıpsız yeniden yazılır, yoksa dosyaya dokunulmaz.
+      if (hadMetadata) {
+        main = await rewriteWithoutMetadata(buffer, "webp");
+        decision = "keep-lossless-rewrite";
+      } else {
+        main = asIs(buffer, "image/webp", shownW, shownH);
+        decision = "keep";
+        mainUnchanged = true;
+      }
+    } else {
+      main = await encode(buffer, MAX_EDGE_PX, "webp");
+      if (main.buffer.byteLength >= buffer.byteLength) {
+        const smaller = await encode(buffer, MAX_EDGE_PX, "webp", WEBP_FALLBACK_QUALITY);
+        if (smaller.buffer.byteLength < main.buffer.byteLength) main = smaller;
+      }
+      // WebP hâlâ orijinalden büyükse orijinal format korunur (HEIC hariç: tarayıcılar gösteremez).
+      if (main.buffer.byteLength >= buffer.byteLength && (meta.format === "jpeg" || meta.format === "png")) {
+        decision = "keep-original-format";
+        if (hadMetadata) {
+          main = await rewriteWithoutMetadata(buffer, meta.format);
+        } else {
+          main = asIs(buffer, meta.format === "jpeg" ? "image/jpeg" : "image/png", shownW, shownH);
+          mainUnchanged = true;
+        }
+      }
     }
-    const compat: EncodedImage[] = [await encode(buffer, COMPAT_MAX_EDGE_PX, "jpeg")];
-    if (purpose !== "icon" && (hadAlpha || purpose === "logo")) compat.push(await encode(buffer, COMPAT_MAX_EDGE_PX, "png"));
-    return { main, compat, hadAlpha };
+
+    // Eksik uyumluluk kopyaları: JPEG her zaman, saydam/logo ise PNG; ana sürümle aynı formattaki kopya yazılmaz
+    // (ana dosya o formatın kendisidir).
+    const wanted: ("jpeg" | "png")[] = ["jpeg"];
+    if (purpose !== "icon" && (hadAlpha || purpose === "logo")) wanted.push("png");
+    const compat: EncodedImage[] = [];
+    for (const f of wanted) {
+      if (main.mimeType === `image/${f}`) continue;
+      compat.push(await encode(buffer, COMPAT_MAX_EDGE_PX, f));
+    }
+    return { main, compat, hadAlpha, decision, mainUnchanged, hadMetadata };
   } catch (err) {
     if (err instanceof ImageProcessingError) throw err;
     throw mapSharpError(err, isHeif);
+  }
+}
+
+/** Kuru çalıştırma/admin bildirimi için kısa Türkçe karar metni. */
+export function describeImageDecision(p: Pick<ProcessedImage, "decision" | "compat" | "hadMetadata">): string {
+  const copies = p.compat.length ? ` + kopya (${p.compat.map((c) => (c.mimeType === "image/png" ? "PNG" : "JPEG")).join(", ")})` : "";
+  switch (p.decision) {
+    case "convert":
+      return `dönüştür → WebP${copies}`;
+    case "keep":
+      return `olduğu gibi bırak${copies}`;
+    case "keep-lossless-rewrite":
+      return `olduğu gibi bırak (EXIF/GPS silindi, kayıpsız yeniden yazıldı)${copies}`;
+    case "keep-original-format":
+      return `orijinal format korunur (WebP daha büyük${p.hadMetadata ? "; meta veri silindi" : ""})${copies}`;
   }
 }
 

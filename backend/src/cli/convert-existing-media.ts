@@ -55,7 +55,10 @@ export async function main(): Promise<number> {
     });
     console.log(`\nMod: ${summary.mode === "apply" ? "GERÇEK" : "KURU (hiçbir şey yazılmadı)"}${summary.runId ? `  runId: ${summary.runId}` : ""}`);
     console.log(`Aday: ${summary.candidates}  Dönüştürülen: ${summary.converted}  Atlanan: ${summary.skipped.length}`);
-    console.log(`Toplam boyut: önce ${mb(summary.bytesBefore)} → sonra ${mb(summary.bytesAfter)} (WebP + uyumluluk kopyaları)`);
+    const d = summary.decisions;
+    console.log(`Kararlar: dönüştür ${d.convert} · olduğu gibi bırak ${d.keep} · kayıpsız yeniden yaz (meta veri) ${d["keep-lossless-rewrite"]} · orijinal format (WebP büyük) ${d["keep-original-format"]}`);
+    console.log(`İşlenen dosyalar: önce ${mb(summary.bytesBefore)} → sonra ${mb(summary.bytesAfter)} (ana dosya + uyumluluk kopyaları)`);
+    console.log(`Toplam görüntü boyutu (yalnızca site görselleri): önce ${mb(summary.siteImageBytes.before)} → sonra ${mb(summary.siteImageBytes.after)}`);
     if (summary.backupDir) console.log(`Yedek: ${summary.backupDir}  (geri almak için: --restore=${summary.runId})`);
     console.log(JSON.stringify({ skipped: summary.skipped, referenceUpdates: summary.referenceUpdates, unlistedColumnsWithUploads: summary.unlistedColumnsWithUploads }, null, 1));
     return 0;

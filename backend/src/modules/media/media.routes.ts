@@ -15,7 +15,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors"
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { storage } from "../../lib/storage";
 import { detectUploadMimeType, filenameForMimeType, isHeifImage, mimeTypeLabel } from "../../lib/mime-detect";
-import { ImageProcessingError, type ImagePurpose } from "../../lib/image-pipeline";
+import { ImageProcessingError, type ImagePurpose, type ProcessedImage } from "../../lib/image-pipeline";
 import { processAndStoreSiteImage, removeStoredPaths, variantPaths } from "../../lib/site-image-store";
 import { sourceFilePath } from "../../lib/video-transcode/worker";
 import fs from "node:fs";
@@ -42,6 +42,21 @@ const CORRECTABLE_DECLARED_TYPES = new Set(["application/octet-stream", "image/j
 /** Paket AE-ek — sharp ile WebP'ye dönüştürülen site fotoğrafı türleri (GIF ve PDF olduğu gibi saklanır). */
 const CONVERTIBLE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PURPOSES = new Set<ImagePurpose>(["default", "logo", "icon"]);
+
+/** Paket AE-ek — karar başına admin bildirimi (WebP kaynak yeniden sıkıştırılmaz; büyük çıkan WebP yerine orijinal format). */
+function conversionNotice(p: ProcessedImage, prefix: string, label: string, before: number, after: number): string {
+  const privacy = p.hadMetadata ? "; konum ve kamera bilgileri silindi" : "";
+  switch (p.decision) {
+    case "keep":
+      return `${prefix}Görsel zaten WebP; olduğu gibi kaydedildi (${formatBytes(after)}).`;
+    case "keep-lossless-rewrite":
+      return `${prefix}Görsel zaten WebP; yeniden sıkıştırılmadı, meta veriler kayıpsız silindi (${formatBytes(before)} → ${formatBytes(after)}).`;
+    case "keep-original-format":
+      return `${prefix}WebP daha büyük olacağı için ${label} olarak kaldı (${formatBytes(after)})${privacy}.`;
+    default:
+      return `${prefix}${label} olarak kaydedildi (${formatBytes(before)} → ${formatBytes(after)})${privacy}.`;
+  }
+}
 
 function formatBytes(n: number): string {
   return n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -227,7 +242,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
         const converted = {
           code: "CONVERTED" as const,
           detectedMimeType: isHeif ? "image/heic" : detected.mimeType,
-          message: `${prefix}${label} olarak kaydedildi (${formatBytes(buffer.byteLength)} → ${formatBytes(stored.data.sizeBytes)}); konum ve kamera bilgileri silindi.`,
+          message: conversionNotice(stored.processed, prefix, label, buffer.byteLength, stored.data.sizeBytes),
         };
         return reply.code(201).send(ok(toMediaDto(media), { notice: converted }));
       }

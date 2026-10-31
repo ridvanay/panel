@@ -130,7 +130,8 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     await trackStored(data.id);
     expect([data.mimeType, data.filename]).toEqual(["image/webp", "actually-png.webp"]);
     expect(meta.notice).toMatchObject({ code: "CONVERTED", detectedMimeType: "image/png" });
-    expect(meta.notice.message).toMatch(/^Dosya aslında PNG; WebP olarak kaydedildi \(.+ → .+\); konum ve kamera bilgileri silindi\.$/);
+    // Kaynakta meta veri yok → "konum ve kamera bilgileri silindi" cümlesi de yok (silinecek bir şey yoktu).
+    expect(meta.notice.message).toMatch(/^Dosya aslında PNG; WebP olarak kaydedildi \(.+ → .+\)\.$/);
   });
 
   it("`.PNG` adlı ve image/png beyanlı ama gerçekte JPEG olan dosya kabul edilir (içerikten JPEG) ve WebP'ye çevrilir", async () => {
