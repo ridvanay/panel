@@ -48,6 +48,11 @@ export interface BrandedEmailInput {
   bodyHtml: string;
   cta?: { label: string; url: string };
   /**
+   * Düğmenin ALTINDA gösterilen güvenli (sunucuda üretilmiş, escape'lenmiş) küçük not — ör. yorum davetindeki
+   * "bir daha yorum isteği gönderme" bağlantısı. Düğme yoksa gövdenin sonuna eklenir.
+   */
+  afterCtaHtml?: string;
+  /**
    * Gövde metninin dili (yön/hizalama için). Admin şablonları tek dilde yazılır (site varsayılanı);
    * footer alıcının dilinde olsa bile Türkçe gövde RTL'ye çevrilmez. Verilmezse `locale`.
    */
@@ -250,7 +255,7 @@ ${preheader}
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="${dir}" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
       <tr><td style="height:4px;line-height:4px;font-size:0;background-color:${color};" bgcolor="${color}">&nbsp;</td></tr>
       <tr><td align="${align}" style="padding:24px 32px 8px;">${header}</td></tr>
-      <tr><td dir="${bodyDir}" align="${bodyAlign}" style="padding:16px 32px 24px;font-family:${FONT};font-size:15px;line-height:1.6;color:#1f2937;text-align:${bodyAlign};">${title}${input.bodyHtml}${cta}</td></tr>
+      <tr><td dir="${bodyDir}" align="${bodyAlign}" style="padding:16px 32px 24px;font-family:${FONT};font-size:15px;line-height:1.6;color:#1f2937;text-align:${bodyAlign};">${title}${input.bodyHtml}${cta}${input.afterCtaHtml ?? ""}</td></tr>
       <tr><td dir="${dir}" align="${align}" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:${FONT};font-size:12px;line-height:1.6;color:#6b7280;text-align:${align};">${renderFooter(ctx, locale, input.audience)}</td></tr>
     </table>
   </td></tr>
@@ -258,7 +263,7 @@ ${preheader}
 </body>
 </html>`;
   const text = htmlToText(
-    [input.title ? `<p>${escapeHtml(input.title)}</p>` : "", input.bodyHtml, input.cta && safeUrl(input.cta.url) ? `<p><a href="${escapeHtml(input.cta.url)}">${escapeHtml(input.cta.label)}</a></p>` : "", `<p>----</p>`, renderFooter(ctx, locale, input.audience)].join("")
+    [input.title ? `<p>${escapeHtml(input.title)}</p>` : "", input.bodyHtml, input.cta && safeUrl(input.cta.url) ? `<p><a href="${escapeHtml(input.cta.url)}">${escapeHtml(input.cta.label)}</a></p>` : "", input.afterCtaHtml ?? "", `<p>----</p>`, renderFooter(ctx, locale, input.audience)].join("")
   );
   return { html, text };
 }

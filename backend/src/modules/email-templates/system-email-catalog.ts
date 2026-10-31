@@ -92,7 +92,7 @@ const DOCTOR_SAMPLE_VALUES: Record<string, string> = {
   booking_number: "BKG-1024-ABCD",
 };
 
-function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtml: string; cta?: { label: string; url: string } } {
+function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtml: string; cta?: { label: string; url: string }; afterCtaHtml?: string } {
   const base = env.FRONTEND_URL.replace(/\/$/, "");
   const fromInterpreter = (mail: InterpreterMailContent) => ({ subject: mail.subject, bodyHtml: mail.html, ...(mail.cta ? { cta: mail.cta } : {}) });
   switch (id) {
@@ -119,7 +119,7 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
     }
     case "code:review-request": {
       const mail = buildReviewInviteEmail({ locale, patientName: "Ayşe Yılmaz", doctorName: "Op. Dr. M. Demir", url: `${base}/${locale}/review/sample-token`, optOutUrl: `${base}/${locale}/review/sample-token?optout=1` });
-      return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
+      return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, afterCtaHtml: mail.afterCtaHtml };
     }
     case "code:matcher-new-lead-fallback":
       return buildMatcherLeadFallbackNotice(1024, `${base}/admin/crm/leads/sample`);
@@ -200,6 +200,7 @@ export async function renderSystemEmailSample(app: FastifyInstance, entry: Syste
     preheader: sample.subject,
     bodyHtml: sample.bodyHtml,
     ...(sample.cta ? { cta: sample.cta } : {}),
+    ...(sample.afterCtaHtml ? { afterCtaHtml: sample.afterCtaHtml } : {}),
   });
   return { id: entry.id, locale, subject: sample.subject, html: branded.html, text: branded.text, available: true };
 }

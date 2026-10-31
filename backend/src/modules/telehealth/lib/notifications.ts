@@ -9,6 +9,7 @@ import { renderTemplate } from "../../../lib/template-render";
 import { sendTemplateEmail } from "../../email-templates/email-templates.service";
 import { formatDoctorSlots, formatPatientRanges } from "../../../lib/dual-time";
 import { doctorDisplayName } from "../../../lib/doctor-display-name";
+import { localizedDoctorTitle } from "../../../lib/doctor-email-name";
 
 /**
  * 2026-09-19 (kullanıcı talebi) — `sendTemplateEmail`'in `APPOINTMENT_CONFIRMATION` için
@@ -286,6 +287,8 @@ export async function triggerAppointmentReminderEmail(
     appointment: Pick<Appointment, "id" | "bookingId" | "doctorId" | "patientName" | "patientEmail" | "startsAt"> & { endsAt?: Date };
     doctorTimeZone: string;
     doctorTitle: string;
+    /** Unvan çevirileri (`DoctorProfile.translations`): unvan her alıcının dilinde yazılır. */
+    doctorTranslations?: unknown;
     doctorFullName: string;
     /** Paket U — hastaya giden e-postada görünen ad (kurucu dışında "H. Sofu"); verilmezse kısaltılır. */
     doctorDisplayName?: string;
@@ -294,7 +297,7 @@ export async function triggerAppointmentReminderEmail(
   }
 ): Promise<boolean> {
   const { appointment, doctorTimeZone, doctorTitle, doctorFullName, doctorUserId, kind } = input;
-  const patientFacingDoctorName = `${doctorTitle} ${input.doctorDisplayName ?? doctorDisplayName({ fullName: doctorFullName })}`.trim();
+  const titleFor = (locale: string) => localizedDoctorTitle({ title: doctorTitle, translations: input.doctorTranslations }, locale);
   try {
     let bookingNumber: string;
     let patientName: string;
@@ -320,6 +323,9 @@ export async function triggerAppointmentReminderEmail(
 
     const slotSummary = formatSlotsSummary([{ startsAt: appointment.startsAt, endsAt: appointment.endsAt }], patientTimeZone);
     const doctorSlotSummary = formatDoctorSlots([appointment.startsAt], doctorTimeZone, patientTimeZone);
+    // Hastaya giden: unvan hastanın dilinde + görünen ad. Hekime giden (staff) e-posta site varsayılan dilinde yazılır;
+    // kanonik unvan zaten o dildedir.
+    const patientFacingDoctorName = `${titleFor(patientLocale)} ${input.doctorDisplayName ?? doctorDisplayName({ fullName: doctorFullName })}`.trim();
     const doctorNameFormatted = `${doctorTitle} ${doctorFullName}`.trim();
     const purpose: EmailTemplatePurpose = kind === "60m" ? "APPOINTMENT_REMINDER_60M" : "APPOINTMENT_REMINDER_30M";
 

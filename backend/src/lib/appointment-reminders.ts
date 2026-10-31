@@ -54,7 +54,7 @@ export interface AppointmentReminderSweepResult {
 }
 
 const WITH_DOCTOR_AND_BOOKING = {
-  doctor: { select: { timeZone: true, title: true, fullName: true, userId: true, isFounder: true, publicName: true } },
+  doctor: { select: { timeZone: true, title: true, translations: true, fullName: true, userId: true, isFounder: true, publicName: true } },
   booking: { select: { paymentStatus: true } },
 } as const;
 
@@ -129,6 +129,7 @@ async function processKind(app: FastifyInstance, kind: ReminderKind, now: Date):
       appointment,
       doctorTimeZone: appointment.doctor.timeZone,
       doctorTitle: appointment.doctor.title,
+      doctorTranslations: appointment.doctor.translations,
       doctorFullName: appointment.doctor.fullName,
       doctorDisplayName: doctorDisplayName(appointment.doctor),
       doctorUserId: appointment.doctor.userId,

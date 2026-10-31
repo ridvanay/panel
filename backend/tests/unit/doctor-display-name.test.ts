@@ -96,4 +96,27 @@ describe("hatırlatma e-postası", () => {
     expect(JSON.stringify(patientCall[3])).not.toContain("Hakan");
     expect(doctorCall[3].doctor_name).toBe("Prof. Dr. Hakan SOFU");
   });
+  it("hastaya giden hatırlatmada unvan hastanın dilinde (TR 'Doç. Dr.'); hekime giden kanonik unvanla", async () => {
+    const app = {
+      prisma: {
+        user: { findUnique: vi.fn(async () => ({ email: "doctor@example.com" })) },
+        appointmentBooking: { findUnique: vi.fn(async () => ({ bookingNumber: "BKG-1", patientName: "Ayşe", patientEmail: "ayse@example.com", patientTimeZone: null, locale: "tr" })) },
+      },
+      log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    } as never;
+    const ok = await triggerAppointmentReminderEmail(app, {
+      appointment: { id: "a2", bookingId: "b1", patientName: "Ayşe", patientEmail: "ayse@example.com", startsAt: new Date("2026-11-02T10:00:00Z"), endsAt: new Date("2026-11-02T10:30:00Z") } as never,
+      doctorTimeZone: "Europe/Istanbul",
+      doctorTitle: "Assoc. Prof. Dr.",
+      doctorTranslations: { tr: { title: "Doç. Dr." } },
+      doctorFullName: "Hakan SOFU",
+      doctorDisplayName: "H. Sofu",
+      doctorUserId: "u1",
+      kind: "60m",
+    });
+    expect(ok).toBe(true);
+    const calls = sendTemplateEmailMock.mock.calls as unknown as [unknown, string, string, Record<string, string>][];
+    expect(calls.find((c) => c[2] === "ayse@example.com")![3].doctor_name).toBe("Doç. Dr. H. Sofu");
+    expect(calls.find((c) => c[2] === "doctor@example.com")![3].doctor_name).toBe("Assoc. Prof. Dr. Hakan SOFU");
+  });
 });

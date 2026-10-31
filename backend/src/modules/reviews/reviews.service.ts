@@ -5,7 +5,7 @@ import { env } from "../../config/env";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { escapeHtml, toBrandLocale, type BrandLocale } from "../../lib/branded-email";
 import { sendBrandedMail } from "../../lib/branded-mail";
-import { doctorDisplayName } from "../../lib/doctor-display-name";
+import { doctorEmailName } from "../../lib/doctor-email-name";
 import { patientEmailLocale } from "../telehealth/lib/notifications";
 
 /**
@@ -278,12 +278,14 @@ export function buildReviewInviteEmail(input: { locale: string; patientName: str
   const t = INVITE[locale];
   const fill = (s: string) => s.replace("{doctor}", input.doctorName).replace("{name}", input.patientName);
   const p = (s: string) => `<p>${escapeHtml(fill(s))}</p>`;
-  const optOut = `<p style="font-size:12px;color:#6b7280;"><a href="${escapeHtml(input.optOutUrl)}" style="color:#6b7280;">${escapeHtml(t.optOut)}</a></p>`;
+  // "Bir daha yorum isteği gönderme" bağlantısı düğmenin ALTINDA, küçük puntoyla.
+  const optOut = `<p style="margin:12px 0 0;font-size:12px;line-height:1.5;color:#6b7280;"><a href="${escapeHtml(input.optOutUrl)}" style="color:#6b7280;">${escapeHtml(t.optOut)}</a></p>`;
   return {
     locale,
     subject: t.subject,
-    bodyHtml: [p(t.greeting), p(t.intro), p(t.validity), p(t.privacy), optOut].join(""),
+    bodyHtml: [p(t.greeting), p(t.intro), p(t.validity), p(t.privacy)].join(""),
     cta: { label: t.cta, url: input.url },
+    afterCtaHtml: optOut,
   };
 }
 
@@ -313,7 +315,7 @@ export async function createReviewInvite(app: FastifyInstance, bookingId: string
 export async function sendReviewInvite(app: FastifyInstance, bookingId: string, now = new Date()): Promise<boolean> {
   const booking = await app.prisma.appointmentBooking.findUnique({
     where: { id: bookingId },
-    select: { id: true, patientName: true, patientEmail: true, locale: true, archivedAt: true, patientBirthDate: true, doctor: { select: { title: true, fullName: true, publicName: true, isFounder: true } } },
+    select: { id: true, patientName: true, patientEmail: true, locale: true, archivedAt: true, patientBirthDate: true, doctor: { select: { title: true, fullName: true, publicName: true, isFounder: true, translations: true } } },
   });
   if (!booking || booking.archivedAt) return false;
   // KVKK incelemesi — reşit olmayana ve "bir daha gönderme" diyene davet gitmez.
@@ -323,10 +325,11 @@ export async function sendReviewInvite(app: FastifyInstance, bookingId: string, 
   const raw = await createReviewInvite(app, bookingId, now);
   if (!raw) return false;
   const locale = patientEmailLocale(booking);
-  const doctorName = `${booking.doctor.title} ${doctorDisplayName(booking.doctor)}`.trim();
+  // Unvan alıcının (hastanın) dilinde: `translations.<dil>.title` (ör. TR "Doç. Dr."), yoksa kanonik unvan.
+  const doctorName = doctorEmailName(booking.doctor, locale);
   const url = `${env.FRONTEND_URL}/${locale}/review/${raw}`;
   const mail = buildReviewInviteEmail({ locale, patientName: booking.patientName, doctorName, url, optOutUrl: `${url}?optout=1` });
-  await sendBrandedMail(app, { to: booking.patientEmail, subject: mail.subject, preheader: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, locale: mail.locale, audience: "patient" });
+  await sendBrandedMail(app, { to: booking.patientEmail, subject: mail.subject, preheader: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, afterCtaHtml: mail.afterCtaHtml, locale: mail.locale, audience: "patient" });
   await app.prisma.testimonialInvite.update({ where: { bookingId }, data: { sentAt: now } });
   return true;
 }

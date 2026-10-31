@@ -167,6 +167,34 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(mailSpy).not.toHaveBeenCalled();
     });
 
+    it("hekim unvanı alıcının dilinde (TR 'Doç. Dr.'); vazgeçme bağlantısı düğmenin ALTINDA küçük puntoyla", async () => {
+      const d = await doctor();
+      await app.prisma.doctorProfile.update({
+        where: { id: d.id },
+        data: { title: "Assoc. Prof. Dr.", translations: { tr: { title: "Doç. Dr." }, de: { title: "Assoz. Prof. Dr." } } },
+      });
+      const tr = await completedBooking({ doctorId: d.id, endedMinutesAgo: 25 * 60, locale: "tr" });
+      const de = await completedBooking({ doctorId: d.id, endedMinutesAgo: 25 * 60, locale: "de" });
+      const fr = await completedBooking({ doctorId: d.id, endedMinutesAgo: 25 * 60, locale: "fr" });
+      const { runReviewRequestSweep } = await import("../../src/lib/review-requests");
+      expect((await runReviewRequestSweep(app)).sent).toBe(3);
+      const html = (b: { booking: { patientEmail: string } }) => (mailSpy.mock.calls.find((c) => (c[1] as { to: string }).to === b.booking.patientEmail)![1] as { html: string }).html;
+      expect(html(tr)).toContain("Doç. Dr. M. Demir");
+      expect(html(tr)).not.toContain("Assoc.");
+      expect(html(de)).toContain("Assoz. Prof. Dr. M. Demir");
+      expect(html(fr)).toContain("Assoc. Prof. Dr. M. Demir"); // çeviri yoksa kanonik unvan
+
+      // Vazgeçme bağlantısı: düğmeden (CTA) SONRA, 12px; gövde metninde düğmeden önce yer almaz.
+      const body = html(tr);
+      const cta = body.indexOf("Deneyiminizi paylaşın");
+      const optOut = body.indexOf("?optout=1");
+      expect(cta).toBeGreaterThan(0);
+      expect(optOut).toBeGreaterThan(cta);
+      expect(body.slice(body.lastIndexOf("<p", optOut), optOut)).toContain("font-size:12px");
+      const text = (mailSpy.mock.calls.find((c) => (c[1] as { to: string }).to === tr.booking.patientEmail)![1] as { text: string }).text;
+      expect(text.indexOf("?optout=1")).toBeGreaterThan(text.indexOf("Deneyiminizi paylaşın"));
+    });
+
     it("token tek kullanımlık ve süreli; yorum pending başlar ve herkese açık listede görünmez", async () => {
       const d = await doctor();
       const { booking } = await completedBooking({ doctorId: d.id });
