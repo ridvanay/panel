@@ -1,0 +1,26 @@
+{
+ "heights": {
+  "tr-390": 11497,
+  "tr-1440": 8319,
+  "en-390": 11653,
+  "en-1440": 8389,
+  "ar-390": 11411,
+  "ar-1440": 8398
+ },
+ "thirdParty": {
+  "profil-tr-390": 0,
+  "profil-tr-1440": 0,
+  "profil-en-390": 0,
+  "profil-en-1440": 0,
+  "profil-ar-390": 0,
+  "profil-ar-1440": 0
+ },
+ "videoBytesBeforePlay": {
+  "profil-tr-390": 0,
+  "profil-tr-1440": 0,
+  "profil-en-390": 0,
+  "profil-en-1440": 0,
+  "profil-ar-390": 0,
+  "profil-ar-1440": 0
+ }
+}

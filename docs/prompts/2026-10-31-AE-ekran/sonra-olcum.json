@@ -1,0 +1,72 @@
+{
+ "heights": {
+  "tr-390": 3006,
+  "tr-1440": 1804,
+  "en-390": 3079,
+  "en-1440": 1837,
+  "ar-390": 2986,
+  "ar-1440": 1805
+ },
+ "thirdParty": {
+  "profil-tr-390": 0,
+  "profil-tr-1440": 0,
+  "profil-en-390": 0,
+  "profil-en-1440": 0,
+  "profil-ar-390": 0,
+  "profil-ar-1440": 0
+ },
+ "videoBytesBeforePlay": {
+  "profil-tr-390": 0,
+  "profil-tr-1440": 0,
+  "profil-en-390": 0,
+  "profil-en-1440": 0,
+  "profil-ar-390": 0,
+  "profil-ar-1440": 0
+ },
+ "kartYukseklikleri-en-390": [
+  317
+ ],
+ "kartYukseklikleri-en-768": [
+  325
+ ],
+ "kartYukseklikleri-en-1440": [
+  325
+ ],
+ "kartYukseklikleri-tr-390": [
+  317
+ ],
+ "kartYukseklikleri-tr-768": [
+  325
+ ],
+ "kartYukseklikleri-tr-1440": [
+  325
+ ],
+ "kartYukseklikleri-ar-390": [
+  317
+ ],
+ "kartYukseklikleri-ar-768": [
+  325
+ ],
+ "kartYukseklikleri-ar-1440": [
+  325
+ ],
+ "sayfaIlkDil-en-390": "English",
+ "sayfaIlkDil-en-1440": "English",
+ "sayfaIlkDil-tr-390": "Türkçe",
+ "sayfaIlkDil-tr-1440": "Türkçe",
+ "sayfaIlkDil-ar-390": "العربية",
+ "sayfaIlkDil-ar-1440": "العربية",
+ "experienceTabSelected": "Deneyim ve Yayınlar",
+ "mp4RequestsBeforeOpen-390": 0,
+ "mp4RequestsAfterOpen-390": 1,
+ "mp4RequestsBeforeOpen-1440": 0,
+ "mp4RequestsAfterOpen-1440": 1,
+ "videoInModal": {
+  "preload": "none",
+  "poster": true,
+  "playsinline": true,
+  "controls": true
+ },
+ "modalClosedByEsc-en": true,
+ "modalClosedByEsc-ar": true
+}
