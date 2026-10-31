@@ -413,6 +413,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Site web",
     noLinks: "Aucun lien de réseau social ou web ajouté pour le moment.",
+    duplicatePlatformHint: "Si vous ajoutez plusieurs comptes pour la même plateforme, terminez le libellé par la langue (ex. « Instagram (TR) », « Instagram (EN) ») ; le site affiche en une seule icône le compte correspondant à la langue du visiteur.",
     platform: "Plateforme",
     platformAria: "Plateforme du lien {index}",
     labelOptional: "Libellé (facultatif)",

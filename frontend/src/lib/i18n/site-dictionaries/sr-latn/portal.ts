@@ -415,6 +415,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Veb-sajt",
     noLinks: "Još nisu dodati linkovi ka društvenim mrežama/vebu.",
+    duplicatePlatformHint: "Ako dodate više naloga za istu platformu, na kraj oznake dodajte jezik (npr. „Instagram (TR)”, „Instagram (EN)”); sajt prikazuje kao jednu ikonicu nalog koji odgovara jeziku posetioca.",
     platform: "Platforma",
     platformAria: "Platforma linka {index}",
     labelOptional: "Oznaka (opciono)",

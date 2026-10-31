@@ -411,6 +411,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Website",
     noLinks: "Noch keine Social-Media- oder Weblinks hinzugefügt.",
+    duplicatePlatformHint: "Wenn Sie mehrere Konten für dieselbe Plattform hinzufügen, beenden Sie die Bezeichnung mit einem Sprachkürzel (z. B. \"Instagram (TR)\", \"Instagram (EN)\"); die Website zeigt das zur Sprache des Besuchers passende Konto als ein Symbol.",
     platform: "Plattform",
     platformAria: "Plattform von Link {index}",
     labelOptional: "Bezeichnung (optional)",

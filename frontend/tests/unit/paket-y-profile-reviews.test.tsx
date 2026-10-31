@@ -225,9 +225,9 @@ describe("profil bölümleri — boş bölümler gizli", () => {
     };
     expect(resolveProfileSections({ doctor, showcase: EMPTY_SHOWCASE, reviews: empty, dict: en.reviews }).map((s) => s.id)).toEqual(["overview", "faq"]);
     render(<DoctorProfileSections {...baseProps} doctor={doctor} showcase={showcase} reviews={empty} />);
-    expect(screen.getByRole("heading", { name: t.sectionTreatments })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: t.sectionMedia })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: t.sectionFaq })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: t.sectionTreatments, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: t.sectionMedia, level: 2, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: t.sectionFaq, hidden: true })).toBeInTheDocument();
     expect(screen.getByText("City Hospital")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: t.sectionReviews })).not.toBeInTheDocument();
     // fiyat alanı yok

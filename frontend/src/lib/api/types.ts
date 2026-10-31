@@ -879,7 +879,7 @@ export interface MoveMediaRequest {
 }
 
 /** `GET /admin/media?type=...` — `"image"` sadece `image/*`, `"document"` sadece `application/pdf` döner. */
-export type MediaTypeFilter = "image" | "document";
+export type MediaTypeFilter = "image" | "document" | "video";
 
 export interface MoveMediaResult {
   folderId: string | null;
@@ -5074,12 +5074,18 @@ export interface DoctorShowcasePhoto extends DoctorShowcaseMediaBase {
 
 export interface DoctorShowcaseVideo extends DoctorShowcaseMediaBase {
   kind: "video";
-  videoProvider: "youtube" | "vimeo";
-  videoId: string;
-  /** Kendi sunucumuzdaki küçük resim kopyası (admin kaydında indirilir); yoksa `null` → nötr yer tutucu. */
+  /** Paket AE — `upload`: kendi sunucumuza yüklenen MP4 (`videoUrl`); `videoId`/`embedUrl` yoktur. */
+  videoProvider: "youtube" | "vimeo" | "upload";
+  videoId: string | null;
+  /** Kendi sunucumuzdaki küçük resim / poster (admin kaydında indirilir ya da yüklenir); yoksa `null` → nötr yer tutucu. */
   thumbnailUrl: string | null;
-  /** `youtube-nocookie.com` / `player.vimeo.com?dnt=1` — YALNIZCA "Oynat"a basılınca yüklenir. */
-  embedUrl: string;
+  /** `youtube-nocookie.com` / `player.vimeo.com?dnt=1` — YALNIZCA "Oynat"a basılınca yüklenir. `upload` için `null`. */
+  embedUrl: string | null;
+  /** Paket AE — yalnızca `upload`: MP4 adresi. Modal açılmadan `<video>` oluşturulmaz. */
+  videoUrl?: string | null;
+  /** Paket AE — yalnızca `upload`: WebVTT altyazı adresi ve dili. */
+  captionsUrl?: string | null;
+  captionsLang?: string | null;
 }
 
 export type DoctorShowcaseMedia = DoctorShowcasePhoto | DoctorShowcaseVideo;

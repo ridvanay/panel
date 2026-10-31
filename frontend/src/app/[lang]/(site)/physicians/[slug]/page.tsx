@@ -14,6 +14,7 @@ import { BookingSelectionProvider } from "@/components/site/telehealth/booking-s
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
 import { resolveEmergencyNotice } from "@/lib/emergency-notice";
 import { fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
+import { DoctorBookingPanel } from "@/components/site/telehealth/doctor-booking-panel";
 import { BookingWizard } from "@/components/site/telehealth/booking-wizard";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
@@ -176,13 +177,13 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
       {/* Paket M — düz renk yerine admin'den seçilen görsel (yoksa varsayılan SVG) + koyu katman;
           yükseklik/yerleşim değişmedi (aynı padding ve konteyner). */}
       <DoctorHeroBackground hero={telehealthSettings.doctorHero}>
-        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
-          <DoctorProfileHero doctor={doctor} dict={dict.telehealth} lang={lang} />
-          <SupportBadge support={support} label={dict.common.supportBadge} className="mt-4" />
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+          <DoctorProfileHero doctor={doctor} dict={dict.telehealth} lang={lang} procedureCount={showcase.procedures.length} reviewSummary={reviews?.summary ?? null} />
+          <SupportBadge support={support} label={dict.common.supportBadge} className="mt-3" />
         </div>
       </DoctorHeroBackground>
 
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-10 sm:px-6 lg:pb-10">
+      <div className="mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6 lg:pb-10">
         {/* Grid görevi (2026-09-14) Görev 1 — eski iki-sütun (takvim solda/hizmet özeti sağda,
             AYRI "Randevu Al" ANKOR + AYRI "Randevu Oluştur" SUBMIT butonlu) yapı `BookingWizard`'a
             (`booking-wizard.tsx`) DEVREDİLDİ — kurumsal, TEK butonlu, 5 adımlı numaralandırılmış
@@ -207,7 +208,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
               engelleyip KENDİ içerik yüksekliğine sahip olmasını sağlar, `lg:sticky` de bu kutunun
               üstünde çalışır; dış grid'in `lg:items-start`'ı bununla TUTARLI (redundant ama zararsız,
               `booking-wizard.tsx`'te de İKİSİ BİRLİKTE var). */}
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
             <div className="lg:col-span-8">
               {/* Paket Y — sekmeli düzen yerine bölümlü düzen (boş bölümler gösterilmez); eski `DoctorProfileTabs` dosyası korunur. */}
               <DoctorProfileSections
@@ -231,12 +232,16 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
             </aside>
           </div>
 
-          <section id="randevu" className="mt-10 scroll-mt-24">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold text-foreground">{dict.telehealth.availabilityAndBookingTitle}</h2>
-              <SupportBadge support={support} label={dict.common.supportBadge} />
-            </div>
-            <div className="mt-4">
+          {/* Paket AE — sihirbaz sayfada açık durmak yerine "Randevu Oluştur" ile açılan alanda; BookingWizard DEĞİŞMEDİ. */}
+          <DoctorBookingPanel
+            doctorSlug={doctor.slug}
+            title={dict.telehealth.availabilityAndBookingTitle}
+            openLabel={dict.telehealth.createAppointmentCta}
+            hideLabel={dict.telehealth.bookingPanelHide}
+            hint={dict.telehealth.bookingPanelHint}
+            headerExtra={<SupportBadge support={support} label={dict.common.supportBadge} />}
+          >
+            <div>
               {/* Anahtardan BAĞIMSIZ, her zaman TAM metinle (admin metni, yoksa sözlük varsayılanı). */}
               <EmergencyNoticeCard text={resolveEmergencyNotice(telehealthSettings, lang, dict.telehealth).full} />
             </div>
@@ -255,7 +260,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
                 interpreterLanguages={support?.interpreterIncluded ? support.languages.map(({ code, nativeName }) => ({ code, nativeName })) : []}
               />
             </div>
-          </section>
+          </DoctorBookingPanel>
         </BookingSelectionProvider>
 
         <JsonLdScript json={buildDoctorJsonLd(doctor, canonicalUrl, alternateName)} />

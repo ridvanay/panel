@@ -410,6 +410,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Web Sitesi",
     noLinks: "Henüz sosyal medya/web bağlantısı eklenmedi.",
+    duplicatePlatformHint: "Aynı platform için birden fazla hesap eklediyseniz etiketin sonuna dil yazın (örn. \"Instagram (TR)\", \"Instagram (EN)\"); sitede ziyaretçinin diline uyan hesap tek ikon olarak gösterilir.",
     platform: "Platform",
     platformAria: "Bağlantı {index} platformu",
     labelOptional: "Etiket (opsiyonel)",

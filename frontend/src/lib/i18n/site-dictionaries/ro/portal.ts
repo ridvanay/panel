@@ -413,6 +413,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Site web",
     noLinks: "Nu a fost adăugat încă niciun link către rețele sociale/web.",
+    duplicatePlatformHint: "Dacă adăugați mai multe conturi pentru aceeași platformă, încheiați eticheta cu limba (de ex. „Instagram (TR)”, „Instagram (EN)”); site-ul afișează ca o singură pictogramă contul care corespunde limbii vizitatorului.",
     platform: "Platformă",
     platformAria: "Platforma linkului {index}",
     labelOptional: "Etichetă (opțional)",

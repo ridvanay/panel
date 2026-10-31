@@ -1,8 +1,9 @@
 import { Award, ExternalLink, FileQuestion, GraduationCap, Briefcase, Stethoscope, Trophy, Users } from "lucide-react";
-import type { DoctorCvEntry, DoctorCvEntryKind, DoctorProfile, DoctorPublication, DoctorPublicationKind } from "@/lib/api/types";
+import type { DoctorCvEntry, DoctorCvEntryKind, DoctorProfile, DoctorPublication } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
+import { DoctorPublicationsExplorer } from "@/components/site/telehealth/doctor-publications-explorer";
 
 /**
  * `.claude/design-notes-doctor-portfolio-console.md` §1.3/§1.4 — "Doktor Hakkında" / "Özgeçmiş" /
@@ -77,7 +78,7 @@ export function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: 
   if (entries.length === 0) return <EmptyTabState dict={dict} tab="cv" />;
 
   return (
-    <ol className="relative space-y-8 border-s border-border ps-8">
+    <ol className="relative space-y-6 border-s border-border ps-8">
       {entries.map((entry, idx) => {
         const KindIcon = CV_KIND_ICON[entry.kind];
         const years = cvYearLabel(entry, dict.cvOngoing);
@@ -106,72 +107,10 @@ export function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: 
   );
 }
 
-/** §1.4.3 — sabit grup SIRASI (doktorun veri sırasından BAĞIMSIZ, akademik gelenekteki önem sırası). */
-const PUBLICATION_GROUP_ORDER: DoctorPublicationKind[] = [
-  "INTERNATIONAL_ARTICLE",
-  "NATIONAL_ARTICLE",
-  "PROCEEDING",
-  "BOOK_CHAPTER",
-  "OTHER",
-];
-
-function publicationGroupLabel(dict: TelehealthStrings, kind: DoctorPublicationKind): string {
-  const map: Record<DoctorPublicationKind, string> = {
-    INTERNATIONAL_ARTICLE: dict.publicationInternational,
-    NATIONAL_ARTICLE: dict.publicationNational,
-    PROCEEDING: dict.publicationProceeding,
-    BOOK_CHAPTER: dict.publicationBookChapter,
-    OTHER: dict.publicationOther,
-  };
-  return map[kind];
-}
-
+/** Paket AE — yayınlar türe göre gruplu, ilk 5 + "Tümünü göster", yıl filtresi ve arama (bkz. `doctor-publications-explorer.tsx`). */
 export function PublicationsList({ publications, dict }: { publications: DoctorPublication[]; dict: TelehealthStrings }) {
   if (publications.length === 0) return <EmptyTabState dict={dict} tab="publications" />;
-
-  const grouped = new Map<DoctorPublicationKind, DoctorPublication[]>();
-  for (const pub of publications) {
-    const list = grouped.get(pub.kind) ?? [];
-    list.push(pub);
-    grouped.set(pub.kind, list);
-  }
-
-  return (
-    <section className="space-y-8">
-      {PUBLICATION_GROUP_ORDER.filter((g) => (grouped.get(g)?.length ?? 0) > 0).map((g) => (
-        <div key={g}>
-          <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-foreground/50 first:mt-0">
-            {publicationGroupLabel(dict, g)}
-          </p>
-          <ul>
-            {grouped.get(g)!.map((pub, idx) => {
-              const href = pub.doi ? `https://doi.org/${pub.doi}` : pub.url;
-              return (
-                <li key={idx} className="border-b border-border/60 py-3 last:border-0">
-                  <p className="text-sm font-medium text-foreground">{pub.title}</p>
-                  <p className="mt-1 text-xs text-foreground/60">
-                    {pub.authors ? `${pub.authors} · ` : ""}
-                    {pub.venue} · {pub.year}
-                  </p>
-                  {href && (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow"
-                      className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    >
-                      <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                      {dict.viewSource}
-                    </a>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </section>
-  );
+  return <DoctorPublicationsExplorer publications={publications} dict={dict} />;
 }
 
 /**

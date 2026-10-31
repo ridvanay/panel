@@ -411,6 +411,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Sitio web",
     noLinks: "Todavía no se ha añadido ningún enlace a redes sociales o web.",
+    duplicatePlatformHint: "Si añade más de una cuenta para la misma plataforma, termine la etiqueta con el idioma (p. ej. \"Instagram (TR)\", \"Instagram (EN)\"); el sitio muestra como un único icono la cuenta que coincide con el idioma del visitante.",
     platform: "Plataforma",
     platformAria: "Plataforma del enlace {index}",
     labelOptional: "Etiqueta (opcional)",

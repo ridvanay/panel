@@ -5,6 +5,7 @@ import { COOKIE_BANNER_VISIBILITY_EVENT } from "@/components/site/cookie-consent
 import { CalendarCheck } from "lucide-react";
 import { useReviewStrings } from "@/lib/i18n/use-review-strings";
 import { Button } from "@/components/ui/button";
+import { openBookingPanel } from "@/components/site/telehealth/doctor-booking-panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -61,7 +62,10 @@ export function DoctorMobileBookBar({ targetId = "randevu" }: { targetId?: strin
         tabIndex={targetVisible ? -1 : 0}
         aria-label={t.bookCtaAria}
         className="w-full rounded-[var(--site-radius)]"
-        onClick={() => document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        onClick={() => {
+          openBookingPanel();
+          document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
       >
         <CalendarCheck className="h-4 w-4" aria-hidden="true" />
         {t.bookCta}

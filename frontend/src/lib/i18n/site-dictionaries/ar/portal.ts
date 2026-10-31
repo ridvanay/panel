@@ -411,6 +411,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "الموقع الإلكتروني",
     noLinks: "لم تُضف أي روابط لوسائل التواصل أو الويب بعد.",
+    duplicatePlatformHint: "إذا أضفت أكثر من حساب للمنصة نفسها، فاكتب رمز اللغة في نهاية التسمية (مثل \"Instagram (TR)\" و\"Instagram (EN)\")؛ يعرض الموقع الحساب المطابق للغة الزائر كأيقونة واحدة.",
     platform: "المنصة",
     platformAria: "منصة الرابط {index}",
     labelOptional: "التسمية (اختياري)",

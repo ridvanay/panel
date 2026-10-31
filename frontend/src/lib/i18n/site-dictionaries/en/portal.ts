@@ -415,6 +415,7 @@ export const portalStrings = {
   socialLinksEditor: {
     website: "Website",
     noLinks: "No social media/web links added yet.",
+    duplicatePlatformHint: "If you add more than one account for the same platform, end the label with a language tag (e.g. \"Instagram (TR)\", \"Instagram (EN)\"); the site shows the account matching the visitor's language as a single icon.",
     platform: "Platform",
     platformAria: "Link {index} platform",
     labelOptional: "Label (optional)",

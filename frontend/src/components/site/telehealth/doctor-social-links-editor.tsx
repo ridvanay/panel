@@ -55,6 +55,11 @@ export function DoctorSocialLinksEditor({
 
   return (
     <div className="space-y-3">
+      {links.length > 1 && links.some((l, i) => links.some((o, j) => j !== i && o.platform === l.platform)) && (
+        <p className="text-xs text-foreground/60">
+          {t.socialLinksEditor.duplicatePlatformHint}
+        </p>
+      )}
       {links.length === 0 && <p className="text-xs text-foreground/50">{t.socialLinksEditor.noLinks}</p>}
 
       {links.map((link, index) => (

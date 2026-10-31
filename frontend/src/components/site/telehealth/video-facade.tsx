@@ -22,11 +22,22 @@ function allowedUrl(raw: string | null | undefined, hosts: Set<string>): string 
  * gelen bir adres asla kullanılmaz → "Oynat"a basılana kadar youtube/ytimg/vimeo'ya istek gitmez.
  */
 const THIRD_PARTY_HOST = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|ytimg\.com|googlevideo\.com|vimeo\.com|vimeocdn\.com|vumbnail\.com)$/i;
-function localThumbnail(raw: string | null | undefined): string | null {
+export function localThumbnail(raw: string | null | undefined): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw, "http://local.invalid");
     return /^https?:$/.test(url.protocol) && !THIRD_PARTY_HOST.test(url.hostname) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Kendi sunucumuzdan gelen medya adresi: yalnızca göreli ya da http(s) kabul edilir (javascript:/data: reddedilir). */
+export function safeMediaUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, "http://local.invalid");
+    return /^https?:$/.test(url.protocol) ? raw : null;
   } catch {
     return null;
   }

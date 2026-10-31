@@ -411,6 +411,7 @@ export const portalStrings: PortalStrings = {
   socialLinksEditor: {
     website: "Сайт",
     noLinks: "Ссылки на соцсети и сайты пока не добавлены.",
+    duplicatePlatformHint: "Если вы добавляете несколько аккаунтов одной платформы, укажите язык в конце подписи (например, «Instagram (TR)», «Instagram (EN)»); на сайте одним значком показывается аккаунт на языке посетителя.",
     platform: "Платформа",
     platformAria: "Платформа ссылки {index}",
     labelOptional: "Подпись (необязательно)",
