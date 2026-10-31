@@ -72,6 +72,9 @@ const MIME_TO_EXTENSION: Record<string, string> = {
   "image/gif": ".gif",
   "image/webp": ".webp",
   "application/pdf": ".pdf",
+  // Paket AE — yalnızca kendi uçlarından (POST /admin/media/video|captions) gelir.
+  "video/mp4": ".mp4",
+  "text/vtt": ".vtt",
 };
 
 /**
@@ -90,6 +93,32 @@ export function extensionForMimeType(mimeType: string): string {
  * söyler — `plugins/uploads.ts`'in görsel OLMAYAN türlerde (şu an yalnızca `.pdf`) `Content-
  * Disposition: attachment`/`X-Content-Type-Options: nosniff` başlıklarını eklemesi için kullanılır. */
 export const IMAGE_EXTENSIONS = new Set([".jpg", ".png", ".gif", ".webp"]);
+
+/** Paket AE — `<video>`/`<track>` ile satır içi oynatılan türler: indirmeye zorlanmaz, ama `nosniff` alır. */
+export const INLINE_MEDIA_EXTENSIONS = new Set([".mp4", ".vtt"]);
+
+/**
+ * Paket AE — iPhone HEIC/HEIF (ve AVIF) görselleri: ISO-BMFF `ftyp` kutusuyla başlar. Görsel uçları bunları
+ * "tanınmayan tür" yerine anlaşılır bir mesajla reddeder.
+ */
+const HEIF_IMAGE_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1"]);
+export function isHeifImage(buffer: Buffer): boolean {
+  if (buffer.length < 12 || buffer.subarray(4, 8).toString("latin1") !== "ftyp") return false;
+  return HEIF_IMAGE_BRANDS.has(buffer.subarray(8, 12).toString("latin1"));
+}
+
+/** Kullanıcıya gösterilecek kısa tür adı ("Dosya JPEG olarak kaydedildi"). */
+export function mimeTypeLabel(mimeType: string): string {
+  return ({ "image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF", "application/pdf": "PDF" } as Record<string, string>)[mimeType] ?? mimeType;
+}
+
+/** Dosya adının uzantısını tespit edilen türe göre düzeltir (`foto.PNG` + JPEG → `foto.jpg`). */
+export function filenameForMimeType(filename: string, mimeType: string): string {
+  const ext = extensionForMimeType(mimeType);
+  if (!ext) return filename;
+  const base = filename.replace(/\.[A-Za-z0-9]{1,5}$/, "");
+  return `${base || "dosya"}${ext}`;
+}
 
 /** `Media.mimeType`nin görsel öneki (`image/`) taşıyıp taşımadığını söyler — görsel bekleyen FK
  * slotlarının (ör. `Product.coverMediaId`, `ProductImage.mediaId`) tür karışması kapısı. */

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { INTERNAL_RATE_LIMIT_KEY, INTERNAL_RATE_LIMIT_MAX, UPLOADS_RATE_LIMIT } from "../lib/rate-limit";
-import { IMAGE_EXTENSIONS } from "../lib/mime-detect";
+import { IMAGE_EXTENSIONS, INLINE_MEDIA_EXTENSIONS } from "../lib/mime-detect";
 
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // 12 MB
@@ -69,7 +69,9 @@ export default fp(async function uploadsPlugin(app: FastifyInstance) {
         reply.header("Cache-Control", uploadCacheControl(filePath));
         const ext = path.extname(filePath).toLowerCase();
         if (!IMAGE_EXTENSIONS.has(ext)) {
-          reply.header("Content-Disposition", "attachment");
+          // Paket AE — MP4/VTT `<video>`/`<track>` ile satır içi oynatılır; indirmeye zorlanmaz ama sniffing kapalı
+          // kalır. Range (206) ve `Accept-Ranges: bytes` `@fastify/static`'in (send) varsayılan davranışıdır.
+          if (!INLINE_MEDIA_EXTENSIONS.has(ext)) reply.header("Content-Disposition", "attachment");
           reply.header("X-Content-Type-Options", "nosniff");
         }
       },

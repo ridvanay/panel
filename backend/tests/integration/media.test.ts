@@ -106,10 +106,47 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("beyan edilen tür ile içerikten tespit edilen tür farklı olan gerçek bir görseli REDDEDER (örn. PNG içerik + jpeg beyanı)", async () => {
+  // Paket AE — beyan ile içerik farklı ama içerik izinli bir görselse tür İÇERİKTEN alınır, uzantı düzeltilir, bilgi verilir.
+  it("PNG içerik + jpeg beyanı: PNG olarak kaydedilir, dosya adı uzantısı düzeltilir, bilgi mesajı döner", async () => {
     const res = await upload("image/jpeg", PNG_BYTES, "actually-png.jpg");
+    expect(res.statusCode).toBe(201);
+    const { data, meta } = res.json();
+    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: data.id } })).path);
+    expect([data.mimeType, data.filename, data.url.endsWith(".png")]).toEqual(["image/png", "actually-png.png", true]);
+    expect(meta.notice).toEqual({ code: "TYPE_CORRECTED", detectedMimeType: "image/png", message: "Dosya PNG olarak kaydedildi." });
+  });
+
+  it("`.PNG` adlı ve image/png beyanlı ama gerçekte JPEG olan dosya JPEG olarak kaydedilir", async () => {
+    const res = await upload("image/png", JPEG_BYTES, "IMG_0001.PNG");
+    expect(res.statusCode).toBe(201);
+    const { data, meta } = res.json();
+    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: data.id } })).path);
+    expect([data.mimeType, data.filename, data.url.endsWith(".jpg")]).toEqual(["image/jpeg", "IMG_0001.jpg", true]);
+    expect(meta.notice.message).toBe("Dosya JPEG olarak kaydedildi.");
+  });
+
+  it("tür beyanı olmayan (application/octet-stream) gerçek JPEG kabul edilir; tür aynıysa bilgi mesajı yoktur", async () => {
+    const res = await upload("application/octet-stream", JPEG_BYTES, "foto");
+    expect(res.statusCode).toBe(201);
+    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: res.json().data.id } })).path);
+    expect(res.json().data.filename).toBe("foto.jpg");
+    const same = await upload("image/jpeg", JPEG_BYTES, "foto.jpg");
+    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: same.json().data.id } })).path);
+    expect(same.json().meta).toBeUndefined();
+  });
+
+  it("iPhone HEIC dosyası beyandan bağımsız anlaşılır mesajla reddedilir", async () => {
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.from([0, 0, 0, 0]), Buffer.from("mif1heic"), Buffer.alloc(32)]);
+    for (const declared of ["image/heic", "image/jpeg", "application/octet-stream"]) {
+      const res = await upload(declared, heic, "IMG_0002.HEIC");
+      expect(res.statusCode, declared).toBe(422);
+      expect(res.json().error.message).toBe("iPhone HEIC biçimi desteklenmiyor. JPEG/PNG olarak dışa aktarın.");
+    }
+  });
+
+  it("görsel ↔ PDF karışması tür düzeltmesine girmez (PDF içerik + png beyanı reddedilir)", async () => {
+    const res = await upload("image/png", Buffer.from("%PDF-1.4\n%fake\n"), "x.png");
     expect(res.statusCode).toBe(422);
-    expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
   it("SVG yüklemeyi tamamen reddeder (allow-list'te değil — depolanmış XSS riski)", async () => {

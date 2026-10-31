@@ -14,7 +14,8 @@ import { toMediaDto, toMediaFolderDto } from "../../mappers";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { storage } from "../../lib/storage";
-import { detectUploadMimeType } from "../../lib/mime-detect";
+import { detectUploadMimeType, filenameForMimeType, isHeifImage, mimeTypeLabel } from "../../lib/mime-detect";
+import { registerVideoUploadRoutes } from "./media.video.routes";
 import {
   CreateMediaFolderRequestSchema,
   MediaFolderIdParamSchema,
@@ -32,6 +33,18 @@ import {
 // teknik dökümanları için EK OLARAK kabul edilir (görsel allow-list'i DEĞİŞMEDİ, yalnızca
 // genişledi).
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
+/** Paket AE — tarayıcının/işletim sisteminin tür veremediği görseller (boş/genel beyan); tür içerikten belirlenir. */
+const CORRECTABLE_DECLARED_TYPES = new Set(["application/octet-stream", "image/jpg", "image/pjpeg", "image/x-png", "image/heic", "image/heif"]);
+const HEIC_MESSAGE = "iPhone HEIC biçimi desteklenmiyor. JPEG/PNG olarak dışa aktarın.";
+
+const MediaUploadResponseSchema = z.object({
+  data: MediaSchema,
+  meta: z
+    .object({
+      notice: z.object({ code: z.literal("TYPE_CORRECTED"), detectedMimeType: z.string(), message: z.string() }).optional(),
+    })
+    .optional(),
+});
 
 // Diğer admin listeleme uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız,
 // bu uca özel orta seviye üst sınır — hem savunma derinliği (hızlı veri dökümü/scraping'e karşı)
@@ -91,7 +104,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
     "/",
     {
       preHandler: requireSiteRole(...ROLES_PANEL),
-      schema: { response: { 201: ApiSuccessSchema(MediaSchema) } },
+      schema: { response: { 201: MediaUploadResponseSchema } },
     },
     async (request, reply) => {
       // §10.11 — opsiyonel `folderId` alanı dosyadan ÖNCE ya da SONRA gelebilir, bu yüzden
@@ -125,7 +138,11 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       if (!buffer || !filename || !mimetype) {
         throw new ValidationError("Yüklenecek dosya bulunamadı.", { file: ["Zorunlu."] });
       }
-      if (!ALLOWED_MIME_TYPES.has(mimetype)) {
+      // Paket AE — iPhone HEIC/HEIF beyan edilen türden bağımsız, içerikten tanınıp anlaşılır mesajla reddedilir.
+      if (isHeifImage(buffer)) {
+        throw new ValidationError(HEIC_MESSAGE, { file: [HEIC_MESSAGE] });
+      }
+      if (!ALLOWED_MIME_TYPES.has(mimetype) && !CORRECTABLE_DECLARED_TYPES.has(mimetype)) {
         throw new ValidationError("Desteklenmeyen dosya türü.", {
           file: ["Yalnızca JPEG, PNG, WEBP veya GIF yükleyebilirsiniz."],
         });
@@ -159,10 +176,19 @@ export async function adminMediaRoutes(app: FastifyInstance) {
           file: ["Dosya içeriği tanınan bir görsel (JPEG/PNG/WEBP/GIF) ya da PDF biçimiyle eşleşmiyor."],
         });
       }
+      // Paket AE — beyan ile içerik farklıysa (ör. `.PNG` uzantılı JPEG) tür İÇERİKTEN alınır, dosya adı
+      // uzantısı düzeltilir ve kullanıcıya bilgi verilir. Güvenlik değişmez: kaydedilen tür ve diskteki uzantı
+      // zaten yalnızca tespit edilen türden gelir. Görsel ↔ PDF karışması (seçici yanlış türde dosya alır) reddedilir.
+      let notice: { code: "TYPE_CORRECTED"; detectedMimeType: string; message: string } | undefined;
       if (detected.mimeType !== mimetype) {
-        throw new ValidationError("Beyan edilen dosya türü, dosya içeriğiyle uyuşmuyor.", {
-          file: [`Content-Type "${mimetype}" olarak beyan edildi ama dosya içeriği "${detected.mimeType}" olarak tespit edildi.`],
-        });
+        const declaredIsImage = mimetype.startsWith("image/") || CORRECTABLE_DECLARED_TYPES.has(mimetype);
+        if (!declaredIsImage || !detected.mimeType.startsWith("image/")) {
+          throw new ValidationError("Beyan edilen dosya türü, dosya içeriğiyle uyuşmuyor.", {
+            file: [`Content-Type "${mimetype}" olarak beyan edildi ama dosya içeriği "${detected.mimeType}" olarak tespit edildi.`],
+          });
+        }
+        filename = filenameForMimeType(filename, detected.mimeType);
+        notice = { code: "TYPE_CORRECTED", detectedMimeType: detected.mimeType, message: `Dosya ${mimeTypeLabel(detected.mimeType)} olarak kaydedildi.` };
       }
 
       const { path: storedPath, url } = await storage.save({
@@ -200,9 +226,11 @@ export async function adminMediaRoutes(app: FastifyInstance) {
         },
       });
 
-      return reply.code(201).send(ok(toMediaDto(media)));
+      return reply.code(201).send(notice ? ok(toMediaDto(media), { notice }) : ok(toMediaDto(media)));
     }
   );
+
+  await registerVideoUploadRoutes(app);
 
   server.get(
     "/",
@@ -222,7 +250,13 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       // §2.2 madde 6 — `image` = `mimeType LIKE 'image/%'`, `document` = `mimeType =
       // 'application/pdf'`. Verilmezse filtre uygulanmaz (bkz. openapi.yaml::MediaTypeFilter).
       const typeWhere: Prisma.MediaWhereInput =
-        type === "image" ? { mimeType: { startsWith: "image/" } } : type === "document" ? { mimeType: "application/pdf" } : {};
+        type === "image"
+          ? { mimeType: { startsWith: "image/" } }
+          : type === "document"
+            ? { mimeType: "application/pdf" }
+            : type === "video"
+              ? { mimeType: "video/mp4" }
+              : {};
 
       const rows = await app.prisma.media.findMany({
         where: { ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}), ...folderWhere, ...typeWhere },

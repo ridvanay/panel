@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import { UPLOAD_DIR } from "../../plugins/uploads";
 import { extensionForMimeType } from "../mime-detect";
-import type { MediaStorage, SaveMediaInput, SaveMediaResult } from "./types";
+import type { MediaStorage, SaveMediaFileInput, SaveMediaInput, SaveMediaResult } from "./types";
 
 /**
  * Yerel disk depolama sürücüsü — `uploads.ts` plugin'inin oluşturduğu UPLOAD_DIR'e yazar.
@@ -20,6 +20,13 @@ export class LocalStorage implements MediaStorage {
     const storedName = `${crypto.randomUUID()}${ext}`;
     await fs.writeFile(path.join(UPLOAD_DIR, storedName), buffer);
 
+    return { path: storedName, url: `/uploads/${storedName}` };
+  }
+
+  /** Geçici dosya aynı dizinde olduğundan kopyalamadan yeniden adlandırılır. */
+  async saveFile({ sourcePath, mimeType }: SaveMediaFileInput): Promise<SaveMediaResult> {
+    const storedName = `${crypto.randomUUID()}${extensionForMimeType(mimeType)}`;
+    await fs.rename(sourcePath, path.join(UPLOAD_DIR, storedName));
     return { path: storedName, url: `/uploads/${storedName}` };
   }
 

@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
+import { createReadStream } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { env } from "../../config/env";
 import { extensionForMimeType, isImageMimeType } from "../mime-detect";
-import type { MediaStorage, SaveMediaInput, SaveMediaResult } from "./types";
+import type { MediaStorage, SaveMediaFileInput, SaveMediaInput, SaveMediaResult } from "./types";
 
 /**
  * S3 (veya MinIO/Cloudflare R2 gibi S3-uyumlu) depolama sürücüsü.
@@ -54,6 +56,26 @@ export class S3Storage implements MediaStorage {
       })
     );
 
+    return { path: key, url: this.buildUrl(key) };
+  }
+
+  /** Video gibi büyük dosyalar diskten akışla gönderilir (belleğe alınmaz); yerel geçici dosya sonra silinir. */
+  async saveFile({ sourcePath, sizeBytes, mimeType }: SaveMediaFileInput): Promise<SaveMediaResult> {
+    const key = `${crypto.randomUUID()}${extensionForMimeType(mimeType)}`;
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: createReadStream(sourcePath),
+          ContentLength: sizeBytes,
+          ContentType: mimeType,
+          CacheControl: "public, max-age=31536000, immutable",
+        })
+      );
+    } finally {
+      await unlink(sourcePath).catch(() => undefined);
+    }
     return { path: key, url: this.buildUrl(key) };
   }
 

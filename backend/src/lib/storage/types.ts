@@ -24,8 +24,17 @@ export interface SaveMediaResult {
   url: string;
 }
 
+/** Paket AE — büyük dosya (video): bellek yerine diskteki geçici dosyadan kaydedilir; kaynak dosya taşınır/silinir. */
+export interface SaveMediaFileInput {
+  /** UPLOAD_DIR içindeki geçici dosyanın mutlak yolu. */
+  sourcePath: string;
+  sizeBytes: number;
+  mimeType: string;
+}
+
 export interface MediaStorage {
   save(input: SaveMediaInput): Promise<SaveMediaResult>;
+  saveFile(input: SaveMediaFileInput): Promise<SaveMediaResult>;
   /** `path`, `SaveMediaResult.path` ile aynı formatta olmalı (local dosya adı ya da S3 key). */
   remove(path: string): Promise<void>;
 }

@@ -3,7 +3,7 @@ import { LocalStorage } from "./local.storage";
 import { S3Storage } from "./s3.storage";
 import type { MediaStorage } from "./types";
 
-export type { MediaStorage, SaveMediaInput, SaveMediaResult } from "./types";
+export type { MediaStorage, SaveMediaFileInput, SaveMediaInput, SaveMediaResult } from "./types";
 
 function createStorage(): MediaStorage {
   return env.STORAGE_DRIVER === "s3" ? new S3Storage() : new LocalStorage();

@@ -1651,6 +1651,10 @@ model Media {
   // Görsel piksel boyutu (kart üzerinde "1920×1080" etiketi için) — upload anında hesaplanır, migration ÖNCESİ yüklenmiş görsellerde null kalır, geriye dönük backfill YAPILMAZ.
   width     Int?
   height    Int?
+  // Paket AE — yalnızca yüklenen MP4 için (kutu ayrıştırmasıyla): kodek fourcc'si, moov'un mdat'tan önce olması, süre.
+  videoCodec     String?
+  videoFaststart Boolean?
+  durationSec    Float?
   // a11y — editör içi içerik görseli eklerken zorunlu (bkz. modules/blog/post-editor.tsx); kapak görseli/avatar gibi diğer kullanımlarda opsiyonel.
   altText   String?
   // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz" (bu bir klasör
@@ -1689,6 +1693,7 @@ model Media {
   /// Paket Y — hekim galerisi.
   doctorGallery          DoctorMedia[]        @relation("DoctorGalleryMedia")
   doctorVideoThumbnails  DoctorMedia[]        @relation("DoctorVideoThumbnail")
+  doctorVideoCaptions    DoctorMedia[]        @relation("DoctorVideoCaptions")
 
   @@index([folderId])
   @@map("media")
@@ -3922,11 +3927,15 @@ model DoctorMedia {
   kind                    String
   /// Fotoğraf için Media satırı.
   mediaId                 String?
-  /// "youtube" | "vimeo" (yalnızca video). Sunucuya video yüklenmez; küçük resim sağlayıcıdan gelir.
+  /// "youtube" | "vimeo" | "upload" (yalnızca video). "upload"da `mediaId` yüklenen MP4'tür (Paket AE).
   videoProvider           String?
   videoId                 String?
-  /// Video küçük resminin YEREL kopyası (admin kaydında bir kez indirilir). Boşsa sitede nötr yer tutucu.
+  /// Video küçük resminin YEREL kopyası (admin kaydında bir kez indirilir) ya da yüklenen videonun posteri.
+  /// Boşsa sitede nötr yer tutucu.
   thumbnailMediaId        String?
+  /// Paket AE — yüklenen videonun isteğe bağlı WebVTT altyazısı ve dili.
+  captionsMediaId         String?
+  captionsLang            String?
   /// "about" | "clinic" | "procedure" | "interview" | "before-after"
   category                String
   /// { "<dil>": { title, description, alt } } — fotoğrafta alt metin zorunlu.
@@ -3946,10 +3955,12 @@ model DoctorMedia {
   doctor         DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   media          Media?        @relation("DoctorGalleryMedia", fields: [mediaId], references: [id], onDelete: SetNull)
   thumbnailMedia Media?        @relation("DoctorVideoThumbnail", fields: [thumbnailMediaId], references: [id], onDelete: SetNull)
+  captionsMedia  Media?        @relation("DoctorVideoCaptions", fields: [captionsMediaId], references: [id], onDelete: SetNull)
 
   @@index([doctorId, isPublished, sortOrder])
   @@index([mediaId])
   @@index([thumbnailMediaId])
+  @@index([captionsMediaId])
   @@map("doctor_media")
 }
 

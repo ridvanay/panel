@@ -319,7 +319,7 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       // Küçük resim indirilemediyse (bu testte ağ yok) yer tutucu: sağlayıcı adresi ASLA dönmez.
       expect(data.media[0].thumbnailUrl === null || !/ytimg|youtube|vimeo/.test(data.media[0].thumbnailUrl)).toBe(true);
       // Ayar: varsayılan kapalı; MANAGER açamaz; ADMIN açınca görünür.
-      expect((await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings/doctor-media", headers: auth(manager.token) })).json().data).toEqual({ beforeAfterEnabled: false });
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings/doctor-media", headers: auth(manager.token) })).json().data).toEqual({ beforeAfterEnabled: false, maxVideoUploadMb: 100 });
       expect((await app.inject({ method: "PUT", url: "/api/v1/admin/telehealth/settings/doctor-media", headers: auth(manager.token), payload: { beforeAfterEnabled: true } })).statusCode).toBe(403);
       expect((await app.inject({ method: "PUT", url: "/api/v1/admin/telehealth/settings/doctor-media", headers: auth(admin.token), payload: { beforeAfterEnabled: true } })).statusCode).toBe(200);
       data = await show();

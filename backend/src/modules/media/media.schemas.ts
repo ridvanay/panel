@@ -38,7 +38,7 @@ export const MediaListQuerySchema = CursorQuerySchema.extend({
     .optional(),
   // §2.2 madde 6 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) —
   // openapi.yaml#/components/parameters/MediaTypeFilter. Verilmezse filtre uygulanmaz.
-  type: z.enum(["image", "document"]).optional(),
+  type: z.enum(["image", "document", "video"]).optional(),
 });
 
 // `POST /admin/media/folders` gövdesi.

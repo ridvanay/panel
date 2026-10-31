@@ -6,8 +6,9 @@ import { absolutizeMediaUrl } from "../../../mappers";
 /**
  * Paket Y — hekim profilinin "vitrin" içerikleri: işlemler (fiyat YOK), foto/video galerisi ve SSS çevirisi.
  *
- * Video kuralları (çerez/KVKK): sunucuya video YÜKLENMEZ; YouTube (`youtube-nocookie.com`) ya da Vimeo
- * (`dnt=1`) kimliği saklanır. Küçük resim admin kaydında sunucuda BİR KEZ indirilip Media'ya kaydedilir
+ * Video kuralları (çerez/KVKK): YouTube (`youtube-nocookie.com`) ya da Vimeo (`dnt=1`) kimliği saklanır
+ * ya da (Paket AE) MP4 sunucuya yüklenir (`videoProvider: "upload"`, `mediaId` = MP4; poster
+ * `thumbnailMediaId`, altyazı `captionsMediaId`). Küçük resim admin kaydında sunucuda BİR KEZ indirilip Media'ya kaydedilir
  * (`lib/video-thumbnail.ts`); sayfada yalnızca bu YEREL kopya (yoksa nötr yer tutucu) görünür, iframe
  * "Oynat"a basılınca yüklenir — o ana kadar youtube/ytimg/vimeo alanlarına istek gitmez.
  *
@@ -50,7 +51,7 @@ export const ProcedureBodySchema = z
 
 export const MEDIA_KINDS = ["photo", "video"] as const;
 export const MEDIA_CATEGORIES = ["about", "clinic", "procedure", "interview", "before-after"] as const;
-export const VIDEO_PROVIDERS = ["youtube", "vimeo"] as const;
+export const VIDEO_PROVIDERS = ["youtube", "vimeo", "upload"] as const;
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 const VIMEO_ID = /^\d{6,12}$/;
 
@@ -69,6 +70,10 @@ export const DoctorMediaBodySchema = z
     mediaId: z.string().uuid().nullish(),
     videoProvider: z.enum(VIDEO_PROVIDERS).nullish(),
     videoId: z.string().trim().max(40).nullish(),
+    /** Paket AE — yalnızca `upload`: poster görseli, WebVTT altyazı ve dili. */
+    posterMediaId: z.string().uuid().nullish(),
+    captionsMediaId: z.string().uuid().nullish(),
+    captionsLang: localeKey.nullish(),
     category: z.enum(MEDIA_CATEGORIES),
     translations: z.record(localeKey, MediaTextSchema).refine((t) => Object.keys(t).length <= 20, "En çok 20 dil."),
     showsPatient: z.boolean().default(false),
@@ -82,6 +87,9 @@ export const DoctorMediaBodySchema = z
     if (b.kind === "photo") {
       if (!b.mediaId) ctx.addIssue({ code: "custom", path: ["mediaId"], message: "Fotoğraf için medya seçin." });
       if (!Object.values(b.translations).some((t) => t.alt.trim())) ctx.addIssue({ code: "custom", path: ["translations"], message: "Fotoğraf için alt metin zorunlu." });
+    } else if (b.videoProvider === "upload") {
+      if (!b.mediaId) ctx.addIssue({ code: "custom", path: ["mediaId"], message: "Yüklenen video seçilmedi." });
+      if (b.captionsMediaId && !b.captionsLang) ctx.addIssue({ code: "custom", path: ["captionsLang"], message: "Altyazı dilini seçin." });
     } else {
       if (!b.videoProvider || !b.videoId) ctx.addIssue({ code: "custom", path: ["videoId"], message: "Video için sağlayıcı ve video kimliği gerekli." });
       else if (b.videoProvider === "youtube" && !YOUTUBE_ID.test(b.videoId)) ctx.addIssue({ code: "custom", path: ["videoId"], message: "Geçersiz YouTube video kimliği." });
@@ -100,14 +108,23 @@ export function requiresPatientConsent(m: { category: string; showsPatient: bool
 }
 
 // --- ayar ---------------------------------------------------------------------------------------
-export const DoctorMediaSettingsSchema = z.object({ beforeAfterEnabled: z.boolean() });
+/** Paket AE — yüklenen videonun azami boyutu (MB). Nginx `client_max_body_size` bunun biraz üstünde olmalı. */
+export const DEFAULT_MAX_VIDEO_UPLOAD_MB = 100;
+export const MAX_VIDEO_UPLOAD_MB_LIMIT = 500;
+const MaxVideoMb = z.number().int().min(1).max(MAX_VIDEO_UPLOAD_MB_LIMIT);
+
+export const DoctorMediaSettingsSchema = z.object({ beforeAfterEnabled: z.boolean(), maxVideoUploadMb: MaxVideoMb });
 export type DoctorMediaSettings = z.infer<typeof DoctorMediaSettingsSchema>;
+/** PUT gövdesi: alanlar ayrı ayrı güncellenebilir (eski istemci yalnızca `beforeAfterEnabled` gönderir). */
+export const DoctorMediaSettingsUpdateSchema = z.object({ beforeAfterEnabled: z.boolean().optional(), maxVideoUploadMb: MaxVideoMb.optional() }).strict();
 
 export function parseDoctorMediaSettings(rawSettings: unknown): DoctorMediaSettings {
   const raw = rawSettings && typeof rawSettings === "object" ? (rawSettings as Record<string, unknown>).doctorMedia : undefined;
-  const parsed = DoctorMediaSettingsSchema.safeParse(raw);
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   // Varsayılan KAPALI — hukuk onayı gelene kadar önce/sonra kategorisi hiç görünmez.
-  return parsed.success ? parsed.data : { beforeAfterEnabled: false };
+  const beforeAfter = z.boolean().safeParse(obj.beforeAfterEnabled);
+  const maxMb = MaxVideoMb.safeParse(obj.maxVideoUploadMb);
+  return { beforeAfterEnabled: beforeAfter.success ? beforeAfter.data : false, maxVideoUploadMb: maxMb.success ? maxMb.data : DEFAULT_MAX_VIDEO_UPLOAD_MB };
 }
 
 // --- herkese açık DTO --------------------------------------------------------------------------
@@ -147,7 +164,7 @@ export function videoEmbedUrl(provider: string | null, videoId: string | null): 
 /** Galeri için izin verilen görsel türleri (SVG yok). */
 export const GALLERY_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"]);
 
-export function toPublicMediaDto(row: DoctorMedia & { media: Media | null; thumbnailMedia?: Media | null }, locale: string | undefined) {
+export function toPublicMediaDto(row: DoctorMedia & { media: Media | null; thumbnailMedia?: Media | null; captionsMedia?: Media | null }, locale: string | undefined) {
   const t = pickText<z.infer<typeof MediaTextSchema>>(row.translations, locale) ?? { title: "", description: "", alt: "" };
   if (row.kind === "photo") {
     if (!row.media || !t.alt) return null;
@@ -163,6 +180,27 @@ export function toPublicMediaDto(row: DoctorMedia & { media: Media | null; thumb
       height: row.media.height,
     };
   }
+  const thumbnailUrl = row.thumbnailMedia ? absolutizeMediaUrl(row.thumbnailMedia.url) : null;
+  if (row.videoProvider === "upload") {
+    if (!row.media || row.media.mimeType !== "video/mp4") return null;
+    const captions = row.captionsMedia && row.captionsMedia.mimeType === "text/vtt" ? row.captionsMedia : null;
+    return {
+      id: row.id,
+      kind: "video" as const,
+      category: row.category,
+      title: t.title,
+      description: t.description,
+      alt: t.alt || t.title,
+      videoProvider: "upload" as const,
+      videoId: null,
+      thumbnailUrl,
+      embedUrl: null,
+      videoUrl: absolutizeMediaUrl(row.media.url),
+      captionsUrl: captions ? absolutizeMediaUrl(captions.url) : null,
+      captionsLang: captions ? row.captionsLang : null,
+      durationSec: row.media.durationSec,
+    };
+  }
   const embedUrl = videoEmbedUrl(row.videoProvider, row.videoId);
   if (!embedUrl) return null;
   return {
@@ -175,8 +213,12 @@ export function toPublicMediaDto(row: DoctorMedia & { media: Media | null; thumb
     videoProvider: row.videoProvider,
     videoId: row.videoId,
     // Yalnızca YEREL kopya; sağlayıcı adresi asla dönmez.
-    thumbnailUrl: row.thumbnailMedia ? absolutizeMediaUrl(row.thumbnailMedia.url) : null,
+    thumbnailUrl,
     embedUrl,
+    videoUrl: null,
+    captionsUrl: null,
+    captionsLang: null,
+    durationSec: null,
   };
 }
 

@@ -29,6 +29,10 @@ import {
  */
 const localeCode = z.string().regex(LOCALE_CODE_PATTERN);
 const TOKEN = z.string().min(20).max(200);
+/** Paket AE — anasayfa en çok 12 yorum; "Tüm yorumlar" sayfa boyu 12; özet şeridinde en çok 6 bayrak. */
+const FEATURED_LIMIT = 12;
+const REVIEWS_PAGE_SIZE = 12;
+const COUNTRY_FLAGS_SHOWN = 6;
 
 export async function reviewsPublicRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -159,27 +163,108 @@ export async function reviewsPublicRoutes(app: FastifyInstance) {
     }
   );
 
+  const DOCTOR_SELECT = { title: true, fullName: true, publicName: true, isFounder: true, slug: true, isActive: true, archivedAt: true } as const;
+  type RowWithDoctor = Prisma.TestimonialGetPayload<{ include: { doctor: { select: typeof DOCTOR_SELECT } } }>;
+
+  function toListItem(r: RowWithDoctor, locale: string | undefined) {
+    return {
+      ...toPublicTestimonialDto(r, locale),
+      doctor: r.doctor && r.doctor.isActive && !r.doctor.archivedAt ? { name: `${r.doctor.title} ${doctorDisplayName(r.doctor)}`.trim(), slug: r.doctor.slug } : null,
+    };
+  }
+
+  /** Paket AE — en çok yorumlu ilk 6 ülke + kalan ülke sayısı (yalnızca onaylı; ülkesi boş olanlar sayılmaz). */
+  async function countrySummary() {
+    const grouped = await app.prisma.testimonial.groupBy({ by: ["country"], where: { ...APPROVED_WHERE, country: { not: null } }, _count: { _all: true } });
+    const sorted = grouped
+      .filter((g): g is typeof g & { country: string } => Boolean(g.country))
+      .sort((a, b) => b._count._all - a._count._all || a.country.localeCompare(b.country));
+    return { codes: sorted.slice(0, COUNTRY_FLAGS_SHOWN).map((g) => g.country), more: Math.max(0, sorted.length - COUNTRY_FLAGS_SHOWN) };
+  }
+
+  /**
+   * Ziyaretçi dilindeki yorumlar önce, sonra diğerleri (her grupta yeni → eski). Prisma'da CASE sıralaması
+   * olmadığından iki sorguyla sayfa penceresi hesaplanır.
+   */
+  async function localeFirstPage(where: Prisma.TestimonialWhereInput, locale: string | undefined, skip: number, take: number): Promise<RowWithDoctor[]> {
+    const orderBy: Prisma.TestimonialOrderByWithRelationInput[] = [{ publishedAt: "desc" }, { createdAt: "desc" }];
+    const include = { doctor: { select: DOCTOR_SELECT } };
+    if (!locale) return app.prisma.testimonial.findMany({ where, orderBy, skip, take, include });
+    const localeWhere: Prisma.TestimonialWhereInput = { AND: [where, { language: locale }] };
+    const otherWhere: Prisma.TestimonialWhereInput = { AND: [where, { language: { not: locale } }] };
+    const localeCount = await app.prisma.testimonial.count({ where: localeWhere });
+    const first = skip < localeCount ? await app.prisma.testimonial.findMany({ where: localeWhere, orderBy, skip, take, include }) : [];
+    const rest = take - first.length;
+    if (rest <= 0) return first;
+    const others = await app.prisma.testimonial.findMany({ where: otherWhere, orderBy, skip: Math.max(0, skip - localeCount), take: rest, include });
+    return [...first, ...others];
+  }
+
   /** Anasayfa "What our patients say": öne çıkarılan onaylı yorumlar + genel özet (yalnızca onaylı). */
   server.get(
     "/reviews/featured",
     { config: { rateLimit: { max: 60, timeWindow: "1 minute" } }, schema: { querystring: z.object({ locale: localeCode.optional() }) } },
     async (request, reply) => {
-      const [summary, rows] = await Promise.all([
+      const { locale } = request.query;
+      const [summary, countries, rows] = await Promise.all([
         ratingSummary(app, {}),
-        app.prisma.testimonial.findMany({
-          where: { ...APPROVED_WHERE, featuredOnHome: true },
-          orderBy: { publishedAt: "desc" },
-          take: 12,
-          include: { doctor: { select: { title: true, fullName: true, publicName: true, isFounder: true, slug: true, isActive: true, archivedAt: true } } },
-        }),
+        countrySummary(),
+        localeFirstPage({ ...APPROVED_WHERE, featuredOnHome: true }, locale, 0, FEATURED_LIMIT),
       ]);
+      return reply.header("cache-control", "public, max-age=60").send(ok({ summary, countries, items: rows.map((r) => toListItem(r, locale)) }));
+    }
+  );
+
+  /** Paket AE — "Tüm yorumlar" sayfası: hekim / dil / en az puan filtresi, sayfalama, ziyaretçi dili önce. */
+  server.get(
+    "/reviews",
+    {
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        querystring: z.object({
+          locale: localeCode.optional(),
+          doctor: z.string().min(1).max(80).optional(),
+          language: localeCode.optional(),
+          minRating: z.coerce.number().int().min(1).max(5).optional(),
+          page: z.coerce.number().int().min(1).max(500).default(1),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const { locale, doctor: doctorSlug, language, minRating, page } = request.query;
+      // Yalnızca herkese açık hekimlerin yorumları filtre seçeneği olur; bilinmeyen slug → boş liste.
+      const doctor = doctorSlug ? await app.prisma.doctorProfile.findFirst({ where: { slug: doctorSlug, ...PUBLIC_DOCTOR_WHERE }, select: { id: true } }) : null;
+      const where: Prisma.TestimonialWhereInput = {
+        ...APPROVED_WHERE,
+        ...(doctorSlug ? { doctorId: doctor?.id ?? "00000000-0000-0000-0000-000000000000" } : {}),
+        ...(language ? { language } : {}),
+        ...(minRating ? { rating: { gte: minRating } } : {}),
+      };
+      const [summary, countries, total, rows, languages, byDoctor] = await Promise.all([
+        ratingSummary(app, {}),
+        countrySummary(),
+        app.prisma.testimonial.count({ where }),
+        localeFirstPage(where, language ? undefined : locale, (page - 1) * REVIEWS_PAGE_SIZE, REVIEWS_PAGE_SIZE),
+        app.prisma.testimonial.groupBy({ by: ["language"], where: APPROVED_WHERE, _count: { _all: true } }),
+        app.prisma.testimonial.groupBy({ by: ["doctorId"], where: { ...APPROVED_WHERE, doctorId: { not: null } }, _count: { _all: true } }),
+      ]);
+      const doctorRows = await app.prisma.doctorProfile.findMany({
+        where: { id: { in: byDoctor.map((d) => d.doctorId).filter((id): id is string => Boolean(id)) }, ...PUBLIC_DOCTOR_WHERE },
+        select: { id: true, ...DOCTOR_SELECT },
+      });
+      const counts = new Map(byDoctor.map((d) => [d.doctorId, d._count._all]));
       return reply.header("cache-control", "public, max-age=60").send(
         ok({
           summary,
-          items: rows.map((r) => ({
-            ...toPublicTestimonialDto(r, request.query.locale),
-            doctor: r.doctor && r.doctor.isActive && !r.doctor.archivedAt ? { name: `${r.doctor.title} ${doctorDisplayName(r.doctor)}`.trim(), slug: r.doctor.slug } : null,
-          })),
+          countries,
+          languages: languages.map((l) => ({ code: l.language, count: l._count._all })).sort((a, b) => b.count - a.count),
+          doctors: doctorRows
+            .map((d) => ({ slug: d.slug, name: `${d.title} ${doctorDisplayName(d)}`.trim(), count: counts.get(d.id) ?? 0 }))
+            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+          page,
+          pageSize: REVIEWS_PAGE_SIZE,
+          total,
+          items: rows.map((r) => toListItem(r, locale)),
         })
       );
     }
