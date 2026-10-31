@@ -15,6 +15,7 @@ import { resolveContentLocaleCode } from "../../lib/entity-translations";
 import { CACHE_TAGS, revalidateTagsOnWrite, triggerTagRevalidation } from "../../lib/revalidate";
 import { absolutizeMediaUrl } from "../../mappers";
 import { PUBLIC_DOCTOR_WHERE } from "./lib/archive-filters";
+import { importVideoThumbnail } from "../../lib/video-thumbnail";
 import { mergeTelehealthSettings } from "./lib/emergency-notice";
 import {
   DoctorMediaBodySchema,
@@ -55,7 +56,7 @@ export async function telehealthShowcasePublicRoutes(app: FastifyInstance) {
             isPublished: true,
             ...(beforeAfterEnabled ? {} : { category: { not: "before-after" } }),
           },
-          include: { media: true },
+          include: { media: true, thumbnailMedia: true },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         }),
       ]);
@@ -77,11 +78,12 @@ function adminProcedureDto(row: Prisma.DoctorProcedureGetPayload<object>) {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
-function adminMediaDto(row: Prisma.DoctorMediaGetPayload<{ include: { media: true } }>) {
-  const { media, ...rest } = row;
+function adminMediaDto(row: Prisma.DoctorMediaGetPayload<{ include: { media: true; thumbnailMedia: true } }>) {
+  const { media, thumbnailMedia, ...rest } = row;
   return {
     ...rest,
     media: media ? { id: media.id, url: absolutizeMediaUrl(media.url), width: media.width, height: media.height, filename: media.filename } : null,
+    thumbnailUrl: thumbnailMedia ? absolutizeMediaUrl(thumbnailMedia.url) : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -150,7 +152,7 @@ export async function adminTelehealthShowcaseRoutes(app: FastifyInstance) {
   // --- medya ---------------------------------------------------------------------------------
   server.get("/:doctorId/media", { schema: { params: DoctorParams } }, async (request, reply) => {
     await assertDoctor(request.params.doctorId);
-    const rows = await app.prisma.doctorMedia.findMany({ where: { doctorId: request.params.doctorId }, include: { media: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+    const rows = await app.prisma.doctorMedia.findMany({ where: { doctorId: request.params.doctorId }, include: { media: true, thumbnailMedia: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
     return reply.send(ok(rows.map(adminMediaDto)));
   });
 
@@ -171,6 +173,13 @@ export async function adminTelehealthShowcaseRoutes(app: FastifyInstance) {
     };
   }
 
+  /** Video küçük resmi: yeni video ya da kimlik/sağlayıcı değiştiyse (ya da önceki indirme başarısızsa) bir kez indirilir. */
+  async function thumbnailFor(body: z.infer<typeof DoctorMediaBodySchema>, existing?: { videoProvider: string | null; videoId: string | null; thumbnailMediaId: string | null }) {
+    if (body.kind !== "video" || !body.videoProvider || !body.videoId) return { thumbnailMediaId: null };
+    if (existing && existing.videoProvider === body.videoProvider && existing.videoId === body.videoId && existing.thumbnailMediaId) return {};
+    return { thumbnailMediaId: await importVideoThumbnail(app, body.videoProvider, body.videoId) };
+  }
+
   async function auditMedia(request: { user?: { id: string; email: string } | null; ip: string }, action: string, row: { id: string; category: string; isPublished: boolean; patientConsentConfirmed: boolean }) {
     await logAudit(app, {
       actorId: request.user!.id,
@@ -187,13 +196,17 @@ export async function adminTelehealthShowcaseRoutes(app: FastifyInstance) {
     await assertDoctor(request.params.doctorId);
     await assertPhoto(request.body.kind === "photo" ? request.body.mediaId : null);
     const consent = request.body.patientConsentConfirmed ? { consentRecordedAt: new Date(), consentRecordedById: request.user!.id } : {};
-    const row = await app.prisma.doctorMedia.create({ data: { ...mediaData(request.body), ...consent, doctorId: request.params.doctorId }, include: { media: true } });
+    const thumb = await thumbnailFor(request.body);
+    const row = await app.prisma.doctorMedia.create({ data: { ...mediaData(request.body), ...consent, ...thumb, doctorId: request.params.doctorId }, include: { media: true, thumbnailMedia: true } });
     await auditMedia(request, "doctor.media_created", row);
     return reply.status(201).send(ok(adminMediaDto(row)));
   });
 
   server.put("/:doctorId/media/:id", { schema: { params: ItemParams, body: DoctorMediaBodySchema } }, async (request, reply) => {
-    const existing = await app.prisma.doctorMedia.findFirst({ where: { id: request.params.id, doctorId: request.params.doctorId }, select: { id: true, patientConsentConfirmed: true } });
+    const existing = await app.prisma.doctorMedia.findFirst({
+      where: { id: request.params.id, doctorId: request.params.doctorId },
+      select: { id: true, patientConsentConfirmed: true, videoProvider: true, videoId: true, thumbnailMediaId: true },
+    });
     if (!existing) throw new NotFoundError("Medya öğesi bulunamadı.");
     await assertPhoto(request.body.kind === "photo" ? request.body.mediaId : null);
     // Onay ilk kez işaretlenince kim/ne zaman yazılır; onay kaldırılınca boşalır.
@@ -202,7 +215,8 @@ export async function adminTelehealthShowcaseRoutes(app: FastifyInstance) {
       : !existing.patientConsentConfirmed
         ? { consentRecordedAt: new Date(), consentRecordedById: request.user!.id }
         : {};
-    const row = await app.prisma.doctorMedia.update({ where: { id: existing.id }, data: { ...mediaData(request.body), ...consent }, include: { media: true } });
+    const thumb = await thumbnailFor(request.body, existing);
+    const row = await app.prisma.doctorMedia.update({ where: { id: existing.id }, data: { ...mediaData(request.body), ...consent, ...thumb }, include: { media: true, thumbnailMedia: true } });
     await auditMedia(request, "doctor.media_updated", row);
     return reply.send(ok(adminMediaDto(row)));
   });

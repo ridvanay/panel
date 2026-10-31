@@ -1688,6 +1688,7 @@ model Media {
   accreditationLogos     AccreditationBadge[] @relation("AccreditationBadgeLogo")
   /// Paket Y — hekim galerisi.
   doctorGallery          DoctorMedia[]        @relation("DoctorGalleryMedia")
+  doctorVideoThumbnails  DoctorMedia[]        @relation("DoctorVideoThumbnail")
 
   @@index([folderId])
   @@map("media")
@@ -3924,6 +3925,8 @@ model DoctorMedia {
   /// "youtube" | "vimeo" (yalnızca video). Sunucuya video yüklenmez; küçük resim sağlayıcıdan gelir.
   videoProvider           String?
   videoId                 String?
+  /// Video küçük resminin YEREL kopyası (admin kaydında bir kez indirilir). Boşsa sitede nötr yer tutucu.
+  thumbnailMediaId        String?
   /// "about" | "clinic" | "procedure" | "interview" | "before-after"
   category                String
   /// { "<dil>": { title, description, alt } } — fotoğrafta alt metin zorunlu.
@@ -3940,11 +3943,13 @@ model DoctorMedia {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  media  Media?        @relation("DoctorGalleryMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  doctor         DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  media          Media?        @relation("DoctorGalleryMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  thumbnailMedia Media?        @relation("DoctorVideoThumbnail", fields: [thumbnailMediaId], references: [id], onDelete: SetNull)
 
   @@index([doctorId, isPublished, sortOrder])
   @@index([mediaId])
+  @@index([thumbnailMediaId])
   @@map("doctor_media")
 }
 

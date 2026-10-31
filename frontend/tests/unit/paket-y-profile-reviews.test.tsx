@@ -159,19 +159,26 @@ function makeVideo(overrides: Partial<DoctorShowcaseVideo> = {}): DoctorShowcase
     alt: "Interview with the physician",
     videoProvider: "youtube",
     videoId: "dQw4w9WgXcQ",
-    thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    // Paket Y (kullanıcı kararı) — kendi sunucumuzdaki kopya.
+    thumbnailUrl: "https://api.example.com/uploads/video-thumb-youtube-dQw4w9WgXcQ.jpg",
     embedUrl: "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
     ...overrides,
   };
 }
 
 describe("video facade", () => {
-  it("oynat'a basmadan iframe ve youtube-nocookie src yok; basınca iframe gelir", async () => {
+  it("oynat'a basmadan youtube / ytimg / vimeo alanlarına HİÇBİR referans yok (istek gitmez); basınca iframe gelir", async () => {
     const { container } = render(<VideoFacade video={makeVideo()} />);
     expect(container.querySelector("iframe")).toBeNull();
-    expect(container.innerHTML).not.toContain("youtube-nocookie");
-    // yalnızca sağlayıcının statik küçük resmi
-    expect(container.querySelector("img")?.getAttribute("src")).toContain("i.ytimg.com");
+    // DOM'daki hiçbir nitelik (src/href/srcset/style/poster/data) üçüncü taraf video alanına işaret etmez → tarayıcı istek atmaz.
+    const thirdPartyHosts = Array.from(container.querySelectorAll("*"))
+      .flatMap((el) => Array.from(el.attributes).map((attr) => attr.value))
+      .flatMap((value) => value.match(/https?:\/\/[^\s"')]+/g) ?? [])
+      .map((url) => new URL(url).hostname)
+      .filter((host) => /(youtube|youtube-nocookie|ytimg|vimeo|vimeocdn|vumbnail)\./i.test(host));
+    expect(thirdPartyHosts).toEqual([]);
+    // yalnızca yerel küçük resim kopyası
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("https://api.example.com/uploads/video-thumb-youtube-dQw4w9WgXcQ.jpg");
     expect(screen.getByText("When you press play, the video is loaded from YouTube.")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Play video: Interview" }));
@@ -180,6 +187,12 @@ describe("video facade", () => {
     expect(iframe?.getAttribute("src")).toContain("youtube-nocookie.com");
     expect(iframe?.getAttribute("allow")).toBe("autoplay; encrypted-media; picture-in-picture");
     expect(iframe?.getAttribute("title")).toBe("Interview");
+  });
+
+  it("sunucu yanlışlıkla sağlayıcı küçük resmi döndürse bile kullanılmaz (yer tutucu)", () => {
+    const { container } = render(<VideoFacade video={makeVideo({ thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" })} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(Array.from(container.querySelectorAll("*")).some((el) => Array.from(el.attributes).some((attr) => /ytimg/i.test(attr.value)))).toBe(false);
   });
 
   it("küçük resim yoksa yer tutucu gösterilir (img yok), iframe yine yok", () => {

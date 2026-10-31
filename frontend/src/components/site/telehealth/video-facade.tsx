@@ -5,14 +5,28 @@ import { Play } from "lucide-react";
 import type { DoctorShowcaseVideo } from "@/lib/api/types";
 import { fillReview, useReviewStrings } from "@/lib/i18n/use-review-strings";
 
-/** Savunma: iframe yalnızca bu host'lardan, küçük resim yalnızca YouTube'un statik host'undan yüklenir. */
+/** Savunma: iframe yalnızca bu host'lardan yüklenir. */
 const EMBED_HOSTS = new Set(["www.youtube-nocookie.com", "player.vimeo.com"]);
-const THUMBNAIL_HOSTS = new Set(["i.ytimg.com"]);
 function allowedUrl(raw: string | null | undefined, hosts: Set<string>): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
     return url.protocol === "https:" && hosts.has(url.hostname) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Küçük resim YALNIZCA kendi sunucumuzdaki kopyadır (admin kaydında indirilir). Sağlayıcı alanlarından
+ * gelen bir adres asla kullanılmaz → "Oynat"a basılana kadar youtube/ytimg/vimeo'ya istek gitmez.
+ */
+const THIRD_PARTY_HOST = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|ytimg\.com|googlevideo\.com|vimeo\.com|vimeocdn\.com|vumbnail\.com)$/i;
+function localThumbnail(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, "http://local.invalid");
+    return /^https?:$/.test(url.protocol) && !THIRD_PARTY_HOST.test(url.hostname) ? raw : null;
   } catch {
     return null;
   }
@@ -31,7 +45,7 @@ function withAutoplay(embedUrl: string): string {
 /**
  * Paket Y — video "facade": ilk anda YALNIZCA küçük resim (yoksa yer tutucu) + oynat düğmesi vardır; `iframe`
  * (youtube-nocookie / Vimeo `dnt=1`) ancak kullanıcı oynat'a basınca yüklenir. Böylece sayfa açılışında
- * üçüncü taraf çerez/izleme isteği oluşmaz (KVKK). Küçük resim sağlayıcının statik adresinden gelir, sunucumuza kopyalanmaz.
+ * üçüncü taraf çerez/izleme isteği oluşmaz (KVKK). Küçük resim kendi sunucumuzdaki kopyadır (yoksa nötr yer tutucu).
  */
 export function VideoFacade({ video }: { video: DoctorShowcaseVideo }) {
   const { t } = useReviewStrings();
@@ -39,7 +53,7 @@ export function VideoFacade({ video }: { video: DoctorShowcaseVideo }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const title = video.title?.trim() || video.alt?.trim() || t.videoFallbackTitle;
   const embedUrl = allowedUrl(video.embedUrl, EMBED_HOSTS);
-  const thumbnailUrl = allowedUrl(video.thumbnailUrl, THUMBNAIL_HOSTS);
+  const thumbnailUrl = localThumbnail(video.thumbnailUrl);
 
   // Oynat düğmesi DOM'dan kalkınca odak kaybolmasın: iframe'e taşınır.
   useEffect(() => {
@@ -70,7 +84,7 @@ export function VideoFacade({ video }: { video: DoctorShowcaseVideo }) {
           className="group absolute inset-0 flex h-full w-full items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           {thumbnailUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- sağlayıcının (i.ytimg.com) statik küçük resmi; next/image remotePatterns'e dış host eklenmez
+            // eslint-disable-next-line @next/next/no-img-element -- kendi sunucumuzdaki küçük resim kopyası (medya kütüphanesi)
             <img src={thumbnailUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
           ) : (
             <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-br from-[var(--site-secondary)] to-black" />

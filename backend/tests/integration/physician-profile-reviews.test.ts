@@ -316,7 +316,8 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(data.procedures.map((p: { title: string }) => p.title)).toEqual(["Laparoskopik kolesistektomi"]);
       expect(data.media.map((m: { category: string }) => m.category)).toEqual(["interview"]);
       expect(data.media[0].embedUrl).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&rel=0");
-      expect(data.media[0].thumbnailUrl).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+      // Küçük resim indirilemediyse (bu testte ağ yok) yer tutucu: sağlayıcı adresi ASLA dönmez.
+      expect(data.media[0].thumbnailUrl === null || !/ytimg|youtube|vimeo/.test(data.media[0].thumbnailUrl)).toBe(true);
       // Ayar: varsayılan kapalı; MANAGER açamaz; ADMIN açınca görünür.
       expect((await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings/doctor-media", headers: auth(manager.token) })).json().data).toEqual({ beforeAfterEnabled: false });
       expect((await app.inject({ method: "PUT", url: "/api/v1/admin/telehealth/settings/doctor-media", headers: auth(manager.token), payload: { beforeAfterEnabled: true } })).statusCode).toBe(403);
@@ -405,6 +406,99 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(created.json().data).toMatchObject({ consentRecordedById: admin.id });
       const off = await app.inject({ method: "PUT", url: `${base}/${created.json().data.id}`, headers: auth(admin.token), payload: { ...body, patientConsentConfirmed: false, consentNote: null } });
       expect(off.json().data).toMatchObject({ consentRecordedAt: null, consentRecordedById: null });
+    });
+  });
+
+  describe("video küçük resmi — yerel kopya ve SSRF koruması", () => {
+    // Geçerli en küçük JPEG imzası (FF D8 FF) + dolgu; boyut okunamazsa width/height null kalır.
+    const jpeg = () => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new Array(64).fill(0)]);
+    const imageResponse = () => new Response(jpeg(), { status: 200, headers: { "content-type": "image/jpeg" } });
+
+    it("izinli alandan bir kez indirilir, Media'ya kaydedilir; sitede yalnızca yerel kopya döner", async () => {
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        // Önbellek yenileme (frontend /api/revalidate) çağrısı sayılmaz; yalnızca dış alanlar.
+        if (!url.includes("/api/revalidate")) calls.push(url);
+        return url.includes("/api/revalidate") ? new Response(null, { status: 200 }) : imageResponse();
+      });
+      try {
+        const d = await doctor();
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/admin/telehealth/doctors/${d.id}/media`,
+          headers: auth(admin.token),
+          payload: { kind: "video", videoProvider: "youtube", videoId: "aqz-KE-bpKQ", category: "interview", translations: { tr: { title: "Röportaj", description: "", alt: "" } }, isPublished: true },
+        });
+        expect(res.statusCode).toBe(201);
+        expect(calls).toEqual(["https://i.ytimg.com/vi/aqz-KE-bpKQ/hqdefault.jpg"]);
+        const thumbId = res.json().data.thumbnailMediaId as string;
+        expect((await app.prisma.media.findUniqueOrThrow({ where: { id: thumbId } })).mimeType).toBe("image/jpeg");
+        const show = (await app.inject({ method: "GET", url: `/api/v1/doctors/${d.slug}/showcase?locale=tr`, remoteAddress: nextIp() })).json().data;
+        expect(show.media[0].thumbnailUrl).toMatch(/\/uploads\//);
+        expect(JSON.stringify(show.media.map((m: { thumbnailUrl: string }) => m.thumbnailUrl))).not.toMatch(/ytimg|youtube|vimeo/);
+        // Aynı videoyla güncelleme yeniden indirmez.
+        await app.inject({
+          method: "PUT",
+          url: `/api/v1/admin/telehealth/doctors/${d.id}/media/${res.json().data.id}`,
+          headers: auth(admin.token),
+          payload: { kind: "video", videoProvider: "youtube", videoId: "aqz-KE-bpKQ", category: "interview", translations: { tr: { title: "Yeni başlık", description: "", alt: "" } }, isPublished: true },
+        });
+        expect(calls).toHaveLength(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("izin listesi dışına yönlendirme izlenmez; indirme başarısızsa yer tutucu (thumbnailUrl null)", async () => {
+      const { importVideoThumbnail, isAllowedUrl } = await import("../../src/lib/video-thumbnail");
+      const hosts = new Set(["i.ytimg.com"]);
+      expect(isAllowedUrl("https://i.ytimg.com/vi/x/hqdefault.jpg", hosts)).toBe(true);
+      for (const bad of ["http://i.ytimg.com/a.jpg", "https://evil.example/a.jpg", "https://i.ytimg.com:8443/a.jpg", "https://u:p@i.ytimg.com/a.jpg", "https://169.254.169.254/latest"]) {
+        expect(isAllowedUrl(bad, hosts), bad).toBe(false);
+      }
+      const calls: string[] = [];
+      const redirecting = async (url: string) => {
+        calls.push(url);
+        return new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data" } });
+      };
+      expect(await importVideoThumbnail(app, "youtube", "aqz-KE-bpKQ", redirecting)).toBeNull();
+      expect(calls).toHaveLength(1);
+      // SVG ya da HTML içerik kabul edilmez.
+      const svg = async () => new Response("<svg xmlns='http://www.w3.org/2000/svg'></svg>", { status: 200, headers: { "content-type": "image/jpeg" } });
+      expect(await importVideoThumbnail(app, "youtube", "aqz-KE-bpKQ", svg)).toBeNull();
+      // Geçersiz kimlik için hiç istek atılmaz.
+      const never = vi.fn();
+      expect(await importVideoThumbnail(app, "youtube", "kötü-kimlik", never)).toBeNull();
+      expect(never).not.toHaveBeenCalled();
+
+      // Admin kaydı başarısız indirmede de başarılı olur; sitede yer tutucu.
+      vi.stubGlobal("fetch", async () => new Response("yok", { status: 404 }));
+      try {
+        const d = await doctor();
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/admin/telehealth/doctors/${d.id}/media`,
+          headers: auth(admin.token),
+          payload: { kind: "video", videoProvider: "youtube", videoId: "aqz-KE-bpKQ", category: "clinic", translations: { tr: { title: "Klinik", description: "", alt: "" } }, isPublished: true },
+        });
+        expect([res.statusCode, res.json().data.thumbnailMediaId]).toEqual([201, null]);
+        const show = (await app.inject({ method: "GET", url: `/api/v1/doctors/${d.slug}/showcase`, remoteAddress: nextIp() })).json().data;
+        expect(show.media[0].thumbnailUrl).toBeNull();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("Vimeo: oEmbed'in döndürdüğü küçük resim adresi izin listesinde değilse yok sayılır, statik adrese düşülür", async () => {
+      const { importVideoThumbnail } = await import("../../src/lib/video-thumbnail");
+      const calls: string[] = [];
+      const fake = async (url: string) => {
+        calls.push(url);
+        if (url.startsWith("https://vimeo.com/api/oembed.json")) return new Response(JSON.stringify({ thumbnail_url: "https://evil.example/t.jpg" }), { status: 200 });
+        return imageResponse();
+      };
+      expect(await importVideoThumbnail(app, "vimeo", "123456789", fake)).toEqual(expect.any(String));
+      expect(calls).toEqual([expect.stringMatching(/^https:\/\/vimeo\.com\/api\/oembed\.json/), "https://vumbnail.com/123456789.jpg"]);
     });
   });
 });

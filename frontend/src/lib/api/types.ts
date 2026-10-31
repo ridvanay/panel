@@ -5076,7 +5076,7 @@ export interface DoctorShowcaseVideo extends DoctorShowcaseMediaBase {
   kind: "video";
   videoProvider: "youtube" | "vimeo";
   videoId: string;
-  /** YouTube: `i.ytimg.com`; Vimeo: `null` (yer tutucu gösterilir). */
+  /** Kendi sunucumuzdaki küçük resim kopyası (admin kaydında indirilir); yoksa `null` → nötr yer tutucu. */
   thumbnailUrl: string | null;
   /** `youtube-nocookie.com` / `player.vimeo.com?dnt=1` — YALNIZCA "Oynat"a basılınca yüklenir. */
   embedUrl: string;

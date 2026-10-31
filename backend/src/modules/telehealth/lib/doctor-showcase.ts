@@ -7,8 +7,9 @@ import { absolutizeMediaUrl } from "../../../mappers";
  * Paket Y — hekim profilinin "vitrin" içerikleri: işlemler (fiyat YOK), foto/video galerisi ve SSS çevirisi.
  *
  * Video kuralları (çerez/KVKK): sunucuya video YÜKLENMEZ; YouTube (`youtube-nocookie.com`) ya da Vimeo
- * (`dnt=1`) kimliği saklanır. Sayfada önce yalnızca sağlayıcının statik küçük resmi görünür; iframe
- * "Oynat"a basılınca yüklenir. Küçük resim sunucumuza kopyalanmaz.
+ * (`dnt=1`) kimliği saklanır. Küçük resim admin kaydında sunucuda BİR KEZ indirilip Media'ya kaydedilir
+ * (`lib/video-thumbnail.ts`); sayfada yalnızca bu YEREL kopya (yoksa nötr yer tutucu) görünür, iframe
+ * "Oynat"a basılınca yüklenir — o ana kadar youtube/ytimg/vimeo alanlarına istek gitmez.
  *
  * Hasta içeriği: `before-after` kategorisi ve hastanın tanınabildiği her öğe (`showsPatient`)
  * `patientConsentConfirmed=true` olmadan YAYINLANAMAZ. `before-after` ayrıca telehealth ayarı
@@ -137,12 +138,6 @@ function validVideo(provider: string | null, videoId: string | null): boolean {
   return (provider === "youtube" && YOUTUBE_ID.test(videoId)) || (provider === "vimeo" && VIMEO_ID.test(videoId));
 }
 
-export function videoThumbnailUrl(provider: string | null, videoId: string | null): string | null {
-  // YouTube'un statik küçük resmi; Vimeo'nun API'siz statik adresi yok → arayüz yer tutucu gösterir.
-  if (provider === "youtube" && validVideo(provider, videoId)) return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-  return null;
-}
-
 export function videoEmbedUrl(provider: string | null, videoId: string | null): string | null {
   if (!validVideo(provider, videoId)) return null;
   if (provider === "youtube") return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`;
@@ -152,7 +147,7 @@ export function videoEmbedUrl(provider: string | null, videoId: string | null): 
 /** Galeri için izin verilen görsel türleri (SVG yok). */
 export const GALLERY_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"]);
 
-export function toPublicMediaDto(row: DoctorMedia & { media: Media | null }, locale: string | undefined) {
+export function toPublicMediaDto(row: DoctorMedia & { media: Media | null; thumbnailMedia?: Media | null }, locale: string | undefined) {
   const t = pickText<z.infer<typeof MediaTextSchema>>(row.translations, locale) ?? { title: "", description: "", alt: "" };
   if (row.kind === "photo") {
     if (!row.media || !t.alt) return null;
@@ -179,7 +174,8 @@ export function toPublicMediaDto(row: DoctorMedia & { media: Media | null }, loc
     alt: t.alt || t.title,
     videoProvider: row.videoProvider,
     videoId: row.videoId,
-    thumbnailUrl: videoThumbnailUrl(row.videoProvider, row.videoId),
+    // Yalnızca YEREL kopya; sağlayıcı adresi asla dönmez.
+    thumbnailUrl: row.thumbnailMedia ? absolutizeMediaUrl(row.thumbnailMedia.url) : null,
     embedUrl,
   };
 }
