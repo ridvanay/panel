@@ -13,6 +13,8 @@ import { siteDictionary as ro } from "@/lib/i18n/site-dictionaries/ro";
 import { siteDictionary as srLatn } from "@/lib/i18n/site-dictionaries/sr-latn";
 import { resolveLanguageSupport } from "@/lib/language-support";
 import { SupportLanguagesBand } from "@/components/site/support/support-languages-band";
+import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
+import { ContactChannelsProvider } from "@/components/site/contact/contact-channels-context";
 import { SupportBadge } from "@/components/site/support/support-badge";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { AccreditationList } from "@/components/site/accreditations/accreditation-list";
@@ -27,6 +29,15 @@ import type { DoctorProfile, PublicAccreditation, SiteSettings, Specialty, Teleh
  * görünümü ve JSON-LD, sitemap'te `/doctors` kalmaması ve hekimsiz uzmanlığın dışarıda kalması,
  * kaynakta eski site yolu kalmaması (tarama testi).
  */
+/** Paket X — band ContactCta kullanır; kanallar sitenin layout sağlayıcısından gelir. */
+function withChannels(ui: React.ReactNode, lang: string, chatEnabled: boolean, contactHref: string) {
+  return (
+    <LocaleAlternatesProvider activeLocaleCode={lang} defaultLocaleCode="en">
+      <ContactChannelsProvider value={{ whatsapp: null, chatEnabled, contactHref }}>{ui}</ContactChannelsProvider>
+    </LocaleAlternatesProvider>
+  );
+}
+
 const DICTS = { en, tr, de, es, fr, ar, ru, ro, "sr-latn": srLatn };
 
 function keyPaths(value: unknown, prefix = ""): string[] {
@@ -62,7 +73,7 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
     expect(resolveLanguageSupport(settingsWith({ supportLanguages: [], supportHours: { en: "9-18" }, interpreterIncluded: true }), "en")).toBeNull();
     const { container } = render(
       <>
-        <SupportLanguagesBand support={null} dict={en.common} chatEnabled contactHref="/contact" />
+        <SupportLanguagesBand support={null} dict={en.common} />
         <SupportBadge support={null} label={en.common.supportBadge} />
       </>
     );
@@ -75,7 +86,7 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
       "de",
       [{ code: "ar", nativeLabel: "العربية" }]
     );
-    render(<SupportLanguagesBand support={support} dict={en.common} chatEnabled={false} contactHref="/en/contact" />);
+    render(withChannels(<SupportLanguagesBand support={support} dict={en.common} />, "en", false, "/en/contact"));
     const band = screen.getByTestId("support-languages-band");
     const items = within(within(band).getByRole("list", { name: "Supported languages" })).getAllByRole("listitem");
     // Bayrağı olmayan dil (it) için nötr kod rozeti ("IT") gösterilir; ad ayrı öğededir.
@@ -83,14 +94,14 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
     expect(within(band).getByText("العربية")).toHaveAttribute("dir", "rtl");
     expect(band).not.toHaveTextContent(en.common.supportInterpreterIncluded);
     expect(band).toHaveTextContent("Mon–Sat 09:00–21:00");
-    // Canlı destek kapalıyken yalnızca iletişim ("Talk to us").
+    // Canlı destek kapalıyken yalnızca iletişim ("Sizi arayalım").
     expect(within(band).queryByRole("button", { name: "Live chat" })).toBeNull();
-    expect(within(band).getByRole("link", { name: "Talk to us" })).toHaveAttribute("href", "/en/contact");
+    expect(within(band).getByRole("link", { name: "Request a call back" })).toHaveAttribute("href", "/en/contact");
   });
 
   it("bant hero ile aynı genişlikte: aynı kapsayıcı sınıfı, renkli alan kapsayıcının içinde", () => {
     const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en"], supportHours: {}, interpreterIncluded: false }), "en");
-    render(<SupportLanguagesBand support={support} dict={en.common} chatEnabled={false} contactHref="/en/contact" />);
+    render(withChannels(<SupportLanguagesBand support={support} dict={en.common} />, "en", false, "/en/contact"));
     const box = screen.getByTestId("support-languages-band-box");
     expect(box.parentElement!.className).toBe(aboutContainerClass);
     expect(box).toHaveClass("bg-[var(--site-primary)]");
@@ -100,13 +111,18 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
   it("tercüman açık + canlı destek açık; rozet sayıyı gösterir", () => {
     const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en", "tr"], supportHours: {}, interpreterIncluded: true }), "tr");
     render(
-      <>
-        <SupportLanguagesBand support={support} dict={tr.common} chatEnabled contactHref="/contact" />
-        <SupportBadge support={support} label={tr.common.supportBadge} />
-      </>
+      withChannels(
+        <>
+          <SupportLanguagesBand support={support} dict={tr.common} />
+          <SupportBadge support={support} label={tr.common.supportBadge} />
+        </>,
+        "tr",
+        true,
+        "/contact"
+      )
     );
     expect(screen.getByText(tr.common.supportInterpreterIncluded)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: tr.common.liveChatCta })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Canlı destek" })).toBeInTheDocument();
     expect(screen.getByTestId("support-badge")).toHaveTextContent("2 dilde destek");
   });
 });
