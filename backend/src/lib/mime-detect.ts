@@ -109,7 +109,7 @@ export function isHeifImage(buffer: Buffer): boolean {
 
 /** Kullanıcıya gösterilecek kısa tür adı ("Dosya JPEG olarak kaydedildi"). */
 export function mimeTypeLabel(mimeType: string): string {
-  return ({ "image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF", "application/pdf": "PDF" } as Record<string, string>)[mimeType] ?? mimeType;
+  return ({ "image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF", "image/heic": "HEIC", "application/pdf": "PDF" } as Record<string, string>)[mimeType] ?? mimeType;
 }
 
 /** Dosya adının uzantısını tespit edilen türe göre düzeltir (`foto.PNG` + JPEG → `foto.jpg`). */

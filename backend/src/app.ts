@@ -104,6 +104,7 @@ import { reviewsPatientRoutes } from "./modules/reviews/reviews.patient.routes";
 import { reviewsAdminRoutes } from "./modules/reviews/reviews.admin.routes";
 import { adminDoctorMediaSettingsRoutes, adminTelehealthShowcaseRoutes, telehealthShowcasePublicRoutes } from "./modules/telehealth/telehealth.showcase.routes";
 import { registerReviewRequestSweeper } from "./lib/review-requests";
+import { registerVideoTranscodeWorker } from "./lib/video-transcode/worker";
 import { warnIfRevalidationDisabled } from "./lib/revalidate";
 
 export function buildApp() {
@@ -552,6 +553,14 @@ export function buildApp() {
       registerSupportRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Canlı Destek saklama süresi scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket AE-ek — video dönüştürme kuyruğu (aynı anda 1 iş, aktif görüşmede erteleme). Test ortamında kurulmaz:
+      // testler `runNextTranscodeJob`'u ffmpeg taklidiyle doğrudan çağırır.
+      if (env.NODE_ENV !== "test") registerVideoTranscodeWorker(app);
+    } catch (err) {
+      app.log.error({ err }, "Video dönüştürme kuyruğu kurulamadı.");
     }
 
     try {

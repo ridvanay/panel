@@ -1655,6 +1655,12 @@ model Media {
   videoCodec     String?
   videoFaststart Boolean?
   durationSec    Float?
+  // Paket AE-ek — fotoğraf uyumluluk kopyaları (aynı UUID adıyla `.jpg` ve gerekiyorsa `.png`):
+  // [{ format: "jpeg"|"png", path, url, sizeBytes, width, height }]. E-posta ve Open Graph bunları kullanır.
+  variants         Json?
+  // Paket AE-ek — yalnızca sunucuda dönüştürülen video: "processing" | "ready" | "failed". null = hazır (eski kayıt).
+  processingStatus String?
+  transcodeJob     MediaTranscodeJob?
   // a11y — editör içi içerik görseli eklerken zorunlu (bkz. modules/blog/post-editor.tsx); kapak görseli/avatar gibi diğer kullanımlarda opsiyonel.
   altText   String?
   // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz" (bu bir klasör
@@ -3920,6 +3926,39 @@ model DoctorProcedure {
 
 /// Hekim galerisi: fotoğraf (Media) ya da YouTube/Vimeo videosu. Hastanın görünebildiği içerik
 /// (`before-after` ve hasta tanınabilen her şey) `patientConsentConfirmed=true` olmadan YAYINLANAMAZ.
+/// Paket AE-ek — yüklenen videonun H.264 MP4'e dönüştürülme işi (aynı anda en çok 1 iş çalışır).
+/// Orijinal dosya özel (herkese açık olmayan) klasörde durur; başarıda hemen, hatada 24 saat sonra silinir.
+model MediaTranscodeJob {
+  id                String    @id @default(uuid())
+  mediaId           String    @unique
+  /// "queued" | "running" | "done" | "failed"
+  status            String    @default("queued")
+  /// Sunucunun ürettiği özel yol (kullanıcıdan gelen ad kullanılmaz); silinince null.
+  sourcePath        String?
+  /// "mp4" | "mov"
+  sourceContainer   String
+  sourceSizeBytes   Int
+  sourceCodec       String?
+  sourceDurationSec Float?
+  outputSizeBytes   Int?
+  attempts          Int       @default(0)
+  error             String?
+  /// Aktif görüşme varken iş ertelenir (2 dk sonra yeniden denenir).
+  notBefore         DateTime  @default(now())
+  queuedAt          DateTime  @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  sourceDeleteAfter DateTime?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([status, notBefore, queuedAt])
+  @@map("media_transcode_jobs")
+}
+
 model DoctorMedia {
   id                      String    @id @default(uuid())
   doctorId                String

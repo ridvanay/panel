@@ -2,10 +2,13 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase } from "../helpers/reset-db";
 import { buildMultipartPayload } from "../helpers/multipart";
 import { UPLOAD_DIR } from "../../src/plugins/uploads";
+import sharp from "sharp";
+import { ORIGINALS_DIR, runNextTranscodeJob, sourceFilePath, type TranscodeDeps } from "../../src/lib/video-transcode/worker";
 
 /**
  * Paket AE — sunucuya video yükleme (MP4 kutu denetimi, akışla yazma, boyut sınırı, Range/206), hekim medyasında
@@ -86,7 +89,29 @@ describe("Paket AE — video yükleme, yüklenen hekim videosu ve yorum listesi"
   }
 
   async function leftoverTempFiles() {
-    return (await fs.readdir(UPLOAD_DIR)).filter((f) => f.startsWith(".upload-"));
+    const inUploads = (await fs.readdir(UPLOAD_DIR)).filter((f) => f.startsWith(".upload-"));
+    const inOriginals = (await fs.readdir(ORIGINALS_DIR).catch(() => [] as string[])).filter((f) => f.endsWith(".part"));
+    return [...inUploads, ...inOriginals];
+  }
+
+  /**
+   * Paket AE-ek — yüklenen video önce "processing" olur ve kuyrukta H.264 MP4'e dönüştürülür. Testte ffmpeg taklit
+   * edilir: çıktı olarak `output` (varsayılan: H.264, faststart) yazılır. Dönüştürülmüş dosyalar test sonunda silinir.
+   */
+  async function transcodeAll(output: Buffer = mp4()) {
+    const deps: TranscodeDeps = {
+      transcode: async (_input, out) => fs.writeFile(out, output),
+      extractPoster: async (_input, out) => fs.writeFile(out, await sharp({ create: { width: 32, height: 18, channels: 3, background: "#123" } }).png().toBuffer()),
+      isConsultationActive: async () => false,
+      now: () => new Date(Date.now() + 1000),
+    };
+    for (let i = 0; i < 20; i++) {
+      const r = await runNextTranscodeJob(app, deps);
+      if (r.status === "idle") break;
+    }
+    for (const m of await app.prisma.media.findMany({ where: { OR: [{ mimeType: "video/mp4" }, { variants: { not: Prisma.DbNull } }] } })) {
+      if (m.path) stored.push(m.path, ...((m.variants as { path: string }[] | null) ?? []).map((v) => v.path));
+    }
   }
 
   beforeAll(async () => {
@@ -104,47 +129,45 @@ describe("Paket AE — video yükleme, yüklenen hekim videosu ve yorum listesi"
   });
 
   afterAll(async () => {
+    // Paket AE-ek — kuyrukta kalan orijinaller (özel klasör) silinir.
+    for (const j of await app.prisma.mediaTranscodeJob.findMany({ where: { sourcePath: { not: null } } })) await fs.unlink(sourceFilePath(j.sourcePath!)).catch(() => undefined);
     await resetDatabase(app.prisma);
     await app.close();
     vi.resetModules();
   });
 
   describe("POST /admin/media/video", () => {
-    it("H.264 MP4 kabul edilir: rastgele ad, özgün ad saklanmaz, kodek/süre/faststart döner, uyarı yok", async () => {
+    it("MP4 kabul edilir: önce 'işleniyor' (herkese açık dosya yok), dönüştürme sonrası rastgele adlı .mp4; özgün ad saklanmaz", async () => {
       const res = await uploadVideo(mp4(), { filename: "Ayşe Yılmaz muayene.mp4" });
       expect(res.statusCode).toBe(201);
-      const { media, video, warnings } = res.json().data;
-      expect(media.mimeType).toBe("video/mp4");
-      expect(media.url).toMatch(/\/uploads\/[0-9a-f-]{36}\.mp4$/);
+      const { media, video, warnings, processing } = res.json().data;
+      expect([media.mimeType, media.processingStatus, processing.status]).toEqual(["video/mp4", "processing", "processing"]);
       expect(media.filename).not.toMatch(/Ayşe|muayene/);
       expect(video).toEqual({ codec: "avc1", faststart: true, durationSec: 5 });
       expect(warnings).toEqual([]);
+      await transcodeAll();
       const row = await app.prisma.media.findUniqueOrThrow({ where: { id: media.id } });
-      expect([row.videoCodec, row.videoFaststart, row.durationSec]).toEqual(["avc1", true, 5]);
+      expect(row.url).toMatch(/^\/uploads\/[0-9a-f-]{36}\.mp4$/);
+      expect([row.processingStatus, row.videoCodec, row.videoFaststart, row.durationSec]).toEqual(["ready", "avc1", true, 5]);
     });
 
-    it("HEVC (hvc1/hev1) uyarıyla kabul edilir; moov sonda ise ikinci uyarı", async () => {
+    it("Paket AE-ek: HEVC ya da moov-sonda video uyarısız kabul edilir (sunucu H.264/faststart'a dönüştürür)", async () => {
       const res = await uploadVideo(mp4({ codec: "hvc1", moovAtEnd: true }));
       expect(res.statusCode).toBe(201);
-      const codes = res.json().data.warnings.map((w: { code: string }) => w.code);
-      expect(codes).toEqual(["HEVC_CODEC", "MOOV_AT_END"]);
-      expect(res.json().data.warnings[0].message).toContain("iPhone'un HEVC biçiminde");
-      expect(res.json().data.warnings[1].message).toBe("Video akışlı oynatma için optimize değil, yüklenmesi yavaş olabilir.");
-      expect((await uploadVideo(mp4({ codec: "hev1" }))).json().data.warnings.map((w: { code: string }) => w.code)).toEqual(["HEVC_CODEC"]);
+      expect(res.json().data.warnings).toEqual([]);
+      expect(res.json().data.video).toMatchObject({ codec: "hvc1", faststart: false });
     });
 
     it("MP4 olmayan içerik (beyan video/mp4 olsa da) reddedilir; geçici dosya kalmaz", async () => {
       for (const [content, name] of [
         [Buffer.from("<html><script>alert(1)</script></html>".padEnd(200, " ")), "evil.mp4"],
         [Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(200)]), "video.webm"],
-        [mp4({ brand: "qt  " }), "IMG_0001.MOV"],
         [Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.alloc(200)]), "foto.mp4"],
-        [mp4({ codec: "mp4v" }), "eski.mp4"],
       ] as const) {
         const res = await uploadVideo(content, { filename: name });
         expect(res.statusCode, name).toBe(422);
       }
-      expect((await uploadVideo(Buffer.from("<html>".padEnd(200, " ")))).json().error.message).toBe("Yalnızca MP4 video yükleyebilirsiniz.");
+      expect((await uploadVideo(Buffer.from("<html>".padEnd(200, " ")))).json().error.message).toBe("Yalnızca MP4 ya da MOV (iPhone) video yükleyebilirsiniz.");
       expect(await leftoverTempFiles()).toEqual([]);
     });
 
@@ -172,8 +195,9 @@ describe("Paket AE — video yükleme, yüklenen hekim videosu ve yorum listesi"
 
     it("oynatma: /uploads Range isteğine 206, video/mp4, Accept-Ranges, uzun önbellek; indirmeye zorlanmaz", async () => {
       const content = mp4();
-      const res = await uploadVideo(content);
-      const url = mediaPath(res.json().data.media.url);
+      const res = await uploadVideo(mp4({ codec: "hvc1" }));
+      await transcodeAll(content);
+      const url = mediaPath((await app.prisma.media.findUniqueOrThrow({ where: { id: res.json().data.media.id } })).url);
       const full = await app.inject({ method: "GET", url, remoteAddress: nextIp() });
       expect(full.statusCode).toBe(200);
       expect(full.headers["accept-ranges"]).toBe("bytes");
@@ -221,10 +245,11 @@ describe("Paket AE — video yükleme, yüklenen hekim videosu ve yorum listesi"
     it("admin kaydeder; showcase'te videoUrl/poster/altyazı döner, embedUrl yok; yanlış türler reddedilir", async () => {
       const d = await doctor();
       const video = (await uploadVideo(mp4({ codec: "hvc1" }))).json().data.media;
-      const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+      const jpeg = await sharp({ create: { width: 16, height: 9, channels: 3, background: "#456" } }).jpeg().toBuffer();
       const { body, contentType } = buildMultipartPayload({ file: { filename: "poster.jpg", contentType: "image/jpeg", content: jpeg } });
       const poster = (await app.inject({ method: "POST", url: "/api/v1/admin/media", headers: { ...auth(admin.token), "content-type": contentType }, payload: body })).json().data;
-      stored.push((await app.prisma.media.findUniqueOrThrow({ where: { id: poster.id } })).path);
+      const posterRow = await app.prisma.media.findUniqueOrThrow({ where: { id: poster.id } });
+      stored.push(posterRow.path, ...((posterRow.variants as { path: string }[] | null) ?? []).map((v) => v.path));
       const vtt = buildMultipartPayload({ file: { filename: "tr.vtt", contentType: "text/vtt", content: Buffer.from("WEBVTT\n") } });
       const captions = (await app.inject({ method: "POST", url: "/api/v1/admin/media/captions", headers: { ...auth(admin.token), "content-type": vtt.contentType }, payload: vtt.body, remoteAddress: nextIp() })).json().data;
       stored.push((await app.prisma.media.findUniqueOrThrow({ where: { id: captions.id } })).path);
@@ -242,13 +267,17 @@ describe("Paket AE — video yükleme, yüklenen hekim videosu ve yorum listesi"
       const adminDto = created.json().data;
       expect([adminDto.videoProvider, adminDto.videoId, adminDto.thumbnailMediaId, adminDto.captionsLang]).toEqual(["upload", null, poster.id, "tr"]);
       expect(adminDto.video).toEqual({ codec: "hvc1", faststart: true, durationSec: 5 });
+      expect(adminDto.processing).toMatchObject({ status: "processing", jobStatus: "queued" });
       expect(adminDto.captionsUrl).toMatch(/\.vtt$/);
+      // Paket AE-ek — dönüştürme bitene kadar sitede görünmez.
+      expect((await app.inject({ method: "GET", url: `/api/v1/doctors/${d.slug}/showcase?locale=tr`, remoteAddress: nextIp() })).json().data.media).toEqual([]);
+      await transcodeAll();
 
       const show = (await app.inject({ method: "GET", url: `/api/v1/doctors/${d.slug}/showcase?locale=tr`, remoteAddress: nextIp() })).json().data;
       expect(show.media).toHaveLength(1);
       expect(show.media[0]).toMatchObject({ kind: "video", videoProvider: "upload", videoId: null, embedUrl: null, captionsLang: "tr", durationSec: 5 });
       expect(show.media[0].videoUrl).toMatch(/\/uploads\/[0-9a-f-]{36}\.mp4$/);
-      expect(show.media[0].thumbnailUrl).toMatch(/\.jpg$/);
+      expect(show.media[0].thumbnailUrl).toMatch(/\.webp$/); // admin posteri korunur (WebP'ye çevrilmiş)
       expect(show.media[0].captionsUrl).toMatch(/\.vtt$/);
 
       // Video Media silinirse öğe sitede görünmez (SetNull → savunmalı DTO).

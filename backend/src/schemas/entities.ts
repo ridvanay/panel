@@ -346,6 +346,9 @@ export const MediaSchema = z.object({
   // kez çekip id→ad eşlemesini bellekte yapar.
   folderId: z.string().uuid().nullable(),
   createdAt: z.string(),
+  // Paket AE-ek — fotoğraf uyumluluk kopyaları (JPEG/PNG) ve yalnızca dönüştürülen videoda işlem durumu.
+  variants: z.array(z.object({ format: z.enum(["jpeg", "png"]), url: z.string(), width: z.number().int(), height: z.number().int(), sizeBytes: z.number().int() })).optional(),
+  processingStatus: z.enum(["processing", "ready", "failed"]).nullable().optional(),
 });
 export type MediaDto = z.infer<typeof MediaSchema>;
 

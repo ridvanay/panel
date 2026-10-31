@@ -15,6 +15,10 @@ import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors"
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { storage } from "../../lib/storage";
 import { detectUploadMimeType, filenameForMimeType, isHeifImage, mimeTypeLabel } from "../../lib/mime-detect";
+import { ImageProcessingError, type ImagePurpose } from "../../lib/image-pipeline";
+import { processAndStoreSiteImage, removeStoredPaths, variantPaths } from "../../lib/site-image-store";
+import { sourceFilePath } from "../../lib/video-transcode/worker";
+import fs from "node:fs";
 import { registerVideoUploadRoutes } from "./media.video.routes";
 import {
   CreateMediaFolderRequestSchema,
@@ -35,13 +39,19 @@ import {
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
 /** Paket AE — tarayıcının/işletim sisteminin tür veremediği görseller (boş/genel beyan); tür içerikten belirlenir. */
 const CORRECTABLE_DECLARED_TYPES = new Set(["application/octet-stream", "image/jpg", "image/pjpeg", "image/x-png", "image/heic", "image/heif"]);
-const HEIC_MESSAGE = "iPhone HEIC biçimi desteklenmiyor. JPEG/PNG olarak dışa aktarın.";
+/** Paket AE-ek — sharp ile WebP'ye dönüştürülen site fotoğrafı türleri (GIF ve PDF olduğu gibi saklanır). */
+const CONVERTIBLE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const PURPOSES = new Set<ImagePurpose>(["default", "logo", "icon"]);
+
+function formatBytes(n: number): string {
+  return n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
 
 const MediaUploadResponseSchema = z.object({
   data: MediaSchema,
   meta: z
     .object({
-      notice: z.object({ code: z.literal("TYPE_CORRECTED"), detectedMimeType: z.string(), message: z.string() }).optional(),
+      notice: z.object({ code: z.enum(["TYPE_CORRECTED", "CONVERTED"]), detectedMimeType: z.string(), message: z.string() }).optional(),
     })
     .optional(),
 });
@@ -117,6 +127,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       let mimetype: string | undefined;
       let buffer: Buffer | undefined;
       let folderIdRaw: string | undefined;
+      let purposeRaw: string | undefined;
 
       for await (const part of parts) {
         if (part.type === "file") {
@@ -132,17 +143,20 @@ export async function adminMediaRoutes(app: FastifyInstance) {
           buffer = await part.toBuffer();
         } else if (part.fieldname === "folderId") {
           folderIdRaw = String(part.value);
+        } else if (part.fieldname === "purpose") {
+          // Paket AE-ek — "logo" (PNG uyumluluk kopyası) | "icon" (favicon: ana sürüm PNG kalır).
+          purposeRaw = String(part.value);
         }
       }
 
       if (!buffer || !filename || !mimetype) {
         throw new ValidationError("Yüklenecek dosya bulunamadı.", { file: ["Zorunlu."] });
       }
-      // Paket AE — iPhone HEIC/HEIF beyan edilen türden bağımsız, içerikten tanınıp anlaşılır mesajla reddedilir.
-      if (isHeifImage(buffer)) {
-        throw new ValidationError(HEIC_MESSAGE, { file: [HEIC_MESSAGE] });
-      }
-      if (!ALLOWED_MIME_TYPES.has(mimetype) && !CORRECTABLE_DECLARED_TYPES.has(mimetype)) {
+      const purpose: ImagePurpose = purposeRaw && PURPOSES.has(purposeRaw as ImagePurpose) ? (purposeRaw as ImagePurpose) : "default";
+      // Paket AE-ek — iPhone HEIC/HEIF içerikten tanınır; sharp okuyabiliyorsa WebP'ye çevrilir, okuyamıyorsa
+      // (hazır sharp derlemesi HEVC tabanlı HEIC'i açamaz) anlaşılır mesajla reddedilir.
+      const isHeif = isHeifImage(buffer);
+      if (!isHeif && !ALLOWED_MIME_TYPES.has(mimetype) && !CORRECTABLE_DECLARED_TYPES.has(mimetype)) {
         throw new ValidationError("Desteklenmeyen dosya türü.", {
           file: ["Yalnızca JPEG, PNG, WEBP veya GIF yükleyebilirsiniz."],
         });
@@ -170,7 +184,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       // edilenle uyuşmuyorsa ya da tanınmıyorsa/SVG ise istek reddedilir. import.worker.ts
       // (§10.8.7) ile aynı kod yolu (o modül yalnızca görsel bekler, `detectImageMimeType`'ı
       // DEĞİŞMEDEN kullanmaya devam eder).
-      const detected = detectUploadMimeType(buffer);
+      const detected = isHeif ? { mimeType: "image/heic", isSvg: false } : detectUploadMimeType(buffer);
       if (!detected.mimeType || detected.isSvg) {
         throw new ValidationError("Dosya içeriği geçerli bir görsel veya PDF değil.", {
           file: ["Dosya içeriği tanınan bir görsel (JPEG/PNG/WEBP/GIF) ya da PDF biçimiyle eşleşmiyor."],
@@ -180,7 +194,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       // uzantısı düzeltilir ve kullanıcıya bilgi verilir. Güvenlik değişmez: kaydedilen tür ve diskteki uzantı
       // zaten yalnızca tespit edilen türden gelir. Görsel ↔ PDF karışması (seçici yanlış türde dosya alır) reddedilir.
       let notice: { code: "TYPE_CORRECTED"; detectedMimeType: string; message: string } | undefined;
-      if (detected.mimeType !== mimetype) {
+      if (!isHeif && detected.mimeType !== mimetype) {
         const declaredIsImage = mimetype.startsWith("image/") || CORRECTABLE_DECLARED_TYPES.has(mimetype);
         if (!declaredIsImage || !detected.mimeType.startsWith("image/")) {
           throw new ValidationError("Beyan edilen dosya türü, dosya içeriğiyle uyuşmuyor.", {
@@ -189,6 +203,33 @@ export async function adminMediaRoutes(app: FastifyInstance) {
         }
         filename = filenameForMimeType(filename, detected.mimeType);
         notice = { code: "TYPE_CORRECTED", detectedMimeType: detected.mimeType, message: `Dosya ${mimeTypeLabel(detected.mimeType)} olarak kaydedildi.` };
+      }
+
+      // Paket AE-ek — JPEG/PNG/WebP/HEIC: WebP'ye çevrilir, meta veri (EXIF/GPS) silinir, uyumluluk kopyaları yazılır.
+      // Orijinal saklanmaz. GIF ve PDF eskisi gibi olduğu gibi saklanır.
+      if (isHeif || CONVERTIBLE_IMAGE_TYPES.has(detected.mimeType)) {
+        let stored;
+        try {
+          stored = await processAndStoreSiteImage(buffer, filename, { purpose, isHeif });
+        } catch (err) {
+          if (err instanceof ImageProcessingError) throw new ValidationError(err.message, { file: [err.message] });
+          throw err;
+        }
+        let media;
+        try {
+          media = await app.prisma.media.create({ data: { ...stored.data, folderId } });
+        } catch (err) {
+          await removeStoredPaths(stored.writtenPaths);
+          throw err;
+        }
+        const label = mimeTypeLabel(stored.processed.main.mimeType);
+        const prefix = notice ? `Dosya aslında ${mimeTypeLabel(detected.mimeType)}; ` : "";
+        const converted = {
+          code: "CONVERTED" as const,
+          detectedMimeType: isHeif ? "image/heic" : detected.mimeType,
+          message: `${prefix}${label} olarak kaydedildi (${formatBytes(buffer.byteLength)} → ${formatBytes(stored.data.sizeBytes)}); konum ve kamera bilgileri silindi.`,
+        };
+        return reply.code(201).send(ok(toMediaDto(media), { notice: converted }));
       }
 
       const { path: storedPath, url } = await storage.save({
@@ -476,11 +517,15 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       schema: { params: MediaIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
-      const media = await app.prisma.media.findUnique({ where: { id: request.params.mediaId } });
+      const media = await app.prisma.media.findUnique({ where: { id: request.params.mediaId }, include: { transcodeJob: { select: { sourcePath: true } } } });
       if (!media) throw new NotFoundError("Medya bulunamadı.");
+      // Paket AE-ek — dönüştürülmeyi bekleyen/başarısız videonun özel klasördeki orijinali de silinir.
+      if (media.transcodeJob?.sourcePath) await fs.promises.unlink(sourceFilePath(media.transcodeJob.sourcePath)).catch(() => undefined);
 
       await app.prisma.media.delete({ where: { id: media.id } });
-      await storage.remove(media.path).catch(() => {});
+      if (media.path) await storage.remove(media.path).catch(() => {});
+      // Paket AE-ek — uyumluluk kopyaları da silinir.
+      await removeStoredPaths(variantPaths(media.variants));
 
       return reply.code(204).send();
     }

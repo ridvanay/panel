@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import { UPLOAD_DIR } from "../../plugins/uploads";
 import { extensionForMimeType } from "../mime-detect";
+import { safeBaseName } from "./types";
 import type { MediaStorage, SaveMediaFileInput, SaveMediaInput, SaveMediaResult } from "./types";
 
 /**
@@ -15,9 +16,9 @@ import type { MediaStorage, SaveMediaFileInput, SaveMediaInput, SaveMediaResult 
  * yazılır ve `@fastify/static` bunu `text/html` olarak servis eder (stored-XSS).
  */
 export class LocalStorage implements MediaStorage {
-  async save({ buffer, mimeType }: SaveMediaInput): Promise<SaveMediaResult> {
+  async save({ buffer, mimeType, baseName }: SaveMediaInput): Promise<SaveMediaResult> {
     const ext = extensionForMimeType(mimeType);
-    const storedName = `${crypto.randomUUID()}${ext}`;
+    const storedName = `${safeBaseName(baseName)}${ext}`;
     await fs.writeFile(path.join(UPLOAD_DIR, storedName), buffer);
 
     return { path: storedName, url: `/uploads/${storedName}` };
@@ -26,7 +27,16 @@ export class LocalStorage implements MediaStorage {
   /** Geçici dosya aynı dizinde olduğundan kopyalamadan yeniden adlandırılır. */
   async saveFile({ sourcePath, mimeType }: SaveMediaFileInput): Promise<SaveMediaResult> {
     const storedName = `${crypto.randomUUID()}${extensionForMimeType(mimeType)}`;
-    await fs.rename(sourcePath, path.join(UPLOAD_DIR, storedName));
+    const target = path.join(UPLOAD_DIR, storedName);
+    try {
+      await fs.rename(sourcePath, target);
+    } catch (err) {
+      // Paket AE-ek — dönüştürülen video özel klasörden (storage/) yükleme birimine (ayrı Docker volume'ü) taşınır:
+      // farklı dosya sistemleri arasında rename EXDEV verir → kopyala + sil.
+      if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
+      await fs.copyFile(sourcePath, target);
+      await fs.unlink(sourcePath);
+    }
     return { path: storedName, url: `/uploads/${storedName}` };
   }
 

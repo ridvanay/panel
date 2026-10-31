@@ -1,3 +1,4 @@
+import { parseVariants } from "../lib/image-pipeline";
 import type {
   User,
   Organization,
@@ -405,6 +406,8 @@ export function toMediaDto(media: Media): MediaDto {
     // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz".
     folderId: media.folderId,
     createdAt: media.createdAt.toISOString(),
+    variants: parseVariants(media.variants).map((v) => ({ format: v.format, url: absolutizeMediaUrl(v.url), width: v.width, height: v.height, sizeBytes: v.sizeBytes })),
+    processingStatus: (media.processingStatus as "processing" | "ready" | "failed" | null) ?? null,
   };
 }
 

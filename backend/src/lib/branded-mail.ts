@@ -6,6 +6,7 @@ import { renderBrandedEmail, toBrandLocale, type BrandedEmailInput, type EmailBr
 import { parseContactPageContent, localeContent } from "../modules/contact/contact-page";
 import { CONTACT_FORM_ID } from "../modules/contact/contact.constants";
 import { parseLanguageSupport } from "../modules/telehealth/lib/language-support";
+import { compatImageUrl } from "./site-image-store";
 
 /**
  * Paket AC — kurumsal e-postanın TEK gönderim noktası. Bütün modüller `sendBrandedMail` kullanır;
@@ -107,7 +108,8 @@ export async function loadEmailBrandContext(app: FastifyInstance, localeCode: st
   return {
     siteName: settings?.siteName?.trim() || DEFAULT_SITE_NAME,
     siteUrl: env.FRONTEND_URL,
-    logoUrl: absoluteHttpsLogo(settings?.logoUrl),
+    // Paket AE-ek — logo WebP'ye çevrilmişse e-postada PNG (yoksa JPEG) uyumluluk kopyası kullanılır.
+    logoUrl: absoluteHttpsLogo(await compatImageUrl(app, settings?.logoUrl, "png").catch(() => settings?.logoUrl ?? null)),
     primaryColor: appearance?.primaryColor ?? "#0f766e",
     address: localized.address || fallback.address || null,
     phone: localized.phone || fallback.phone || null,

@@ -4,6 +4,7 @@ import { unlink } from "node:fs/promises";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { env } from "../../config/env";
 import { extensionForMimeType, isImageMimeType } from "../mime-detect";
+import { safeBaseName } from "./types";
 import type { MediaStorage, SaveMediaFileInput, SaveMediaInput, SaveMediaResult } from "./types";
 
 /**
@@ -37,11 +38,11 @@ export class S3Storage implements MediaStorage {
     });
   }
 
-  async save({ buffer, mimeType }: SaveMediaInput): Promise<SaveMediaResult> {
+  async save({ buffer, mimeType, baseName }: SaveMediaInput): Promise<SaveMediaResult> {
     // GÜVENLİK: key uzantısı orijinal dosya adından DEĞİL, doğrulanmış `mimeType`'tan türetilir
     // (bkz. local.storage.ts'teki aynı gerekçe / lib/mime-detect.ts::extensionForMimeType).
     const ext = extensionForMimeType(mimeType);
-    const key = `${crypto.randomUUID()}${ext}`;
+    const key = `${safeBaseName(baseName)}${ext}`;
 
     await this.client.send(
       new PutObjectCommand({

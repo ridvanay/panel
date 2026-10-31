@@ -75,7 +75,7 @@ export async function telehealthShowcasePublicRoutes(app: FastifyInstance) {
   );
 }
 
-const MEDIA_INCLUDE = { media: true, thumbnailMedia: true, captionsMedia: true } as const;
+const MEDIA_INCLUDE = { media: { include: { transcodeJob: true } }, thumbnailMedia: true, captionsMedia: true } as const;
 
 function adminProcedureDto(row: Prisma.DoctorProcedureGetPayload<object>) {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -86,10 +86,24 @@ function adminMediaDto(row: Prisma.DoctorMediaGetPayload<{ include: typeof MEDIA
   const isUpload = row.videoProvider === "upload" && media;
   return {
     ...rest,
-    media: media ? { id: media.id, url: absolutizeMediaUrl(media.url), width: media.width, height: media.height, filename: media.filename, mimeType: media.mimeType } : null,
+    media: media ? { id: media.id, url: media.url ? absolutizeMediaUrl(media.url) : null, width: media.width, height: media.height, filename: media.filename, mimeType: media.mimeType } : null,
     thumbnailUrl: thumbnailMedia ? absolutizeMediaUrl(thumbnailMedia.url) : null,
     captionsUrl: captionsMedia ? absolutizeMediaUrl(captionsMedia.url) : null,
     video: isUpload ? { codec: media.videoCodec, faststart: media.videoFaststart, durationSec: media.durationSec } : null,
+    // Paket AE-ek — sunucu dönüştürmesi: durum, hata, boyut/süre önce-sonra (kuyruk sırası: GET /admin/media/transcode-jobs).
+    processing:
+      isUpload && media.transcodeJob
+        ? {
+            status: (media.processingStatus ?? "ready") as "processing" | "ready" | "failed",
+            jobStatus: media.transcodeJob.status,
+            error: media.transcodeJob.error,
+            canRetry: media.transcodeJob.status === "failed" && media.transcodeJob.sourcePath !== null,
+            sourceSizeBytes: media.transcodeJob.sourceSizeBytes,
+            sourceDurationSec: media.transcodeJob.sourceDurationSec,
+            sourceCodec: media.transcodeJob.sourceCodec,
+            outputSizeBytes: media.transcodeJob.outputSizeBytes,
+          }
+        : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

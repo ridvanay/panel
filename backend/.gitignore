@@ -21,3 +21,7 @@ backups/
 storage/doctor-backups/
 storage/translations/
 storage/translation-backups/
+
+# Paket AE-ek — video dönüştürme orijinalleri/iş klasörü ve mevcut medya dönüştürme yedekleri (sunucuda üretilir).
+storage/media-transcode/
+storage/media-backup/

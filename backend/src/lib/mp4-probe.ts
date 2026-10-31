@@ -11,6 +11,8 @@ import fs from "node:fs/promises";
  */
 export interface Mp4ProbeResult {
   majorBrand: string;
+  /** Paket AE-ek — `qt  ` ana markası (iPhone .MOV) "mov", diğerleri "mp4". */
+  container: "mp4" | "mov";
   /** Video izinin kodeki; görüntü izi yoksa `null`. */
   videoCodec: string | null;
   /** `moov` kutusu `mdat`'tan önce mi. */
@@ -101,7 +103,7 @@ function parseVideoCodec(moov: Buffer, root: Box): string | null {
 }
 
 /** Diskteki dosyayı denetler. MP4 değilse `Mp4ProbeFailure` fırlatır. */
-export async function probeMp4File(filePath: string): Promise<Mp4ProbeResult> {
+export async function probeMp4File(filePath: string, opts: { allowQuickTime?: boolean } = {}): Promise<Mp4ProbeResult> {
   const handle = await fs.open(filePath, "r");
   try {
     const { size: fileSize } = await handle.stat();
@@ -110,8 +112,9 @@ export async function probeMp4File(filePath: string): Promise<Mp4ProbeResult> {
     const brand = ftypBrand(head.subarray(0, bytesRead));
     if (!brand) throw new Mp4ProbeFailure("NOT_MP4");
     if (HEIF_BRANDS.has(brand)) throw new Mp4ProbeFailure("HEIF_IMAGE");
-    if (brand === "qt  ") throw new Mp4ProbeFailure("QUICKTIME");
-    if (!MP4_BRANDS.has(brand)) throw new Mp4ProbeFailure("NOT_MP4");
+    const isQuickTime = brand === "qt  ";
+    if (isQuickTime && !opts.allowQuickTime) throw new Mp4ProbeFailure("QUICKTIME");
+    if (!isQuickTime && !MP4_BRANDS.has(brand)) throw new Mp4ProbeFailure("NOT_MP4");
 
     // Üst düzey kutuları yalnızca başlıklarından atlayarak dolaş.
     let offset = 0;
@@ -144,7 +147,7 @@ export async function probeMp4File(filePath: string): Promise<Mp4ProbeResult> {
     const buf = Buffer.alloc(Math.min(moov.size, fileSize - moov.offset));
     await handle.read(buf, 0, buf.length, moov.offset);
     const root: Box = { type: "moov", start: moov.header, end: buf.length };
-    return { majorBrand: brand, videoCodec: parseVideoCodec(buf, root), faststart: moovBeforeMdat, durationSec: parseDuration(buf, root) };
+    return { majorBrand: brand, container: isQuickTime ? "mov" : "mp4", videoCodec: parseVideoCodec(buf, root), faststart: moovBeforeMdat, durationSec: parseDuration(buf, root) };
   } finally {
     await handle.close();
   }

@@ -8,12 +8,17 @@ import { registerTestUser } from "../helpers/auth";
 import { buildMultipartPayload } from "../helpers/multipart";
 import { UPLOAD_DIR } from "../../src/plugins/uploads";
 
-// 1x1 transparent PNG (gerçek PNG magic byte'ları) — tests/unit/import-zip-parser.test.ts ile aynı sabit.
+// Paket AE-ek — görseller artık sharp ile çözülüp WebP'ye çevrildiği için örnekler GERÇEK, çözülebilir dosyalardır
+// (eski 1x1 PNG örneğinin IDAT'ı bozuktu, JPEG örneği yalnızca 10 baytlık imzaydı; imza denetimi bunu fark etmiyordu).
+// 1x1 saydam PNG ve 2x2 JPEG (sharp ile üretilmiş).
 const PNG_BYTES = Buffer.from(
-  "89504e470d0a1a0a0000000d494844520000000100000001080600000" + "01f15c4890000000a4944415478da6360000002000155bb84770000000049454e44ae426082",
+  "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000970485973000003e8000003e801b57b526b0000000d494441540899636060606000000005000187a14ed40000000049454e44ae426082",
   "hex"
 );
-const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+const JPEG_BYTES = Buffer.from(
+  "ffd8ffdb00430006040506050406060506070706080a100a0a09090a140e0f0c1017141818171416161a1d251f1a1b231c1616202c20232627292a29191f2d302d283025282928ffdb0043010707070a080a130a0a13281a161a2828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828ffc00011080002000203012200021101031101ffc4001500010100000000000000000000000000000006ffc40014100100000000000000000000000000000000ffc4001501010100000000000000000000000000000507ffc40014110100000000000000000000000000000000ffda000c03010002110311003f0096000aaeffd9",
+  "hex"
+);
 const HTML_XSS_BYTES = Buffer.from("<html><body><script>alert(document.cookie)</script></body></html>");
 
 /**
@@ -56,6 +61,12 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     await app.close();
   });
 
+  /** Paket AE-ek — ana sürüm + uyumluluk kopyalarının dosyaları test sonunda silinsin. */
+  async function trackStored(mediaId: string) {
+    const row = await app.prisma.media.findUniqueOrThrow({ where: { id: mediaId } });
+    createdStoredPaths.push(row.path, ...((row.variants as { path: string }[] | null) ?? []).map((v) => v.path));
+  }
+
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
@@ -72,31 +83,36 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     });
   }
 
-  it("gerçek bir PNG dosyasını doğru Content-Type ile kabul eder ve .png uzantısıyla saklar", async () => {
+  it("gerçek bir PNG dosyası kabul edilir, WebP'ye çevrilir; saydam olduğu için PNG + JPEG uyumluluk kopyası yazılır", async () => {
     const res = await upload("image/png", PNG_BYTES, "photo.png");
     expect(res.statusCode).toBe(201);
 
     const media = res.json().data;
-    expect(media.mimeType).toBe("image/png");
-    createdStoredPaths.push(new URL(media.url, "http://localhost").pathname.replace(/^\/uploads\//, ""));
-    expect(media.url).toMatch(/\.png$/);
-    // §Faz — piksel boyutu (width/height), upload anında `image-size` ile buffer'dan hesaplanır.
+    await trackStored(media.id);
+    expect([media.mimeType, media.filename]).toEqual(["image/webp", "photo.webp"]);
+    expect(media.url).toMatch(/\.webp$/);
+    expect(media.variants.map((v: { format: string }) => v.format).sort()).toEqual(["jpeg", "png"]);
+    // Piksel boyutu işlenmiş görselden gelir.
     expect(media.width).toBe(1);
     expect(media.height).toBe(1);
   });
 
-  it("gerçek bir JPEG dosyasını doğru Content-Type ile kabul eder ve .jpg uzantısıyla saklar", async () => {
+  it("gerçek bir JPEG dosyası kabul edilir, WebP'ye çevrilir, JPEG uyumluluk kopyası aynı UUID ile yazılır", async () => {
     const res = await upload("image/jpeg", JPEG_BYTES, "photo.jpg");
     expect(res.statusCode).toBe(201);
 
     const media = res.json().data;
-    expect(media.mimeType).toBe("image/jpeg");
-    createdStoredPaths.push(new URL(media.url, "http://localhost").pathname.replace(/^\/uploads\//, ""));
-    expect(media.url).toMatch(/\.jpg$/);
-    // Bu sabit sadece APP0 başlığından oluşan KIRPILMIŞ bir JPEG'tir (gerçek SOF/boyut verisi
-    // yok) — `image-size` boyutu hesaplayamaz ve istek REDDEDİLMEDEN width/height null kalır.
-    expect(media.width).toBeNull();
-    expect(media.height).toBeNull();
+    await trackStored(media.id);
+    expect(media.mimeType).toBe("image/webp");
+    expect(media.url).toMatch(/\.webp$/);
+    expect(media.variants).toEqual([expect.objectContaining({ format: "jpeg", url: media.url.replace(/\.webp$/, ".jpg") })]);
+    expect([media.width, media.height]).toEqual([2, 2]);
+  });
+
+  it("bozuk/çözülemeyen görsel (yalnızca JPEG imzası) anlaşılır mesajla reddedilir", async () => {
+    const res = await upload("image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]), "kirik.jpg");
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.message).toBe("Görsel okunamadı ya da bozuk.");
   });
 
   it("sahte Content-Type ile yüklenen HTML/script içeriğini REDDEDER (spoofed-MIME saldırısı)", async () => {
@@ -106,41 +122,42 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
-  // Paket AE — beyan ile içerik farklı ama içerik izinli bir görselse tür İÇERİKTEN alınır, uzantı düzeltilir, bilgi verilir.
-  it("PNG içerik + jpeg beyanı: PNG olarak kaydedilir, dosya adı uzantısı düzeltilir, bilgi mesajı döner", async () => {
+  // Paket AE — beyan ile içerik farklı ama içerik izinli bir görselse tür İÇERİKTEN alınır; Paket AE-ek: sonra WebP'ye çevrilir.
+  it("PNG içerik + jpeg beyanı: içerikten PNG tanınır, WebP olarak kaydedilir, bilgi mesajı ikisini de söyler", async () => {
     const res = await upload("image/jpeg", PNG_BYTES, "actually-png.jpg");
     expect(res.statusCode).toBe(201);
     const { data, meta } = res.json();
-    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: data.id } })).path);
-    expect([data.mimeType, data.filename, data.url.endsWith(".png")]).toEqual(["image/png", "actually-png.png", true]);
-    expect(meta.notice).toEqual({ code: "TYPE_CORRECTED", detectedMimeType: "image/png", message: "Dosya PNG olarak kaydedildi." });
+    await trackStored(data.id);
+    expect([data.mimeType, data.filename]).toEqual(["image/webp", "actually-png.webp"]);
+    expect(meta.notice).toMatchObject({ code: "CONVERTED", detectedMimeType: "image/png" });
+    expect(meta.notice.message).toMatch(/^Dosya aslında PNG; WebP olarak kaydedildi \(.+ → .+\); konum ve kamera bilgileri silindi\.$/);
   });
 
-  it("`.PNG` adlı ve image/png beyanlı ama gerçekte JPEG olan dosya JPEG olarak kaydedilir", async () => {
+  it("`.PNG` adlı ve image/png beyanlı ama gerçekte JPEG olan dosya kabul edilir (içerikten JPEG) ve WebP'ye çevrilir", async () => {
     const res = await upload("image/png", JPEG_BYTES, "IMG_0001.PNG");
     expect(res.statusCode).toBe(201);
     const { data, meta } = res.json();
-    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: data.id } })).path);
-    expect([data.mimeType, data.filename, data.url.endsWith(".jpg")]).toEqual(["image/jpeg", "IMG_0001.jpg", true]);
-    expect(meta.notice.message).toBe("Dosya JPEG olarak kaydedildi.");
+    await trackStored(data.id);
+    expect([data.mimeType, data.filename]).toEqual(["image/webp", "IMG_0001.webp"]);
+    expect(meta.notice.message).toMatch(/^Dosya aslında JPEG; WebP olarak kaydedildi/);
   });
 
-  it("tür beyanı olmayan (application/octet-stream) gerçek JPEG kabul edilir; tür aynıysa bilgi mesajı yoktur", async () => {
+  it("tür beyanı olmayan (application/octet-stream) gerçek JPEG kabul edilir; tür aynıysa mesaj yalnızca dönüşümü söyler", async () => {
     const res = await upload("application/octet-stream", JPEG_BYTES, "foto");
     expect(res.statusCode).toBe(201);
-    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: res.json().data.id } })).path);
-    expect(res.json().data.filename).toBe("foto.jpg");
+    await trackStored(res.json().data.id);
+    expect(res.json().data.filename).toBe("foto.webp");
     const same = await upload("image/jpeg", JPEG_BYTES, "foto.jpg");
-    createdStoredPaths.push((await app.prisma.media.findUniqueOrThrow({ where: { id: same.json().data.id } })).path);
-    expect(same.json().meta).toBeUndefined();
+    await trackStored(same.json().data.id);
+    expect(same.json().meta.notice.message).toMatch(/^WebP olarak kaydedildi/);
   });
 
-  it("iPhone HEIC dosyası beyandan bağımsız anlaşılır mesajla reddedilir", async () => {
+  it("iPhone HEIC dosyası beyandan bağımsız tanınır; bu sunucuda dönüştürülemediği için anlaşılır mesajla reddedilir", async () => {
     const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.from([0, 0, 0, 0]), Buffer.from("mif1heic"), Buffer.alloc(32)]);
     for (const declared of ["image/heic", "image/jpeg", "application/octet-stream"]) {
       const res = await upload(declared, heic, "IMG_0002.HEIC");
       expect(res.statusCode, declared).toBe(422);
-      expect(res.json().error.message).toBe("iPhone HEIC biçimi desteklenmiyor. JPEG/PNG olarak dışa aktarın.");
+      expect(res.json().error.message).toContain("iPhone HEIC fotoğrafı bu sunucuda dönüştürülemiyor");
     }
   });
 
@@ -663,7 +680,7 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
         });
         expect(res.statusCode).toBe(201);
         expect(res.json().data.folderId).toBe(folder.id);
-        createdStoredPaths.push(new URL(res.json().data.url, "http://localhost").pathname.replace(/^\/uploads\//, ""));
+        await trackStored(res.json().data.id);
       });
 
       it("var olmayan folderId ile yükleme 404 döner (dosya diske yazılmadan reddedilir)", async () => {
@@ -698,7 +715,7 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
         });
         expect(res.statusCode).toBe(201);
         expect(res.json().data.folderId).toBe(folder.id);
-        createdStoredPaths.push(new URL(res.json().data.url, "http://localhost").pathname.replace(/^\/uploads\//, ""));
+        await trackStored(res.json().data.id);
       });
     });
   });

@@ -182,7 +182,8 @@ export function toPublicMediaDto(row: DoctorMedia & { media: Media | null; thumb
   }
   const thumbnailUrl = row.thumbnailMedia ? absolutizeMediaUrl(row.thumbnailMedia.url) : null;
   if (row.videoProvider === "upload") {
-    if (!row.media || row.media.mimeType !== "video/mp4") return null;
+    // Paket AE-ek — dönüştürülmeyi bekleyen ya da başarısız video sitede görünmez.
+    if (!row.media || row.media.mimeType !== "video/mp4" || !row.media.url || (row.media.processingStatus && row.media.processingStatus !== "ready")) return null;
     const captions = row.captionsMedia && row.captionsMedia.mimeType === "text/vtt" ? row.captionsMedia : null;
     return {
       id: row.id,
