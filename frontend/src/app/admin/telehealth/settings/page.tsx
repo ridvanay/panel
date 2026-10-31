@@ -19,6 +19,7 @@ import { LanguageSupportSettingsCard } from "@/components/admin/telehealth/langu
 import { DEFAULT_LANGUAGE_SUPPORT } from "@/lib/language-support";
 import { MatcherSettingsCard } from "@/components/admin/matcher/matcher-settings-card";
 import { DoctorMediaSettingsCard } from "@/components/admin/telehealth/doctor-media-settings-card";
+import { ContactChannelsSettingsCard } from "@/components/admin/telehealth/contact-channels-settings";
 
 /**
  * Görev (2026-09-14) Görev 1 — "Arayüz & Tema Renkleri" sekmesi. `/admin/telehealth/overview`
@@ -246,6 +247,9 @@ export default function AdminTelehealthSettingsPage() {
 
       {/* Paket Y — önce/sonra görselleri (varsayılan kapalı; PUT yalnızca ADMIN). */}
       <DoctorMediaSettingsCard canEdit={user?.role === "ADMIN"} />
+
+      {/* Paket X — WhatsApp / koordinatör e-postası (varsayılan kapalı; PUT yalnızca ADMIN). */}
+      <ContactChannelsSettingsCard canEdit={user?.role === "ADMIN"} />
     </div>
   );
 }

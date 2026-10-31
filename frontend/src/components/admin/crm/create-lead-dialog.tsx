@@ -62,7 +62,7 @@ export function CreateLeadDialog({
           <Field id="lead-channel" label="Kanal">
             {(p) => (
               <Select {...p} value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as CrmLeadChannel })}>
-                {CRM_LEAD_CHANNEL_OPTIONS.filter((o) => o.value !== "ADS_IMPORT" && o.value !== "BOOKING_ABANDONED").map((o) => (
+                {CRM_LEAD_CHANNEL_OPTIONS.filter((o) => o.value !== "ADS_IMPORT" && o.value !== "BOOKING_ABANDONED" && o.value !== "PACKAGE").map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>

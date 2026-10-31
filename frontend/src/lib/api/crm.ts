@@ -70,7 +70,7 @@ export type CrmLeadStatus =
   | "NEGATIVE"
   | "SPAM";
 
-export type CrmLeadChannel = "CONTACT_FORM" | "LIVE_CHAT" | "WHATSAPP" | "PHONE" | "EMAIL" | "BOOKING_ABANDONED" | "MANUAL" | "ADS_IMPORT" | "MATCHER";
+export type CrmLeadChannel = "CONTACT_FORM" | "LIVE_CHAT" | "WHATSAPP" | "PHONE" | "EMAIL" | "BOOKING_ABANDONED" | "MANUAL" | "ADS_IMPORT" | "MATCHER" | "PACKAGE";
 
 export const CRM_LEAD_STATUS_OPTIONS: { value: CrmLeadStatus; label: string }[] = [
   { value: "NEW", label: "Yeni" },
@@ -94,6 +94,7 @@ export const CRM_LEAD_CHANNEL_OPTIONS: { value: CrmLeadChannel; label: string }[
   { value: "MANUAL", label: "Manuel" },
   { value: "ADS_IMPORT", label: "Google Ads" },
   { value: "MATCHER", label: "Eşleştirme sihirbazı" },
+  { value: "PACKAGE", label: "Sağlık paketi" },
 ];
 
 export const leadStatusLabel = (s: CrmLeadStatus) => CRM_LEAD_STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s;
@@ -151,7 +152,24 @@ export interface CrmBookingSuggestion {
   reason: string;
 }
 
+/** Paket X — `GET /admin/crm/leads/:id` yanıtındaki paket talebi (kanal PACKAGE). */
+export interface CrmPackageInquiry {
+  number: number;
+  packageId: string | null;
+  packageSlug: string | null;
+  packageTitle: string | null;
+  preferredDates: string | null;
+  travellers: number | null;
+  note: string | null;
+  consentContactAt: string | null;
+  consentHealthAt: string | null;
+  anonymizedAt: string | null;
+  /** Onay metni sürümü (ör. "package-v1"). */
+  consentTextVersion?: string | null;
+}
+
 export interface CrmLeadDetail extends CrmLead {
+  packageInquiry?: CrmPackageInquiry | null;
   notes: CrmLeadNote[];
   bookingSuggestions: CrmBookingSuggestion[];
   linkedBooking: { id: string; bookingNumber: string; paymentStatus: string; totalCents: number; currency: string; createdAt: string } | null;
@@ -231,6 +249,10 @@ export const updateCrmLead = (id: string, input: UpdateCrmLeadInput) => apiFetch
 export const addCrmLeadNote = (id: string, body: string) => apiFetch<CrmLeadNote>(`/admin/crm/leads/${id}/notes`, { method: "POST", body: { body } });
 export const bulkUpdateCrmLeadStatus = (ids: string[], status: CrmLeadStatus) =>
   apiFetch<{ updated: number }>("/admin/crm/leads/bulk-status", { method: "POST", body: { ids, status } });
+/** Paket X — hasta sağlık onayını geri çeker: not ve onay zamanı silinir (denetim izli). */
+export const withdrawPackageHealthConsent = (id: string) =>
+  apiFetch<{ withdrawn: boolean }>(`/admin/crm/leads/${id}/package-inquiry/withdraw-health-consent`, { method: "POST" });
+
 export const deleteCrmLead = (id: string) => apiFetch<void>(`/admin/crm/leads/${id}`, { method: "DELETE" });
 
 /** JSON olmayan CRM indirmeleri (CSV) — `reports.ts::downloadExportJob` deseni. */
