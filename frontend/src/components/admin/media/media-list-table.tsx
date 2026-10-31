@@ -103,6 +103,7 @@ export function MediaListTable({
                 <div className="flex items-center gap-3">
                   <MediaThumbnail
                     src={media.url}
+                    mimeType={media.mimeType}
                     alt=""
                     className="h-10 w-10 shrink-0 rounded-md object-cover"
                     iconClassName="h-4 w-4"
@@ -114,7 +115,7 @@ export function MediaListTable({
               </TableCell>
               <TableCell className="w-24">
                 <Badge tone="neutral" size="sm">
-                  {mimeSubtype(media.mimeType)}
+                  {media.mimeType === "video/mp4" ? "VIDEO" : media.mimeType === "text/vtt" ? "VTT" : mimeSubtype(media.mimeType)}
                 </Badge>
               </TableCell>
               <TableCell className="w-24 text-foreground/70">{formatSize(media.sizeBytes)}</TableCell>

@@ -40,13 +40,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MediaPreviewDialog } from "@/components/admin/media-preview-dialog";
 import { MediaListTable } from "@/components/admin/media/media-list-table";
-import { MediaThumbnailFallback } from "@/components/admin/media/media-thumbnail";
+import { MediaFileTile, MediaThumbnailFallback, isImageMimeType } from "@/components/admin/media/media-thumbnail";
 import { MediaFolderTree } from "@/components/admin/media/media-folder-tree";
 import { PageHeading } from "@/components/admin/page-heading";
 import { ListPagination } from "@/components/admin/list-pagination";
 import { useFilteredList } from "@/hooks/use-filtered-list";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { showMediaNotice } from "@/components/admin/media/media-notice";
 import { exportToCsv } from "@/lib/export-csv";
 import { cn } from "@/lib/cn";
 import {
@@ -62,7 +63,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-type FileTypeFilter = "all" | "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+type FileTypeFilter = "all" | "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "video/mp4" | "text/vtt";
 type DateRangeFilter = "all" | "today" | "7d" | "30d" | "year";
 
 /** Tarih aralığı filtresi — `createdAt` verilen aralığa düşüyor mu (yerel saat dilimine göre takvim günü/yılı). */
@@ -257,6 +258,7 @@ export default function AdminMediaPage() {
   useEffect(() => {
     if (!items) return;
     for (const media of items) {
+      if (!isImageMimeType(media.mimeType)) continue; // video/altyazı: görsel olarak yüklenmez
       if (requestedColorIdsRef.current.has(media.id)) continue;
       requestedColorIdsRef.current.add(media.id);
 
@@ -322,7 +324,7 @@ export default function AdminMediaPage() {
 
     for (const file of imageFiles) {
       try {
-        await mediaApi.uploadMedia(file, uploadFolderId);
+        await mediaApi.uploadMedia(file, uploadFolderId, showMediaNotice);
         successCount += 1;
       } catch (err) {
         failCount += 1;
@@ -596,6 +598,8 @@ export default function AdminMediaPage() {
                 <option value="image/png">PNG</option>
                 <option value="image/webp">WEBP</option>
                 <option value="image/gif">GIF</option>
+                <option value="video/mp4">Video</option>
+                <option value="text/vtt">Altyazı (VTT)</option>
               </Select>
               <Select
                 aria-label="Yükleme tarihine göre filtrele"
@@ -774,7 +778,9 @@ export default function AdminMediaPage() {
                             aria-label={`${media.filename} önizlemesini aç`}
                             className="block aspect-square w-full cursor-zoom-in overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            {failedThumbnailIds.has(media.id) ? (
+                            {!isImageMimeType(media.mimeType) ? (
+                              <MediaFileTile mimeType={media.mimeType} className="h-full w-full" />
+                            ) : failedThumbnailIds.has(media.id) ? (
                               <MediaThumbnailFallback alt={media.filename} className="h-full w-full" />
                             ) : (
                               // eslint-disable-next-line @next/next/no-img-element -- yüklenen medya URL'si, next/image remotePatterns henüz tanımlı değil

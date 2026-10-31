@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, Film, ImageIcon, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import * as showcaseApi from "@/lib/api/doctor-showcase";
-import { MEDIA_CATEGORY_LABELS, requiresPatientConsent, type DoctorMediaCategory, type DoctorMediaKind, type VideoProviderName } from "@/lib/api/doctor-showcase";
+import { MEDIA_CATEGORY_LABELS, requiresPatientConsent, type DoctorMediaCategory, type DoctorMediaKind } from "@/lib/api/doctor-showcase";
+import { DEFAULT_MAX_VIDEO_MB, formatDuration, warningsFromVideoInfo } from "@/lib/video-upload";
+import { VideoUploadPanel, type VideoUploadValue } from "@/components/admin/telehealth/video-upload-panel";
 import type { Media } from "@/lib/api/types";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { extractVideoRef } from "@/lib/video-ref";
@@ -23,6 +25,11 @@ import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { ShowcaseLocaleTabs } from "@/components/admin/telehealth/showcase-locale-tabs";
 
 export const LARGE_VIDEO_NOTE = "Büyük videoları sunucuya yüklemeyin; YouTube/Vimeo'ya yükleyip bağlantısını girin.";
+
+type LinkProvider = "youtube" | "vimeo";
+export type VideoSource = "link" | "upload";
+
+const EMPTY_UPLOAD: VideoUploadValue = { video: null, info: null, poster: null, captions: null, captionsLang: "tr" };
 export const CONSENT_REQUIRED_NOTE = "Hastanın göründüğü içerik, hastadan yazılı onay alınmadan yayınlanamaz. Önce “Hastadan yazılı onay alındı” kutusunu işaretleyip onay notunu yazın.";
 
 const EMPTY_TEXT: showcaseApi.DoctorMediaText = { title: "", description: "", alt: "" };
@@ -32,8 +39,11 @@ export interface MediaFormState {
   id: string | null;
   kind: DoctorMediaKind;
   photo: Media | null;
-  videoProvider: VideoProviderName;
+  videoProvider: LinkProvider;
   videoInput: string;
+  /** Video kaynağı: YouTube/Vimeo bağlantısı ya da yüklenen MP4. */
+  videoSource: VideoSource;
+  upload: VideoUploadValue;
   category: DoctorMediaCategory;
   translations: Record<string, showcaseApi.DoctorMediaText>;
   showsPatient: boolean;
@@ -49,6 +59,8 @@ const EMPTY_FORM: MediaFormState = {
   photo: null,
   videoProvider: "youtube",
   videoInput: "",
+  videoSource: "link",
+  upload: EMPTY_UPLOAD,
   category: "about",
   translations: {},
   showsPatient: false,
@@ -74,11 +86,15 @@ export function buildMediaInput(form: MediaFormState): { input?: showcaseApi.Doc
   for (const [code, t] of Object.entries(form.translations)) {
     if (hasText(t)) translations[code] = { title: t.title.trim(), description: t.description.trim(), alt: t.alt.trim() };
   }
-  let videoProvider: VideoProviderName | null = null;
+  let videoProvider: showcaseApi.DoctorMediaInput["videoProvider"] = null;
   let videoId: string | null = null;
+  const isUpload = form.kind === "video" && form.videoSource === "upload";
   if (form.kind === "photo") {
     if (!form.photo) errors.mediaId = "Bir görsel seçin.";
     if (!Object.values(translations).some((t) => t.alt)) errors.translations = "Fotoğraf için en az bir dilde alt metin zorunlu.";
+  } else if (isUpload) {
+    if (!form.upload.video) errors.mediaId = "Bir MP4 video yükleyin.";
+    else videoProvider = "upload";
   } else {
     const ref = extractVideoRef(form.videoInput, form.videoProvider);
     if (!ref) errors.videoId = "Geçerli bir YouTube/Vimeo bağlantısı ya da video kimliği girin.";
@@ -94,9 +110,16 @@ export function buildMediaInput(form: MediaFormState): { input?: showcaseApi.Doc
     errors,
     input: {
       kind: form.kind,
-      mediaId: form.kind === "photo" ? form.photo?.id ?? null : null,
+      mediaId: form.kind === "photo" ? form.photo?.id ?? null : isUpload ? form.upload.video?.id ?? null : null,
       videoProvider,
       videoId,
+      ...(isUpload
+        ? {
+            posterMediaId: form.upload.poster?.id ?? null,
+            captionsMediaId: form.upload.captions?.id ?? null,
+            captionsLang: form.upload.captions ? form.upload.captionsLang : null,
+          }
+        : {}),
       category: form.category,
       translations,
       showsPatient: form.showsPatient,
@@ -110,7 +133,7 @@ export function buildMediaInput(form: MediaFormState): { input?: showcaseApi.Doc
 
 function itemTitle(m: showcaseApi.AdminDoctorMedia): string {
   const t = m.translations.tr ?? m.translations.en ?? Object.values(m.translations).find(hasText);
-  return t?.title || t?.alt || (m.kind === "video" ? `Video (${m.videoId ?? "?"})` : m.media?.filename || "Fotoğraf");
+  return t?.title || t?.alt || (m.kind === "video" ? (m.videoProvider === "upload" ? `Video (${m.media?.filename ?? "MP4"})` : `Video (${m.videoId ?? "?"})`) : m.media?.filename || "Fotoğraf");
 }
 
 /** Paket Y — "Foto ve videolar" yöneticisi. Hasta görünen içerik onaysız yayınlanamaz (arayüz + sunucu 422). */
@@ -124,6 +147,17 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pendingDelete, setPendingDelete] = useState<showcaseApi.AdminDoctorMedia | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [maxVideoMb, setMaxVideoMb] = useState(DEFAULT_MAX_VIDEO_MB);
+
+  useEffect(() => {
+    // Ayar okunamazsa varsayılan (100 MB) ile devam edilir; sunucu yine son karar verir.
+    showcaseApi
+      .getDoctorMediaSettings()
+      .then((s) => {
+        if (s?.maxVideoUploadMb) setMaxVideoMb(s.maxVideoUploadMb);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -152,8 +186,19 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
       id: m.id,
       kind: m.kind,
       photo: m.media ? ({ id: m.media.id, url: m.media.url, filename: m.media.filename, width: m.media.width, height: m.media.height, altText: null } as unknown as Media) : null,
-      videoProvider: m.videoProvider ?? "youtube",
+      videoProvider: m.videoProvider === "vimeo" ? "vimeo" : "youtube",
       videoInput: m.videoId ?? "",
+      videoSource: m.videoProvider === "upload" ? "upload" : "link",
+      upload:
+        m.videoProvider === "upload"
+          ? {
+              video: m.media ? ({ altText: null, sizeBytes: 0, mimeType: "video/mp4", folderId: null, createdAt: m.createdAt, ...m.media } as Media) : null,
+              info: m.video ?? null,
+              poster: m.thumbnailMediaId && m.thumbnailUrl ? ({ id: m.thumbnailMediaId, url: m.thumbnailUrl, filename: "poster", mimeType: "image/jpeg", sizeBytes: 0, altText: null, width: null, height: null, folderId: null, createdAt: m.createdAt } as Media) : null,
+              captions: m.captionsMediaId ? ({ id: m.captionsMediaId, url: m.captionsUrl ?? "", filename: "altyazi.vtt", mimeType: "text/vtt", sizeBytes: 0, altText: null, width: null, height: null, folderId: null, createdAt: m.createdAt } as Media) : null,
+              captionsLang: m.captionsLang ?? "tr",
+            }
+          : EMPTY_UPLOAD,
       category: m.category,
       translations: { ...m.translations },
       showsPatient: m.showsPatient,
@@ -224,7 +269,7 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
   }
 
   const current = form?.translations[locale] ?? EMPTY_TEXT;
-  const videoRef = form && form.kind === "video" ? extractVideoRef(form.videoInput, form.videoProvider) : null;
+  const videoRef = form && form.kind === "video" && form.videoSource === "link" ? extractVideoRef(form.videoInput, form.videoProvider) : null;
   const publishLocked = form ? !canPublishMedia(form) : false;
 
   return (
@@ -276,13 +321,35 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
           {items.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
               <div className="flex min-w-0 items-center gap-2">
-                {m.kind === "video" ? <Film className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" /> : <ImageIcon className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />}
+                {m.thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- admin küçük resmi, harici/yerel medya URL'si
+                  <img src={m.thumbnailUrl} alt="" loading="lazy" className="h-10 w-14 shrink-0 rounded object-cover" />
+                ) : m.kind === "video" ? (
+                  <Film className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+                ) : (
+                  <ImageIcon className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+                )}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{itemTitle(m)}</p>
                   <p className="text-xs text-foreground/60">
                     {MEDIA_CATEGORY_LABELS[m.category]} · Sıra {m.sortOrder}
                     {requiresPatientConsent(m) ? (m.patientConsentConfirmed ? " · Hasta onayı var" : " · Hasta onayı YOK") : ""}
+                    {m.videoProvider === "upload" && m.video ? ` · ${formatDuration(m.video.durationSec)}` : ""}
                   </p>
+                  {m.videoProvider === "upload" && (
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1">
+                      <Badge tone="neutral" size="sm">
+                        MP4{m.video?.codec ? ` · ${m.video.codec}` : ""}
+                      </Badge>
+                      {warningsFromVideoInfo(m.video ?? null).map((w) => (
+                        <span key={w.code} title={w.message}>
+                          <Badge tone="warning" size="sm">
+                            {w.code === "HEVC_CODEC" ? "HEVC uyarısı" : "Optimize değil"}
+                          </Badge>
+                        </span>
+                      ))}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -344,10 +411,26 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
             </div>
           ) : (
             <div className="space-y-3">
+              <Field id="media-video-source" label="Video kaynağı">
+                {(inputProps) => (
+                  <Select {...inputProps} value={form.videoSource} onChange={(e) => patch({ videoSource: e.target.value as VideoSource })}>
+                    <option value="link">YouTube/Vimeo bağlantısı</option>
+                    <option value="upload">Video yükle (MP4)</option>
+                  </Select>
+                )}
+              </Field>
+              {form.videoSource === "upload" ? (
+                <VideoUploadPanel
+                  value={form.upload}
+                  onChange={(change) => setForm((prev) => (prev ? { ...prev, upload: { ...prev.upload, ...change } } : prev))}
+                  maxVideoMb={maxVideoMb}
+                  error={fieldErrors.mediaId}
+                />
+              ) : (
               <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
                 <Field id="media-video-provider" label="Sağlayıcı">
                   {(inputProps) => (
-                    <Select {...inputProps} value={videoRef?.provider ?? form.videoProvider} onChange={(e) => patch({ videoProvider: e.target.value as VideoProviderName })}>
+                    <Select {...inputProps} value={videoRef?.provider ?? form.videoProvider} onChange={(e) => patch({ videoProvider: e.target.value as LinkProvider })}>
                       <option value="youtube">YouTube</option>
                       <option value="vimeo">Vimeo</option>
                     </Select>
@@ -363,6 +446,7 @@ export function DoctorMediaManager({ doctorId }: { doctorId: string }) {
                   {(inputProps) => <Input {...inputProps} value={form.videoInput} onChange={(e) => patch({ videoInput: e.target.value })} />}
                 </Field>
               </div>
+              )}
             </div>
           )}
 

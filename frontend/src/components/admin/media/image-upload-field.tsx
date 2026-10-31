@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MediaPicker } from "@/components/admin/media/media-picker";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { showMediaNotice } from "@/components/admin/media/media-notice";
 
 interface ImageUploadFieldProps {
   id: string;
@@ -46,7 +47,7 @@ export function ImageUploadField({
     setError(null);
     setUploading(true);
     try {
-      const media = await mediaApi.uploadMedia(file);
+      const media = await mediaApi.uploadMedia(file, null, showMediaNotice);
       onChange(media.url);
       toast.success("Görsel yüklendi.");
     } catch (err) {

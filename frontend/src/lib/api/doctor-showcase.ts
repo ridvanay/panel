@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import type { VideoUploadInfo } from "./media";
 
 /** Paket Y — hekim vitrini (İşlemler + Foto/Video) ve önce/sonra ayarı. Yalnızca admin uçları; fiyat alanı YOKTUR. */
 
@@ -30,7 +31,7 @@ export interface AdminDoctorProcedure extends DoctorProcedureInput {
 
 export type DoctorMediaKind = "photo" | "video";
 export type DoctorMediaCategory = "about" | "clinic" | "procedure" | "interview" | "before-after";
-export type VideoProviderName = "youtube" | "vimeo";
+export type VideoProviderName = "youtube" | "vimeo" | "upload";
 
 export const MEDIA_CATEGORY_LABELS: Record<DoctorMediaCategory, string> = {
   about: "Hekim hakkında",
@@ -51,6 +52,10 @@ export interface DoctorMediaInput {
   mediaId?: string | null;
   videoProvider?: VideoProviderName | null;
   videoId?: string | null;
+  /** Yalnızca `videoProvider: "upload"`: kapak görseli (görsel Media id) ve altyazı (text/vtt Media id). */
+  posterMediaId?: string | null;
+  captionsMediaId?: string | null;
+  captionsLang?: string | null;
   category: DoctorMediaCategory;
   translations: Record<string, DoctorMediaText>;
   showsPatient: boolean;
@@ -63,7 +68,12 @@ export interface DoctorMediaInput {
 export interface AdminDoctorMedia extends DoctorMediaInput {
   id: string;
   doctorId: string;
-  media: { id: string; url: string; width: number | null; height: number | null; filename: string } | null;
+  media: { id: string; url: string; width: number | null; height: number | null; filename: string; mimeType?: string } | null;
+  /** Poster ya da YouTube/Vimeo yerel küçük resmi. */
+  thumbnailUrl?: string | null;
+  thumbnailMediaId?: string | null;
+  captionsUrl?: string | null;
+  video?: VideoUploadInfo | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -93,7 +103,10 @@ export const deleteDoctorMedia = (doctorId: string, id: string) =>
 
 export interface DoctorMediaSettings {
   beforeAfterEnabled: boolean;
+  /** 1..500 MB, varsayılan 100 (Nginx `client_max_body_size` ile uyumlu olmalı). */
+  maxVideoUploadMb: number;
 }
 export const getDoctorMediaSettings = () => apiFetch<DoctorMediaSettings>("/admin/telehealth/settings/doctor-media");
-export const updateDoctorMediaSettings = (input: DoctorMediaSettings) =>
+/** PUT kısmi gövde kabul eder; yanıt birleşmiş ayardır. */
+export const updateDoctorMediaSettings = (input: Partial<DoctorMediaSettings>) =>
   apiFetch<DoctorMediaSettings>("/admin/telehealth/settings/doctor-media", { method: "PUT", body: input });

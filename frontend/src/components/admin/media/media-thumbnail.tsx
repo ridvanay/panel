@@ -1,11 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { ImageOff } from "lucide-react";
+import { FileText, Film, ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/** Paket AE — kütüphanede artık `video/mp4` ve `text/vtt` kayıtları da olabilir; `<img>` yalnızca görseller içindir. */
+export function isImageMimeType(mimeType: string | null | undefined): boolean {
+  return !mimeType || mimeType.startsWith("image/");
+}
+
+export function mediaTypeLabel(mimeType: string): string {
+  if (mimeType === "video/mp4") return "Video · MP4";
+  if (mimeType === "text/vtt") return "Altyazı · VTT";
+  if (mimeType === "application/pdf") return "Döküman · PDF";
+  return (mimeType.split("/")[1] ?? mimeType).toUpperCase();
+}
+
+/** Görsel olmayan medya (video/altyazı/PDF) için `<img>` yerine simge + tür etiketi. */
+export function MediaFileTile({ mimeType, className, iconClassName }: { mimeType: string; className?: string; iconClassName?: string }) {
+  const Icon = mimeType.startsWith("video/") ? Film : FileText;
+  const label = mediaTypeLabel(mimeType);
+  return (
+    <div
+      role="img"
+      aria-label={label}
+      data-testid="media-file-tile"
+      className={cn("flex flex-col items-center justify-center gap-1 bg-surface-muted text-foreground/50", className)}
+    >
+      <Icon className={cn("h-6 w-6 shrink-0", iconClassName)} aria-hidden="true" />
+      <span className="px-1 text-center text-[10px] leading-tight">{label}</span>
+    </div>
+  );
+}
 
 interface MediaThumbnailProps {
   src: string;
+  /** Verilirse ve görsel değilse `<img>` yerine simge + etiket gösterilir. */
+  mimeType?: string;
   alt: string;
   /** `<img>`'in kendi sınıfı (boyut/kenarlık/`object-fit`). */
   className?: string;
@@ -67,8 +98,12 @@ export function MediaThumbnailFallback({ alt, className, iconClassName }: MediaT
  * yalnızca `onError` + fallback state eklenir (aynı `doctor-avatar.tsx`'teki desenin özü: gerçek
  * bir yükleme hatasında ham/kırık görsel yerine kontrollü bir placeholder'a düş).
  */
-export function MediaThumbnail({ src, alt, className, fallbackClassName, iconClassName }: MediaThumbnailProps) {
+export function MediaThumbnail({ src, mimeType, alt, className, fallbackClassName, iconClassName }: MediaThumbnailProps) {
   const [failed, setFailed] = useState(false);
+
+  if (mimeType && !isImageMimeType(mimeType)) {
+    return <MediaFileTile mimeType={mimeType} className={fallbackClassName ?? className} iconClassName={iconClassName} />;
+  }
 
   if (failed) {
     return (

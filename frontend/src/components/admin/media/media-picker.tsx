@@ -14,6 +14,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { MediaFolderTree } from "@/components/admin/media/media-folder-tree";
 import { MediaThumbnail } from "@/components/admin/media/media-thumbnail";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { showMediaNotice } from "@/components/admin/media/media-notice";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { cn } from "@/lib/utils";
 import {
@@ -164,7 +165,7 @@ export function MediaPicker(props: MediaPickerProps) {
       // §10.11.4 — modal bir klasör filtreliyken yüklenen görsel doğrudan o klasöre düşer.
       const uploadFolderId =
         selectedFolderId === ALL_FILES_SELECTION || selectedFolderId === "none" ? null : selectedFolderId;
-      const media = await mediaApi.uploadMedia(file, uploadFolderId);
+      const media = await mediaApi.uploadMedia(file, uploadFolderId, showMediaNotice);
       if (props.multiple) {
         // §10.15.3 — çoklu modda yükleme seçime EKLER, modalı kapatmaz.
         setMediaCache((prev) => new Map(prev).set(media.id, media));
@@ -350,7 +351,7 @@ export function MediaPicker(props: MediaPickerProps) {
                             </span>
                           </div>
                         ) : (
-                          <MediaThumbnail src={media.url} alt="" className="h-full w-full object-cover" />
+                          <MediaThumbnail src={media.url} mimeType={media.mimeType} alt="" className="h-full w-full object-cover" />
                         )}
                         {selected && (
                           <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">

@@ -48,6 +48,8 @@ describe("canPublishMedia / buildMediaInput", () => {
     photo: null,
     videoProvider: "youtube",
     videoInput: "https://youtu.be/dQw4w9WgXcQ",
+    videoSource: "link",
+    upload: { video: null, info: null, poster: null, captions: null, captionsLang: "tr" },
     category: "about",
     translations: {},
     showsPatient: false,

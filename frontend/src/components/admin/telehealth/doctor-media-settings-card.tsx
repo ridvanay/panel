@@ -9,6 +9,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { DEFAULT_MAX_VIDEO_MB, validateMaxVideoMb } from "@/lib/video-upload";
 import { Spinner } from "@/components/ui/spinner";
 
 /**
@@ -18,6 +21,8 @@ import { Spinner } from "@/components/ui/spinner";
 export function DoctorMediaSettingsCard({ canEdit }: { canEdit: boolean }) {
   const [saved, setSaved] = useState<boolean | null>(null);
   const [value, setValue] = useState(false);
+  const [savedMaxMb, setSavedMaxMb] = useState(DEFAULT_MAX_VIDEO_MB);
+  const [maxMbInput, setMaxMbInput] = useState(String(DEFAULT_MAX_VIDEO_MB));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -28,6 +33,9 @@ export function DoctorMediaSettingsCard({ canEdit }: { canEdit: boolean }) {
       const data = await showcaseApi.getDoctorMediaSettings();
       setSaved(data.beforeAfterEnabled);
       setValue(data.beforeAfterEnabled);
+      const mb = data.maxVideoUploadMb ?? DEFAULT_MAX_VIDEO_MB;
+      setSavedMaxMb(mb);
+      setMaxMbInput(String(mb));
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
@@ -39,14 +47,25 @@ export function DoctorMediaSettingsCard({ canEdit }: { canEdit: boolean }) {
     })();
   }, [load]);
 
+  const maxMbNumber = maxMbInput.trim() === "" ? NaN : Number(maxMbInput);
+  const maxMbError = validateMaxVideoMb(maxMbNumber);
+  const dirty = saved !== null && (value !== saved || maxMbNumber !== savedMaxMb);
+
   async function save() {
+    if (maxMbError) {
+      setSaveError(maxMbError);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await showcaseApi.updateDoctorMediaSettings({ beforeAfterEnabled: value });
+      const updated = await showcaseApi.updateDoctorMediaSettings({ beforeAfterEnabled: value, maxVideoUploadMb: maxMbNumber });
       setSaved(updated.beforeAfterEnabled);
       setValue(updated.beforeAfterEnabled);
-      toast.success("Önce/sonra ayarı kaydedildi.");
+      const mb = updated.maxVideoUploadMb ?? maxMbNumber;
+      setSavedMaxMb(mb);
+      setMaxMbInput(String(mb));
+      toast.success("Medya ayarları kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
       setSaveError(message);
@@ -61,7 +80,7 @@ export function DoctorMediaSettingsCard({ canEdit }: { canEdit: boolean }) {
       <div className="flex items-start gap-3">
         <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
         <div>
-          <h2 className="admin-h2">Önce/sonra görselleri</h2>
+          <h2 className="admin-h2">Önce/sonra görselleri ve video</h2>
           <p className="mt-0.5 admin-text-secondary">Hukuk onayı gelene kadar kapalı kalmalı; kapalıyken bu kategori sitede hiç görünmez.</p>
         </div>
       </div>
@@ -110,8 +129,16 @@ export function DoctorMediaSettingsCard({ canEdit }: { canEdit: boolean }) {
             </span>
             <Switch checked={value} disabled={!canEdit} onCheckedChange={(checked: boolean) => setValue(checked)} aria-label="Önce/sonra görsellerini sitede göster" />
           </div>
+          <Field
+            id="max-video-upload-mb"
+            label="Azami video boyutu (MB)"
+            error={maxMbError ?? undefined}
+            hint="1–500 arası, varsayılan 100. Sunucudaki Nginx client_max_body_size değeriyle uyumlu olmalı; Nginx sınırı bu değerden küçükse büyük yüklemeler 413 ile reddedilir."
+          >
+            {(inputProps) => <Input {...inputProps} type="number" inputMode="numeric" min={1} max={500} step={1} className="w-32" disabled={!canEdit} value={maxMbInput} onChange={(e) => setMaxMbInput(e.target.value)} />}
+          </Field>
           <div className="flex justify-end">
-            <Button type="button" loading={saving} disabled={!canEdit || value === saved} onClick={() => void save()}>
+            <Button type="button" loading={saving} disabled={!canEdit || !dirty || maxMbError !== null} onClick={() => void save()}>
               Kaydet
             </Button>
           </div>

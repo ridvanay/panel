@@ -42,6 +42,7 @@ export function MediaPreviewDialog({ media, open, onOpenChange }: MediaPreviewDi
         {media && (
           <MediaThumbnail
             src={media.url}
+            mimeType={media.mimeType}
             alt={media.filename}
             className="max-h-[65vh] w-full rounded-lg border border-border object-contain"
             // `object-contain` + yalnızca `max-h-*` normal `<img>`de intrinsic en-boy oranına göre

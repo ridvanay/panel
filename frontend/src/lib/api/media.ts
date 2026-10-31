@@ -1,4 +1,5 @@
-import { apiFetch, apiFetchPage } from "./client";
+import { apiFetch, apiFetchPage, apiFetchWithMeta } from "./client";
+import { uploadWithProgress, type UploadOptions } from "./upload";
 import type {
   CreateMediaFolderRequest,
   Media,
@@ -9,12 +10,26 @@ import type {
   UpdateMediaFolderRequest,
 } from "./types";
 
-/** `folderId` verilirse yükleme doğrudan o klasöre düşer (§10.11.4) — verilmezse "Kategorisiz". */
-export function uploadMedia(file: File, folderId?: string | null): Promise<Media> {
+/** `POST /admin/media` `meta.notice` — ör. beyan edilen tür içerikle uyuşmadığında `TYPE_CORRECTED`. */
+export interface MediaUploadNotice {
+  code: string;
+  message: string;
+  detectedMimeType?: string;
+}
+
+/**
+ * `folderId` verilirse yükleme doğrudan o klasöre düşer (§10.11.4) — verilmezse "Kategorisiz".
+ * `onNotice`, sunucu `meta.notice` döndürdüğünde (dosya türü düzeltildi vb.) çağrılır; dönüş tipi
+ * (Media) değişmez, mevcut çağıranlar etkilenmez.
+ */
+export async function uploadMedia(file: File, folderId?: string | null, onNotice?: (notice: MediaUploadNotice) => void): Promise<Media> {
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folderId", folderId);
-  return apiFetch<Media>("/admin/media", { method: "POST", body: formData });
+  const { data, meta } = await apiFetchWithMeta<Media>("/admin/media", { method: "POST", body: formData });
+  const notice = (meta as { notice?: MediaUploadNotice } | undefined)?.notice;
+  if (notice?.message && onNotice) onNotice(notice);
+  return data;
 }
 
 /**
@@ -67,4 +82,39 @@ export function deleteMediaFolder(folderId: string): Promise<void> {
 /** Tekil ve toplu taşıma TEK uç — tekil taşıma tek elemanlı `mediaIds` dizisidir (§10.11.4). */
 export function moveMedia(mediaIds: string[], folderId: string | null): Promise<MoveMediaResult> {
   return apiFetch<MoveMediaResult>("/admin/media/move", { method: "POST", body: { mediaIds, folderId } });
+}
+
+// ---------------------------------------------------------------------------
+// Paket AE — MP4 video ve .vtt altyazı yükleme (ilerleme çubuklu XHR).
+// ---------------------------------------------------------------------------
+
+export type VideoWarningCode = "HEVC_CODEC" | "MOOV_AT_END";
+
+export interface VideoUploadWarning {
+  code: VideoWarningCode;
+  message: string;
+}
+
+export interface VideoUploadInfo {
+  codec: "avc1" | "hvc1" | "hev1" | "av01" | "vp09" | null;
+  faststart: boolean;
+  durationSec: number | null;
+}
+
+export interface VideoUploadResult {
+  media: Media;
+  video: VideoUploadInfo;
+  warnings: VideoUploadWarning[];
+}
+
+/** `POST /admin/media/video` — yalnızca MP4; `signal` ile iptal edilebilir. */
+export async function uploadVideo(file: File, options: Pick<UploadOptions, "onProgress" | "signal"> = {}): Promise<VideoUploadResult> {
+  const { data } = await uploadWithProgress<VideoUploadResult>("/admin/media/video", file, options);
+  return { media: data.media, video: data.video, warnings: data.warnings ?? [] };
+}
+
+/** `POST /admin/media/captions` — `.vtt` (WEBVTT ile başlamalı, ≤ 512 KB). */
+export async function uploadCaptions(file: File, options: Pick<UploadOptions, "onProgress" | "signal"> = {}): Promise<Media> {
+  const { data } = await uploadWithProgress<Media>("/admin/media/captions", file, options);
+  return data;
 }

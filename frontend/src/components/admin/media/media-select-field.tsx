@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { MediaPicker } from "@/components/admin/media/media-picker";
 import { MediaThumbnail } from "@/components/admin/media/media-thumbnail";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { showMediaNotice } from "@/components/admin/media/media-notice";
 
 interface MediaSelectFieldProps {
   id: string;
@@ -46,7 +47,7 @@ export function MediaSelectField({ id, label, value, onChange, required, accept 
     setError(null);
     setUploading(true);
     try {
-      const media = await mediaApi.uploadMedia(file);
+      const media = await mediaApi.uploadMedia(file, null, showMediaNotice);
       onChange(media);
       toast.success("Görsel yüklendi.");
     } catch (err) {
@@ -78,6 +79,7 @@ export function MediaSelectField({ id, label, value, onChange, required, accept 
         <div className="space-y-1">
           <MediaThumbnail
             src={value.url}
+            mimeType={value.mimeType}
             alt=""
             className="h-32 w-full rounded-md border border-border object-cover"
           />
