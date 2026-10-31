@@ -53,6 +53,7 @@ WORKDIR /app
 
 RUN apk update && apk upgrade --no-cache \
   && apk add --no-cache openssl \
+  && apk add --no-cache ffmpeg \
   && addgroup -S nodejs \
   && adduser -S nodejs -G nodejs
 
