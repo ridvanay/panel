@@ -1,7 +1,8 @@
 import { SERVER_API_BASE_URL, toInternalMediaUrl } from "../env";
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
-import type { AvailabilitySlot, DoctorProfile, DoctorReviewsResponse, DoctorShowcase, FeaturedReviewsResponse, Specialty, SpecialtyWithDoctorCount, TelehealthThemeSettings } from "./types";
+import type { FeaturedReviewsData, ReviewsListResponse } from "../review-types";
+import type { AvailabilitySlot, DoctorProfile, DoctorReviewsResponse, DoctorShowcase, Specialty, SpecialtyWithDoctorCount, TelehealthThemeSettings } from "./types";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2 — public `/doctors*` sunucu bileşenleri
@@ -94,10 +95,28 @@ export async function fetchDoctorReviewsServer(slug: string, locale?: string): P
 }
 
 /** Paket Y — anasayfa karuseli (`GET /reviews/featured`). Hata/boş → `null` (bölüm görünmez). */
-export async function fetchFeaturedReviewsServer(locale?: string): Promise<FeaturedReviewsResponse | null> {
+export async function fetchFeaturedReviewsServer(locale?: string): Promise<FeaturedReviewsData | null> {
   const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
   try {
-    const json = await fetchServerJson<{ data: FeaturedReviewsResponse }>(`/reviews/featured${query}`);
+    const json = await fetchServerJson<{ data: FeaturedReviewsData }>(`/reviews/featured${query}`);
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Paket AE — `GET /reviews` (herkese açık yorum listesi). 404/boş → `null`; 5xx/ağ hatası da `null`
+ * (sayfa kendi hata durumunu gösterir, tüm site hata sayfasına düşmez).
+ */
+export async function fetchReviewsListServer(params: { locale: string; doctor?: string; language?: string; minRating?: number; page?: number }): Promise<ReviewsListResponse | null> {
+  const query = new URLSearchParams({ locale: params.locale });
+  if (params.doctor) query.set("doctor", params.doctor);
+  if (params.language) query.set("language", params.language);
+  if (params.minRating) query.set("minRating", String(params.minRating));
+  if (params.page && params.page > 1) query.set("page", String(params.page));
+  try {
+    const json = await fetchServerJson<{ data: ReviewsListResponse }>(`/reviews?${query.toString()}`);
     return json?.data ?? null;
   } catch {
     return null;

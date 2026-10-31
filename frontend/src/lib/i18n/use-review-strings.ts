@@ -34,6 +34,5 @@ export function useReviewStrings(): { t: ReviewsStrings; lang: string; intlLocal
 }
 
 /** `{param}` yer tutucularını doldurur (sunucu modülünü client'a çekmemek için kopya). */
-export function fillReview(template: string, values: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match));
-}
+// Sunucu bileşenleri de kullanabilsin diye "use client" olmayan modülde (Paket AE).
+export { fillReview } from "@/lib/review-format";

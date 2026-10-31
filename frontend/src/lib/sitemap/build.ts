@@ -118,6 +118,8 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       const doctors = data.doctors.filter((d) => d.isActive !== false && !d.archivedAt);
       if (doctors.length === 0) return [];
       const entries = expand(data, allLocaleVariants(data, "/physicians"));
+      // Paket AE — "Tüm yorumlar" sayfası hekim modülüyle birlikte yayında (modül kapalıyken hekim listesi boştur).
+      entries.push(...expand(data, allLocaleVariants(data, "/reviews")));
       for (const doctor of doctors) {
         const avatar = mediaUrl(data, doctor.avatarMedia?.url);
         entries.push(...expand(data, allLocaleVariants(data, `/physicians/${doctor.slug}`), doctor.updatedAt, avatar ? [avatar] : undefined));

@@ -23,7 +23,7 @@ export function ReviewCard({ review, footer }: { review: ReviewItem; footer?: Re
   const foreign = review.language.toLowerCase() !== lang.toLowerCase().split("-")[0];
 
   return (
-    <article className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
+    <article data-testid="review-card" className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <StarRating rating={review.rating} label={fillReview(t.starsAria, { rating: review.rating })} />
         {review.verified && (
@@ -33,7 +33,7 @@ export function ReviewCard({ review, footer }: { review: ReviewItem; footer?: Re
           </Badge>
         )}
       </div>
-      <h3 className="mt-2 text-base font-semibold text-foreground">{shown.title}</h3>
+      {shown.title.trim() !== "" && <h3 className="mt-2 text-base font-semibold text-foreground">{shown.title}</h3>}
       <p className="mt-1 whitespace-pre-line text-sm leading-7 text-foreground/80">{shown.body}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/60">

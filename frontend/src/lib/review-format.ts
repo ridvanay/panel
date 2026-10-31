@@ -33,3 +33,8 @@ export function formatReviewDate(iso: string, intlLocale: string): string {
     return iso.slice(0, 10);
   }
 }
+
+/** `{name}` yer tutucularını doldurur. "use client" dışındadır: sunucu ve istemci bileşenleri ortak kullanır. */
+export function fillReview(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match));
+}
