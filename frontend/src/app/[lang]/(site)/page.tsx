@@ -31,6 +31,7 @@ import { SupportLanguagesBand } from "@/components/site/support/support-language
 import { AccreditationStrip } from "@/components/site/accreditations/accreditation-strip";
 import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
 import { HomeReviewsSection } from "@/components/site/reviews/home-reviews-section";
+import { DestinationsSection } from "@/components/site/destinations/destinations-section";
 
 type PageProps = { params: Promise<{ lang: string }> };
 
@@ -140,8 +141,7 @@ export default async function RootPage({ params }: PageProps) {
         <SupportLanguagesBand
           support={support}
           dict={dict.common}
-          chatEnabled={settings.liveChatEnabled === true}
-          contactHref={withLocalePrefix("/contact", lang, defaultLocaleCode)}
+          topic={settings.siteName}
         />
         <AccreditationStrip
           badges={accreditations}
@@ -185,6 +185,8 @@ export default async function RootPage({ params }: PageProps) {
                 <BlockRenderer nodes={restNodes} chrome="page" siteContext={{ lang, defaultLocaleCode }} />
               </>
             )}
+            {/* Paket X — "Top destinations": yorumlardan ÖNCE (önce karar bilgisi, sonra sosyal kanıt); kayıt yoksa HİÇ görünmez. */}
+            {telehealthModuleEnabled && <DestinationsSection lang={lang} defaultLocaleCode={defaultLocaleCode} siteName={settings.siteName} />}
             {/* Paket Y — "What our patients say": veri kaynaklı, öne çıkan yorum yoksa HİÇ görünmez. */}
             {telehealthModuleEnabled && <HomeReviewsSection lang={lang} defaultLocaleCode={defaultLocaleCode} />}
           </div>

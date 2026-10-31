@@ -5174,3 +5174,75 @@ export interface PatientBookingReviewState {
   eligible: boolean;
   review: { id: string; status: PatientReviewStatus; rating: number; title: string; createdAt: string } | null;
 }
+
+/* ---- Paket X — sağlık paketleri (herkese açık uçlar; bkz. X-KONTRAT) ---- */
+
+export const PACKAGE_CATEGORIES = ["check-up", "aesthetic", "wellness", "longevity", "dental", "women", "men", "other"] as const;
+export type PackageCategory = (typeof PACKAGE_CATEGORIES)[number];
+
+export interface PackageCover {
+  url: string;
+  /** JPEG uyumluluk kopyası — Open Graph için. */
+  compatUrl: string | null;
+  width: number | null;
+  height: number | null;
+  alt: string | null;
+}
+
+export interface PackageCardData {
+  id: string;
+  slug: string;
+  category: PackageCategory;
+  title: string;
+  summary: string;
+  duration: string;
+  contentLocale: string;
+  isFeatured: boolean;
+  cover: PackageCover | null;
+  /** YALNIZCA yönetici `showPrice` açtıysa dolu. */
+  price: { from: number; currency: string } | null;
+}
+
+export interface PackageRelatedDoctor {
+  slug: string;
+  /** Görünen ad kuralı + dilde unvan uygulanmış hazır ad. */
+  name: string;
+  specialty: string | null;
+  avatarUrl: string | null;
+}
+
+export interface PackageDetailData extends PackageCardData {
+  includes: string[];
+  notIncluded: string[];
+  idealFor: string;
+  faq: { question: string; answer: string }[];
+  availableLocales: string[];
+  relatedDoctors: PackageRelatedDoctor[];
+  relatedSpecialties: { slug: string; name: string }[];
+}
+
+export interface PackageListData {
+  items: PackageCardData[];
+  categories: PackageCategory[];
+}
+
+export interface PackageInquiryBody {
+  website?: string;
+  locale: string;
+  name?: string;
+  email?: string;
+  phoneCountry?: string;
+  phoneNumber?: string;
+  country?: string;
+  preferredDates?: string;
+  travellers?: number;
+  note?: string;
+  consentContact: boolean;
+  consentHealth: boolean;
+}
+
+/** `stored=false` — iletişim izni yok: hiçbir şey kaydedilmedi (`number` 0). */
+export interface PackageInquiryResult {
+  number: number;
+  stored: boolean;
+}

@@ -134,6 +134,16 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
     ""
   );
 
+  const packages = (data.packages ?? []).filter((p) => p.locales.length > 0);
+  if (packages.length > 0) {
+    out.push("## Health packages", "", `- [All health packages](${url(data, "/packages")})`);
+    for (const p of packages) {
+      const sentence = firstSentence(p.summary);
+      out.push(`- [${p.title || p.slug}](${url(data, `/packages/${p.slug}`)})${sentence ? `: ${sentence}` : ""}`);
+    }
+    out.push("");
+  }
+
   out.push("## Languages", "");
   for (const l of enabled) {
     const prefix = withLocalePrefix("/", l.code, defaultCode);

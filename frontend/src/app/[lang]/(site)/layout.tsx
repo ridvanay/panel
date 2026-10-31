@@ -9,6 +9,7 @@ import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchSpecialtiesServer, fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
 import { fetchAccreditationsServer } from "@/lib/api/server-accreditations";
+import { fetchContactChannelsServer } from "@/lib/api/server-contact-channels";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { resolveLanguageSupport } from "@/lib/language-support";
@@ -21,6 +22,9 @@ import { MatcherModalProvider } from "@/components/site/matcher/matcher-modal";
 import { SiteFooter } from "@/components/site/site-footer";
 import { DoctorPortalRouteGuard } from "@/components/site/doctor-portal-route-guard";
 import { LiveChatWidget } from "@/components/site/live-chat-widget";
+import { ContactChannelsProvider } from "@/components/site/contact/contact-channels-context";
+import { MobileContactButton } from "@/components/site/contact/mobile-contact-button";
+import { PackagesRunnerSlot } from "@/components/site/packages/packages-runner-slot";
 import { BottomBarInsetObserver } from "@/components/site/bottom-bar-inset";
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
@@ -60,11 +64,13 @@ export default async function SiteLayout({
     getSiteDictionary(lang),
     fetchCrmConfigServer(),
   ]);
-  const [navSpecialties, telehealthSettings, accreditations] = await Promise.all([
+  const [navSpecialties, telehealthSettings, accreditations, contactChannels] = await Promise.all([
     telehealthModuleEnabled ? fetchSpecialtiesServer(lang) : Promise.resolve([]),
     // Paket V — footer'daki destek satırı ve yetki belgesi logoları.
     telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
     fetchAccreditationsServer(lang),
+    // Paket X — WhatsApp yalnızca yönetici açıp numara girdiyse dolu gelir; modül kapalıysa null (düğme yok).
+    telehealthModuleEnabled ? fetchContactChannelsServer(lang) : Promise.resolve({ whatsapp: null }),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
@@ -79,6 +85,14 @@ export default async function SiteLayout({
           gidebilmesi için alt sayfaların `localizations`'ı header'a bu Provider üzerinden akar
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
+        {/* Paket X — iletişim kanalları (WhatsApp/canlı destek/iletişim sayfası): header, mobil düğme, bant ve CTA'lar buradan okur. */}
+        <ContactChannelsProvider
+          value={{
+            whatsapp: contactChannels.whatsapp,
+            chatEnabled: settings.liveChatEnabled === true,
+            contactHref: withLocalePrefix("/contact", lang, defaultLocaleCode),
+          }}
+        >
         <SiteScope appearance={appearance} lang={lang}>
           {/* Paket W — "Find my physician" modalı (header, anasayfa arama kutusu, CTA kartları). */}
           <MatcherModalProvider enabled={telehealthModuleEnabled}>
@@ -143,11 +157,20 @@ export default async function SiteLayout({
               `/consultation/**`de kendini HİÇ render etmez ve `liveChatEnabled` kapalıyken de
               HİÇBİR ŞEY render etmez — bu yüzden burada AYRICA bir koşul YAZILMAZ. */}
           <LiveChatWidget settings={settings} />
+          {/* Paket X — mobilde WhatsApp + canlı destek tek "Contact" düğmesi altında (yalnızca WhatsApp açıkken). */}
+          <MobileContactButton
+            topic={settings.siteName}
+            position={settings.liveChatPosition ?? "BOTTOM_RIGHT"}
+            stackAboveExternalChat={settings.liveChatEnabled === true && (settings.liveChatProvider ?? "internal") !== "internal"}
+          />
+          {/* Paket X — "Health Packages" yan paneli (lazy; aktif paket yoksa ya da hariç tutulan sayfalarda hiç çizilmez). */}
+          {telehealthModuleEnabled && <PackagesRunnerSlot lang={lang} />}
           {/* Alta sabit çubukların yüksekliğini `--site-bottom-inset`e yazar — yüzen düğmeler
               (sohbet, yukarı çık) bununla çubukların üstüne çıkar (bkz. bottom-bar-inset.tsx). */}
           <BottomBarInsetObserver />
           </MatcherModalProvider>
         </SiteScope>
+        </ContactChannelsProvider>
       </LocaleAlternatesProvider>
 
       {/*

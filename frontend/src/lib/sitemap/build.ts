@@ -14,7 +14,7 @@ import type { SitemapEntry, SitemapIndexItem } from "./xml";
  *    sayfaları (ana sayfa olmayan ama `home-page` bloğu taşıyan sayfa — canlıdaki `/home1`),
  *    arşivlenmiş/pasif doktorlar, portal/admin/giriş sayfaları (hiç eklenmez).
  */
-export const SITEMAP_SECTIONS = ["pages", "physicians", "specialties", "blog", "products", "portfolio"] as const;
+export const SITEMAP_SECTIONS = ["pages", "physicians", "specialties", "blog", "products", "portfolio", "packages"] as const;
 export type SitemapSection = (typeof SITEMAP_SECTIONS)[number];
 
 interface LocalizedContent {
@@ -22,6 +22,14 @@ interface LocalizedContent {
   localizations?: ContentLocalization[];
   noIndex?: boolean;
   publishedAt?: string | null;
+}
+
+/** Paket X — yayındaki (aktif) sağlık paketi: yalnızca içeriği O DİLDE bulunan diller (`locales`) sitemap/hreflang'e girer. */
+export interface PackageSitemapItem {
+  slug: string;
+  locales: string[];
+  title?: string;
+  summary?: string;
 }
 
 export interface SitemapData {
@@ -34,6 +42,8 @@ export interface SitemapData {
   posts: LocalizedContent[];
   products: LocalizedContent[];
   portfolio: LocalizedContent[];
+  /** Paket X — aktif paketler (telehealth modülü kapalıyken ya da paket yokken boş/tanımsız). */
+  packages?: PackageSitemapItem[];
 }
 
 interface Variant {
@@ -139,6 +149,19 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       if (specialties.length === 0) return [];
       const entries = expand(data, allLocaleVariants(data, "/specialties"));
       for (const s of specialties) entries.push(...expand(data, allLocaleVariants(data, `/specialties/${s.slug}`), (s as { updatedAt?: string }).updatedAt));
+      return entries;
+    }
+    case "packages": {
+      const packages = (data.packages ?? []).filter((p) => p.locales.length > 0);
+      if (packages.length === 0) return [];
+      const entries = expand(data, allLocaleVariants(data, "/packages"));
+      const { list, defaultCode } = enabledLocales(data);
+      for (const pkg of packages) {
+        const variants: Variant[] = list
+          .filter((l) => pkg.locales.includes(l.code))
+          .map((l) => ({ hreflang: l.hreflang ?? l.code, path: withLocalePrefix(`/packages/${pkg.slug}`, l.code, defaultCode), isDefault: l.code === defaultCode }));
+        entries.push(...expand(data, variants));
+      }
       return entries;
     }
     case "blog":
