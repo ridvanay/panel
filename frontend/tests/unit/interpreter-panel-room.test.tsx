@@ -21,10 +21,19 @@ vi.mock("@livekit/components-react", () => ({
   TrackToggle: ({ source, "aria-label": label }: { source: string; "aria-label": string }) => <button type="button" aria-label={label} data-source={source} />,
   useParticipants: () => participants,
   useTracks: () => tracks,
-  useRoomContext: () => ({ disconnect: vi.fn() }),
+  useRoomContext: () => ({ on: vi.fn(), off: vi.fn(), disconnect: vi.fn() }),
+  // Paket AF: bağlantı katmanları + yeni video kutusu için mock'a yalnızca EKLEME.
+  useConnectionState: () => "connected",
+  // Paket AF: yeni video kutusu (room/participant-tile.tsx) bu hook/bileşenleri kullanır — mock'a yalnızca EKLEME.
+  VideoTrack: () => null,
+  isTrackReference: () => true,
+  useConnectionQualityIndicator: () => ({ quality: "unknown" }),
+  useTrackMutedIndicator: () => ({ isMuted: false }),
 }));
 vi.mock("livekit-client", () => ({
   DisconnectReason: { PARTICIPANT_REMOVED: "participant-removed" },
+  ConnectionState: { Connected: "connected" },
+  RoomEvent: {},
   Track: { Source: { Microphone: "microphone", Camera: "camera", ScreenShare: "screen_share" } },
 }));
 

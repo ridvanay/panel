@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import "@livekit/components-styles";
-import { LiveKitRoom, ParticipantTile, RoomAudioRenderer, TrackToggle, useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
+import { LiveKitRoom, RoomAudioRenderer, TrackToggle, useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
 import { DisconnectReason, Track } from "livekit-client";
 import { AlertTriangle, Circle, Languages, LogOut } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { fmt as fmtConsultation, useConsultationStrings } from "@/lib/i18n/use-consultation-strings";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import {
   getInterpreterRecordingStatus,
@@ -20,6 +21,13 @@ import {
 import { isQaListenerParticipant, QaListenerNotice } from "@/components/site/telehealth/qa-listener-notice";
 import { isInterpreterParticipant } from "@/components/site/interpreter/interpreter-participant";
 import type { InterpreterAssignment, InterpreterTokenResponse } from "@/lib/api/types";
+import { RoomParticipantTile } from "@/components/site/telehealth/room/participant-tile";
+import { ParticipantLabelProvider } from "@/components/site/telehealth/room/label-context";
+import type { LabelContext } from "@/components/site/telehealth/room/participant-label";
+import { ConnectionLayers, ConnectionStateReporter } from "@/components/site/telehealth/room/connection-layers";
+import { useAppReconnect } from "@/components/site/telehealth/room/use-app-reconnect";
+import { disconnectKind } from "@/components/site/telehealth/room/disconnect-kind";
+import { classifyConnectionError, classifyMediaFailure, failureMessage, warnRaw } from "@/components/site/telehealth/room/connection-errors";
 
 /**
  * Paket AA — tercümanın görüşme ekranı. Hasta/doktor odası (`consultation-room.tsx`) KULLANILMAZ;
@@ -28,6 +36,11 @@ import type { InterpreterAssignment, InterpreterTokenResponse } from "@/lib/api/
  * Kayıt başlatma/durdurma, belge paneli, not paneli ve randevu bilgisi YOKTUR; ekran paylaşımı token
  * düzeyinde kapalıdır.
  */
+/** Hasta/doktor "karşı taraf" sayılır; dinleyici ve (diğer) tercüman sayılmaz. Modül düzeyinde (sabit referans). */
+function isCounterpart(p: { isLocal: boolean; identity: string; metadata?: string }): boolean {
+  return !p.isLocal && !isQaListenerParticipant(p) && !isInterpreterParticipant(p);
+}
+
 function InterpreterStage() {
   const { t } = usePortalStrings();
   const participants = useParticipants();
@@ -44,13 +57,13 @@ function InterpreterStage() {
       ) : (
         <div className={remote.length > 1 ? "grid h-full grid-cols-1 gap-3 sm:grid-cols-2" : "h-full"}>
           {remote.map((tr) => (
-            <ParticipantTile key={tr.participant.identity} trackRef={tr} className="h-full min-h-40 w-full overflow-hidden rounded-[var(--site-radius)]" />
+            <RoomParticipantTile key={tr.participant.identity} trackRef={tr} className="h-full min-h-40 w-full rounded-[var(--site-radius)]" />
           ))}
         </div>
       )}
       {local && (
         <div className="absolute bottom-20 end-4 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:h-28 lg:w-40">
-          <ParticipantTile trackRef={local} className="h-full w-full" />
+          <RoomParticipantTile key="local-camera" trackRef={local} className="h-full w-full" />
         </div>
       )}
     </div>
@@ -108,6 +121,7 @@ function RecordingNotice({ assignmentId }: { assignmentId: string }) {
 
 export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
   const { t } = usePortalStrings();
+  const { t: ct } = useConsultationStrings();
   const friendlyError = useFriendlyError();
   const localize = useLocalizePath();
   const [assignment, setAssignment] = useState<InterpreterAssignment | null | undefined>(undefined);
@@ -138,7 +152,59 @@ export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
     return () => window.removeEventListener("pagehide", onHide);
   }, [meeting, assignmentId]);
 
+  /**
+   * Paket AF (İş 4) — tercüman odasında da aynı uygulama düzeyi yeniden bağlanma. Yetki kuralları ve token ucu DEĞİŞMEZ
+   * (`requestInterpreterToken`). Kopma anında ayrılış kaydı YAZILMAZ (sunucu "ayrılış gelmeden yeniden katılım"ı zaten
+   * `rejoin` olarak kapatır; DUPLICATE_IDENTITY'de öbür sekme bağlıyken kaydı LEFT yapmak yanlış olurdu); yalnızca
+   * kullanıcı ayrılınca, odadan çıkarılınca ya da tüm denemeler tükenince yazılır. Odadan çıkarılma (PARTICIPANT_REMOVED)
+   * bitiş sayılır, yeniden bağlanılmaz.
+   */
+  const reconnect = useAppReconnect<InterpreterTokenResponse>({
+    fetchToken: () => requestInterpreterToken(assignmentId),
+    onToken: setMeeting,
+    isTerminalReason: (reason) => reason !== undefined && reason === DisconnectReason.PARTICIPANT_REMOVED,
+    onGiveUp: () => void leaveInterpreterSession(assignmentId).catch(() => {}),
+  });
+  const resetReconnect = reconnect.reset;
+
+  // Etiket bağlamı: tercüman hastayı yalnızca baş harflerle ("Z. K.") görür; doktor adı token `name`'inden (yedek: atama).
+  const labelContext = useMemo<LabelContext>(
+    () => ({
+      viewer: "interpreter",
+      patientInitial: assignment?.patientInitial ?? null,
+      doctorFallbackName: assignment?.doctorDisplayName ?? null,
+      t: ct,
+      fmt: fmtConsultation,
+    }),
+    [assignment?.patientInitial, assignment?.doctorDisplayName, ct]
+  );
+
+  function handleDisconnected(reason?: DisconnectReason) {
+    const outcome = reconnect.handleDisconnected(disconnectKind(reason), reason as number | undefined);
+    if (outcome === "terminal") {
+      if (reason === DisconnectReason.PARTICIPANT_REMOVED) setRemoved(true);
+      leave();
+    } else if (outcome === "user-left") {
+      leave();
+    }
+  }
+
+  function handleConnectionError(err: unknown) {
+    warnRaw("interpreter LiveKitRoom onError", err);
+    if (reconnect.handleConnectFailure(err)) return;
+    // İlk bağlantı kurulamadı: ham SDK metni yerine nedene göre çevrilmiş mesajla katılım ekranına dön.
+    resetReconnect();
+    setError(failureMessage(classifyConnectionError(err), ct));
+    leave();
+  }
+
+  function handleMediaFailure(failure?: string) {
+    warnRaw("interpreter LiveKitRoom onMediaDeviceFailure", failure);
+    setError(failureMessage(classifyMediaFailure(failure), ct));
+  }
+
   async function join() {
+    resetReconnect();
     setRequesting(true);
     setError(null);
     try {
@@ -177,29 +243,30 @@ export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
       {error && <Alert variant="error">{error}</Alert>}
 
       {meeting ? (
-        <LiveKitRoom
-          key={meeting.token}
-          token={meeting.token}
-          serverUrl={meeting.serverUrl}
-          video
-          audio
-          connect
-          options={{ adaptiveStream: true, dynacast: true }}
-          onDisconnected={(reason) => {
-            if (reason === DisconnectReason.PARTICIPANT_REMOVED) setRemoved(true);
-            leave();
-          }}
-          onError={(err) => setError(friendlyError(err))}
-          onMediaDeviceFailure={() => setError(friendlyError(new Error("media")))}
-          className="relative aspect-[3/4] max-h-[calc(100dvh-8rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video"
-          data-testid="interpreter-room"
-        >
-          <RoomAudioRenderer />
-          <QaListenerNotice />
-          <RecordingNotice assignmentId={assignmentId} />
-          <InterpreterStage />
-          <InterpreterControls />
-        </LiveKitRoom>
+        <ParticipantLabelProvider value={labelContext}>
+          <LiveKitRoom
+            key={meeting.token}
+            token={meeting.token}
+            serverUrl={meeting.serverUrl}
+            video
+            audio
+            connect
+            options={{ adaptiveStream: true, dynacast: true }}
+            onDisconnected={handleDisconnected}
+            onError={handleConnectionError}
+            onMediaDeviceFailure={handleMediaFailure}
+            className="relative aspect-[3/4] max-h-[calc(100dvh-8rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video"
+            data-testid="interpreter-room"
+          >
+            <RoomAudioRenderer />
+            <ConnectionStateReporter reconnect={reconnect} />
+            <QaListenerNotice />
+            <RecordingNotice assignmentId={assignmentId} />
+            <InterpreterStage />
+            <InterpreterControls />
+            <ConnectionLayers reconnect={reconnect} isCounterpart={isCounterpart} />
+          </LiveKitRoom>
+        </ParticipantLabelProvider>
       ) : (
         <div className="flex flex-col items-center gap-4 rounded-[var(--site-radius)] border border-border bg-surface p-8 text-center">
           {assignment && (

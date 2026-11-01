@@ -14,6 +14,7 @@ import { reviewsStrings } from "./reviews";
 import { contactCtaStrings } from "./contact-cta";
 import { packagesStrings } from "./packages";
 import { destinationsStrings } from "./destinations";
+import { consultationStrings } from "./consultation";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -31,4 +32,5 @@ export const siteDictionary: SiteDictionary = {
   contactCta: contactCtaStrings,
   packages: packagesStrings,
   destinations: destinationsStrings,
+  consultation: consultationStrings,
 };

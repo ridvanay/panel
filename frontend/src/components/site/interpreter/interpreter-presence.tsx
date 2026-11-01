@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ParticipantTile, useParticipants, useTracks } from "@livekit/components-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { Languages, UserX } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { removeAppointmentInterpreter } from "@/lib/api/interpreter";
-import { interpreterLanguageOf, isInterpreterParticipant, languageNativeName } from "@/components/site/interpreter/interpreter-participant";
+import { isInterpreterParticipant } from "@/components/site/interpreter/interpreter-participant";
+import { RoomParticipantTile } from "@/components/site/telehealth/room/participant-tile";
 
 /**
  * Paket AA — hasta/doktor görüşme odasında tercüman (yalnızca `consultation-room.tsx`'e bağlanır, o
@@ -23,8 +24,11 @@ export function InterpreterPresence({ appointmentId, isDoctor }: { appointmentId
   const interpreter = participants.find((p) => !p.isLocal && isInterpreterParticipant(p)) ?? null;
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
   const interpreterTrack = interpreter ? tracks.find((tr) => tr.participant.identity === interpreter.identity) : undefined;
-  const language = interpreter ? interpreterLanguageOf(interpreter) : null;
-  const tileLabel = fmt(t.interpreter.tileLabel, { language: language ? languageNativeName(language) : "" }).replace(/\s·\s$/, "");
+  // Paket AF: kutu etiketi ("<ad> · Tercüman (<dil>)") `RoomParticipantTile` içindedir; ayrı bir ikinci etiket YOKTUR.
+  const tileRef = useMemo(
+    () => interpreterTrack ?? (interpreter ? { participant: interpreter, source: Track.Source.Camera } : null),
+    [interpreterTrack, interpreter]
+  );
 
   // Katıldı/ayrıldı bildirimi — yalnızca durum değişince, bir kez.
   const present = interpreter !== null;
@@ -75,10 +79,7 @@ export function InterpreterPresence({ appointmentId, isDoctor }: { appointmentId
           data-testid="interpreter-tile"
           className="absolute right-3 top-[8.75rem] z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:bottom-40 lg:right-6 lg:top-auto lg:h-28 lg:w-40"
         >
-          {interpreterTrack && <ParticipantTile trackRef={interpreterTrack} className="h-full w-full" />}
-          <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-0.5 text-[11px] font-medium text-white">
-            <bdi>{tileLabel}</bdi>
-          </span>
+          {tileRef && <RoomParticipantTile key="interpreter" trackRef={tileRef} className="h-full w-full" />}
           {isDoctor && (
             <button
               type="button"

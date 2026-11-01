@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import "@livekit/components-styles";
 import {
   LiveKitRoom,
-  ParticipantTile,
   RoomAudioRenderer,
   useConnectionState,
   useParticipants,
@@ -14,7 +13,7 @@ import {
   useTrackToggle,
   useTracks,
 } from "@livekit/components-react";
-import { ConnectionState, DisconnectReason, MediaDeviceFailure, RoomEvent, Track } from "livekit-client";
+import { ConnectionState, RoomEvent, Track, type DisconnectReason } from "livekit-client";
 import {
   AlertTriangle,
   Loader2,
@@ -42,6 +41,8 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useAuthOptional } from "@/context/auth-context";
 import { useActiveLocaleCode, useLocalizePath } from "@/context/locale-alternates-context";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { localeDirection } from "@/lib/i18n/locale-direction";
+import { fmt, useConsultationStrings } from "@/lib/i18n/use-consultation-strings";
 import type { Appointment, ConsultationRecording, MeetingTokenResponse, RecordingSignalPayload } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,14 @@ import { isInterpreterParticipant } from "@/components/site/interpreter/interpre
 import { RecordingIndicator } from "@/components/site/telehealth/recording-indicator";
 import { RecordingControls } from "@/components/site/telehealth/recording-controls";
 import { cn } from "@/lib/utils";
+import { RoomParticipantTile } from "@/components/site/telehealth/room/participant-tile";
+import { ParticipantLabelProvider } from "@/components/site/telehealth/room/label-context";
+import type { ConsultationStrings } from "@/lib/i18n/site-dictionaries/en/consultation";
+import type { LabelContext } from "@/components/site/telehealth/room/participant-label";
+import { ConnectionLayers, ConnectionStateReporter } from "@/components/site/telehealth/room/connection-layers";
+import { useAppReconnect, type AppReconnect } from "@/components/site/telehealth/room/use-app-reconnect";
+import { disconnectKind } from "@/components/site/telehealth/room/disconnect-kind";
+import { classifyConnectionError, classifyMediaFailure, failureMessage, warnRaw } from "@/components/site/telehealth/room/connection-errors";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.4/§4.5 + `.claude/design-notes-telehealth.md`
@@ -119,12 +128,12 @@ function formatCountdownDigits(ms: number): { minutes: string; seconds: string }
 }
 
 /** `.claude/design-notes-telehealth.md` §7 — "uzak" kademe, cümle içinde, `Inter`. */
-function formatFarCountdownSentence(ms: number): string {
+function formatFarCountdownSentence(ms: number, t: ConsultationStrings): string {
   const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours > 0) return `Randevunuza ${hours} saat ${minutes} dakika kaldı.`;
-  return `Randevunuza ${minutes} dakika kaldı.`;
+  if (hours > 0) return fmt(t.countdownHoursMinutes, { hours, minutes });
+  return fmt(t.countdownMinutes, { minutes });
 }
 
 /**
@@ -142,24 +151,21 @@ function formatFarCountdownSentence(ms: number): string {
  * güvenli/dahili `next` yolunu doğrular, YENİ bir yönlendirme mekanizması İCAT EDİLMEDİ).
  */
 function ConsultationAccessGate({ appointmentId }: { appointmentId: string }) {
+  const { t } = useConsultationStrings();
   return (
     <Alert variant="warning">
       <div className="space-y-3">
         <span className="flex items-center gap-2 font-medium">
           <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Erişim Doğrulama Gerekli
+          {t.accessGateTitle}
         </span>
-        <p className="text-sm text-foreground/70">
-          Bu görüşme sayfasına ulaşmak için hesabınıza giriş yapmalı ya da randevu onay e-postanızdaki
-          bağlantıyı kullanmalısınız. Bağlantınız yoksa veya çalışmıyorsa, e-postanızdaki onay mesajını ya
-          da randevularım sayfasını kontrol edin.
-        </p>
+        <p className="text-sm text-foreground/70">{t.accessGateBody}</p>
         <Link
           href={`/login?next=${encodeURIComponent(`/consultation/${appointmentId}`)}`}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
         >
           <LogIn className="h-4 w-4" aria-hidden="true" />
-          Giriş Yap
+          {t.accessGateLogin}
         </Link>
       </div>
     </Alert>
@@ -177,21 +183,21 @@ function ConsultationSkeleton() {
 
 /** §6.2 — "yapılandırılmamış" durumu: dürüst durum ekranı, `--danger` DEĞİL `--warning`. */
 function LiveKitNotConfiguredPanel({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
+  const { t } = useConsultationStrings();
   return (
     <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-warning/30 bg-warning/5 p-8 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/15">
         <Settings2 className="h-5 w-5 text-warning" aria-hidden="true" />
       </span>
-      <h3 className="font-semibold text-foreground">Görüntülü Görüşme Yapılandırılmamış</h3>
+      <h3 className="font-semibold text-foreground">{t.notConfiguredTitle}</h3>
       <p className="max-w-sm text-sm text-foreground/60">
-        Görüntülü görüşme altyapısı (LiveKit) bu kurulumda yapılandırılmamış. Yönetici{" "}
-        <code className="rounded bg-warning/10 px-1 py-0.5 text-xs">LIVEKIT_URL</code>,{" "}
-        <code className="rounded bg-warning/10 px-1 py-0.5 text-xs">LIVEKIT_API_KEY</code> ve{" "}
-        <code className="rounded bg-warning/10 px-1 py-0.5 text-xs">LIVEKIT_API_SECRET</code> değerlerini
-        tanımladıktan sonra görüşme başlatılabilir.
+        {t.notConfiguredBody}{" "}
+        <code dir="ltr" className="rounded bg-warning/10 px-1 py-0.5 text-xs">LIVEKIT_URL</code>,{" "}
+        <code dir="ltr" className="rounded bg-warning/10 px-1 py-0.5 text-xs">LIVEKIT_API_KEY</code>,{" "}
+        <code dir="ltr" className="rounded bg-warning/10 px-1 py-0.5 text-xs">LIVEKIT_API_SECRET</code>
       </p>
       <Button type="button" variant="outline" size="sm" onClick={onRetry} loading={retrying}>
-        Tekrar Dene
+        {t.tryAgain}
       </Button>
     </div>
   );
@@ -199,14 +205,15 @@ function LiveKitNotConfiguredPanel({ onRetry, retrying }: { onRetry: () => void;
 
 /** §6.1 — bekleme odası: nötr/sakin, `primary` tint + `Loader2` + `animate-ping`. */
 function WaitingRoomPanel() {
+  const { t } = useConsultationStrings();
   return (
     <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-primary/20 bg-primary/5 p-8 text-center">
       <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
         <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" aria-hidden="true" />
         <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
       </span>
-      <h3 className="font-semibold text-foreground">Bekleme Odası</h3>
-      <p className="max-w-xs text-sm text-foreground/60">Karşı taraf bağlandığında görüşme otomatik olarak başlayacak.</p>
+      <h3 className="font-semibold text-foreground">{t.waitingRoomTitle}</h3>
+      <p className="max-w-xs text-sm text-foreground/60">{t.waitingRoomBody}</p>
     </div>
   );
 }
@@ -242,10 +249,11 @@ interface PreJoinStageProps {
  * `notConfigured` kontrolüyle korunur (bekleme odası kavramı LiveKit bağlanmadan ANLAMSIZDIR).
  */
 function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin }: PreJoinStageProps) {
+  const { t } = useConsultationStrings();
   if (joinState.isExpired) {
     return (
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-6 text-center text-sm text-foreground/60 sm:p-10">
-        Bu randevunun katılım penceresi kapanmıştır.
+        {t.joinWindowClosed}
       </div>
     );
   }
@@ -258,16 +266,16 @@ function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin 
             <CountdownDigits ms={joinState.remainingMs} active={joinState.isJoinable} />
           ) : (
             <p className={cn("text-lg font-semibold", joinState.isJoinable ? "text-primary" : "text-foreground")}>
-              Randevu saatiniz geldi.
+              {t.appointmentTimeArrived}
             </p>
           )
         ) : (
-          <p className="text-sm text-foreground/70">{formatFarCountdownSentence(joinState.remainingMs)}</p>
+          <p className="text-sm text-foreground/70">{formatFarCountdownSentence(joinState.remainingMs, t)}</p>
         )}
 
         {joinState.isJoinable && !notConfigured && (
           <Button type="button" onClick={onJoin} loading={requesting} className="mt-4 rounded-[var(--site-radius)]">
-            Görüşmeye Katıl
+            {t.joinButton}
           </Button>
         )}
       </div>
@@ -277,7 +285,7 @@ function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin 
           <span className="flex flex-wrap items-center justify-between gap-3">
             <span>{joinError}</span>
             <Button type="button" variant="outline" size="sm" onClick={onJoin}>
-              Tekrar Dene
+              {t.tryAgain}
             </Button>
           </span>
         </Alert>
@@ -340,6 +348,7 @@ function ConsultationControlBar({
   const room = useRoomContext();
   const router = useRouter();
   const localize = useLocalizePath();
+  const { t } = useConsultationStrings();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   // SSR'da `document` YOKTUR — başlangıç değeri `false` (server ile hydration uyuşmazlığı
@@ -424,8 +433,8 @@ function ConsultationControlBar({
           enabled={mic.enabled}
           pending={mic.pending}
           onClick={() => void mic.toggle()}
-          onLabel="Mikrofonu kapat"
-          offLabel="Mikrofonu aç"
+          onLabel={t.micMute}
+          offLabel={t.micUnmute}
           OnIcon={Mic}
           OffIcon={MicOff}
         />
@@ -433,8 +442,8 @@ function ConsultationControlBar({
           enabled={camera.enabled}
           pending={camera.pending}
           onClick={() => void camera.toggle()}
-          onLabel="Kamerayı kapat"
-          offLabel="Kamerayı aç"
+          onLabel={t.cameraOff}
+          offLabel={t.cameraOn}
           OnIcon={Video}
           OffIcon={VideoOff}
         />
@@ -442,8 +451,8 @@ function ConsultationControlBar({
           enabled={screenShare.enabled}
           pending={screenShare.pending}
           onClick={() => void screenShare.toggle()}
-          onLabel="Ekran paylaşımını durdur"
-          offLabel="Ekranı paylaş"
+          onLabel={t.shareStop}
+          offLabel={t.shareStart}
           OnIcon={ScreenShare}
           OffIcon={ScreenShareOff}
         />
@@ -453,7 +462,7 @@ function ConsultationControlBar({
               render={
                 <button
                   type="button"
-                  aria-label={isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran"}
+                  aria-label={isFullscreen ? t.fullscreenExit : t.fullscreenEnter}
                   onClick={() => void toggleFullscreen()}
                   className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition-colors duration-150 hover:bg-white/25 lg:h-12 lg:w-12"
                 />
@@ -465,13 +474,13 @@ function ConsultationControlBar({
                 <Maximize className="h-5 w-5" aria-hidden="true" />
               )}
             </TooltipTrigger>
-            <TooltipContent>{isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran"}</TooltipContent>
+            <TooltipContent>{isFullscreen ? t.fullscreenExit : t.fullscreenEnter}</TooltipContent>
           </Tooltip>
         )}
       </div>
       <button
         type="button"
-        aria-label="Görüşmeyi sonlandır"
+        aria-label={t.endCall}
         onClick={() => setConfirmOpen(true)}
         className="ml-1 flex h-12 w-12 items-center justify-center rounded-full bg-danger text-white transition-colors hover:bg-danger/90 lg:ml-2 lg:h-14 lg:w-14"
       >
@@ -482,9 +491,9 @@ function ConsultationControlBar({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         tone="danger"
-        title="Görüşmeyi sonlandırmak istediğinize emin misiniz?"
-        confirmText="Görüşmeyi Sonlandır"
-        cancelText="Vazgeç"
+        title={t.endCallConfirmTitle}
+        confirmText={t.endCallConfirmAction}
+        cancelText={t.endCallCancel}
         loading={disconnecting}
         onConfirm={() => void handleConfirmEndCall()}
       />
@@ -500,19 +509,20 @@ function ConsultationControlBar({
  */
 function ConnectionStatusBadge() {
   const state = useConnectionState();
+  const { t } = useConsultationStrings();
 
   const config = (() => {
     switch (state) {
       case ConnectionState.Connected:
-        return { label: "Bağlandı", tone: "success" as const, Icon: Wifi, spin: false };
+        return { label: t.badgeConnected, tone: "success" as const, Icon: Wifi, spin: false };
       case ConnectionState.Disconnected:
-        return { label: "Bağlantı Kesildi", tone: "danger" as const, Icon: WifiOff, spin: false };
+        return { label: t.badgeDisconnected, tone: "danger" as const, Icon: WifiOff, spin: false };
       case ConnectionState.Reconnecting:
       case ConnectionState.SignalReconnecting:
-        return { label: "Yeniden Bağlanıyor…", tone: "warning" as const, Icon: Loader2, spin: true };
+        return { label: t.badgeReconnecting, tone: "warning" as const, Icon: Loader2, spin: true };
       case ConnectionState.Connecting:
       default:
-        return { label: "Bağlanıyor…", tone: "warning" as const, Icon: Loader2, spin: true };
+        return { label: t.badgeConnecting, tone: "warning" as const, Icon: Loader2, spin: true };
     }
   })();
 
@@ -524,6 +534,11 @@ function ConnectionStatusBadge() {
       </Badge>
     </div>
   );
+}
+
+/** Paket C: dinleyici, Paket AA: tercüman "karşı taraf" SAYILMAZ. Modül düzeyinde (sabit referans). */
+function isCounterpart(p: { isLocal: boolean; identity: string; metadata?: string }): boolean {
+  return !p.isLocal && !isQaListenerParticipant(p) && !isInterpreterParticipant(p);
 }
 
 /**
@@ -550,8 +565,6 @@ function ConsultationStage() {
   ]);
   // Paket C — kalite kontrol dinleyicisi "karşı taraf" sayılmaz (bekleme odası/spotlight onu yok sayar).
   // Paket AA — tercüman da spotlight'a girmez; ayrı 3. kutuda gösterilir (`InterpreterPresence`).
-  const isCounterpart = (p: { isLocal: boolean; identity: string; metadata?: string }) =>
-    !p.isLocal && !isQaListenerParticipant(p) && !isInterpreterParticipant(p);
   const hasRemoteParticipant = participants.some(isCounterpart);
 
   const remoteTrack =
@@ -562,7 +575,7 @@ function ConsultationStage() {
   return (
     <div className="relative h-full w-full">
       {hasRemoteParticipant && remoteTrack ? (
-        <ParticipantTile trackRef={remoteTrack} className="h-full w-full" />
+        <RoomParticipantTile key={`${remoteTrack.participant.identity}:${remoteTrack.source}`} trackRef={remoteTrack} className="h-full w-full" />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-6">
           <WaitingRoomPanel />
@@ -573,7 +586,7 @@ function ConsultationStage() {
         // Mobil/tablet (lg altı): sağ üstte, kayıt göstergesinin (right-4 top-4) altında — alttaki kontrol
         // çubuğunu örtmez. Masaüstü (lg): eskisi gibi sağ altta, 160×112.
         <div className="absolute right-3 top-12 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:bottom-6 lg:right-6 lg:top-auto lg:h-28 lg:w-40">
-          <ParticipantTile trackRef={localCameraTrack} className="h-full w-full" />
+          <RoomParticipantTile key="local-camera" trackRef={localCameraTrack} className="h-full w-full" />
         </div>
       )}
     </div>
@@ -687,10 +700,13 @@ interface ConsultationVideoRoomProps {
    * ÖNCE KURULMUŞ bir bağlantı koptuğunda tetiklenir; `room.connect()`'in KENDİSİ başarısız olursa
    * (ör. WS handshake reddi, ICE/TURN'e hiç ulaşılamaması — tam da nginx yanlış yapılandırılmışsa
    * OLACAK durum) `onDisconnected` HİÇ ÇAĞRILMAZ ve kullanıcı "Bağlanıyor…" rozetinde SONSUZA
-   * KADAR asılı kalırdı (eskiden `onError`/`onMediaDeviceFailure` HİÇ BAĞLANMAMIŞTI). Bu callback
-   * her iki durumda da ön-katılım ekranına AÇIK bir hata mesajıyla döner.
+   * KADAR asılı kalırdı (eskiden `onError`/`onMediaDeviceFailure` HİÇ BAĞLANMAMIŞTI).
+   * Paket AF: hata nesnesi ÜST bileşene verilir; ekrana yalnızca çevrilmiş, nedene göre mesaj gider (ham metin yalnızca konsola).
    */
-  onConnectionError: (message: string) => void;
+  onConnectionError: (err: unknown) => void;
+  onMediaFailure: (failure?: string) => void;
+  /** Paket AF — uygulama düzeyi yeniden bağlanma durumu (üst bileşende yaşar; oda yeniden kurulsa da korunur). */
+  reconnect: AppReconnect;
   appointmentId: string;
   accessToken?: string;
   isDoctor: boolean;
@@ -705,24 +721,12 @@ interface ConsultationVideoRoomProps {
   onConsentDismiss: () => void;
 }
 
-/** İnsan-okunur Türkçe karşılıklar — `livekit-client`'ın `MediaDeviceFailure` enum'u. */
-function mediaDeviceFailureMessage(failure?: MediaDeviceFailure): string {
-  switch (failure) {
-    case MediaDeviceFailure.PermissionDenied:
-      return "Kamera/mikrofon izni reddedildi. Tarayıcı adres çubuğundaki site izinlerinden kamera/mikrofona erişime izin verip tekrar deneyin.";
-    case MediaDeviceFailure.NotFound:
-      return "Kamera veya mikrofon bulunamadı. Cihazınızın bağlı olduğundan emin olup tekrar deneyin.";
-    case MediaDeviceFailure.DeviceInUse:
-      return "Kamera veya mikrofon başka bir uygulama tarafından kullanılıyor. Diğer uygulamayı kapatıp tekrar deneyin.";
-    default:
-      return "Kamera/mikrofon erişiminde bir sorun oluştu. Lütfen tekrar deneyin.";
-  }
-}
-
 function ConsultationVideoRoom({
   meeting,
   onLeave,
   onConnectionError,
+  onMediaFailure,
+  reconnect,
   appointmentId,
   accessToken,
   isDoctor,
@@ -768,8 +772,8 @@ function ConsultationVideoRoom({
       // kullanıcı "Bağlanıyor…" rozetinde SONSUZA KADAR asılı kalırdı (raporlanan asıl semptom).
       // `onError`/`onMediaDeviceFailure` artık BAĞLANMIŞ, ikisi de `onConnectionError` üzerinden
       // ön-katılım ekranına AÇIK bir hata mesajıyla döner.
-      onError={(err) => onConnectionError(err.message || "Görüşmeye bağlanılamadı. Bağlantınızı kontrol edip tekrar deneyin.")}
-      onMediaDeviceFailure={(failure) => onConnectionError(mediaDeviceFailureMessage(failure))}
+      onError={onConnectionError}
+      onMediaDeviceFailure={onMediaFailure}
       onDisconnected={onLeave}
       className="relative aspect-[3/4] max-h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video lg:max-h-none"
     >
@@ -780,6 +784,7 @@ function ConsultationVideoRoom({
         onSnapshot={onRecordingSnapshot}
         onSignal={onRecordingSignal}
       />
+      <ConnectionStateReporter reconnect={reconnect} />
       <ConnectionStatusBadge />
       <QaListenerNotice />
       <InterpreterPresence appointmentId={appointmentId} isDoctor={isDoctor} />
@@ -788,6 +793,7 @@ function ConsultationVideoRoom({
       </div>
       <ConsultationStage />
       <ConsultationControlBar isDoctor={isDoctor} stageRef={stageRef} />
+      <ConnectionLayers reconnect={reconnect} isCounterpart={isCounterpart} />
 
       {isDoctor && recordingModuleEnabled && (
         <div className="absolute left-3 top-12 z-10 lg:bottom-6 lg:left-4 lg:top-auto">
@@ -819,7 +825,8 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
   const isDoctor = auth?.user?.doctorProfileId != null && auth.user.doctorProfileId === appointment.doctorId;
   // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi: sabit modül-seviyesi
   // `"tr-TR"` yerine aktif site diline bağlı biçimlendirici.
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, lang } = useConsultationStrings();
+  const intlLocale = contentLocaleToIntl(lang);
   const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(intlLocale, { dateStyle: "long", timeStyle: "short" }), [intlLocale]);
 
   const joinState = useJoinState(appointment);
@@ -866,15 +873,20 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
 
   const consentDialogOpen = !isDoctor && recording?.status === "PENDING_CONSENT" && dismissedConsentId !== recording.id;
 
-  // Bug-fix turu (2026-09-18, frontend-agent) — bir manuel katılım başına EN FAZLA bir kez
-  // otomatik yeniden bağlanma dener (bkz. `handleDisconnected`); `handleJoin` her ÇAĞRILDIĞINDA
-  // sıfırlanır. Sonsuz yeniden-bağlanma döngüsünü (ör. kalıcı olarak bozuk bir ağda tekrar tekrar
-  // `meeting-token` çağırıp hız sınırına çarpmak) ÖNLER — `useState` DEĞİL `useRef`: bu bayracın
-  // değişmesi kendi başına bir yeniden render'ı TETİKLEMEMELİ.
-  const autoReconnectedRef = useRef(false);
+  /**
+   * Paket AF (İş 4) — uygulama düzeyi yeniden bağlanma (`room/use-app-reconnect.ts`): eski "katılım başına tek sessiz
+   * deneme" (`autoReconnectedRef`) yerine ardışık en fazla 3 deneme (2/5/10 sn artan bekleme); bağlantı 60 sn kesintisiz
+   * kalırsa hak yenilenir; tükenince çevrilmiş mesaj + "Yeniden bağlan"; DUPLICATE_IDENTITY'de kendiliğinden deneme YOK.
+   * Taze token `setMeeting` ile gelir, `<LiveKitRoom key={meeting.token}>` temiz bir remount yapar (mevcut desen).
+   */
+  const reconnect = useAppReconnect<MeetingTokenResponse>({
+    fetchToken: () => telehealthApi.requestMeetingToken(appointment.id, accessToken),
+    onToken: setMeeting,
+  });
+  const resetReconnect = reconnect.reset;
 
   async function handleJoin() {
-    autoReconnectedRef.current = false;
+    resetReconnect();
     setRequesting(true);
     setJoinError(null);
     try {
@@ -885,7 +897,8 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
       if (err instanceof ApiClientError && err.status === 503) {
         setNotConfigured(true);
       } else {
-        setJoinError(friendlyErrorMessage(err));
+        warnRaw("meeting-token request failed", err);
+        setJoinError(failureMessage(classifyConnectionError(err), t));
       }
     } finally {
       setRequesting(false);
@@ -893,73 +906,81 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
   }
 
   /**
-   * Bug-fix turu (2026-09-18, frontend-agent) — ESKİDEN her `RoomEvent.Disconnected` doğrudan
-   * `setMeeting(null)` ile kullanıcıyı ön-katılım ekranına atıyordu; bu, kullanıcının KENDİ
-   * isteğiyle ayrılması (`DisconnectReason.CLIENT_INITIATED`, "Görüşmeden ayrıl" butonu) İLE
-   * geçici bir ağ/sinyal kopması (`SIGNAL_CLOSE`/`JOIN_FAILURE`/`STATE_MISMATCH` vb. — LiveKit'in
-   * KENDİ dahili yeniden bağlanma denemeleri TÜKENDİĞİNDE gelir, bkz. `@livekit/components-react`
-   * `onDisconnected` tipi) arasında AYRIM YAPMIYORDU. Şimdi yalnızca istemci-kaynaklı ayrılışta
-   * hemen ön-katılım ekranına dönülür; DİĞER TÜM nedenlerde taze bir `meeting-token` alınıp
-   * (`<LiveKitRoom key={meeting.token}>` sayesinde TEMİZ bir remount ile) tek seferlik SESSİZ bir
-   * yeniden bağlanma denenir — yalnızca BU da başarısız olursa kullanıcı ön-katılım ekranına, açık
-   * bir hata mesajıyla döner. Hastanın "sürekli odadan atılması" şikayetinin karşılığı budur.
+   * `RoomEvent.Disconnected`: kullanıcı kendi ayrıldıysa (`CLIENT_INITIATED`) ön-katılım ekranına dönülür; DİĞER TÜM
+   * nedenlerde (SDK'nın kendi yeniden bağlanması tükendi) `reconnect` devralır ve ekranda DAİMA bir durum katmanı
+   * (yeniden bağlanılıyor / başarısız / sekme çakışması) vardır — mesajsız ön-katılım ekranına DÜŞÜLMEZ.
    */
-  async function handleDisconnected(reason?: DisconnectReason) {
-    if (reason !== DisconnectReason.CLIENT_INITIATED && !autoReconnectedRef.current) {
-      autoReconnectedRef.current = true;
-      try {
-        const token = await telehealthApi.requestMeetingToken(appointment.id, accessToken);
-        setMeeting(token);
-        return;
-      } catch {
-        setJoinError("Görüşme bağlantısı beklenmedik şekilde kesildi. Lütfen tekrar katılın.");
-      }
-    }
-    setMeeting(null);
+  function handleDisconnected(reason?: DisconnectReason) {
+    const outcome = reconnect.handleDisconnected(disconnectKind(reason), reason as number | undefined);
+    if (outcome === "user-left") setMeeting(null);
   }
 
   /**
-   * Bug-fix turu (2026-09-21, kullanıcı talebi) — `ConsultationVideoRoom`'un `onError`/
-   * `onMediaDeviceFailure`'ından gelir (bkz. o bileşendeki yorum): `room.connect()`'in İLK
-   * denemesi hiç kurulamadan başarısız olduğunda `handleDisconnected` TETİKLENMEZ (henüz
-   * bağlıyken kopma değil, hiç BAĞLANAMAMA) — bu callback OLMADAN kullanıcı "Bağlanıyor…"
-   * rozetinde sonsuza dek asılı kalırdı. `autoReconnectedRef` de sıfırlanır ki bir SONRAKİ
-   * `handleJoin` tekrar bir otomatik yeniden bağlanma HAKKI kazansın.
+   * Bug-fix turu (2026-09-21, kullanıcı talebi) — `ConsultationVideoRoom`'un `onError`'ından gelir: `room.connect()`'in
+   * İLK denemesi hiç kurulamadan başarısız olduğunda `onDisconnected` TETİKLENMEZ; bu callback OLMADAN kullanıcı
+   * "Bağlanıyor…" rozetinde sonsuza dek asılı kalırdı. Paket AF: kurtarma sürüyorsa bu bir başarısız deneme sayılır;
+   * ilk katılımsa ön-katılım ekranına, NEDENE göre çevrilmiş mesajla dönülür (SDK'nın ham metni yalnızca konsola).
    */
-  function handleConnectionError(message: string) {
-    autoReconnectedRef.current = false;
-    setJoinError(message);
+  function handleConnectionError(err: unknown) {
+    warnRaw("LiveKitRoom onError", err);
+    if (reconnect.handleConnectFailure(err)) return;
+    resetReconnect();
+    setJoinError(failureMessage(classifyConnectionError(err), t));
     setMeeting(null);
   }
+
+  function handleMediaFailure(failure?: string) {
+    warnRaw("LiveKitRoom onMediaDeviceFailure", failure);
+    resetReconnect();
+    setJoinError(failureMessage(classifyMediaFailure(failure), t));
+    setMeeting(null);
+  }
+
+  // Paket AF (İş 1) — video kutusu ad etiketi bağlamı: ad ve hasta adı randevu verisinden, izleyici rolüne göre
+  // (hasta adı token'da YOK). Tercüman ekranı için bkz. `interpreter-room.tsx`.
+  const labelContext = useMemo<LabelContext>(
+    () => ({
+      viewer: isDoctor ? "doctor" : "patient",
+      patientName: appointment.patientName,
+      doctorName: appointment.doctor ? `${appointment.doctor.title ?? ""} ${appointment.doctor.displayName ?? appointment.doctor.fullName ?? ""}`.trim() : null,
+      t,
+      fmt,
+    }),
+    [isDoctor, appointment.patientName, appointment.doctor, t]
+  );
 
   return (
     <div className="space-y-6">
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
         <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">
-          {appointment.doctor ? `${appointment.doctor.title ?? ""} ${appointment.doctor.fullName ?? ""}`.trim() : "Doktor"} ile Görüşme
+          {fmt(t.roomTitle, { doctor: appointment.doctor ? `${appointment.doctor.title ?? ""} ${appointment.doctor.fullName ?? ""}`.trim() : t.roleDoctor })}
         </h1>
         <p className="mt-1 text-sm text-foreground/60">
-          {appointment.startsAt ? dateTimeFormatter.format(new Date(appointment.startsAt)) : "—"} · {appointment.patientName ?? "Hasta"}
+          {appointment.startsAt ? dateTimeFormatter.format(new Date(appointment.startsAt)) : "—"} · {appointment.patientName ?? t.rolePatient}
         </p>
         <InterpreterPreJoinNotice appointmentId={appointment.id} accessToken={accessToken} />
       </div>
 
       {meeting ? (
-        <ConsultationVideoRoom
-          meeting={meeting}
-          onLeave={(reason) => void handleDisconnected(reason)}
-          onConnectionError={handleConnectionError}
-          appointmentId={appointment.id}
-          accessToken={accessToken}
-          isDoctor={isDoctor}
-          recordingModuleEnabled={recordingModuleEnabled}
-          recording={recording}
-          consentDialogOpen={consentDialogOpen}
-          onRecordingSnapshot={handleRecordingSnapshot}
-          onRecordingSignal={handleRecordingSignal}
-          onConsentResolved={handleRecordingSnapshot}
-          onConsentDismiss={() => recording && setDismissedConsentId(recording.id)}
-        />
+        <ParticipantLabelProvider value={labelContext}>
+          <ConsultationVideoRoom
+            meeting={meeting}
+            onLeave={handleDisconnected}
+            onConnectionError={handleConnectionError}
+            onMediaFailure={handleMediaFailure}
+            reconnect={reconnect}
+            appointmentId={appointment.id}
+            accessToken={accessToken}
+            isDoctor={isDoctor}
+            recordingModuleEnabled={recordingModuleEnabled}
+            recording={recording}
+            consentDialogOpen={consentDialogOpen}
+            onRecordingSnapshot={handleRecordingSnapshot}
+            onRecordingSignal={handleRecordingSignal}
+            onConsentResolved={handleRecordingSnapshot}
+            onConsentDismiss={() => recording && setDismissedConsentId(recording.id)}
+          />
+        </ParticipantLabelProvider>
       ) : (
         <PreJoinStage
           joinState={joinState}
@@ -974,6 +995,16 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
 }
 
 export function ConsultationRoom({ appointmentId, accessToken }: { appointmentId: string; accessToken?: string }) {
+  const lang = useActiveLocaleCode();
+  return (
+    <div dir={localeDirection(lang)}>
+      <ConsultationRoomContent appointmentId={appointmentId} accessToken={accessToken} />
+    </div>
+  );
+}
+
+function ConsultationRoomContent({ appointmentId, accessToken }: { appointmentId: string; accessToken?: string }) {
+  const { t } = useConsultationStrings();
   const [appointment, setAppointment] = useState<Appointment | null | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -1036,10 +1067,10 @@ export function ConsultationRoom({ appointmentId, accessToken }: { appointmentId
         <span className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {loadError ?? "Bu randevu bulunamadı ya da katılım bağlantınız geçersiz."}
+            {loadError ?? t.appointmentNotFound}
           </span>
           <Button type="button" variant="outline" size="sm" onClick={() => void loadAppointment()}>
-            Tekrar Dene
+            {t.tryAgain}
           </Button>
         </span>
       </Alert>

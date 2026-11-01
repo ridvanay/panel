@@ -29,6 +29,11 @@ vi.mock("@livekit/components-react", () => ({
   useRoomContext: () => ({ on: vi.fn(), off: vi.fn(), disconnect: vi.fn() }),
   useTrackToggle: () => ({ enabled: false, pending: false, toggle: vi.fn() }),
   useTracks: () => tracks,
+  // Paket AF: yeni video kutusu (room/participant-tile.tsx) bu hook/bileşenleri kullanır — mock'a yalnızca EKLEME.
+  VideoTrack: () => null,
+  isTrackReference: () => true,
+  useConnectionQualityIndicator: () => ({ quality: "unknown" }),
+  useTrackMutedIndicator: () => ({ isMuted: false }),
 }));
 vi.mock("livekit-client", () => ({
   ConnectionState: { Connected: "connected", Disconnected: "disconnected", Reconnecting: "reconnecting", SignalReconnecting: "signal-reconnecting", Connecting: "connecting" },

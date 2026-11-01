@@ -130,7 +130,9 @@ describe("ConsultationRoom — LiveKit bağlantı hatası dayanıklılığı", (
       capturedLiveKitProps.onError!(new Error("WebSocket bağlantısı kurulamadı"));
     });
 
-    expect(await screen.findByText("WebSocket bağlantısı kurulamadı")).toBeInTheDocument();
+    // Paket AF: SDK'nın ham metni ekrana ASLA gelmez; nedene göre çevrilmiş mesaj gösterilir (ham metin yalnızca konsolda).
+    expect(await screen.findByText(/Görüşme sunucusuna ulaşılamadı/)).toBeInTheDocument();
+    expect(screen.queryByText("WebSocket bağlantısı kurulamadı")).not.toBeInTheDocument();
     // Ön-katılım ekranına dönüldü — "Görüşmeye Katıl" butonu tekrar görünür (çıkmaz durum YOK).
     expect(screen.getByRole("button", { name: "Görüşmeye Katıl" })).toBeInTheDocument();
   });
