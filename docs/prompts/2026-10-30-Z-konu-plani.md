@@ -1,6 +1,6 @@
-# Paket Z2 — Konu planı (100 başlık) — ONAYA SUNULUYOR (2026-11-01)
+# Paket Z2 — Konu planı (100 başlık) — ONAYLANDI, kararlarla güncellendi (2026-11-01)
 
-**Bu plan onaylanmadan hiçbir yazı yazılmayacak.**
+**Plan onaylandı (kararlar aşağıda). Yazım 10'luk partilerle başlıyor.**
 
 **Kaynaklar:**
 - `2026-10-30-Z-blog-yenileme-100-yazi.md` (Z2 bölümü)
@@ -15,7 +15,7 @@
 | Uzmanlıklar | Yalnızca aktif hekimi olan 7 uzmanlık. ERCP, ESD ve POEM gastroenterolojide (kamil-ozdil). Diş yalnızca ortodonti (kadir-kolcuoglu). |
 | İnceleyen hekim | Her tıbbi yazının hekimi, yazının uzmanlığından. "test" profili hiçbir yerde yok. |
 | Seyahat rehberleri | 15 adet, `isMedical=false` kategoride, `medicalReviewStatus=not_required`, uzmanlık ve hekim yok. |
-| Paket bağlantıları | Yalnızca executive-check-up, cancer-screening, longevity-assessment, womens-check-up, dermal-filler-botox. cardiac-check-up ve dental-check-cleaning yalnızca "Beklemede"de. therapeutic-massage hiç kullanılmıyor. |
+| Paket bağlantıları | Yalnızca executive-check-up, cancer-screening, womens-check-up, dermal-filler-botox (longevity-assessment artık yalnızca "Beklemede"de). cardiac-check-up ve dental-check-cleaning yalnızca "Beklemede"de. therapeutic-massage hiç kullanılmıyor. |
 | Bakım konuları | Yalnızca `isActive=true`, `isRedFlag=false` olan ve yazının uzmanlığıyla eşleşen konular, canlı listeden. Uzmanlığı olmayan genel konular yalnızca check-up ve seyahat yazılarında (aşağıdaki "Onay istenen kararlar" 1). |
 
 ## Hekim yükü (dengeli; kurucuya yığılma yok)
@@ -104,7 +104,7 @@
 | 33 | Varicocele embolisation: an alternative to surgery | K | varicocele | — |
 | 34 | Blood clots and long journeys: DVT follow-up and flying after a procedure | H/P | dvt-history | — |
 
-### D. Kilo verme ve metabolik sağlık — obesity-and-metabolic-surgery — hakan-sofu (11) / vahit-mutlu (10) · kategori `weight-loss-metabolic-health` (50–55 `check-ups-prevention`)
+### D. Kilo verme ve metabolik sağlık — obesity-and-metabolic-surgery — hakan-sofu (11) / vahit-mutlu (10) · kategori `weight-loss-metabolic-health` (53–54 `check-ups-prevention`)
 
 | # | Başlık | Niyet | Bakım konuları | Hekim | Paket |
 |---|---|---|---|---|---|
@@ -123,12 +123,12 @@
 | 47 | Skin removal after major weight loss: timing and planning | H | post-weight-loss-contouring | hakan-sofu | — |
 | 48 | Long-term follow-up after bariatric surgery: nutrition and check-ups | H | obesity | vahit-mutlu | — |
 | 49 | Travelling for weight-loss surgery: planning, length of stay and remote follow-up | P | obesity, medical-tourism-planning | hakan-sofu | — |
-| 50 | Healthy ageing: what a longevity assessment looks at | B | longevity | vahit-mutlu | longevity-assessment |
-| 51 | Executive check-up: what is included and how to prepare | H | general-checkup | hakan-sofu | executive-check-up |
-| 52 | Men's health check-up: recommended screenings by age | B | mens-checkup | vahit-mutlu | executive-check-up |
+| 50 | Gastric bypass surgery: how it works and what recovery involves | B/H | obesity | hakan-sofu | — |
+| 51 | Weight regain after bariatric surgery: causes and next steps | B/K | bariatric-revision | vahit-mutlu | — |
+| 52 | Liposuction or weight-loss surgery? How the two differ | K | liposuction-body-contouring | vahit-mutlu | — |
 | 53 | Pre-operative assessment: why tests are needed before surgery | H | pre-surgery-assessment | hakan-sofu | — |
 | 54 | Waist size, blood sugar and blood pressure: understanding metabolic risk | B | type2-diabetes-metabolic | vahit-mutlu | executive-check-up |
-| 55 | Sports health check: who may benefit from one | B | sports-medicine-check | hakan-sofu | longevity-assessment |
+| 55 | One-anastomosis (mini) gastric bypass: an overview | B | obesity | hakan-sofu | — |
 
 ### E. Ortodonti — orthodontist — kadir-kolcuoglu (7) · kategori `orthodontics`
 
@@ -191,11 +191,18 @@
 | 95 | A packing list for a medical trip to Istanbul | H | medical-tourism-planning | — |
 | 96 | Gentle things to do in Istanbul while you recover | P | medical-tourism-planning | — |
 | 97 | Aftercare at home: remote follow-up after you return | H | medical-tourism-planning | — |
-| 98 | Travel vaccines and health precautions for a trip to Istanbul | H | travel-vaccines | — |
-| 99 | Your health data when you travel for care: privacy explained | B | medical-tourism-planning | — |
+| 98 | Communicating with your care team before and after your trip | P/H | medical-tourism-planning | — |
+| 99 | Your health data when you travel for care: privacy explained ⚖️ *hukuk kontrolü* | B | medical-tourism-planning | — |
 | 100 | Seasons in Istanbul: planning your treatment dates | P | medical-tourism-planning | — |
 
 ## Beklemede (100'e dahil değil; hekim eklenince açılır, şimdi yazılmaz)
+
+### İç hastalıkları (check-up) — inceleyen: "iç hastalıkları uzmanı (eklenecek)" — kullanıcı kararı 2026-11-01
+
+1. Healthy ageing: what a longevity assessment looks at (longevity) — paket: longevity-assessment
+2. Executive check-up: what is included and how to prepare (general-checkup) — paket: executive-check-up
+3. Men's health check-up: recommended screenings by age (mens-checkup) — paket: executive-check-up
+4. Sports health check: who may benefit from one (sports-medicine-check) — paket: longevity-assessment
 
 ### Kardiyoloji — inceleyen: "kardiyolog (eklenecek)" — paket: cardiac-check-up
 
@@ -244,12 +251,20 @@
   - Her partiden sonra kısa rapor: başlıklar, kelime ve kaynak sayısı, "kaynak eksik" listesi, yazılar arası tekrar oranı.
   - **Her 30 yazıda bir durup onay istenir.**
 
-## Onay istenen kararlar
+## Kararlar (kullanıcı, 2026-11-01)
 
-1. **Uzmanlığı olmayan genel bakım konuları.** Kural 37'ye göre bakım konuları yazının uzmanlığıyla eşleşmeli. Canlı veri dosyası ise genel konuları (`general-checkup`, `mens-checkup`, `womens-checkup`, `longevity`, `pre-surgery-assessment`, `sports-medicine-check`, `second-opinion`, `second-opinion-surgery`, `travel-vaccines`, `medical-tourism-planning`) "check-up paketleri ve seyahat rehberleri için" ayırmış. Bunları yalnızca check-up, seyahat ve "yurt dışından planlama" yazılarında kullandım: 22, 23, 49–55, 61, 73, 75, 86–100. Uygun mu?
-2. **Check-up yazılarının inceleyen hekimi.** Executive, men's ve sports check-up ile pre-operative assessment ve longevity (50–55) için genel dahiliye uzmanı yok. Bu yazıları metabolik sağlık bağlamıyla obezite ve metabolik cerrahi hekimlerine (hakan-sofu, vahit-mutlu) verdim. Women's check-up (22) ayse-zehra-ozdemir-kaya'da, cancer screening (76) dogukan-yildirim'de. Alternatif: bu yazılar ilgili hekim gelene kadar "Beklemede"ye alınır ve yerlerine uzmanlık yazıları konur.
-3. **Sağlık içeriği olan iki seyahat yazısı.** "Travel vaccines…" (98) ve "Your health data…" (99) tıbbi olmayan kategoride `not_required`. 98 sağlık bilgisi, 99 hukuki bilgi içeriyor. Öneri: 98 yine bir hekime (ör. ali-firat) inceletilsin, 99 hukuk kontrol listesine girsin. Ya da 98 plandan çıkarılıp yerine bir lojistik rehber konur.
-4. **Ortodonti 7 yazı.** Kapsam yalnızca diş teli, şeffaf plak ve ısırık/çene hizası olduğu için 7'de kaldı; hekim yükü bu yüzden kadir-kolcuoglu'nda düşük. Uygun mu?
+1. **Genel bakım konuları** yalnızca check-up, seyahat ve "yurt dışından planlama" yazılarında kullanılır: onaylandı.
+2. **Check-up yazıları:**
+   - #53 (pre-operative assessment) ve #54 (metabolic risk) obezite ve metabolik cerrahi hekimlerinde kaldı.
+   - Eski #50 longevity, #51 executive, #52 men's ve #55 sports "Beklemede > İç hastalıkları"na taşındı.
+   - Yerlerine 4 yeni başlık geldi: #50, #51, #52, #55, obezite ve metabolik cerrahi alanından. Hekim yükü değişmedi: hakan-sofu 11, vahit-mutlu 10.
+3. **Seyahat yazıları:**
+   - #98 (travel vaccines) çıkarıldı; yerine tıbbi olmayan "Communicating with your care team before and after your trip" geldi.
+   - #99 kaldı ve **hukuk kontrol listesine** eklendi (sağlık verisi ve gizlilik ifadeleri).
+4. **Ortodonti 7 yazı:** onaylandı.
 5. **Başlıklar çalışma başlığıdır.** Yazım sırasında SEO uzunluğu için kısaltılabilir; anlam ve kapsam değişmez.
 
-Onaylarsanız 1–10 numaralı yazılarla (ilk parti) başlayacağım. İçe aktarma script'i ilk partiyle birlikte gelecek.
+## Hukuk kontrol listesi (Z2)
+
+- #99 "Your health data when you travel for care: privacy explained": KVKK/GDPR ifadeleri, veri aktarımı ve saklama süreleri hukuk onayı olmadan yayınlanmaz.
+- #89 "Entry and visa requirements…": resmî kaynaklara yönlendirir, kesin vize bilgisi vermez; yine de kontrol edilmeli.
