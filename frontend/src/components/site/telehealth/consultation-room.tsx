@@ -36,6 +36,7 @@ import type { LabelContext } from "@/components/site/telehealth/room/participant
 import { ConnectionLayers, ConnectionStateReporter } from "@/components/site/telehealth/room/connection-layers";
 import { useAppReconnect, type AppReconnect } from "@/components/site/telehealth/room/use-app-reconnect";
 import { disconnectKind } from "@/components/site/telehealth/room/disconnect-kind";
+import { localizedDoctorTitle } from "@/components/site/telehealth/room/doctor-title";
 import { isCounterpart } from "@/components/site/telehealth/room/participant-kind";
 import { ConsultationStage } from "@/components/site/telehealth/room/stage";
 import { RoomControlBar } from "@/components/site/telehealth/room/control-bar";
@@ -743,22 +744,25 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
 
   // Paket AF (İş 1) — video kutusu ad etiketi bağlamı: ad ve hasta adı randevu verisinden, izleyici rolüne göre
   // (hasta adı token'da YOK). Tercüman ekranı için bkz. `interpreter-room.tsx`.
+  // Unvan izleyicinin dilinde (profilin dil bazlı unvan çevirisi; yoksa mevcut unvan).
+  const viewerLang = useActiveLocaleCode();
+  const doctorTitle = localizedDoctorTitle(appointment.doctor, viewerLang);
   const labelContext = useMemo<LabelContext>(
     () => ({
       viewer: isDoctor ? "doctor" : "patient",
       patientName: appointment.patientName,
-      doctorName: appointment.doctor ? `${appointment.doctor.title ?? ""} ${appointment.doctor.displayName ?? appointment.doctor.fullName ?? ""}`.trim() : null,
+      doctorName: appointment.doctor ? `${doctorTitle} ${appointment.doctor.displayName ?? appointment.doctor.fullName ?? ""}`.trim() : null,
       t,
       fmt,
     }),
-    [isDoctor, appointment.patientName, appointment.doctor, t]
+    [isDoctor, appointment.patientName, appointment.doctor, doctorTitle, t]
   );
 
   return (
     <div className="space-y-6">
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
         <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">
-          {fmt(t.roomTitle, { doctor: appointment.doctor ? `${appointment.doctor.title ?? ""} ${appointment.doctor.fullName ?? ""}`.trim() : t.roleDoctor })}
+          {fmt(t.roomTitle, { doctor: appointment.doctor ? `${doctorTitle} ${appointment.doctor.fullName ?? ""}`.trim() : t.roleDoctor })}
         </h1>
         <p className="mt-1 text-sm text-foreground/60">
           {appointment.startsAt ? dateTimeFormatter.format(new Date(appointment.startsAt)) : "—"} · {appointment.patientName ?? t.rolePatient}

@@ -458,6 +458,28 @@ describe("video kutusu ad etiketleri — identity ASLA görünmez", () => {
     expect(text).not.toContain("Interpreter");
   });
 
+  it("Paket AF — unvan izleyicinin dilinde (profilin dil bazlı unvan çevirisi): ad etiketi ve başlık; çeviri yoksa mevcut unvan", async () => {
+    appointmentOverride = {
+      doctor: { id: "doctor-1", title: "Doç. Dr.", fullName: "Elif Aydemir", slug: "dr-elif-aydemir", titleTranslations: { ar: "أستاذ مشارك د." } },
+    };
+    localeCode = "ar";
+    setScene([local, doctor]);
+    await joinRoom();
+    expect(labels()).toEqual(expect.arrayContaining(["أستاذ مشارك د. Elif Aydemir"]));
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("أستاذ مشارك د. Elif Aydemir");
+    expect(document.body.textContent ?? "").not.toContain("Doç. Dr.");
+  });
+
+  it("Paket AF — izleyicinin dilinde çeviri yoksa mevcut unvan gösterilir", async () => {
+    appointmentOverride = {
+      doctor: { id: "doctor-1", title: "Doç. Dr.", fullName: "Elif Aydemir", slug: "dr-elif-aydemir", titleTranslations: { en: "Assoc. Prof. Dr." } },
+    };
+    setScene([local, doctor]);
+    await joinRoom();
+    expect(labels()).toEqual(expect.arrayContaining(["Doç. Dr. Elif Aydemir"]));
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Doç. Dr. Elif Aydemir");
+  });
+
   it("doktor ekranı: hasta tam adı görünür", async () => {
     doctorSession = true;
     const patientRemote: FakeParticipant = { identity: "patient:appointment-1", isLocal: false };

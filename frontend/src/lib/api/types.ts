@@ -4105,6 +4105,8 @@ export interface DoctorSummary {
   /** Paket U — sitede görünen ad ("H. Sofu"; kurucu tam ad). */
   displayName?: string;
   slug: string;
+  /** Paket AF — dil bazlı unvan çevirileri (yalnızca görüşme sayfasının randevu yanıtında). */
+  titleTranslations?: Record<string, string>;
 }
 
 /** Randevu OKUMA DTO'su — `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK TAŞINMAZ. */

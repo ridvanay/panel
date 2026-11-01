@@ -451,7 +451,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           ...WITH_APPOINTMENT_RELATIONS,
-          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true } },
+          // Paket AF — `translations`: görüşme odasında unvan izleyicinin dilinde (yalnızca `title` çevirileri DTO'ya çıkar).
+          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true, isFounder: true, publicName: true, translations: true } },
           booking: { select: { accessTokenHash: true } },
         },
       });

@@ -416,6 +416,29 @@ describe("telehealth/livekit — meeting-token, doktor/hasta oda+kimlik ayrımı
     const appt = await app.prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id }, select: { patientName: true } });
     if (appt.patientName) expect(patientData.token).not.toContain(appt.patientName);
   });
+
+  it("Paket AF — GET /appointments/:id doktor unvanının dil bazlı çevirilerini taşır (yoksa alan yok, mevcut unvan kalır)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor);
+    const get = async () =>
+      (await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}?t=${rawAccessToken}` })).json().data.doctor as {
+        title: string;
+        titleTranslations?: Record<string, string>;
+      };
+
+    const before = await get();
+    expect(before.titleTranslations).toBeUndefined();
+
+    await app.prisma.doctorProfile.update({
+      where: { id: doctor.id },
+      data: { title: "Doç. Dr.", translations: { en: { title: "Assoc. Prof. Dr.", bio: "x" }, DE: { title: "Assoz. Prof. Dr." }, ar: { title: "  " }, fr: { bio: "y" } } },
+    });
+    const after = await get();
+    expect(after.title).toBe("Doç. Dr.");
+    // Yalnızca boş olmayan `title` çevirileri; dil kodu küçük harf; diğer çeviri alanları (bio vb.) sızmaz.
+    expect(after.titleTranslations).toEqual({ en: "Assoc. Prof. Dr.", de: "Assoz. Prof. Dr." });
+    expect(JSON.stringify(after)).not.toContain("bio");
+  });
 });
 
 describe("telehealth/livekit — meeting-token, katılım penceresi ÖDEME DURUMUNA göre (rol ayrımı YOK — integration-agent görevi, 2026-09-15)", () => {

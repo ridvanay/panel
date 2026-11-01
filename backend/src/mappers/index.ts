@@ -1805,11 +1805,33 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations, audience:
 }
 
 /** `isFounder`/`publicName` seçilmemişse kısaltma yine uygulanır (gizlilik öncelikli varsayılan). */
-type DoctorSummarySource = Pick<DoctorProfile, "id" | "title" | "fullName" | "slug"> & Partial<Pick<DoctorProfile, "isFounder" | "publicName">>;
+type DoctorSummarySource = Pick<DoctorProfile, "id" | "title" | "fullName" | "slug"> & Partial<Pick<DoctorProfile, "isFounder" | "publicName" | "translations">>;
+
+/**
+ * Paket AF (kullanıcı kararı) — doktor profilindeki dil bazlı unvan çevirileri (`translations.<dil>.title`),
+ * `{ dil: unvan }` olarak. Yalnızca boş olmayanlar; yoksa `undefined` (istemci `title`'a düşer). Yeni alan/tablo yok.
+ */
+export function doctorTitleTranslations(translations: unknown): Record<string, string> | undefined {
+  if (!translations || typeof translations !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [locale, value] of Object.entries(translations as Record<string, unknown>)) {
+    const title = value && typeof value === "object" ? (value as Record<string, unknown>).title : undefined;
+    if (typeof title === "string" && title.trim()) out[locale.toLowerCase()] = title.trim();
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 export function toDoctorSummaryDto(doctor: DoctorSummarySource, audience: DoctorNameAudience = "public"): DoctorSummaryDto {
   const displayName = doctorDisplayName(doctor);
-  return { id: doctor.id, title: doctor.title, fullName: audience === "internal" ? doctor.fullName : displayName, displayName, slug: doctor.slug };
+  const titleTranslations = doctor.translations !== undefined ? doctorTitleTranslations(doctor.translations) : undefined;
+  return {
+    id: doctor.id,
+    title: doctor.title,
+    fullName: audience === "internal" ? doctor.fullName : displayName,
+    displayName,
+    slug: doctor.slug,
+    ...(titleTranslations ? { titleTranslations } : {}),
+  };
 }
 
 type AppointmentWithDoctor = Appointment & {

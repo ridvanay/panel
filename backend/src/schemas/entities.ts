@@ -2619,6 +2619,8 @@ export const DoctorSummarySchema = z.object({
   /** Paket U — sitede görünen ad (kurucu: tam ad; `publicName` doluysa o; diğerleri "H. Sofu"). */
   displayName: z.string().optional(),
   slug: z.string(),
+  /** Paket AF — dil bazlı unvan çevirileri (`{ "en": "Assoc. Prof. Dr." }`); yalnızca görüşme sayfasının randevu yanıtında. */
+  titleTranslations: z.record(z.string(), z.string()).optional(),
 });
 export type DoctorSummaryDto = z.infer<typeof DoctorSummarySchema>;
 

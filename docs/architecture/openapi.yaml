@@ -21367,7 +21367,15 @@ components:
         id: { type: string, format: uuid }
         title: { type: string }
         fullName: { type: string }
+        displayName: { type: string, description: "Sitede görünen ad (Paket U)." }
         slug: { type: string }
+        titleTranslations:
+          type: object
+          additionalProperties: { type: string }
+          description: >
+            Paket AF — dil bazlı unvan çevirileri (`{ "en": "Assoc. Prof. Dr." }`), doktor profilindeki
+            `translations.<dil>.title` alanından. Yalnızca `GET /appointments/{id}` yanıtında ve çeviri varsa;
+            istemci izleyicinin dilini seçer, yoksa `title`.
 
     Appointment:
       type: object
