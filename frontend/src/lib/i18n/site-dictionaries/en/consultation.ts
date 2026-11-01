@@ -109,6 +109,20 @@ export const consultationStrings = {
   deviceCheckSpeakerTest: "Play test sound",
   deviceCheckHint: "Allow camera and microphone access, then check that you can see yourself and that the level bar moves when you speak.",
   moreOptions: "More options",
+  // Paket AF — kayıt bileşenleri (yalnızca metin; davranış değişmez). Rıza metni compliance kararıdır.
+  recIndicator: "This consultation is being recorded",
+  recConsentTitle: "Consultation Recording Consent",
+  recConsentText: "Your doctor would like to record this consultation. The recording is stored encrypted with AES-256 on the server, is automatically deleted after 30 days, and can only be accessed by you, your doctor and the system administrator. You have the right to refuse; refusing does not affect the consultation.",
+  recConsentCountdown: "Closes automatically in {seconds}s",
+  recConsentExpired: "Time is up",
+  recDeny: "I decline",
+  recAccept: "I accept",
+  recDeniedToast: "The patient did not consent to recording; the consultation continues without recording.",
+  recWaitingConsent: "Waiting for the patient's consent…",
+  recStop: "Stop recording",
+  recProcessing: "Processing recording…",
+  recDeniedLocked: "Declined — you can try again in {seconds}s",
+  recStart: "Start recording",
 } as const;
 
 export type ConsultationStrings = Record<keyof typeof consultationStrings, string>;

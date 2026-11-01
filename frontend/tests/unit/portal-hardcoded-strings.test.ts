@@ -27,9 +27,7 @@ const RED_LINE_FILES = new Set([
 
 /** Yalnızca görüşme odasında (KIRMIZI ÇİZGİ ağacı) kullanılan bileşenler — kapsam dışı. */
 const CONSULTATION_ONLY_FILES = new Set([
-  "components/site/telehealth/recording-controls.tsx",
-  "components/site/telehealth/recording-indicator.tsx",
-  "components/site/telehealth/recording-consent-dialog.tsx",
+  // Paket AF — kayıt bileşenlerinin metinleri `consultation` sözlüğüne taşındı; artık bu taramanın kapsamında.
   // Paket C — görüşme odasındaki kalite kontrol dinleyicisi uyarısı (metin compliance onaylı, TR).
   "components/site/telehealth/qa-listener-notice.tsx",
 ]);

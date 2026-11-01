@@ -7,6 +7,7 @@ import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { ConsultationRecording } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
+import { useConsultationStrings } from "@/lib/i18n/use-consultation-strings";
 
 /** Hasta reddettikten sonra "Kaydı Başlat" tekrar etkinleşene kadar geçmesi gereken süre. */
 const CONSENT_RETRY_LOCK_MS = 60_000;
@@ -30,6 +31,7 @@ interface RecordingControlsProps {
  * (`consultation-room.tsx` bu koşulu zaten uygular). Durum bazlı TEK aksiyon alanı.
  */
 export function RecordingControls({ appointmentId, recording, onUpdate }: RecordingControlsProps) {
+  const { t, fmt } = useConsultationStrings();
   const [now, setNow] = useState(() => Date.now());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,9 +51,9 @@ export function RecordingControls({ appointmentId, recording, onUpdate }: Record
       notifiedDenialRef.current !== recording.patientConsentDeniedAt
     ) {
       notifiedDenialRef.current = recording.patientConsentDeniedAt;
-      toast("Hasta kaydı onaylamadı; görüşme kayıtsız devam ediyor.");
+      toast(t.recDeniedToast);
     }
-  }, [recording?.status, recording?.patientConsentDeniedAt]);
+  }, [recording?.status, recording?.patientConsentDeniedAt, t.recDeniedToast]);
 
   async function handleStart() {
     setPending(true);
@@ -83,7 +85,7 @@ export function RecordingControls({ appointmentId, recording, onUpdate }: Record
   if (status === "PENDING_CONSENT") {
     content = (
       <Button type="button" variant="outline" size="sm" loading>
-        Hastanın onayı bekleniyor…
+        {t.recWaitingConsent}
       </Button>
     );
   } else if (status === "RECORDING") {
@@ -95,14 +97,14 @@ export function RecordingControls({ appointmentId, recording, onUpdate }: Record
         )}
         <Button type="button" variant="destructive" size="sm" loading={pending} onClick={() => void handleStop()}>
           <VideoOff className="h-3.5 w-3.5" aria-hidden="true" />
-          Kaydı Durdur
+          {t.recStop}
         </Button>
       </div>
     );
   } else if (status === "PROCESSING") {
     content = (
       <Button type="button" variant="outline" size="sm" loading>
-        Kayıt işleniyor…
+        {t.recProcessing}
       </Button>
     );
   } else {
@@ -114,12 +116,12 @@ export function RecordingControls({ appointmentId, recording, onUpdate }: Record
 
     content = locked ? (
       <Button type="button" variant="outline" size="sm" disabled>
-        Reddedildi, {Math.ceil(lockRemainingMs / 1000)}sn sonra tekrar deneyebilirsiniz
+        {fmt(t.recDeniedLocked, { seconds: Math.ceil(lockRemainingMs / 1000) })}
       </Button>
     ) : (
       <Button type="button" variant="outline" size="sm" loading={pending} onClick={() => void handleStart()}>
         <Video className="h-3.5 w-3.5" aria-hidden="true" />
-        Kaydı Başlat
+        {t.recStart}
       </Button>
     );
   }

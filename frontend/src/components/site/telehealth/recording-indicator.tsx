@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { RecordingStatus } from "@/lib/api/types";
+import { useConsultationStrings } from "@/lib/i18n/use-consultation-strings";
 
 /**
  * `.claude/architect-scope-telehealth-recording.md` F2 — `status === "RECORDING"` olduğu SÜRECE
@@ -8,13 +9,14 @@ import type { RecordingStatus } from "@/lib/api/types";
  * İCAT EDİLMEZ.
  */
 export function RecordingIndicator({ status }: { status: RecordingStatus | undefined }) {
+  const { t } = useConsultationStrings();
   if (status !== "RECORDING") return null;
 
   return (
     <span role="status">
       <Badge tone="danger" solid size="sm" className="gap-1.5 shadow-sm">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-        Bu görüşme kaydediliyor
+        {t.recIndicator}
       </Badge>
     </span>
   );

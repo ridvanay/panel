@@ -7,6 +7,7 @@ import type { ConsultationRecording } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useConsultationStrings } from "@/lib/i18n/use-consultation-strings";
 
 /**
  * `.claude/architect-scope-telehealth-recording.md` F1 — hasta rıza modalı. Metin compliance-agent'ın
@@ -18,8 +19,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
  * `onOpenChange(false)` HİÇBİR istek GÖNDERMEZ, yalnızca `onDismiss()`'i çağırır; TTL
  * (`consentExpiresAt`) kendiliğinden dolar.
  */
-const CONSENT_TEXT =
-  "Doktorunuz bu görüşmeyi kaydetmek istiyor. Kayıt sunucuda AES-256 ile şifrelenerek saklanır, 30 gün sonra otomatik silinir ve yalnızca siz, doktorunuz ve sistem yöneticisi erişebilir. Reddetme hakkınız vardır; reddetmeniz görüşmeyi etkilemez.";
+// Paket AF — rıza metni `consultation` sözlüğüne taşındı (`recConsentText`); TR metin AYNEN korunur, diğer diller
+// hukuki gözden geçirmeye tabidir (bkz. AF raporu).
 
 interface RecordingConsentDialogProps {
   open: boolean;
@@ -51,6 +52,7 @@ export function RecordingConsentDialog({
   onResolved,
   onDismiss,
 }: RecordingConsentDialogProps) {
+  const { t, fmt } = useConsultationStrings();
   const remainingSeconds = useRemainingSeconds(consentExpiresAt, open);
   const [submitting, setSubmitting] = useState<"accept" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,14 +87,14 @@ export function RecordingConsentDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Görüşme Kaydı İzni</DialogTitle>
-          <DialogDescription>{CONSENT_TEXT}</DialogDescription>
+          <DialogTitle>{t.recConsentTitle}</DialogTitle>
+          <DialogDescription>{t.recConsentText}</DialogDescription>
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
 
         <p className="text-center text-xs font-medium tabular-nums text-foreground/50" aria-live="polite">
-          {remainingSeconds > 0 ? `${remainingSeconds}sn içinde otomatik olarak kapanacak` : "Süre doldu"}
+          {remainingSeconds > 0 ? fmt(t.recConsentCountdown, { seconds: remainingSeconds }) : t.recConsentExpired}
         </p>
 
         <DialogFooter>
@@ -104,7 +106,7 @@ export function RecordingConsentDialog({
             disabled={submitting !== null}
             onClick={() => void respond(false)}
           >
-            Reddediyorum
+            {t.recDeny}
           </Button>
           <Button
             type="button"
@@ -114,7 +116,7 @@ export function RecordingConsentDialog({
             disabled={submitting !== null}
             onClick={() => void respond(true)}
           >
-            Kabul Ediyorum
+            {t.recAccept}
           </Button>
         </DialogFooter>
       </DialogContent>
