@@ -128,8 +128,10 @@ export default function NewBlogPostPage() {
       router.push(`/admin/blog/${post.id}`);
     } catch (err) {
       const message = friendlyErrorMessage(err);
-      setFieldErrors(fieldErrorsFrom(err));
-      setError(message);
+      const fields = fieldErrorsFrom(err);
+      setFieldErrors(fields);
+      // Alan hatası varken aynı bilgiyi üst bantta tekrar etmeyiz.
+      setError(fields.medicalReviewStatus ? "Kaydedilemedi. Lütfen aşağıda işaretli alanı düzeltin." : message);
       toast.error(message);
     }
   }

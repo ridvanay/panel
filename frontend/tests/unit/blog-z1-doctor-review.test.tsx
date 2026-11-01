@@ -107,6 +107,17 @@ describe("Paket Z1 — doktor paneli Medical review kuyruğu", () => {
     expect(blogApi.requestDoctorBlogChanges).not.toHaveBeenCalled();
   });
 
+  it("not yazılınca 'Please write a note.' hatası temizlenir", async () => {
+    const user = userEvent.setup();
+    render(<DoctorBlogReviewPanel />);
+    const first = (await screen.findAllByTestId("doctor-blog-review-item"))[0]!;
+    await user.click(within(first).getByRole("button", { name: "Request changes" }));
+    await user.click(within(first).getByRole("button", { name: "Send note" }));
+    expect(within(first).getByRole("alert")).toBeInTheDocument();
+    await user.type(within(first).getByLabelText("Note for the editorial team"), "x");
+    expect(within(first).queryByRole("alert")).toBeNull();
+  });
+
   it("Request changes: 2000 karakterden uzun not reddedilir", async () => {
     const user = userEvent.setup();
     render(<DoctorBlogReviewPanel />);

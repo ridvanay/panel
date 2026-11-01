@@ -213,7 +213,10 @@ function ReviewCard({
             rows={4}
             aria-invalid={noteError ? true : undefined}
             aria-describedby={`${noteId}-hint`}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => {
+              setNote(e.target.value);
+              if (noteError) setNoteError(null);
+            }}
             className="w-full rounded-md border border-border bg-background p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--site-primary)]"
           />
           <p id={`${noteId}-hint`} className="text-xs text-foreground/60">

@@ -51,11 +51,12 @@ export function cleanReferences(list: BlogReference[]): BlogReference[] {
 }
 
 /** Yazma gövdesine eklenecek Z1 alanları. `statusWrite` boşsa `medicalReviewStatus` GÖNDERİLMEZ. */
-export function reviewStateToPayload(state: BlogReviewState): BlogReviewWriteFields {
+export function reviewStateToPayload(state: BlogReviewState, baseline: BlogReviewState = EMPTY_REVIEW_STATE): BlogReviewWriteFields {
   return {
-    specialtyId: state.specialtyId || null,
+    // Değişmeyen uzmanlık/hekim gövdeye HİÇ konmaz: yanlışlıkla null yazıp atanmış hekimi silmek ciddi bir hatadır.
+    ...(state.specialtyId !== baseline.specialtyId ? { specialtyId: state.specialtyId || null } : {}),
     careTopicIds: state.careTopicIds,
-    reviewerDoctorId: state.reviewerDoctorId || null,
+    ...(state.reviewerDoctorId !== baseline.reviewerDoctorId ? { reviewerDoctorId: state.reviewerDoctorId || null } : {}),
     ...(state.statusWrite ? { medicalReviewStatus: state.statusWrite } : {}),
     isFeatured: state.isFeatured,
     keyTakeaways: cleanTakeaways(state.keyTakeaways),

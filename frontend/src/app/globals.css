@@ -810,3 +810,71 @@
 [data-local-camera="true"][data-mirrored="true"] .lk-participant-media-video[data-lk-source="camera"] {
   transform: rotateY(180deg) !important;
 }
+
+/*
+ * Paket Z1 — blog yazı gövdesi tipografisi. `@tailwindcss/typography` projede YOKTUR (`prose*` sınıfları
+ * etkisizdir); bu kapsamlı kurallar yalnızca `.blog-prose` içindeki ham (sanitize'lı) HTML'i biçimler.
+ * Mantıksal yönler (margin-inline, border-inline-start, padding-inline) RTL'de (ar) aynen çalışır.
+ */
+.blog-prose {
+  max-inline-size: 70ch;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: color-mix(in oklch, var(--foreground) 88%, transparent);
+  overflow-wrap: anywhere;
+}
+.blog-prose > :first-child { margin-block-start: 0; }
+.blog-prose p { margin-block: 1.1em; }
+.blog-prose h2,
+.blog-prose h3,
+.blog-prose h4 {
+  font-family: var(--font-heading, inherit);
+  color: var(--foreground);
+  font-weight: 700;
+  line-height: 1.25;
+  scroll-margin-block-start: 6rem;
+}
+.blog-prose h2 { font-size: 1.65rem; margin-block: 2.2em 0.7em; letter-spacing: -0.01em; }
+.blog-prose h3 { font-size: 1.3rem; margin-block: 1.8em 0.55em; }
+.blog-prose h4 { font-size: 1.1rem; margin-block: 1.5em 0.5em; }
+.blog-prose ul,
+.blog-prose ol { margin-block: 1.1em; padding-inline-start: 1.6em; }
+.blog-prose ul { list-style: disc; }
+.blog-prose ol { list-style: decimal; }
+.blog-prose li { margin-block: 0.4em; padding-inline-start: 0.3em; }
+.blog-prose li > ul,
+.blog-prose li > ol { margin-block: 0.4em; }
+.blog-prose a { color: var(--site-primary, var(--primary)); text-decoration: underline; text-underline-offset: 3px; }
+.blog-prose a:hover { text-decoration-thickness: 2px; }
+.blog-prose strong { color: var(--foreground); font-weight: 650; }
+.blog-prose blockquote {
+  margin-block: 1.6em;
+  padding: 0.9em 1.2em;
+  border-inline-start: 4px solid var(--site-primary, var(--primary));
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--site-primary, var(--primary)) 7%, transparent);
+  font-style: normal;
+}
+.blog-prose blockquote > :first-child { margin-block-start: 0; }
+.blog-prose blockquote > :last-child { margin-block-end: 0; }
+.blog-prose img { max-inline-size: 100%; block-size: auto; margin-block: 1.6em; border-radius: 0.75rem; }
+.blog-prose hr { margin-block: 2.2em; border: 0; border-block-start: 1px solid var(--border); }
+.blog-prose code {
+  padding: 0.15em 0.4em;
+  border-radius: 0.3rem;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-size: 0.9em;
+}
+.blog-prose pre { margin-block: 1.4em; padding: 1em; overflow-x: auto; border-radius: 0.6rem; background: color-mix(in oklch, var(--foreground) 8%, transparent); }
+.blog-prose pre code { padding: 0; background: none; }
+.blog-prose table {
+  display: block;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  margin-block: 1.6em;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.blog-prose th,
+.blog-prose td { padding: 0.6em 0.85em; border: 1px solid var(--border); text-align: start; vertical-align: top; }
+.blog-prose th { background: color-mix(in oklch, var(--foreground) 6%, transparent); font-weight: 650; color: var(--foreground); }

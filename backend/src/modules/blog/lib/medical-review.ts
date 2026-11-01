@@ -73,21 +73,19 @@ export async function assertBlogReviewRules(app: FastifyInstance, input: ReviewR
 
   if (effective.medicalReviewStatus === "not_required") {
     if (input.settingNotRequired && input.actorRole !== "ADMIN") {
-      throw new ForbiddenError("\"Hekim onayı gerekmez\" yalnızca yönetici tarafından seçilebilir.");
+      throw new ForbiddenError("\"Hekim onayı gerekmiyor\" seçeneğini yalnızca yönetici seçebilir.");
     }
     if ((input.settingNotRequired || input.touchesReviewOrCategory) && !(category && category.isMedical === false)) {
-      throw new ValidationError("Hekim onayı gerekmez seçeneği yalnızca tıbbi olmayan bir kategoride kullanılabilir.", {
-        medicalReviewStatus: ["Tıbbi kategoride (veya kategorisiz yazıda) hekim onayı zorunludur."],
+      throw new ValidationError("Bu yazı için hekim onayı gerekiyor.", {
+        medicalReviewStatus: ["Tıbbi kategoride veya kategorisiz yazıda hekim onayı gerekir; “gerekmiyor” seçilemez."],
       });
     }
   }
 
   const transitioning = LIVE_STATUSES.includes(effective.status) && previousStatus !== effective.status;
   if (transitioning && !isReviewSatisfied(effective, category)) {
-    throw new ValidationError("Yazı hekim onayı olmadan yayınlanamaz veya zamanlanamaz.", {
-      medicalReviewStatus: [
-        "Yayın için tıbbi inceleme durumu \"approved\" ve gözden geçiren hekim dolu olmalı (ya da tıbbi olmayan kategoride \"not_required\").",
-      ],
+    throw new ValidationError("Yayınlamak için hekim onayı gerekli.", {
+      medicalReviewStatus: ["Yayınlamak için hekim onayı gerekli. Tıbbi olmayan bir kategorideyse “Hekim onayı gerekmiyor” seçilebilir."],
     });
   }
 }

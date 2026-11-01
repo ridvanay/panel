@@ -31,13 +31,8 @@ function toContentLocalizations(post: PublicBlogDetail): ContentLocalization[] {
   return post.localizations.map((l) => ({ locale: l.locale, slug: l.slug, translated: true }));
 }
 
-const PROSE_CLASS = [
-  "prose max-w-[70ch] text-base leading-relaxed sm:text-[1.0625rem]",
-  "[&_h2]:scroll-mt-24 [&_h3]:scroll-mt-24 [&_h2]:font-heading [&_h3]:font-heading",
-  "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto",
-  "prose-blockquote:rounded-[var(--site-radius)] prose-blockquote:border-s-4 prose-blockquote:border-[var(--site-primary)] prose-blockquote:bg-[var(--site-primary)]/5 prose-blockquote:px-4 prose-blockquote:py-1 prose-blockquote:not-italic",
-  "prose-img:rounded-[var(--site-radius)] prose-a:text-[var(--site-primary)]",
-].join(" ");
+/** Tipografi `globals.css` içindeki `.blog-prose` kurallarındadır (@tailwindcss/typography projede yok). */
+const PROSE_CLASS = "blog-prose";
 
 /**
  * Paket Z1 — yazı meta verisi. Taslak / silinmiş / O DİLDE çevirisi olmayan yazıda `{}` döner (sayfa 404 verir).

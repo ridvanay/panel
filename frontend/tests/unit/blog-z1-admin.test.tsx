@@ -27,6 +27,7 @@ vi.mock("@/lib/api/locales", () => ({ listAdminLocales: vi.fn().mockResolvedValu
 vi.mock("@/lib/api/telehealth", () => ({
   listAdminSpecialties: vi.fn(),
   listAdminDoctors: vi.fn(),
+  getAdminDoctor: vi.fn(),
 }));
 vi.mock("@/lib/api/matcher", () => ({ listAdminCareTopics: vi.fn() }));
 
@@ -177,8 +178,74 @@ describe("Paket Z1 — admin blog editörü", () => {
     await user.click(screen.getByRole("button", { name: "Kaydet" }));
     await waitFor(() => expect(blogApi.updatePost).toHaveBeenCalled());
     const body = vi.mocked(blogApi.updatePost).mock.calls[0]![1];
-    expect(body).toMatchObject({ specialtyId: "sp1", reviewerDoctorId: "d1", keyTakeaways: ["Bir", "İki"], faq: [], references: [], isFeatured: true, careTopicIds: [] });
+    expect(body).toMatchObject({ keyTakeaways: ["Bir", "İki"], faq: [], references: [], isFeatured: true, careTopicIds: [] });
     expect(body).not.toHaveProperty("medicalReviewStatus");
+    // Değişmeyen hekim/uzmanlık gövdeye HİÇ konmaz (null yazıp atamayı silmesin).
+    expect(body).not.toHaveProperty("reviewerDoctorId");
+    expect(body).not.toHaveProperty("specialtyId");
+  });
+
+  it("atanmış hekim listede VARSA seçili görünür ve kaydetmede reviewerDoctorId korunur", async () => {
+    const user = userEvent.setup();
+    vi.mocked(blogApi.getPost).mockResolvedValue(makePost({ reviewerDoctorId: "d1" }));
+    await renderPage();
+    const select = (await screen.findByLabelText("Gözden geçiren hekim")) as HTMLSelectElement;
+    await screen.findByRole("option", { name: "Prof. Dr. H. Sofu" });
+    await waitFor(() => expect(select.value).toBe("d1"));
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(blogApi.updatePost).toHaveBeenCalled());
+    expect(vi.mocked(blogApi.updatePost).mock.calls[0]![1]).not.toHaveProperty("reviewerDoctorId");
+  });
+
+  it("atanmış hekim listede YOKSA (pasif/arşivli ya da sayfalara sığmayan) adıyla '(aktif değil)' seçeneği olarak gösterilir ve korunur", async () => {
+    const user = userEvent.setup();
+    const archived = { ...DOCTOR, id: "d9", fullName: "Eski Hekim", displayName: "E. Hekim", isActive: false } as unknown as DoctorProfile;
+    vi.mocked(blogApi.getPost).mockResolvedValue(makePost({ reviewerDoctorId: "d9" }));
+    vi.mocked(telehealthApi.getAdminDoctor).mockResolvedValue(archived);
+    await renderPage();
+    const option = await screen.findByRole("option", { name: "Prof. Dr. E. Hekim (aktif değil)" });
+    expect(option).toBeInTheDocument();
+    const select = screen.getByLabelText("Gözden geçiren hekim") as HTMLSelectElement;
+    expect(select.value).toBe("d9");
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(blogApi.updatePost).toHaveBeenCalled());
+    expect(vi.mocked(blogApi.updatePost).mock.calls[0]![1]).not.toHaveProperty("reviewerDoctorId");
+  });
+
+  it("hekim bilgisi hiç getirilemese bile atama korunur ve gönderimde silinmez", async () => {
+    const user = userEvent.setup();
+    vi.mocked(blogApi.getPost).mockResolvedValue(makePost({ reviewerDoctorId: "d9" }));
+    vi.mocked(telehealthApi.getAdminDoctor).mockRejectedValue(new Error("403"));
+    await renderPage();
+    const select = (await screen.findByLabelText("Gözden geçiren hekim")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("d9"));
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(blogApi.updatePost).toHaveBeenCalled());
+    expect(vi.mocked(blogApi.updatePost).mock.calls[0]![1]).not.toHaveProperty("reviewerDoctorId");
+  });
+
+  it("hekim bilinçli olarak değiştirilince yeni id gider, 'Seçilmedi' seçilince null gider", async () => {
+    const user = userEvent.setup();
+    vi.mocked(blogApi.getPost).mockResolvedValue(makePost({ reviewerDoctorId: "d1" }));
+    await renderPage();
+    const select = await screen.findByLabelText("Gözden geçiren hekim");
+    await screen.findByRole("option", { name: "Prof. Dr. H. Sofu" });
+    await user.selectOptions(select, "");
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(blogApi.updatePost).toHaveBeenCalled());
+    expect(vi.mocked(blogApi.updatePost).mock.calls[0]![1]).toMatchObject({ reviewerDoctorId: null });
+  });
+
+  it("422 olunca alan hatası görünür; üst bant aynı mesajı tekrar etmez", async () => {
+    const user = userEvent.setup();
+    vi.mocked(blogApi.getPost).mockResolvedValue(makePost());
+    vi.mocked(blogApi.updatePost).mockRejectedValue(
+      new ApiClientError(422, { code: "VALIDATION_ERROR", message: "Yayınlamak için hekim onayı gerekli.", details: { medicalReviewStatus: ["Yayınlamak için hekim onayı gerekli. Tıbbi olmayan bir kategorideyse “Hekim onayı gerekmiyor” seçilebilir."] } })
+    );
+    await renderPage();
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    expect(await within(screen.getByTestId("blog-review-status")).findByRole("alert")).toHaveTextContent("Yayınlamak için hekim onayı gerekli.");
+    expect(screen.getAllByText(/Yayınlamak için hekim onayı gerekli/)).toHaveLength(1);
   });
 });
 
@@ -202,7 +269,11 @@ describe("Paket Z1 — admin yardımcıları", () => {
 
   it("payload: uzmanlık/hekim boşsa null; statusWrite yalnızca doluyken eklenir", () => {
     const base = reviewStateFromPost(makePost());
-    expect(reviewStateToPayload(base)).toMatchObject({ specialtyId: null, reviewerDoctorId: null, careTopicIds: [], isFeatured: false });
+    expect(reviewStateToPayload(base)).toMatchObject({ careTopicIds: [], isFeatured: false });
+    expect(reviewStateToPayload(base)).not.toHaveProperty("reviewerDoctorId");
+    expect(reviewStateToPayload({ ...base, reviewerDoctorId: "x" }, base)).toMatchObject({ reviewerDoctorId: "x" });
+    expect(reviewStateToPayload({ ...base, reviewerDoctorId: "" }, { ...base, reviewerDoctorId: "x" })).toMatchObject({ reviewerDoctorId: null });
+    expect(reviewStateToPayload({ ...base, reviewerDoctorId: "x" }, { ...base, reviewerDoctorId: "x" })).not.toHaveProperty("reviewerDoctorId");
     expect(reviewStateToPayload(base)).not.toHaveProperty("medicalReviewStatus");
     expect(reviewStateToPayload({ ...base, statusWrite: "not_required" })).toMatchObject({ medicalReviewStatus: "not_required" });
   });

@@ -146,6 +146,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [snapshot, setSnapshot] = useState<PostSnapshot | null>(null);
   // Paket Z1 — tıbbi inceleme alanları ve kayıtlı inceleme durumu (salt okunur).
   const [review, setReview] = useState<BlogReviewState>(EMPTY_REVIEW_STATE);
+  // Kayıttaki değerler: değişmeyen hekim/uzmanlık gövdeye konmaz.
+  const [reviewBaseline, setReviewBaseline] = useState<BlogReviewState>(EMPTY_REVIEW_STATE);
   const [reviewMeta, setReviewMeta] = useState<{ status: BlogMedicalReviewStatus; note: string | null; lastReviewedAt: string | null }>({
     status: "pending",
     note: null,
@@ -209,6 +211,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setCanonicalUrl(nextSnapshot.canonicalUrl);
       setNoIndex(nextSnapshot.noIndex);
       setReview(reviewStateFromPost(post));
+      setReviewBaseline(reviewStateFromPost(post));
       setReviewMeta({ status: post.medicalReviewStatus ?? "pending", note: post.medicalReviewNote ?? null, lastReviewedAt: post.lastReviewedAt ?? null });
       setTranslations(post.translations ?? {});
       setSavedTranslations(post.translations ?? {});
@@ -324,7 +327,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         canonicalUrl: canonicalUrl || null,
         noIndex,
         translations: cleanTranslationLists(translations),
-        ...reviewStateToPayload(review),
+        ...reviewStateToPayload(review, reviewBaseline),
       });
       toast.success("Yazı kaydedildi.");
       setSavedTranslations(translations);
@@ -332,8 +335,10 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
     } catch (err) {
       const message = friendlyErrorMessage(err);
       // 422 alan hataları (ör. yayın için hekim onayı gerekli) ilgili alanın altında gösterilir.
-      setFieldErrors(fieldErrorsFrom(err));
-      setSaveError(message);
+      const fields = fieldErrorsFrom(err);
+      setFieldErrors(fields);
+      // Alan hatası varken aynı bilgiyi üst bantta tekrar etmeyiz.
+      setSaveError(fields.medicalReviewStatus ? "Kaydedilemedi. Lütfen aşağıda işaretli alanı düzeltin." : message);
       toast.error(message);
     } finally {
       setSaving(false);

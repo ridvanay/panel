@@ -71,6 +71,8 @@ describe("Paket Z1 — yazı sayfası", () => {
     expect(within(screen.getByTestId("blog-toc-mobile")).getAllByRole("link")).toHaveLength(4);
     expect(container.querySelector("h2#causes")).not.toBeNull();
     expect(container.querySelector("h3#wear")).not.toBeNull();
+    // gövde tipografisi kapsamlı .blog-prose kurallarıyla (typography eklentisi yok)
+    expect(container.querySelector(".blog-prose h2#causes")).not.toBeNull();
   });
 
   it("Key takeaways düz metin olarak render edilir (HTML çalıştırılmaz)", async () => {

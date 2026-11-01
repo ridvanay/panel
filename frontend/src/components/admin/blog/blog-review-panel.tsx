@@ -23,6 +23,23 @@ const STATUS_LABEL: Record<BlogMedicalReviewStatus, { label: string; tone: "neut
   not_required: { label: "Hekim onayı gerekmiyor", tone: "neutral" },
 };
 
+function doctorName(d: DoctorProfile): string {
+  return `${d.title} ${d.displayName ?? d.fullName}`.trim();
+}
+
+/** Admin hekim listesinin tüm sayfaları (en çok 10 × 100): tek sayfa, çok hekim olduğunda atanmış hekimi dışarıda bırakırdı. */
+async function loadAllDoctors(): Promise<DoctorProfile[]> {
+  const all: DoctorProfile[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < 10; i += 1) {
+    const page = await telehealthApi.listAdminDoctors({ limit: 100, ...(cursor ? { cursor } : {}) });
+    all.push(...page.items);
+    cursor = page.meta?.nextCursor ?? undefined;
+    if (!cursor) break;
+  }
+  return all;
+}
+
 function topicLabel(topic: AdminCareTopic): string {
   const t = topic.translations;
   return t.tr?.label || t.en?.label || Object.values(t)[0]?.label || topic.slug;
@@ -61,6 +78,9 @@ export function BlogReviewPanel(props: BlogReviewPanelProps) {
   const [topics, setTopics] = useState<AdminCareTopic[]>([]);
   const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [topicSearch, setTopicSearch] = useState("");
+  const [doctorsLoaded, setDoctorsLoaded] = useState(false);
+  // Listede olmayan (pasif/arşivli ya da çok sayıda hekim yüzünden sayfalara sığmayan) atanmış hekim.
+  const [assignedDoctor, setAssignedDoctor] = useState<DoctorProfile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,13 +88,14 @@ export function BlogReviewPanel(props: BlogReviewPanelProps) {
       const failed: string[] = [];
       const [s, d, c] = await Promise.all([
         telehealthApi.listAdminSpecialties().catch(() => (failed.push("uzmanlıklar"), [] as Specialty[])),
-        telehealthApi.listAdminDoctors({ limit: 100 }).then((p) => p.items).catch(() => (failed.push("hekimler"), [] as DoctorProfile[])),
+        loadAllDoctors().catch(() => (failed.push("hekimler"), [] as DoctorProfile[])),
         matcherApi.listAdminCareTopics().catch(() => (failed.push("bakım konuları"), [] as AdminCareTopic[])),
       ]);
       if (cancelled) return;
       setSpecialties(Array.isArray(s) ? s : []);
       setDoctors(Array.isArray(d) ? d : []);
       setTopics(Array.isArray(c) ? c : []);
+      setDoctorsLoaded(true);
       setLoadWarning(failed.length ? `Yüklenemedi: ${failed.join(", ")}. Bu alanlar için yetkiniz olmayabilir.` : null);
     })();
     return () => {
@@ -83,6 +104,24 @@ export function BlogReviewPanel(props: BlogReviewPanelProps) {
   }, []);
 
   const activeDoctors = useMemo(() => doctors.filter((d) => d.isActive !== false && !d.archivedAt), [doctors]);
+  const reviewerId = value.reviewerDoctorId;
+  useEffect(() => {
+    if (!doctorsLoaded || !reviewerId || doctors.some((d) => d.id === reviewerId)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const doctor = await telehealthApi.getAdminDoctor(reviewerId);
+        if (!cancelled && doctor) setAssignedDoctor(doctor);
+      } catch {
+        // Hekim getirilemezse yalnızca kimlik gösterilir; değer yine de KORUNUR.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doctorsLoaded, reviewerId, doctors]);
+  const assignedMissing = reviewerId && !activeDoctors.some((d) => d.id === reviewerId);
+  const assignedSource = assignedMissing ? (doctors.find((d) => d.id === reviewerId) ?? (assignedDoctor?.id === reviewerId ? assignedDoctor : null)) : null;
   const selectedTopics = topics.filter((t) => value.careTopicIds.includes(t.id));
   const topicMatches = useMemo(() => {
     const q = topicSearch.trim().toLocaleLowerCase("tr");
@@ -120,9 +159,14 @@ export function BlogReviewPanel(props: BlogReviewPanelProps) {
           {(inputProps) => (
             <Select {...inputProps} value={value.reviewerDoctorId} onChange={(e) => onChange({ reviewerDoctorId: e.target.value })}>
               <option value="">Seçilmedi</option>
+              {assignedMissing && (
+                <option value={reviewerId}>
+                  {assignedSource ? `${doctorName(assignedSource)} (aktif değil)` : "Atanmış hekim (aktif değil / bulunamadı)"}
+                </option>
+              )}
               {activeDoctors.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {`${d.title} ${d.displayName ?? d.fullName}`.trim()}
+                  {doctorName(d)}
                 </option>
               ))}
             </Select>
