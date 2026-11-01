@@ -14,6 +14,7 @@ import { logAudit } from "../../lib/audit";
 import { AppointmentIdParamSchema, AccessTokenQuerySchema, CompleteAppointmentRequestSchema } from "./telehealth.schemas";
 import { createMeetingToken, ensureRoomConfigured, isLiveKitConfigured } from "./lib/livekit";
 import { computeEarlyJoinAuditMetadata } from "./lib/early-join";
+import { doctorDisplayName } from "../../lib/doctor-display-name";
 import { encryptSecret } from "../../lib/crypto";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 
@@ -169,6 +170,9 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
       const meeting = await createMeetingToken({
         roomName,
         participant: isDoctor ? { kind: "doctor", id: appointment.doctor.id } : { kind: "patient", id: appointment.id },
+        // Paket AF — doktor görünen adı token'a (yedek etiket; ekrandaki unvan istemcide izleyicinin dilinde).
+        // Hasta adı token'a KONMAZ.
+        ...(isDoctor ? { name: `${appointment.doctor.title} ${doctorDisplayName(appointment.doctor)}`.trim() } : {}),
       });
 
       // İlk başarılı token üretiminde TEK SEFERLİK geçiş — `updateMany` + `status: "SCHEDULED"`

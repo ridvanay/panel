@@ -98,10 +98,15 @@ export function initialsDisplayName(fullName: string): string {
   return abbreviateDoctorName(fullName);
 }
 
-/** Hastanın yalnızca adının baş harfi ("Ayşe Yılmaz" → "A."). */
+/**
+ * Paket AF (kullanıcı kararı 2026-11-01) — tercümana hastanın yalnızca ad ve soyadının baş harfleri
+ * ("İpek Kaya" → "İ. K."; "Ayşe Nur Yılmaz" → "A. Y."; tek sözcük → "A."). Ad metni asla gitmez.
+ */
 export function patientInitial(patientName: string): string {
-  const first = patientName.trim().charAt(0);
-  return first ? `${first.toLocaleUpperCase("tr")}.` : "—";
+  const words = patientName.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "—";
+  const picked = words.length === 1 ? [words[0]!] : [words[0]!, words[words.length - 1]!];
+  return picked.map((w) => `${w.charAt(0).toLocaleUpperCase("tr")}.`).join(" ");
 }
 
 /** Dilin kendi dilindeki adı ("ar" → "العربية", "sr-latn" → "srpski"); tanınmazsa kod büyük harfle. */

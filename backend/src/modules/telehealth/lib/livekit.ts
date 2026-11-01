@@ -115,7 +115,15 @@ export interface MeetingTokenResult {
  * route katmanında bir kez karar verilsin.
  */
 export async function createMeetingToken(
-  input: { roomName: string; participant: MeetingTokenParticipant },
+  input: {
+    roomName: string;
+    participant: MeetingTokenParticipant;
+    /**
+     * Paket AF (kullanıcı kararı 2026-11-01) — LiveKit görünen adı (`name`). YALNIZCA doktor için
+     * verilir; hasta adı token'a ASLA konmaz (istemci randevu verisinden rol bazlı maskeleyerek eşler).
+     */
+    name?: string;
+  },
   config: LiveKitConfig = getLiveKitConfig()
 ): Promise<MeetingTokenResult> {
   const ttlSeconds = config.tokenTtlMin * 60;
@@ -124,6 +132,7 @@ export async function createMeetingToken(
   const accessToken = new AccessToken(config.apiKey, config.apiSecret, {
     identity,
     ttl: ttlSeconds,
+    ...(input.participant.kind === "doctor" && input.name ? { name: input.name } : {}),
   });
   accessToken.addGrant({
     roomJoin: true,

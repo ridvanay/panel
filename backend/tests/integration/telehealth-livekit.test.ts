@@ -403,6 +403,18 @@ describe("telehealth/livekit — meeting-token, doktor/hasta oda+kimlik ayrımı
     expect(doctorClaims.sub).toBe(`doctor:${doctor.id}`);
     expect(patientClaims.sub).toBe(`patient:${appointment.id}`);
     expect(doctorClaims.sub).not.toBe(patientClaims.sub);
+
+    // Paket AF (kullanıcı kararı 2026-11-01) — doktor token'ında görünen ad (unvan + görünen ad kuralı);
+    // hasta token'ında ad/metadata YOK (ad istemcide rol bazlı maskelenerek eşlenir).
+    const doctorNamed = jwt.decode(doctorData.token) as { name?: string };
+    const patientNamed = jwt.decode(patientData.token) as { name?: string; metadata?: string };
+    const profile = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctor.id }, select: { title: true, fullName: true, publicName: true, isFounder: true } });
+    const { doctorDisplayName } = await import("../../src/lib/doctor-display-name");
+    expect(doctorNamed.name).toBe(`${profile.title} ${doctorDisplayName(profile)}`.trim());
+    expect(patientNamed.name).toBeUndefined();
+    expect(patientNamed.metadata).toBeUndefined();
+    const appt = await app.prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id }, select: { patientName: true } });
+    if (appt.patientName) expect(patientData.token).not.toContain(appt.patientName);
   });
 });
 

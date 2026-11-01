@@ -273,9 +273,11 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
       const res = await app.inject({ method: "GET", url: "/api/v1/interpreter/assignments", headers: auth(interp.token) });
       expect(res.statusCode).toBe(200);
       const item = res.json().data[0];
-      expect(item).toMatchObject({ patientInitial: "Z.", doctorDisplayName: "H. Sofu", language: "ar", canJoin: true });
+      // Paket AF (kullanıcı kararı 2026-11-01) — ad ve soyadın baş harfleri ("İ. K." biçimi); ad metni yok.
+      expect(item).toMatchObject({ patientInitial: "Z. K.", doctorDisplayName: "H. Sofu", language: "ar", canJoin: true });
       const body = JSON.stringify(res.json());
       expect(body).not.toContain("Zeynep");
+      expect(body).not.toContain("Kaya");
       expect(body).not.toContain("Kaya");
       expect(body).not.toMatch(/intake|document|note|prescription|recording|email/i);
     });

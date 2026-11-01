@@ -110,7 +110,31 @@ describe("modules/telehealth/lib/livekit", () => {
 
       expect(claims.sub).toBe("doctor:doctor-uuid-1");
       expect(claims.sub).not.toMatch(/@/);
+      // Paket AF (kullanıcı kararı 2026-11-01) — ad verilmezse `name` yine yoktur.
       expect(claims.name).toBeUndefined();
+    });
+
+    it("Paket AF — doktorun görünen adı `name` alanına girer; identity değişmez", async () => {
+      const result = await createMeetingToken(
+        { roomName: "room_name", participant: { kind: "doctor", id: "doctor-uuid-1" }, name: "Prof. Dr. D. Yıldırım" },
+        TEST_CONFIG
+      );
+      const claims = await new TokenVerifier(TEST_CONFIG.apiKey, TEST_CONFIG.apiSecret).verify(result.token);
+      expect(claims.sub).toBe("doctor:doctor-uuid-1");
+      expect(claims.name).toBe("Prof. Dr. D. Yıldırım");
+    });
+
+    it("Paket AF — hasta adı token'a ASLA girmez (ad verilse bile; name/metadata yok)", async () => {
+      const result = await createMeetingToken(
+        { roomName: "room_name", participant: { kind: "patient", id: "appt-1" }, name: "Zeynep Kaya" },
+        TEST_CONFIG
+      );
+      const claims = await new TokenVerifier(TEST_CONFIG.apiKey, TEST_CONFIG.apiSecret).verify(result.token);
+      expect(claims.sub).toBe("patient:appt-1");
+      expect(claims.name).toBeUndefined();
+      expect(claims.metadata).toBeFalsy();
+      expect(result.token).not.toContain("Zeynep");
+      expect(JSON.stringify(claims)).not.toContain("Zeynep");
     });
 
     it("TTL `tokenTtlMin`'e eşittir (`exp - iat` saniye cinsinden)", async () => {
