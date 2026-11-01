@@ -368,6 +368,12 @@ describe("import (§10.8)", () => {
       // (ARCHITECTURE.md §10.8.4: "İçe aktarılan HER HTML alanı ... sanitize edilir").
       expect(post!.excerpt).not.toContain("script");
       expect(post!.excerpt).toContain("Ozet");
+      // Paket Z1 (kullanıcı kararı) — kaynakta `publish` olsa da içe aktarılan yazı hekim onayı kuralını atlamaz:
+      // taslak ve "pending" girer, okuma süresi hesaplanır; yayın ancak hekim onayından sonra.
+      expect(post!.status).toBe("DRAFT");
+      expect(post!.medicalReviewStatus).toBe("pending");
+      expect(post!.readingMinutes).toBe(1);
+      expect(post!.reviewerDoctorId).toBeNull();
     });
   });
 

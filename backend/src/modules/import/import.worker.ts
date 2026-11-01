@@ -20,6 +20,15 @@ import { parseMediaZip } from "./parsers/zip.parser";
 import { parsePriceToCents } from "./lib/price-parse";
 import { derivePriceColumns } from "../../lib/product-pricing";
 import type { StartImportJobRequest } from "./import.schemas";
+import { computeReadingMinutes } from "../blog/lib/medical-review";
+
+/**
+ * Paket Z1 (kullanıcı kararı) — WordPress içe aktarma hekim onayı kuralını ATLAMAZ: içe aktarılan (ya da üzerine
+ * yazılan) her blog yazısı taslak ve "pending" girer; yayın ancak hekim onayından sonra admin'den yapılır.
+ */
+function importedBlogReviewState(contentHtml: string) {
+  return { status: "DRAFT" as const, medicalReviewStatus: "pending", medicalReviewNote: null, readingMinutes: computeReadingMinutes(contentHtml) };
+}
 
 // ---------------------------------------------------------------------------
 // §10.8.1 Süreç-içi FIFO kuyruk — kuyruk altyapısı (BullMQ/Redis) YOK. Modül seviyesinde
@@ -666,7 +675,7 @@ async function writeBlogPost(app: FastifyInstance, input: WriteBlogPostInput): P
         where: { id: existing.id },
         data: {
           title: input.title,
-          status: input.status,
+          ...importedBlogReviewState(input.contentHtml),
           contentHtml: input.contentHtml,
           excerpt: input.excerpt,
           coverImageUrl: input.coverImageUrl,
@@ -692,7 +701,7 @@ async function writeBlogPost(app: FastifyInstance, input: WriteBlogPostInput): P
       data: {
         title: input.title,
         slug: available,
-        status: input.status,
+        ...importedBlogReviewState(input.contentHtml),
         contentHtml: input.contentHtml,
         excerpt: input.excerpt,
         coverImageUrl: input.coverImageUrl,
@@ -715,7 +724,7 @@ async function writeBlogPost(app: FastifyInstance, input: WriteBlogPostInput): P
     data: {
       title: input.title,
       slug: input.baseSlug,
-      status: input.status,
+      ...importedBlogReviewState(input.contentHtml),
       contentHtml: input.contentHtml,
       excerpt: input.excerpt,
       coverImageUrl: input.coverImageUrl,
