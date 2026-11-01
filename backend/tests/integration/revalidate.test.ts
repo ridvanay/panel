@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { exemptReview } from "../helpers/blog-review";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -368,7 +369,7 @@ describe("etiket revalidation — admin kayıtları yalnızca ilgili veriyi yeni
   });
 
   it("blog yazısı oluşturma/güncelleme/autosave → `blog` etiketi", async () => {
-    const create = await app.inject({ method: "POST", url: "/api/v1/admin/blog", headers: authHeader(), payload: { title: "Etiket Testi", status: "PUBLISHED" } });
+    const create = await app.inject({ method: "POST", url: "/api/v1/admin/blog", headers: authHeader(), payload: { title: "Etiket Testi", status: "PUBLISHED", ...(await exemptReview(app)) } });
     expect(create.statusCode).toBe(201);
     expect(lastCallBody()).toEqual({ tags: ["blog"] });
     const postId = create.json().data.id;

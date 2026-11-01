@@ -75,6 +75,7 @@ import { telehealthDemoPaymentRoutes } from "./modules/telehealth/telehealth.dem
 import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
 import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
 import { adminDoctorTimeOffRoutes, doctorScheduleRoutes } from "./modules/telehealth/telehealth.time-off.routes";
+import { doctorBlogReviewRoutes } from "./modules/blog/blog.doctor-review.routes";
 import { adminBulkAvailabilityRoutes } from "./modules/telehealth/telehealth.bulk-availability.routes";
 import { geoRoutes } from "./modules/geo/geo.routes";
 import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recording.routes";
@@ -376,6 +377,8 @@ export function buildApp() {
       api.register(telehealthDoctorPortalRoutes, { prefix: "/doctor" });
       // Paket P (İş 2) — doktorun kendi haftalık saatleri + izinleri (tek ekran).
       api.register(doctorScheduleRoutes, { prefix: "/doctor" });
+      // Paket Z1 — doktorun blog tıbbi inceleme kuyruğu (yalnızca kendisine atanmış yazılar).
+      api.register(doctorBlogReviewRoutes, { prefix: "/doctor" });
       api.register(telehealthPatientPortalRoutes, { prefix: "/patient" });
 
       // [ASD] §3.5 — Canlı Destek Masası. `telehealth.notifications.routes.ts`'in ayrık-dosya

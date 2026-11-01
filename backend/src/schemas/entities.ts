@@ -280,6 +280,8 @@ export const BlogCategorySchema = z.object({
   name: z.string(),
   slug: z.string(),
   createdAt: z.string(),
+  // Paket Z1 — tıbbi olmayan kategoride "hekim onayı gerekmez" seçilebilir.
+  isMedical: z.boolean(),
 });
 export type BlogCategoryDto = z.infer<typeof BlogCategorySchema>;
 
@@ -329,6 +331,19 @@ export const BlogPostSchema = z.object({
   author: UserSummarySchema.nullable(),
   seoScore: z.number().int().min(0).max(100),
   seoScoreIssues: z.array(SeoScoreIssueSchema),
+  // ---- Paket Z1 — tıbbi inceleme / zengin alanlar ----
+  specialtyId: z.string().uuid().nullable(),
+  careTopicIds: z.array(z.string()),
+  reviewerDoctorId: z.string().uuid().nullable(),
+  // null (eski kayıt) "pending" olarak döner.
+  medicalReviewStatus: z.enum(["not_required", "pending", "approved", "changes_requested"]),
+  medicalReviewNote: z.string().nullable(),
+  lastReviewedAt: z.string().nullable(),
+  readingMinutes: z.number().int().nullable(),
+  keyTakeaways: z.array(z.string()),
+  faq: z.array(z.object({ question: z.string(), answer: z.string() })),
+  references: z.array(z.object({ title: z.string(), publisher: z.string(), url: z.string(), accessedAt: z.string() })),
+  isFeatured: z.boolean(),
 });
 export type BlogPostDto = z.infer<typeof BlogPostSchema>;
 

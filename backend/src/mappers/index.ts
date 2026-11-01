@@ -362,6 +362,7 @@ export function toBlogCategoryDto(category: BlogCategory): BlogCategoryDto {
     name: category.name,
     slug: category.slug,
     createdAt: category.createdAt.toISOString(),
+    isMedical: category.isMedical,
   };
 }
 
@@ -570,6 +571,18 @@ export function toBlogPostDto(post: BlogPostWithCategory, localizations: Content
     author: post.author ? toUserSummaryDto(post.author) : null,
     seoScore: score,
     seoScoreIssues: issues,
+    // ---- Paket Z1 ----
+    specialtyId: post.specialtyId,
+    careTopicIds: post.careTopicIds ?? [],
+    reviewerDoctorId: post.reviewerDoctorId,
+    medicalReviewStatus: (post.medicalReviewStatus ?? "pending") as BlogPostDto["medicalReviewStatus"],
+    medicalReviewNote: post.medicalReviewNote,
+    lastReviewedAt: post.lastReviewedAt ? post.lastReviewedAt.toISOString() : null,
+    readingMinutes: post.readingMinutes,
+    keyTakeaways: (Array.isArray(post.keyTakeaways) ? post.keyTakeaways : []) as BlogPostDto["keyTakeaways"],
+    faq: (Array.isArray(post.faq) ? post.faq : []) as BlogPostDto["faq"],
+    references: (Array.isArray(post.references) ? post.references : []) as BlogPostDto["references"],
+    isFeatured: post.isFeatured,
   };
 }
 

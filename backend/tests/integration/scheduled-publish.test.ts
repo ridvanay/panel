@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { exemptReview } from "../helpers/blog-review";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -59,7 +60,7 @@ describe("zamanlanmış yayın (Faz 4)", () => {
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: FUTURE },
+        payload: { title: "Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: FUTURE, ...(await exemptReview(app)) },
       });
       expect(create.statusCode).toBe(201);
       const post = create.json().data;
@@ -85,7 +86,7 @@ describe("zamanlanmış yayın (Faz 4)", () => {
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Elle Yayınlanacak Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: FUTURE },
+        payload: { title: "Elle Yayınlanacak Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: FUTURE, ...(await exemptReview(app)) },
       });
       const postId = create.json().data.id;
 
@@ -108,7 +109,7 @@ describe("zamanlanmış yayın (Faz 4)", () => {
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Dokunulmayacak Zamanlama", status: "SCHEDULED", scheduledAt: FUTURE },
+        payload: { title: "Dokunulmayacak Zamanlama", status: "SCHEDULED", scheduledAt: FUTURE, ...(await exemptReview(app)) },
       });
       const postId = create.json().data.id;
 
@@ -301,7 +302,7 @@ describe("zamanlanmış yayın (Faz 4)", () => {
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Sınırda Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: new Date(fixedNow.getTime() + 1).toISOString() },
+        payload: { title: "Sınırda Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: new Date(fixedNow.getTime() + 1).toISOString(), ...(await exemptReview(app)) },
       });
       const postId = create.json().data.id;
       // DB'ye API validasyonunu bypass ederek TAM `fixedNow` değerini yaz (create sırasında
@@ -320,7 +321,7 @@ describe("zamanlanmış yayın (Faz 4)", () => {
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Ortak Tarama Yazısı", status: "SCHEDULED", scheduledAt: FUTURE },
+        payload: { title: "Ortak Tarama Yazısı", status: "SCHEDULED", scheduledAt: FUTURE, ...(await exemptReview(app)) },
       });
       const postId = createPost.json().data.id;
       await app.prisma.blogPost.update({ where: { id: postId }, data: { scheduledAt: new Date(PAST) } });
@@ -351,7 +352,7 @@ describe("zamanlanmış yayın (Faz 4)", () => {
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Taslağa Döndürülecek Yazı", status: "SCHEDULED", scheduledAt: FUTURE },
+        payload: { title: "Taslağa Döndürülecek Yazı", status: "SCHEDULED", scheduledAt: FUTURE, ...(await exemptReview(app)) },
       });
       const postId = create.json().data.id;
 

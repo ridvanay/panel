@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { exemptReview } from "../helpers/blog-review";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -48,13 +49,15 @@ describe("bulk-publish webhook emisyonu — yalnızca gerçekten geçiş yapan �
   }) {
     // 1) iki taslak (yayın adayı), 2) zaten yayında bir öğe, 3) çöpe atılmış bir öğe, 4) var
     // olmayan bir id — beşi de AYNI `/bulk` çağrısına "publish" aksiyonuyla verilir.
-    const draft1 = await app.inject({ method: "POST", url: entity.createUrl, headers: authHeader(), payload: { title: `${entity.label} Taslak 1` } });
-    const draft2 = await app.inject({ method: "POST", url: entity.createUrl, headers: authHeader(), payload: { title: `${entity.label} Taslak 2` } });
+    // Paket Z1 — blog yayın kuralı: yayın adayları tıbbi olmayan kategoride "not_required" olmalı.
+    const extra = entity.prismaDelegate === "blogPost" ? await exemptReview(app) : {};
+    const draft1 = await app.inject({ method: "POST", url: entity.createUrl, headers: authHeader(), payload: { title: `${entity.label} Taslak 1`, ...extra } });
+    const draft2 = await app.inject({ method: "POST", url: entity.createUrl, headers: authHeader(), payload: { title: `${entity.label} Taslak 2`, ...extra } });
     const alreadyPublishedCreate = await app.inject({
       method: "POST",
       url: entity.createUrl,
       headers: authHeader(),
-      payload: { title: `${entity.label} Zaten Yayında`, status: "PUBLISHED" },
+      payload: { title: `${entity.label} Zaten Yayında`, status: "PUBLISHED", ...extra },
     });
     const toTrash = await app.inject({ method: "POST", url: entity.createUrl, headers: authHeader(), payload: { title: `${entity.label} Çöpe Gidecek` } });
 

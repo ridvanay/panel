@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { exemptReview } from "../helpers/blog-review";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -467,7 +468,7 @@ describe("content revisions, SEO fields & i18n (§10.1, §10.2, §10.5)", () => 
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "TR Yazı Başlığı", status: "PUBLISHED", excerpt: "TR özet" },
+        payload: { title: "TR Yazı Başlığı", status: "PUBLISHED", excerpt: "TR özet", ...(await exemptReview(app)) },
       });
       const post = create.json().data;
 

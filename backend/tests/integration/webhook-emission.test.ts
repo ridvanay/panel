@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { exemptReview } from "../helpers/blog-review";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -56,7 +57,7 @@ describe("webhook emisyonu — *_PUBLISHED yalnızca duruma geçişte, abone olm
       method: "POST",
       url: "/api/v1/admin/blog",
       headers: authHeader(),
-      payload: { title: "Webhook Testi", status: "DRAFT" },
+      payload: { title: "Webhook Testi", status: "DRAFT", ...(await exemptReview(app)) },
     });
     const postId = createRes.json().data.id;
 

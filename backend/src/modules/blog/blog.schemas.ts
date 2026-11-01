@@ -34,6 +34,59 @@ const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()
 // backend-agent tarafında sessizce tekilleştirilir (istek reddedilmez).
 const TagIdsSchema = z.array(z.string().uuid()).max(50);
 
+// ---- Paket Z1 — tıbbi inceleme / zengin alanlar ----
+
+/** Düz metin alanlarından (özet maddeleri, SSS) etiketleri ayıklar; React metin olarak render eder. */
+function toPlainText(value: string): string {
+  return value.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+}
+
+const PlainTextSchema = (max: number) =>
+  z
+    .string()
+    .max(max * 2)
+    .transform(toPlainText)
+    .pipe(z.string().min(1).max(max));
+
+export const MedicalReviewStatusSchema = z.enum(["not_required", "pending", "approved", "changes_requested"]);
+export type MedicalReviewStatus = z.infer<typeof MedicalReviewStatusSchema>;
+
+/** Admin/editör yalnızca bu iki değeri yazabilir: "approved"/"changes_requested" yalnızca hekim kuyruğundan gelir. */
+export const AdminMedicalReviewStatusSchema = z.enum(["not_required", "pending"]);
+
+export const KeyTakeawaysSchema = z.array(PlainTextSchema(400)).max(10);
+
+export const FaqItemSchema = z.object({ question: PlainTextSchema(300), answer: PlainTextSchema(3000) });
+export const FaqSchema = z.array(FaqItemSchema).max(20);
+
+const HttpsUrlSchema = z
+  .string()
+  .max(2000)
+  .url()
+  .refine((value) => /^https:\/\//i.test(value), "Bağlantı https ile başlamalıdır.");
+
+export const ReferenceSchema = z.object({
+  title: PlainTextSchema(300),
+  publisher: PlainTextSchema(200),
+  url: HttpsUrlSchema,
+  accessedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG biçiminde olmalıdır."),
+});
+export const ReferencesSchema = z.array(ReferenceSchema).max(30);
+
+export const ReadingTimeRequestSchema = z.object({ html: z.string().max(2_000_000) });
+export const ReadingTimeResponseSchema = z.object({ minutes: z.number().int().min(1) });
+
+const BlogReviewFieldsSchema = {
+  specialtyId: z.string().uuid().nullable().optional(),
+  careTopicIds: z.array(z.string().uuid()).max(20).optional(),
+  reviewerDoctorId: z.string().uuid().nullable().optional(),
+  medicalReviewStatus: AdminMedicalReviewStatusSchema.optional(),
+  keyTakeaways: KeyTakeawaysSchema.optional(),
+  faq: FaqSchema.optional(),
+  references: ReferencesSchema.optional(),
+  isFeatured: z.boolean().optional(),
+};
+
 export const CreateBlogPostRequestSchema = z
   .object({
     title: z.string().min(1),
@@ -59,6 +112,7 @@ export const CreateBlogPostRequestSchema = z
     authorId: z.string().uuid().nullable().optional(),
     // Faz 4 (zamanlanmış yayın) — bkz. schemas/common.ts::refineScheduledAt açıklaması.
     scheduledAt: z.string().datetime().nullable().optional(),
+    ...BlogReviewFieldsSchema,
   })
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT);
 
@@ -86,6 +140,7 @@ export const UpdateBlogPostRequestSchema = z
     authorId: z.string().uuid().nullable().optional(),
     // Faz 4 (zamanlanmış yayın) — bkz. schemas/common.ts::refineScheduledAt açıklaması.
     scheduledAt: z.string().datetime().nullable().optional(),
+    ...BlogReviewFieldsSchema,
   })
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT);
 
@@ -103,11 +158,33 @@ export const AutosaveBlogPostRequestSchema = z.object({
 export const CreateBlogCategoryRequestSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),
+  isMedical: z.boolean().optional(),
 });
 
 export const UpdateBlogCategoryRequestSchema = z.object({
   name: z.string().min(1).optional(),
   slug: z.string().min(1).optional(),
+  isMedical: z.boolean().optional(),
+});
+
+// ---- Paket Z1 — public liste/detay + doktor inceleme kuyruğu ----
+
+export const PublicBlogListQuerySchema = z.object({
+  locale: z.string().optional(),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(12),
+  topic: z.string().trim().min(1).max(120).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+});
+
+export const ReviewPostIdParamSchema = z.object({ id: z.string().uuid() });
+
+export const RequestChangesBodySchema = z.object({
+  note: z
+    .string()
+    .max(4000)
+    .transform(toPlainText)
+    .pipe(z.string().min(1).max(2000)),
 });
 
 // §10.14.3 — `BlogCategory` istek şemalarıyla birebir simetrik, tek fark `name` üst sınırı (60).

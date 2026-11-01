@@ -619,6 +619,9 @@ model BlogCategory {
   name      String
   slug      String   @unique
   createdAt DateTime @default(now())
+  /// Paket Z1 — tıbbi kategori mi? false ("Health travel guide" gibi) ise yazı `not_required` (hekim onayı gerekmez)
+  /// seçilebilir. Varsayılan true: mevcut kategoriler tıbbi sayılır.
+  isMedical Boolean  @default(true)
 
   posts BlogPost[]
 
@@ -662,15 +665,40 @@ model BlogPost {
   deletedAt      DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  // ---- Paket Z1 — profesyonel blog (hepsi eklemeli; mevcut kayıtlar boş/null başlar) ----
+  /// Uzmanlık (konu filtresi ana grubu). Boş = uzmanlıksız genel yazı.
+  specialtyId          String?
+  /// Paket W care topic id'leri (konu çipleri). FK yok (CareTopic silinirse artık id kalır, okuma yolu eler).
+  careTopicIds         String[]   @default([])
+  /// Tıbbi gözden geçiren hekim (DoctorProfile).
+  reviewerDoctorId     String?
+  /// "not_required" | "pending" | "approved" | "changes_requested" — zod ile doğrulanır, enum DEĞİL. null = pending.
+  medicalReviewStatus  String?
+  /// Reviewer'ın "değişiklik iste" notu (son not). Audit'e YAZILMAZ.
+  medicalReviewNote    String?
+  lastReviewedAt       DateTime?
+  /// Otomatik: contentHtml'den 200 kelime/dk, en az 1.
+  readingMinutes       Int?
+  /// string[]
+  keyTakeaways         Json       @default("[]")
+  /// { question, answer }[]
+  faq                  Json       @default("[]")
+  /// { title, publisher, url, accessedAt }[]
+  references           Json       @default("[]")
+  isFeatured           Boolean    @default(false)
 
   category BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  specialty Specialty?   @relation("BlogPostSpecialty", fields: [specialtyId], references: [id], onDelete: SetNull)
+  reviewerDoctor DoctorProfile? @relation("BlogPostReviewer", fields: [reviewerDoctorId], references: [id], onDelete: SetNull)
   views    PageView[]
   tags     BlogPostTag[]
 
   @@index([categoryId])
   @@index([deletedAt, status])
   @@index([authorId])
+  @@index([specialtyId])
+  @@index([reviewerDoctorId, medicalReviewStatus])
   @@map("blog_posts")
 }
 
@@ -2252,6 +2280,8 @@ model Specialty {
   additionalDoctors DoctorAdditionalSpecialty[]
   /// Paket W — eşleştirme sihirbazı konu → uzmanlık ağırlıkları.
   careTopics        CareTopicSpecialty[]
+  /// Paket Z1 — bu uzmanlığa bağlı blog yazıları (ilişki alanı; kolon eklemez).
+  blogPosts         BlogPost[]                  @relation("BlogPostSpecialty")
 
   @@index([isActive, order])
   @@index([imageMediaId])
@@ -2360,6 +2390,8 @@ model DoctorProfile {
   availability          DoctorAvailability[]
   /// Paket P — izin/istisna aralıkları (ilişki alanı; kolon eklemez).
   timeOff               DoctorTimeOff[]
+  /// Paket Z1 — bu hekimin tıbbi gözden geçirdiği/geçireceği blog yazıları (ilişki alanı; kolon eklemez).
+  reviewedBlogPosts     BlogPost[]                  @relation("BlogPostReviewer")
   appointments          Appointment[]
   // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kayıtları.
   appointmentBookings   AppointmentBooking[]

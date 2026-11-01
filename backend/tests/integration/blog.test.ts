@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { exemptReview } from "../helpers/blog-review";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -92,7 +93,7 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
       method: "POST",
       url: "/api/v1/admin/blog",
       headers: authHeader(),
-      payload: { title: "Geri Yüklenecek Yazı", status: "PUBLISHED" },
+      payload: { title: "Geri Yüklenecek Yazı", status: "PUBLISHED", ...(await exemptReview(app)) },
     });
     const postId = create.json().data.id;
     await app.inject({ method: "DELETE", url: `/api/v1/admin/blog/${postId}`, headers: authHeader() });
@@ -255,6 +256,7 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
       payload: {
         title: "SEO Alanları Yazısı",
         status: "PUBLISHED",
+        ...(await exemptReview(app)),
         seoTitle: "Özel SEO Başlığı",
         seoDescription: "Özel SEO açıklaması.",
         ogTitle: "Özel OG Başlığı",
@@ -282,7 +284,7 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
       method: "POST",
       url: "/api/v1/admin/blog",
       headers: authHeader(),
-      payload: { title: "Yayında Ama Çöpe Gidecek", status: "PUBLISHED" },
+      payload: { title: "Yayında Ama Çöpe Gidecek", status: "PUBLISHED", ...(await exemptReview(app)) },
     });
     const post = create.json().data;
 
@@ -406,7 +408,7 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "Zamanlanmışken Autosave", status: "SCHEDULED", scheduledAt: future },
+        payload: { title: "Zamanlanmışken Autosave", status: "SCHEDULED", scheduledAt: future, ...(await exemptReview(app)) },
       });
       const postId = create.json().data.id;
       const beforeScheduledAt = create.json().data.scheduledAt;

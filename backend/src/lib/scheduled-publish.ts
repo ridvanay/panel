@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { emitWebhookEvent } from "./webhook-emitter";
+import { isReviewSatisfied } from "../modules/blog/lib/medical-review";
 import { toPublicBlogPostDto, toPublicPageDto, toPublicPortfolioItemDto } from "../modules/public-api/public-api.mappers";
 
 /**
@@ -40,13 +41,23 @@ export async function runScheduledPublishSweep(app: FastifyInstance): Promise<Sc
     app.prisma.portfolioItem.findMany({ where: dueWhere, include: { category: true, coverMedia: true, images: { include: { media: true }, orderBy: { order: "asc" } } } }),
   ]);
 
+  // Paket Z1 — blog yazıları yayın kuralına tabidir: onaysız zamanlanmış yazı yayına ÇIKMAZ (SCHEDULED kalır,
+  // uyarı loglanır). Kural: modules/blog/lib/medical-review.ts::isReviewSatisfied (admin yazma yoluyla aynı).
+  const publishableBlogPosts = dueBlogPosts.filter((post) => isReviewSatisfied(post, post.category));
+  for (const post of dueBlogPosts) {
+    if (!publishableBlogPosts.includes(post)) {
+      app.log.warn({ postId: post.id }, "Zamanlanmış blog yazısı hekim onayı olmadığı için yayınlanmadı");
+    }
+  }
+  const publishableBlogIds = publishableBlogPosts.map((post) => post.id);
+
   const [pages, blogPosts, products, portfolioItems] = await Promise.all([
     app.prisma.page.updateMany({
       where: dueWhere,
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
     app.prisma.blogPost.updateMany({
-      where: dueWhere,
+      where: { ...dueWhere, id: { in: publishableBlogIds } },
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
     app.prisma.product.updateMany({
@@ -62,7 +73,7 @@ export async function runScheduledPublishSweep(app: FastifyInstance): Promise<Sc
   for (const page of duePages) {
     await emitWebhookEvent(app, "PAGE_PUBLISHED", toPublicPageDto({ ...page, status: "PUBLISHED", publishedAt: now, scheduledAt: null }));
   }
-  for (const post of dueBlogPosts) {
+  for (const post of publishableBlogPosts) {
     await emitWebhookEvent(
       app,
       "BLOG_POST_PUBLISHED",

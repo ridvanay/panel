@@ -57,6 +57,15 @@ import {
   syncContentSlugs,
 } from "../../lib/localization";
 import { sanitizeBlogTranslations } from "./lib/sanitize-content";
+import {
+  assertBlogReviewRules,
+  assertReviewerAssignable,
+  assertSpecialtyAndTopics,
+  computeReadingMinutes,
+  demotionPatch,
+  isReviewSatisfied,
+} from "./lib/medical-review";
+import { getPublicPostDetail, listPublicPosts, listPublicTopics } from "./lib/blog-public";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { toPublicBlogPostDto } from "../public-api/public-api.mappers";
 import {
@@ -67,6 +76,9 @@ import {
   CreateBlogTagRequestSchema,
   LocaleQuerySchema,
   PostIdParamSchema,
+  PublicBlogListQuerySchema,
+  ReadingTimeRequestSchema,
+  ReadingTimeResponseSchema,
   PostRevisionIdParamSchema,
   PostSlugParamSchema,
   TagIdParamSchema,
@@ -107,6 +119,10 @@ function toBlogPostSnapshot(post: BlogPost & { tags: { tagId: string }[] }): Rec
     canonicalUrl: post.canonicalUrl,
     noIndex: post.noIndex,
     translations: post.translations,
+    // Paket Z1 — içerik kapsamındaki yeni alanlar da geri yüklenebilsin.
+    keyTakeaways: post.keyTakeaways,
+    faq: post.faq,
+    references: post.references,
   };
 }
 
@@ -221,6 +237,18 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
     }
   );
 
+  // Paket Z1 — editörde okuma süresi önizlemesi (kayıtta aynı formül sunucuda otomatik uygulanır).
+  server.post(
+    "/reading-time",
+    {
+      preHandler: requireSiteRole(...ROLES_PANEL),
+      schema: { body: ReadingTimeRequestSchema, response: { 200: ApiSuccessSchema(ReadingTimeResponseSchema) } },
+    },
+    async (request, reply) => {
+      return reply.send(ok({ minutes: computeReadingMinutes(sanitizeRichHtml(request.body.html)) }));
+    }
+  );
+
   server.post(
     "/",
     {
@@ -245,7 +273,32 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         noIndex,
         translations,
         scheduledAt,
+        specialtyId,
+        careTopicIds,
+        reviewerDoctorId,
+        medicalReviewStatus,
+        keyTakeaways,
+        faq,
+        references,
+        isFeatured,
       } = request.body;
+
+      // Paket Z1 — yayın kuralı (tek yer: lib/medical-review.ts). Yazma öncesi doğrulanır.
+      await assertSpecialtyAndTopics(app, specialtyId, careTopicIds);
+      await assertReviewerAssignable(app, reviewerDoctorId);
+      await assertBlogReviewRules(app, {
+        effective: {
+          status: status ?? "DRAFT",
+          medicalReviewStatus: medicalReviewStatus ?? "pending",
+          reviewerDoctorId: reviewerDoctorId ?? null,
+          categoryId: categoryId ?? null,
+        },
+        previousStatus: null,
+        settingNotRequired: medicalReviewStatus === "not_required",
+        touchesReviewOrCategory: true,
+        actorRole: request.user!.role,
+      });
+      const cleanHtml = sanitizeRichHtml(contentHtml);
 
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
@@ -262,7 +315,16 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
             // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
             // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
             // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
-            contentHtml: sanitizeRichHtml(contentHtml),
+            contentHtml: cleanHtml,
+            readingMinutes: computeReadingMinutes(cleanHtml),
+            specialtyId: specialtyId ?? null,
+            careTopicIds: Array.from(new Set(careTopicIds ?? [])),
+            reviewerDoctorId: reviewerDoctorId ?? null,
+            medicalReviewStatus: medicalReviewStatus ?? "pending",
+            keyTakeaways: (keyTakeaways ?? []) as Prisma.InputJsonValue,
+            faq: (faq ?? []) as Prisma.InputJsonValue,
+            references: (references ?? []) as Prisma.InputJsonValue,
+            isFeatured: isFeatured ?? false,
             coverImageUrl,
             status: status ?? "DRAFT",
             categoryId: categoryId ?? undefined,
@@ -335,8 +397,63 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
       // `tagIds` `BlogPost` tablosunda bir KOLON DEĞİLDİR — `rest`'ten AYRI tutulup
       // `syncBlogPostTags` ile ara tabloya yazılır (bkz. ARCHITECTURE.md §10.14.4).
-      const { slug, translations, authorId: requestedAuthorId, scheduledAt, tagIds, ...rest } = request.body;
+      const {
+        slug,
+        translations,
+        authorId: requestedAuthorId,
+        scheduledAt,
+        tagIds,
+        specialtyId,
+        careTopicIds,
+        reviewerDoctorId,
+        medicalReviewStatus,
+        keyTakeaways,
+        faq,
+        references,
+        isFeatured,
+        ...rest
+      } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
+
+      // Paket Z1 — yayın kuralı + onaylı yazıda içerik değişince "pending"e dönüş (lib/medical-review.ts).
+      const reviewerChanged = reviewerDoctorId !== undefined && reviewerDoctorId !== existing.reviewerDoctorId;
+      await assertSpecialtyAndTopics(app, specialtyId, careTopicIds);
+      if (reviewerChanged) await assertReviewerAssignable(app, reviewerDoctorId);
+      const cleanHtml = rest.contentHtml !== undefined ? sanitizeRichHtml(rest.contentHtml) : undefined;
+      const beforeContent = {
+        title: existing.title,
+        contentHtml: existing.contentHtml,
+        keyTakeaways: existing.keyTakeaways,
+        faq: existing.faq,
+        references: existing.references,
+        reviewerDoctorId: existing.reviewerDoctorId,
+        medicalReviewStatus: existing.medicalReviewStatus,
+      };
+      const afterContent = {
+        title: rest.title ?? existing.title,
+        contentHtml: cleanHtml ?? existing.contentHtml,
+        keyTakeaways: keyTakeaways ?? existing.keyTakeaways,
+        faq: faq ?? existing.faq,
+        references: references ?? existing.references,
+        reviewerDoctorId: reviewerDoctorId !== undefined ? reviewerDoctorId : existing.reviewerDoctorId,
+      };
+      let nextReviewStatus: string | undefined = medicalReviewStatus;
+      if (nextReviewStatus === undefined) {
+        if (demotionPatch(beforeContent, afterContent).medicalReviewStatus) nextReviewStatus = "pending";
+        else if (reviewerChanged && existing.medicalReviewStatus === "changes_requested") nextReviewStatus = "pending";
+      }
+      await assertBlogReviewRules(app, {
+        effective: {
+          status: rest.status ?? existing.status,
+          medicalReviewStatus: nextReviewStatus ?? existing.medicalReviewStatus,
+          reviewerDoctorId: afterContent.reviewerDoctorId,
+          categoryId: rest.categoryId !== undefined ? rest.categoryId : existing.categoryId,
+        },
+        previousStatus: existing.status,
+        settingNotRequired: medicalReviewStatus === "not_required" && existing.medicalReviewStatus !== "not_required",
+        touchesReviewOrCategory: medicalReviewStatus !== undefined || rest.categoryId !== undefined,
+        actorRole: request.user!.role,
+      });
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
       // çeviriler zaten sanitize edilmiş halde DB'de duruyor — bkz. lib/html-sanitize.ts).
@@ -351,7 +468,16 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           where: { id: request.params.postId },
           data: {
             ...rest,
-            ...(rest.contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(rest.contentHtml) } : {}),
+            ...(cleanHtml !== undefined ? { contentHtml: cleanHtml, readingMinutes: computeReadingMinutes(cleanHtml) } : {}),
+            ...(specialtyId !== undefined ? { specialtyId } : {}),
+            ...(careTopicIds !== undefined ? { careTopicIds: Array.from(new Set(careTopicIds)) } : {}),
+            ...(reviewerDoctorId !== undefined ? { reviewerDoctorId } : {}),
+            ...(nextReviewStatus !== undefined ? { medicalReviewStatus: nextReviewStatus } : {}),
+            ...(reviewerChanged ? { medicalReviewNote: null } : {}),
+            ...(keyTakeaways !== undefined ? { keyTakeaways: keyTakeaways as Prisma.InputJsonValue } : {}),
+            ...(faq !== undefined ? { faq: faq as Prisma.InputJsonValue } : {}),
+            ...(references !== undefined ? { references: references as Prisma.InputJsonValue } : {}),
+            ...(isFeatured !== undefined ? { isFeatured } : {}),
             ...(slug !== undefined ? { slug: slugify(slug) } : {}),
             ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
             ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
@@ -415,13 +541,28 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       }
 
       const { title, excerpt, contentHtml } = request.body;
+      const cleanHtml = contentHtml !== undefined ? sanitizeRichHtml(contentHtml) : undefined;
+      // Paket Z1 — onaylı yazıda başlık/gövde değişirse yeniden onay gerekir (autosave dahil).
+      const content = (t: string, h: string) => ({
+        title: t,
+        contentHtml: h,
+        keyTakeaways: existing.keyTakeaways,
+        faq: existing.faq,
+        references: existing.references,
+        reviewerDoctorId: existing.reviewerDoctorId,
+      });
+      const demotion = demotionPatch(
+        { ...content(existing.title, existing.contentHtml), medicalReviewStatus: existing.medicalReviewStatus },
+        content(title ?? existing.title, cleanHtml ?? existing.contentHtml)
+      );
 
       await app.prisma.blogPost.update({
         where: { id: request.params.postId },
         data: {
           ...(title !== undefined ? { title } : {}),
           ...(excerpt !== undefined ? { excerpt } : {}),
-          ...(contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(contentHtml) } : {}),
+          ...(cleanHtml !== undefined ? { contentHtml: cleanHtml, readingMinutes: computeReadingMinutes(cleanHtml) } : {}),
+          ...demotion,
         },
       });
 
@@ -525,13 +666,28 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
+      // Paket Z1 — toplu yayın da yayın kuralına tabidir: onaysız taslak/zamanlanmış yazılar atlanır
+      // (skippedIds). Zaten PUBLISHED olanlar geçişte olmadığı için etkilenmez.
+      const blockedByReview: string[] = [];
+      let bulkIds = request.body.ids;
+      if (request.body.action === "publish") {
+        const rows = await app.prisma.blogPost.findMany({
+          where: { id: { in: request.body.ids }, deletedAt: null, status: { not: "PUBLISHED" } },
+          include: { category: { select: { isMedical: true } } },
+        });
+        for (const row of rows) {
+          if (!isReviewSatisfied(row, row.category)) blockedByReview.push(row.id);
+        }
+        bulkIds = request.body.ids.filter((id) => !blockedByReview.includes(id));
+      }
+
       // §10.13.8 — bkz. pages.routes.ts::"/bulk" AYNI desen/gerekçe (`runBulkContentAction`
       // transitionı BİLMEZ, adaylar çağrıdan ÖNCE belirlenir, emisyon commit SONRASI yapılır).
       const publishCandidateIds =
         request.body.action === "publish"
           ? (
               await app.prisma.blogPost.findMany({
-                where: { id: { in: request.body.ids }, deletedAt: null, publishedAt: null },
+                where: { id: { in: bulkIds }, deletedAt: null, publishedAt: null },
                 select: { id: true },
               })
             ).map((row) => row.id)
@@ -546,12 +702,16 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           auditActionPrefix: "blog_post.",
         },
         {
-          ids: request.body.ids,
+          ids: bulkIds,
           action: request.body.action,
           actor: { id: request.user!.id, email: request.user!.email, role: request.user!.role },
           ip: request.ip,
         }
       );
+      if (blockedByReview.length > 0) {
+        result.skippedIds.push(...blockedByReview);
+        result.requestedCount += blockedByReview.length;
+      }
 
       if (publishCandidateIds.length > 0) {
         const transitionedIds = publishCandidateIds.filter((id) => !result.skippedIds.includes(id));
@@ -635,7 +795,32 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         canonicalUrl: string | null;
         noIndex: boolean;
         translations: unknown;
+        // Paket Z1 — eski revizyonlarda YOKTUR; tanımlıysa geri yüklenir.
+        keyTakeaways?: unknown;
+        faq?: unknown;
+        references?: unknown;
       };
+
+      const restoredHtml = sanitizeRichHtml(snapshot.contentHtml);
+      const restoreDemotion = demotionPatch(
+        {
+          title: existing.title,
+          contentHtml: existing.contentHtml,
+          keyTakeaways: existing.keyTakeaways,
+          faq: existing.faq,
+          references: existing.references,
+          reviewerDoctorId: existing.reviewerDoctorId,
+          medicalReviewStatus: existing.medicalReviewStatus,
+        },
+        {
+          title: snapshot.title,
+          contentHtml: restoredHtml,
+          keyTakeaways: snapshot.keyTakeaways ?? existing.keyTakeaways,
+          faq: snapshot.faq ?? existing.faq,
+          references: snapshot.references ?? existing.references,
+          reviewerDoctorId: existing.reviewerDoctorId,
+        }
+      );
 
       const { enabled: enabledLocales } = await getLocaleSet(app);
       const sanitizedTranslations = snapshot.translations
@@ -651,7 +836,12 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
             excerpt: snapshot.excerpt,
             // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
             // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
-            contentHtml: sanitizeRichHtml(snapshot.contentHtml),
+            contentHtml: restoredHtml,
+            readingMinutes: computeReadingMinutes(restoredHtml),
+            ...restoreDemotion,
+            ...(snapshot.keyTakeaways !== undefined ? { keyTakeaways: snapshot.keyTakeaways as Prisma.InputJsonValue } : {}),
+            ...(snapshot.faq !== undefined ? { faq: snapshot.faq as Prisma.InputJsonValue } : {}),
+            ...(snapshot.references !== undefined ? { references: snapshot.references as Prisma.InputJsonValue } : {}),
             coverImageUrl: snapshot.coverImageUrl,
             categoryId: snapshot.categoryId,
             seoTitle: snapshot.seoTitle,
@@ -711,6 +901,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
         data: {
           name: request.body.name,
           slug: request.body.slug ? slugify(request.body.slug) : slugify(request.body.name),
+          ...(request.body.isMedical !== undefined ? { isMedical: request.body.isMedical } : {}),
         },
       });
       return reply.code(201).send(ok(toBlogCategoryDto(category)));
@@ -876,6 +1067,20 @@ export async function publicBlogRoutes(app: FastifyInstance) {
       return reply.send(ok(dtos, buildPageMeta(rows, limit)));
     }
   );
+
+  // ---- Paket Z1 — profesyonel blog okuma uçları (sabit yollar `/:slug`'tan önce eşleşir) ----
+  server.get("/posts", { schema: { querystring: PublicBlogListQuerySchema } }, async (request, reply) => {
+    const { items, total, page, pageSize, featured } = await listPublicPosts(app, request.query);
+    return reply.send(ok({ items, total, page, pageSize, featured }));
+  });
+
+  server.get("/topics", { schema: { querystring: LocaleQuerySchema } }, async (request, reply) => {
+    return reply.send(ok(await listPublicTopics(app, request.query.locale)));
+  });
+
+  server.get("/posts/:slug", { schema: { params: PostSlugParamSchema, querystring: LocaleQuerySchema } }, async (request, reply) => {
+    return reply.send(ok(await getPublicPostDetail(app, request.params.slug, request.query.locale)));
+  });
 
   server.get(
     "/:slug",
