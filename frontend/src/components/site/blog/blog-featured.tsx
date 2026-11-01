@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Clock } from "lucide-react";
+import { ArrowRight, Clock } from "lucide-react";
 import type { PublicBlogCard } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
 import { fillBlogString, formatBlogDate } from "@/lib/blog/format";
 import { BlogCover } from "./blog-cover";
+import { BlogAvatar } from "./blog-article-parts";
+import { BlogSpecialtyChip } from "./blog-specialty-chip";
 
 /** Paket Z1 — "Latest" öne çıkan blok: büyük kapak, kategori, başlık, özet, ✓ hekim, tarih, okuma süresi, "Read the article". */
 export function BlogFeatured({ post, href, t, lang }: { post: PublicBlogCard; href: string; t: BlogStrings; lang: string }) {
@@ -18,7 +20,7 @@ export function BlogFeatured({ post, href, t, lang }: { post: PublicBlogCard; hr
         <div className="flex flex-col justify-center p-6 sm:p-8">
           <p className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wide">
             <span className="rounded-full bg-[var(--site-primary)] px-2.5 py-0.5 text-white">{t.latestLabel}</span>
-            {post.category ? <span className="text-[var(--site-primary)]">{post.category.name}</span> : null}
+            {post.category || post.specialty ? <BlogSpecialtyChip slug={post.specialty?.slug} label={(post.category ?? post.specialty)!.name} /> : null}
           </p>
           <h3 className="mt-3 font-heading text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
             <Link href={href} className="hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]">
@@ -28,7 +30,7 @@ export function BlogFeatured({ post, href, t, lang }: { post: PublicBlogCard; hr
           {post.excerpt ? <p className="mt-3 text-base text-foreground/70">{post.excerpt}</p> : null}
           {post.reviewer ? (
             <p className="mt-4 flex items-center gap-1.5 text-sm font-medium text-foreground/80" data-testid="blog-featured-reviewer">
-              <BadgeCheck className="h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
+              <BlogAvatar src={post.reviewer.avatarUrl} size={28} />
               <span>{fillBlogString(t.reviewedBy, { name: post.reviewer.name })}</span>
             </p>
           ) : null}

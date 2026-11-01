@@ -770,6 +770,16 @@ export interface PublicBlogCard {
   readingMinutes: number;
 }
 
+/** Paket Z1-ek - GET /blog/reviewers: yalnizca en az bir yaziyi onaylamis, herkese acik hekimler. `name` unvani izleyicinin dilinde icerir. */
+export interface PublicBlogReviewerItem {
+  slug: string;
+  name: string;
+  title: string | null;
+  avatarUrl: string | null;
+  specialty: { slug: string; name: string } | null;
+  approvedCount: number;
+}
+
 export interface PublicBlogList {
   items: PublicBlogCard[];
   total: number;

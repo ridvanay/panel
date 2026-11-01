@@ -7,7 +7,7 @@ import { BLOG_AUTHOR_NAME } from "@/lib/blog/json-ld";
 import { fillBlogString, formatBlogDate } from "@/lib/blog/format";
 import { cn } from "@/lib/utils";
 
-function Avatar({ src, size }: { src: string | null; size: number }) {
+export function BlogAvatar({ src, size }: { src: string | null; size: number }) {
   return (
     <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--site-primary)]/10 text-[var(--site-primary)]" style={{ width: size, height: size }}>
       {src ? <SafeImage src={src} alt="" fill sizes={`${size}px`} className="object-cover" /> : <UserRound className="h-1/2 w-1/2" aria-hidden="true" />}
@@ -16,50 +16,81 @@ function Avatar({ src, size }: { src: string | null; size: number }) {
 }
 
 /**
- * Paket Z1 — yazar (kurum) + tıbbi gözden geçiren hekim (foto, ad, unvan, profil bağlantısı) + "Last reviewed"
- * + okuma süresi. Hekim satırı yalnızca onaylı hekim varken; "Last reviewed" yalnızca tarih doluyken çizilir.
- * Tarihler sunucuda biçimlenir (hidrasyon güvenli).
+ * Paket Z1 / Z1-ek — yazar (kurum) + "Medically reviewed by" satırı (foto, unvan, ad, uzmanlık, inceleme tarihi,
+ * profil bağlantısı) + okuma süresi. Hekim satırı yalnızca onaylı hekim varken; "Last reviewed" yalnızca tarih
+ * doluyken çizilir (hekim varsa hekim satırında, yoksa meta satırında). Tarihler sunucuda biçimlenir (hidrasyon güvenli).
  */
 export function BlogByline({ post, t, lang, physicianHref }: { post: PublicBlogDetail; t: BlogStrings; lang: string; physicianHref: (slug: string) => string }) {
   const reviewed = formatBlogDate(post.lastReviewedAt, lang);
   const reviewer = post.reviewer;
+  const reviewedDate = reviewed ? (
+    <span className="inline-flex items-center gap-1.5" data-testid="blog-last-reviewed">
+      <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <time dateTime={post.lastReviewedAt ?? undefined}>{fillBlogString(t.lastReviewed, { date: reviewed })}</time>
+    </span>
+  ) : null;
+  const titleLine = reviewer && reviewer.title && !reviewer.name.toLowerCase().includes(reviewer.title.toLowerCase()) ? reviewer.title : null;
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-4" data-testid="blog-byline">
-      <div className="flex items-center gap-3">
-        <Avatar src={null} size={44} />
-        <p className="text-sm">
-          <span className="block text-foreground/70">{t.writtenBy}</span>
-          <span className="font-semibold text-foreground">{BLOG_AUTHOR_NAME}</span>
+    <div className="mt-5 space-y-4" data-testid="blog-byline">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+        <div className="flex items-center gap-3">
+          <BlogAvatar src={null} size={44} />
+          <p className="text-sm">
+            <span className="block text-foreground/70">{t.writtenBy}</span>
+            <span className="font-semibold text-foreground">{BLOG_AUTHOR_NAME}</span>
+          </p>
+        </div>
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground/70">
+          {!reviewer ? reviewedDate : null}
+          <span className="inline-flex items-center gap-1.5">
+            <Clock className="h-4 w-4" aria-hidden="true" />
+            {fillBlogString(t.minRead, { n: post.readingMinutes })}
+          </span>
         </p>
       </div>
       {reviewer ? (
-        <div className="flex items-center gap-3" data-testid="blog-byline-reviewer">
-          <Avatar src={reviewer.avatarUrl} size={44} />
-          <p className="text-sm">
-            <span className="flex items-center gap-1 text-foreground/70">
-              <BadgeCheck className="h-4 w-4 text-[var(--site-primary)]" aria-hidden="true" />
-              {t.medicalReviewBy}
+        <div className="flex w-full items-center gap-4 rounded-[var(--site-radius)] border border-[var(--site-primary)]/25 bg-[var(--site-primary)]/5 p-3 sm:w-fit sm:pe-6" data-testid="blog-byline-reviewer">
+          <BlogAvatar src={reviewer.avatarUrl} size={56} />
+          <p className="min-w-0 text-sm">
+            <span className="flex items-center gap-1 font-medium text-[var(--site-primary)]">
+              <BadgeCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {t.medicallyReviewedBy}
             </span>
-            <Link href={physicianHref(reviewer.slug)} aria-label={fillBlogString(t.profileAria, { name: reviewer.name })} className="font-semibold text-foreground hover:text-[var(--site-primary)] hover:underline">
+            {titleLine ? <span className="block text-xs text-foreground/70">{titleLine}</span> : null}
+            <Link href={physicianHref(reviewer.slug)} aria-label={fillBlogString(t.profileAria, { name: reviewer.name })} className="inline-flex min-h-6 items-center font-semibold text-foreground hover:text-[var(--site-primary)] hover:underline">
               {reviewer.name}
             </Link>
             {reviewer.specialty ? <span className="block text-foreground/70">{reviewer.specialty.name}</span> : null}
+            {reviewedDate ? <span className="mt-0.5 block text-foreground/70">{reviewedDate}</span> : null}
           </p>
         </div>
       ) : null}
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground/70">
-        {reviewed ? (
-          <span className="inline-flex items-center gap-1.5" data-testid="blog-last-reviewed">
-            <CalendarCheck className="h-4 w-4" aria-hidden="true" />
-            <time dateTime={post.lastReviewedAt ?? undefined}>{fillBlogString(t.lastReviewed, { date: reviewed })}</time>
-          </span>
-        ) : null}
-        <span className="inline-flex items-center gap-1.5">
-          <Clock className="h-4 w-4" aria-hidden="true" />
-          {fillBlogString(t.minRead, { n: post.readingMinutes })}
-        </span>
-      </p>
     </div>
+  );
+}
+
+/** Paket Z1-ek — yazı sonu yazar kutusu: Editorial Team + "Content standards" / "Authors & medical reviewers" bağlantıları. */
+export function BlogAuthorBox({ t, standardsHref, reviewersHref }: { t: BlogStrings; standardsHref: string; reviewersHref: string }) {
+  const linkClass = "inline-flex min-h-11 items-center text-sm font-semibold text-[var(--site-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]";
+  return (
+    <aside className="mt-10 flex gap-4 rounded-[var(--site-radius)] border border-border bg-surface p-5" data-testid="blog-author-box" aria-labelledby="blog-author-box-title">
+      <BlogAvatar src={null} size={48} />
+      <div className="min-w-0">
+        <p id="blog-author-box-title" className="font-heading text-base font-semibold text-foreground">
+          {t.authorBoxTitle}
+        </p>
+        <p className="mt-0.5 text-sm font-medium text-foreground">{BLOG_AUTHOR_NAME}</p>
+        <p className="mt-1 text-sm text-foreground/75">{t.authorBoxText}</p>
+        <p className="mt-1 flex flex-wrap gap-x-5">
+          <Link href={standardsHref} className={linkClass}>
+            {t.contentStandards}
+          </Link>
+          <Link href={reviewersHref} className={linkClass}>
+            {t.authorsReviewers}
+          </Link>
+        </p>
+      </div>
+    </aside>
   );
 }
 
@@ -103,7 +134,7 @@ export function BlogConsultCard({
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">
         {doctors.map((doctor) => (
           <li key={doctor.slug} className="flex items-center gap-3 rounded-[var(--site-radius)] border border-border bg-background p-3">
-            <Avatar src={doctor.avatarUrl} size={48} />
+            <BlogAvatar src={doctor.avatarUrl} size={48} />
             <div className="min-w-0 flex-1">
               <Link href={physicianHref(doctor.slug)} aria-label={fillBlogString(t.profileAria, { name: doctor.name })} className="block truncate text-sm font-semibold text-foreground hover:underline">
                 {doctor.name}

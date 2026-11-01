@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { BadgeCheck, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import type { PublicBlogCard } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
 import { fillBlogString, formatBlogDate } from "@/lib/blog/format";
 import { BlogCover } from "./blog-cover";
+import { BlogAvatar } from "./blog-article-parts";
+import { BlogSpecialtyChip } from "./blog-specialty-chip";
 
 /**
  * Paket Z1 — kart ızgarası öğesi: kapak, kategori, başlık, özet, onaylayan hekim ✓, tarih, okuma süresi.
@@ -31,8 +33,12 @@ export function BlogPostCard({
     >
       <BlogCover src={post.coverUrl} specialtySlug={post.specialty?.slug} label={post.specialty?.name ?? t.coverTemplateLabel} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" priority={priority} className="aspect-[16/9] w-full" />
       <div className="flex flex-1 flex-col p-4">
-        {post.category ? <p className="text-xs font-medium uppercase tracking-wide text-[var(--site-primary)]">{post.category.name}</p> : null}
-        <h3 className="mt-1 font-heading text-lg font-semibold leading-snug text-foreground">
+        {post.category || post.specialty ? (
+          <p>
+            <BlogSpecialtyChip slug={post.specialty?.slug} label={(post.category ?? post.specialty)!.name} />
+          </p>
+        ) : null}
+        <h3 className="mt-2 font-heading text-lg font-semibold leading-snug text-foreground">
           <Link href={href} className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-[var(--site-primary)]">
             {post.title}
           </Link>
@@ -41,7 +47,7 @@ export function BlogPostCard({
         <div className="mt-auto space-y-1.5 pt-4 text-xs text-foreground/70">
           {post.reviewer ? (
             <p className="flex items-center gap-1.5 font-medium text-foreground/80" data-testid="blog-card-reviewer">
-              <BadgeCheck className="h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
+              <BlogAvatar src={post.reviewer.avatarUrl} size={24} />
               <span>{fillBlogString(t.reviewedBy, { name: post.reviewer.name })}</span>
             </p>
           ) : null}

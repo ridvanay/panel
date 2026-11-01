@@ -1,6 +1,6 @@
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
-import type { BlogPost, PublicBlogDetail, PublicBlogList, PublicBlogTopicGroup } from "./types";
+import type { BlogPost, PublicBlogDetail, PublicBlogList, PublicBlogReviewerItem, PublicBlogTopicGroup } from "./types";
 
 /**
  * Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi.
@@ -63,4 +63,18 @@ export async function fetchBlogDetailServer(slug: string, locale?: string): Prom
   const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
   const json = await fetchServerJson<{ data: PublicBlogDetail }>(`/blog/posts/${encodeURIComponent(slug)}${query}`, { tags: [CACHE_TAGS.blog] });
   return json?.data ?? null;
+}
+
+/**
+ * Paket Z1-ek - `GET /blog/reviewers` (en az bir yaziyi onaylamis, herkese acik hekimler).
+ * Uc henuz yoksa (404) ya da gecici hata olursa bos liste: sayfa "onayli hekim yok" cumlesini gosterir.
+ */
+export async function fetchBlogReviewersServer(locale?: string): Promise<PublicBlogReviewerItem[]> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  try {
+    const json = await fetchServerJson<{ data: { items: PublicBlogReviewerItem[] } }>(`/blog/reviewers${query}`, { tags: [CACHE_TAGS.blog] });
+    return json?.data?.items ?? [];
+  } catch {
+    return [];
+  }
 }

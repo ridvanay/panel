@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   topics: vi.fn(),
   packages: vi.fn(),
   page: vi.fn(),
+  specialties: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -28,6 +29,8 @@ vi.mock("@/lib/api/server-pages", () => ({ fetchPageBySlugServer: (...a: unknown
 vi.mock("@/components/site/matcher/matcher-modal", () => ({
   MatcherLaunchButton: () => <button type="button">Find my physician</button>,
 }));
+vi.mock("@/lib/api/server-telehealth", () => ({ fetchSpecialtiesServer: (...a: unknown[]) => mocks.specialties(...a) }));
+vi.mock("@/components/site/contact/contact-cta", () => ({ ContactCta: () => <div data-testid="contact-cta" /> }));
 
 import { BlogIndexPage, buildBlogIndexMetadata } from "@/components/site/blog/blog-index-page";
 import BlogPageRoute from "@/app/[lang]/(site)/blog/page/[n]/page";
@@ -47,6 +50,7 @@ beforeEach(() => {
   mocks.topics.mockReset().mockResolvedValue(GROUPS);
   mocks.packages.mockReset().mockResolvedValue({ items: [], categories: [] });
   mocks.page.mockReset().mockResolvedValue(null);
+  mocks.specialties.mockReset().mockResolvedValue([]);
 });
 
 describe("Paket Z1 — blog ana sayfası", () => {
@@ -133,21 +137,17 @@ describe("Paket Z1 — blog ana sayfası", () => {
     expect(screen.queryByTestId("blog-popular-packages")).toBeNull();
   });
 
-  it("güven bağlantıları yalnızca yayındaki CMS sayfaları için gösterilir", async () => {
+  it("güven bağlantıları her zaman özel route'lara gider (CMS kaydına bağlı değil)", async () => {
     await renderIndex();
-    expect(screen.queryByTestId("blog-trust-links")).toBeNull();
-    mocks.page.mockImplementation(async (slug: string) => (slug === "content-standards" ? { id: "1", slug } : null));
-    const { unmount } = await renderIndex();
     const trust = screen.getAllByTestId("blog-trust-links").at(-1)!;
     expect(within(trust).getByRole("link", { name: "Content standards" })).toHaveAttribute("href", "/content-standards");
-    expect(within(trust).queryByText("Authors & medical reviewers")).toBeNull();
-    unmount();
+    expect(within(trust).getByRole("link", { name: "Authors & medical reviewers" })).toHaveAttribute("href", "/medical-reviewers");
   });
 
   it("boş blog ve sonuçsuz filtre için ayrı boş durumlar", async () => {
     mocks.list.mockResolvedValue(listOf({ items: [], total: 0, featured: null }));
     const { unmount } = await renderIndex();
-    expect(screen.getByTestId("blog-empty")).toHaveTextContent("No articles have been published yet.");
+    expect(screen.getByTestId("blog-empty")).toHaveTextContent("Our first guides are being reviewed by our physicians.");
     unmount();
     await renderIndex({ searchParams: { q: "zzz" } });
     expect(screen.getAllByTestId("blog-empty").at(-1)).toHaveTextContent("No articles found");

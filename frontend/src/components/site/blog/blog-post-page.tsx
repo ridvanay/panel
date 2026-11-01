@@ -18,11 +18,13 @@ import { ViewTracker } from "@/components/site/view-tracker";
 import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
 import { BlogBreadcrumb } from "./blog-breadcrumb";
 import { BlogCover } from "./blog-cover";
+import { BlogSpecialtyChip } from "./blog-specialty-chip";
 import { BlogToc } from "./blog-toc";
 import { BlogFaq } from "./blog-faq";
 import { BlogShareButtons } from "./blog-share-buttons";
 import { BlogPostCard } from "./blog-post-card";
-import { BlogByline, BlogConsultCard, BlogKeyTakeaways, BlogReferences } from "./blog-article-parts";
+import { BlogAuthorBox, BlogByline, BlogConsultCard, BlogKeyTakeaways, BlogReferences } from "./blog-article-parts";
+import { BlogReadingProgress } from "./blog-reading-progress";
 
 type PostPageProps = { lang: string; slug: string };
 
@@ -32,7 +34,7 @@ function toContentLocalizations(post: PublicBlogDetail): ContentLocalization[] {
 }
 
 /** Tipografi `globals.css` içindeki `.blog-prose` kurallarındadır (@tailwindcss/typography projede yok). */
-const PROSE_CLASS = "blog-prose";
+const PROSE_CLASS = "blog-prose blog-prose--fill";
 
 /**
  * Paket Z1 — yazı meta verisi. Taslak / silinmiş / O DİLDE çevirisi olmayan yazıda `{}` döner (sayfa 404 verir).
@@ -104,40 +106,41 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
   ];
 
   return (
-    <div dir={localeDirection(lang)} className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12" data-testid="blog-post">
+    <div dir={localeDirection(lang)} className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12" data-testid="blog-post">
       <SyncLocaleAlternates kind="blog" items={localizations} />
       <ViewTracker kind="blog" slug={trackedSlug} />
       {jsonLd.map((json, index) => (
         <JsonLdScript key={index} json={json} />
       ))}
 
+      <BlogReadingProgress label={t.readingProgress} targetId="blog-article" />
       <BlogBreadcrumb ariaLabel={t.breadcrumbAria} items={crumbs} />
 
       <header className="mt-6 max-w-3xl">
-        {post.category ? <p className="text-sm font-medium uppercase tracking-wide text-[var(--site-primary)]">{post.category.name}</p> : null}
-        <h1 className="mt-2 font-heading text-3xl font-semibold leading-tight text-foreground sm:text-4xl">{post.title}</h1>
+        {post.category || post.specialty ? (
+          <p>
+            <BlogSpecialtyChip slug={post.specialty?.slug} label={(post.category ?? post.specialty)!.name} />
+          </p>
+        ) : null}
+        <h1 className="mt-3 font-heading text-3xl font-semibold leading-tight text-foreground sm:text-4xl">{post.title}</h1>
         <BlogByline post={post} t={t} lang={lang} physicianHref={physicianHref} />
       </header>
 
-      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start">
-        <article className="min-w-0">
-          {post.coverUrl ? <BlogCover src={post.coverUrl} specialtySlug={post.specialty?.slug} sizes="(min-width: 1024px) 70vw, 100vw" priority className="aspect-[16/9] w-full max-w-3xl rounded-[var(--site-radius)]" /> : null}
+      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-12">
+        <article id="blog-article" className="min-w-0">
+          <BlogCover src={post.coverUrl} specialtySlug={post.specialty?.slug} label={post.specialty?.name ?? t.coverTemplateLabel} sizes="(min-width: 1024px) 66vw, 100vw" priority large className="aspect-[16/9] w-full rounded-[var(--site-radius)]" />
 
-          <div className="mt-6 max-w-[70ch]">
+          <div className="mt-6">
             <BlogToc variant="mobile" items={tocItems} title={t.tocTitle} ariaLabel={t.tocAria} />
           </div>
 
-          <div className="max-w-[70ch]">
-            <BlogKeyTakeaways items={post.keyTakeaways} title={t.keyTakeaways} />
-          </div>
+          <BlogKeyTakeaways items={post.keyTakeaways} title={t.keyTakeaways} />
 
           <div className="mt-8">
             {split ? (
               <>
                 <RichContentWithShortcodes html={split[0]} className={PROSE_CLASS} locale={lang} />
-                <div className="max-w-[70ch]">
-                  <BlogConsultCard doctors={post.consultDoctors} t={t} physicianHref={physicianHref} />
-                </div>
+                <BlogConsultCard doctors={post.consultDoctors} t={t} physicianHref={physicianHref} />
                 <RichContentWithShortcodes html={split[1]} className={PROSE_CLASS} locale={lang} />
               </>
             ) : (
@@ -145,10 +148,11 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
             )}
           </div>
 
-          <div className="max-w-[70ch]">
+          <div>
             <BlogConsultCard doctors={post.consultDoctors} t={t} physicianHref={physicianHref} className="mt-10" />
             <BlogFaq items={post.faq} title={t.faqTitle} />
             <BlogReferences items={post.references} t={t} lang={lang} />
+            <BlogAuthorBox t={t} standardsHref={localize("/content-standards")} reviewersHref={localize("/medical-reviewers")} />
             <p className="mt-10 rounded-[var(--site-radius)] border border-border bg-surface p-4 text-sm text-foreground/80" data-testid="blog-disclaimer">
               {t.disclaimer}
             </p>

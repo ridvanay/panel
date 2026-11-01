@@ -26,7 +26,7 @@ export const blogStrings = {
   noResultsTitle: "No articles found",
   noResultsText: "Try a different topic or search term.",
   showAllArticles: "Show all articles",
-  emptyBlog: "No articles have been published yet.",
+  emptyBlog: "Our first guides are being reviewed by our physicians.",
   paginationAria: "Pagination",
   previousPage: "Previous page",
   nextPage: "Next page",
@@ -86,6 +86,21 @@ export const blogStrings = {
   reviewApproved: "The article was approved.",
   reviewChangesSent: "Your note was sent to the editorial team.",
   reviewActionError: "The action could not be completed. Please try again.",
+  // ---- Paket Z1-ek ----
+  medicallyReviewedBy: "Medically reviewed by",
+  trustReviewed: "Reviewed by physicians",
+  trustSources: "Sources cited",
+  trustUpdated: "Regularly updated",
+  specialtiesTitle: "Browse by specialty",
+  specialtiesAria: "Browse guides by specialty",
+  specialtyGuides: "Guides: {n}",
+  specialtyView: "View specialty",
+  emptyBlogText: "In the meantime, find the right physician or talk to our team.",
+  coordinatorTitle: "Talk to a patient coordinator",
+  coordinatorText: "Tell us what you need and our team will guide you to the right specialty and physician.",
+  authorBoxTitle: "About this guide",
+  authorBoxText: "Prepared by the WM Health Editorial Team following our content standards.",
+  readingProgress: "Reading progress",
 } as const;
 
 export type BlogStrings = Record<keyof typeof blogStrings, string>;

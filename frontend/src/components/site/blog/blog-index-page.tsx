@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchBlogListServer, fetchBlogTopicsServer } from "@/lib/api/server-blog";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchPackagesServer } from "@/lib/api/server-packages";
-import { fetchPageBySlugServer } from "@/lib/api/server-pages";
+import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { localeDirection } from "@/lib/i18n/locale-direction";
@@ -11,7 +11,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { SITE_URL } from "@/lib/env";
 import { BLOG_PAGE_SIZE, blogListPath, cleanQuery, cleanTopic, firstParam, listingRobots, totalPages } from "@/lib/blog/topics";
 import { fillBlogString } from "@/lib/blog/format";
-import type { PackageCardData } from "@/lib/api/types";
+import type { PackageCardData, Specialty } from "@/lib/api/types";
 import { BlogBreadcrumb } from "./blog-breadcrumb";
 import { BlogFeatured } from "./blog-featured";
 import { BlogPostCard } from "./blog-post-card";
@@ -20,10 +20,11 @@ import { BlogSearchForm } from "./blog-search-form";
 import { BlogPagination } from "./blog-pagination";
 import { BlogFindPhysicianCta, BlogPopularPackages, BlogTrustLinks, pickPopularPackages } from "./blog-cta-blocks";
 import Link from "next/link";
+import { BlogCoordinatorCta, BlogEmptyState, BlogHero, BlogSpecialtyBrowse } from "./blog-index-parts";
 
 export type BlogSearchParams = Record<string, string | string[] | undefined>;
 
-/** Editoryal güven sayfalarının CMS slug'ları (backend betiği `create-blog-trust-pages.ts`). */
+/** Editoryal guven sayfalari (Paket Z1-ek: ozel route'lar; her zaman vardir). */
 export const BLOG_TRUST_PAGES = [
   { slug: "content-standards", key: "contentStandards" },
   { slug: "medical-reviewers", key: "authorsReviewers" },
@@ -65,12 +66,14 @@ export async function buildBlogIndexMetadata(options: { lang: string; page: numb
 /** Paket Z1 — `/[lang]/blog` ve `/[lang]/blog/page/[n]` ortak gövdesi. */
 export async function BlogIndexPage({ lang, page, searchParams }: { lang: string; page: number; searchParams: BlogSearchParams }) {
   const { topic, q } = readFilters(searchParams);
-  const [locales, dict, list, groups, packages] = await Promise.all([
+  const [locales, dict, list, groups, packages, specialties] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchBlogListServer({ locale: lang, page, pageSize: BLOG_PAGE_SIZE, topic, q }),
     fetchBlogTopicsServer(lang),
     fetchPackagesServer(lang).catch(() => ({ items: [] as PackageCardData[], categories: [] })),
+    // Telehealth modulu kapaliysa / hata varsa kartlar gizlenir; sayfa yine calisir.
+    fetchSpecialtiesServer(lang).catch(() => [] as Specialty[]),
   ]);
   // Sayfa aralığı dışı (ör. /blog/page/99) yalnızca 1. sayfadan sonra 404'tür.
   if (page > 1 && list.items.length === 0) notFound();
@@ -82,18 +85,8 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
   // "All topics (N)" daima filtresiz toplamı gösterir.
   const overallTotal = filtered ? (await fetchBlogListServer({ locale: lang, page: 1, pageSize: 1 })).total : list.total;
 
-  const trustLinks = (
-    await Promise.all(
-      BLOG_TRUST_PAGES.map(async (entry) => {
-        try {
-          const cms = await fetchPageBySlugServer(entry.slug, lang);
-          return cms ? { label: t[entry.key], href: localize(`/${entry.slug}`) } : null;
-        } catch {
-          return null;
-        }
-      })
-    )
-  ).filter((link): link is { label: string; href: string } => link !== null);
+  const trustLinks = BLOG_TRUST_PAGES.map((entry) => ({ label: t[entry.key], href: localize(`/${entry.slug}`) }));
+  const activeSpecialties = specialties.filter((sp) => sp.isActive !== false);
 
   const featured = page === 1 && !q ? list.featured : null;
   const cards = list.items.filter((post) => post.id !== featured?.id);
@@ -104,17 +97,29 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
   const restChunk = cards.slice(6);
 
   return (
-    <div dir={localeDirection(lang)} className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12" data-testid="blog-index">
-      <BlogBreadcrumb ariaLabel={t.breadcrumbAria} items={[{ label: dict.common.home, href: localize("/") }, { label: t.pageTitle }]} />
-      <header className="mt-6 max-w-3xl">
-        <h1 className="font-heading text-3xl font-semibold text-foreground sm:text-4xl">{t.pageTitle}</h1>
-        <p className="mt-3 text-base text-foreground/70 sm:text-lg">{t.pageIntro}</p>
-        <p className="mt-3 text-sm font-medium text-foreground/70" data-testid="blog-total">
-          {fillBlogString(t.articleCount, { n: list.total })}
-        </p>
-      </header>
+    <div dir={localeDirection(lang)} data-testid="blog-index">
+      <BlogHero
+        t={t}
+        trustHref={localize("/content-standards")}
+        breadcrumb={<BlogBreadcrumb ariaLabel={t.breadcrumbAria} items={[{ label: dict.common.home, href: localize("/") }, { label: t.pageTitle }]} />}
+      >
+        {list.total > 0 ? (
+          <p className="mt-3 text-sm font-medium text-foreground/70" data-testid="blog-total">
+            {fillBlogString(t.articleCount, { n: list.total })}
+          </p>
+        ) : null}
+        <BlogSearchForm action={localize("/blog")} q={q} topic={topic} t={t} />
+      </BlogHero>
 
-      <BlogSearchForm action={localize("/blog")} q={q} topic={topic} t={t} />
+      <div className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 sm:pb-12">
+      <BlogSpecialtyBrowse
+        specialties={activeSpecialties}
+        groups={groups}
+        activeTopic={topic}
+        t={t}
+        filterHref={(slug) => localize(blogListPath({ topic: slug }))}
+        specialtyHref={(slug) => localize(`/specialties/${slug}`)}
+      />
       <BlogTopicFilter groups={groups} activeTopic={topic} total={overallTotal} t={t} hrefFor={(next) => localize(blogListPath({ topic: next, q }))} />
 
       {q ? (
@@ -125,17 +130,18 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
 
       {featured ? <BlogFeatured post={featured} href={cardHref(featured.slug)} t={t} lang={lang} /> : null}
 
-      {list.total === 0 ? (
+      {list.total === 0 && !filtered ? (
+        <>
+          <BlogEmptyState t={t} />
+          <BlogCoordinatorCta t={t} />
+        </>
+      ) : list.total === 0 ? (
         <div className="mt-10 rounded-[var(--site-radius)] border border-dashed border-border p-8 text-center" data-testid="blog-empty">
-          <p className="font-heading text-lg font-semibold text-foreground">{filtered ? t.noResultsTitle : t.emptyBlog}</p>
-          {filtered ? (
-            <>
-              <p className="mt-1 text-sm text-foreground/70">{t.noResultsText}</p>
-              <Link href={localize("/blog")} className="mt-4 inline-flex min-h-11 items-center rounded-[var(--site-radius)] border border-[var(--site-primary)] px-4 text-sm font-semibold text-[var(--site-primary)] hover:bg-[var(--site-primary)]/5">
-                {t.showAllArticles}
-              </Link>
-            </>
-          ) : null}
+          <p className="font-heading text-lg font-semibold text-foreground">{t.noResultsTitle}</p>
+          <p className="mt-1 text-sm text-foreground/70">{t.noResultsText}</p>
+          <Link href={localize("/blog")} className="mt-4 inline-flex min-h-11 items-center rounded-[var(--site-radius)] border border-[var(--site-primary)] px-4 text-sm font-semibold text-[var(--site-primary)] hover:bg-[var(--site-primary)]/5">
+            {t.showAllArticles}
+          </Link>
         </div>
       ) : (
         <>
@@ -170,6 +176,7 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
         allHref={localize("/packages")}
       />
       <BlogTrustLinks links={trustLinks} t={t} />
+      </div>
     </div>
   );
 }

@@ -46,3 +46,28 @@ export function specialtyIconFor(slug: string | null | undefined): LucideIcon {
   for (const [pattern, icon] of RULES) if (pattern.test(key)) return icon;
   return Stethoscope;
 }
+
+/**
+ * Paket Z1-ek - uzmanligin tutarli tonu. Yalnizca site tema tokenlarindan turetilir (sabit renk yok);
+ * ayni slug her zaman ayni tonu alir (kararli, sunucu/istemci farksiz).
+ */
+export interface SpecialtyTone {
+  /** Hafif zemin + okunur on plan (cip, ikon kutusu, sablon kapak). */
+  soft: string;
+  /** Yalnizca on plan rengi. */
+  text: string;
+}
+
+const TONES: SpecialtyTone[] = [
+  { soft: "bg-[var(--site-primary)]/10 text-[var(--site-primary)]", text: "text-[var(--site-primary)]" },
+  { soft: "bg-[var(--site-secondary)]/10 text-[var(--site-secondary)]", text: "text-[var(--site-secondary)]" },
+  { soft: "bg-[var(--site-accent)]/15 text-foreground", text: "text-foreground" },
+];
+
+export function specialtyToneFor(slug: string | null | undefined): SpecialtyTone {
+  const key = (slug ?? "").toLowerCase();
+  if (!key) return TONES[0]!;
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return TONES[hash % TONES.length]!;
+}

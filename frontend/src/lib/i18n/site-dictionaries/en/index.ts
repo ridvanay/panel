@@ -16,6 +16,7 @@ import { packagesStrings } from "./packages";
 import { destinationsStrings } from "./destinations";
 import { consultationStrings } from "./consultation";
 import { blogStrings } from "./blog";
+import { trustPagesStrings } from "./trust-pages";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -36,4 +37,5 @@ export const siteDictionary: SiteDictionary = {
   destinations: destinationsStrings,
   consultation: consultationStrings,
   blog: blogStrings,
+  trustPages: trustPagesStrings,
 };

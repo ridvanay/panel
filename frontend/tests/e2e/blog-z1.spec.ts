@@ -519,7 +519,7 @@ test("yazi: kunye, icindekiler (baglanti + yapiskan), key takeaways, FAQ akordeo
   // Kunye: yazar kurum, hekim (profil baglantisi), Last reviewed, okuma suresi.
   const byline = page.getByTestId("blog-byline");
   await expect(byline).toContainText("WM Health Editorial Team");
-  await expect(byline.getByTestId("blog-byline-reviewer")).toContainText("Medical review by");
+  await expect(byline.getByTestId("blog-byline-reviewer")).toContainText("Medically reviewed by");
   await expect(byline.getByRole("link", { name: new RegExp(escapeRe(reviewerName)) })).toHaveAttribute("href", new RegExp(`/physicians/${DOCTOR_SLUG}$`));
   await expect(page.getByTestId("blog-last-reviewed")).toContainText(/Last reviewed: .+/);
   await expect(byline).toContainText(/\d+ min read/);

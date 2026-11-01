@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { SafeImage } from "@/components/site/safe-image";
-import { specialtyIconFor } from "@/lib/blog/specialty-icon";
+import { specialtyIconFor, specialtyToneFor } from "@/lib/blog/specialty-icon";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,12 +36,12 @@ export function BlogCover({
   }
   return (
     <span
-      className={cn("relative flex flex-col items-center justify-center gap-2 overflow-hidden bg-[var(--site-primary)]/10 text-[var(--site-primary)]", className)}
+      className={cn("relative flex flex-col items-center justify-center gap-2 overflow-hidden", specialtyToneFor(specialtySlug).soft, className)}
       data-testid="blog-cover-template"
       aria-hidden="true"
     >
-      <span className="pointer-events-none absolute -end-6 -top-6 h-28 w-28 rounded-full bg-[var(--site-primary)]/10" />
-      <span className="pointer-events-none absolute -bottom-8 -start-8 h-32 w-32 rounded-full bg-[var(--site-primary)]/5" />
+      <span className="pointer-events-none absolute -end-6 -top-6 h-28 w-28 rounded-full bg-current opacity-10" />
+      <span className="pointer-events-none absolute -bottom-8 -start-8 h-32 w-32 rounded-full bg-current opacity-5" />
       {createElement(specialtyIconFor(specialtySlug), { className: cn("relative", large ? "h-16 w-16" : "h-10 w-10"), strokeWidth: 1.5 })}
       {label ? <span className="relative max-w-[80%] truncate text-xs font-medium uppercase tracking-wide">{label}</span> : null}
     </span>
