@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import type { PublicBlogList, Specialty } from "@/lib/api/types";
 import { GROUPS, LOCALES, PACKAGE, makeCard, makeDetail } from "./blog-z1-fixtures";
 
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   topics: vi.fn(),
   packages: vi.fn(),
   specialties: vi.fn(),
+  doctors: vi.fn(),
   detail: vi.fn(),
 }));
 
@@ -27,7 +28,10 @@ vi.mock("@/lib/api/server-blog", () => ({
 vi.mock("@/lib/api/server-locales", () => ({ fetchLocalesServer: async () => LOCALES }));
 vi.mock("@/lib/api/server-settings", () => ({ fetchSiteSettingsServer: async () => ({ siteName: "WM Health" }) }));
 vi.mock("@/lib/api/server-packages", () => ({ fetchPackagesServer: (...a: unknown[]) => mocks.packages(...a) }));
-vi.mock("@/lib/api/server-telehealth", () => ({ fetchSpecialtiesServer: (...a: unknown[]) => mocks.specialties(...a) }));
+vi.mock("@/lib/api/server-telehealth", () => ({
+  fetchSpecialtiesServer: (...a: unknown[]) => mocks.specialties(...a),
+  fetchAllDoctorsServer: (...a: unknown[]) => mocks.doctors(...a),
+}));
 vi.mock("@/components/site/matcher/matcher-modal", () => ({
   MatcherLaunchButton: () => <button type="button">Find my physician</button>,
 }));
@@ -55,6 +59,11 @@ beforeEach(() => {
   mocks.topics.mockReset().mockResolvedValue([]);
   mocks.packages.mockReset().mockResolvedValue({ items: [PACKAGE], categories: [] });
   mocks.specialties.mockReset().mockResolvedValue([specialty("orthopaedics", "Orthopaedics"), specialty("cardiology", "Cardiology"), specialty("dermatology", "Dermatology")]);
+  // Varsayılan: üç uzmanlığın da en az bir aktif hekimi var (biri ek uzmanlık olarak).
+  mocks.doctors.mockReset().mockResolvedValue([
+    { id: "d1", specialtyId: "orthopaedics", isActive: true },
+    { id: "d2", specialtyId: "cardiology", isActive: true, additionalSpecialties: [{ id: "dermatology", name: "Dermatology", slug: "dermatology" }] },
+  ]);
   mocks.detail.mockReset().mockResolvedValue(makeDetail());
 });
 
@@ -218,5 +227,39 @@ describe("Paket Z1-ek — yazı sayfası", () => {
     });
     expect(bar).toHaveAttribute("aria-valuenow", "100");
     Element.prototype.getBoundingClientRect = original;
+  });
+});
+
+describe("Browse by specialty — yalnızca aktif hekimi olan uzmanlıklar (kullanıcı kararı)", () => {
+  it("aktif hekimi olmayan uzmanlık kartı çizilmez; ek uzmanlık sayılır; pasif hekim sayılmaz", async () => {
+    mocks.specialties.mockResolvedValue([
+      specialty("orthopaedics", "Orthopaedics"),
+      specialty("cardiology", "Cardiology"),
+      specialty("dermatology", "Dermatology"),
+      specialty("neurosurgery", "Neurosurgery"),
+      specialty("hair-transplantation", "Hair transplantation"),
+    ]);
+    mocks.doctors.mockResolvedValue([
+      { id: "d1", specialtyId: "orthopaedics", isActive: true },
+      { id: "d2", specialtyId: "cardiology", isActive: true, additionalSpecialties: [{ id: "dermatology", name: "Dermatology", slug: "dermatology" }] },
+      { id: "d3", specialtyId: "neurosurgery", isActive: false },
+    ]);
+    await renderIndex("en");
+    const browse = screen.getByTestId("blog-specialties");
+    expect(within(browse).getByRole("link", { name: /Orthopaedics/ })).toBeInTheDocument();
+    expect(within(browse).getByRole("link", { name: /Cardiology/ })).toBeInTheDocument();
+    expect(within(browse).getByRole("link", { name: /Dermatology/ })).toBeInTheDocument();
+    expect(within(browse).queryByText(/Neurosurgery/)).toBeNull();
+    expect(within(browse).queryByText(/Hair transplantation/)).toBeNull();
+  });
+
+  it("hiç aktif hekim yoksa (ya da hekim listesi alınamazsa) bölüm çizilmez", async () => {
+    mocks.doctors.mockResolvedValue([]);
+    await renderIndex("en");
+    expect(screen.queryByTestId("blog-specialties")).toBeNull();
+    cleanup();
+    mocks.doctors.mockRejectedValue(new Error("boom"));
+    await renderIndex("en");
+    expect(screen.queryByTestId("blog-specialties")).toBeNull();
   });
 });

@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { fetchBlogListServer, fetchBlogTopicsServer } from "@/lib/api/server-blog";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchPackagesServer } from "@/lib/api/server-packages";
-import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
+import { fetchAllDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
+import { specialtiesWithActiveDoctors } from "@/lib/blog/specialties-with-doctors";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { localeDirection } from "@/lib/i18n/locale-direction";
@@ -66,7 +67,7 @@ export async function buildBlogIndexMetadata(options: { lang: string; page: numb
 /** Paket Z1 — `/[lang]/blog` ve `/[lang]/blog/page/[n]` ortak gövdesi. */
 export async function BlogIndexPage({ lang, page, searchParams }: { lang: string; page: number; searchParams: BlogSearchParams }) {
   const { topic, q } = readFilters(searchParams);
-  const [locales, dict, list, groups, packages, specialties] = await Promise.all([
+  const [locales, dict, list, groups, packages, specialties, doctors] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchBlogListServer({ locale: lang, page, pageSize: BLOG_PAGE_SIZE, topic, q }),
@@ -74,6 +75,8 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
     fetchPackagesServer(lang).catch(() => ({ items: [] as PackageCardData[], categories: [] })),
     // Telehealth modulu kapaliysa / hata varsa kartlar gizlenir; sayfa yine calisir.
     fetchSpecialtiesServer(lang).catch(() => [] as Specialty[]),
+    // Yalnızca aktif hekimi olan uzmanlıklar listelenir; hata durumunda kartlar gizlenir (sayfa çalışmaya devam eder).
+    fetchAllDoctorsServer(10, lang).catch(() => []),
   ]);
   // Sayfa aralığı dışı (ör. /blog/page/99) yalnızca 1. sayfadan sonra 404'tür.
   if (page > 1 && list.items.length === 0) notFound();
@@ -86,7 +89,7 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
   const overallTotal = filtered ? (await fetchBlogListServer({ locale: lang, page: 1, pageSize: 1 })).total : list.total;
 
   const trustLinks = BLOG_TRUST_PAGES.map((entry) => ({ label: t[entry.key], href: localize(`/${entry.slug}`) }));
-  const activeSpecialties = specialties.filter((sp) => sp.isActive !== false);
+  const activeSpecialties = specialtiesWithActiveDoctors(specialties, doctors);
 
   const featured = page === 1 && !q ? list.featured : null;
   const cards = list.items.filter((post) => post.id !== featured?.id);

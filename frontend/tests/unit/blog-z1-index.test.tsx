@@ -29,7 +29,7 @@ vi.mock("@/lib/api/server-pages", () => ({ fetchPageBySlugServer: (...a: unknown
 vi.mock("@/components/site/matcher/matcher-modal", () => ({
   MatcherLaunchButton: () => <button type="button">Find my physician</button>,
 }));
-vi.mock("@/lib/api/server-telehealth", () => ({ fetchSpecialtiesServer: (...a: unknown[]) => mocks.specialties(...a) }));
+vi.mock("@/lib/api/server-telehealth", () => ({ fetchSpecialtiesServer: (...a: unknown[]) => mocks.specialties(...a), fetchAllDoctorsServer: () => Promise.resolve([]) }));
 vi.mock("@/components/site/contact/contact-cta", () => ({ ContactCta: () => <div data-testid="contact-cta" /> }));
 
 import { BlogIndexPage, buildBlogIndexMetadata } from "@/components/site/blog/blog-index-page";
