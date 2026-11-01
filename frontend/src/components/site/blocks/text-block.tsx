@@ -10,15 +10,15 @@ const ALIGN_CLASS: Record<TextAlign, string> = {
 };
 
 export function TextBlockView({ block, chrome, siteContext }: { block: TextBlock; chrome: BlockChrome; siteContext?: BlockSiteContext }) {
-  return (
+  // Paket Z1-ek - `@tailwindcss/typography` projede yok (`prose` etkisizdi): zengin metin `.blog-prose` tipografisini
+  // alir (baslik olcegi, aralik, liste/tablo); CMS varyanti kolon genisligini sarmalayici belirler.
+  const body = (
     <RichContentWithShortcodes
       html={block.data.html}
       locale={siteContext?.lang}
-      className={cn(
-        "prose",
-        chrome === "page" ? "mx-auto max-w-3xl px-4 py-8 sm:px-6" : "max-w-none",
-        ALIGN_CLASS[block.data.align ?? "left"] ?? ALIGN_CLASS.left
-      )}
+      className={cn("blog-prose blog-prose--fill", ALIGN_CLASS[block.data.align ?? "left"] ?? ALIGN_CLASS.left)}
     />
   );
+  if (chrome !== "page") return body;
+  return <div className="mx-auto max-w-3xl px-4 py-4 sm:px-6">{body}</div>;
 }

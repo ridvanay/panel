@@ -823,6 +823,9 @@
   color: color-mix(in oklch, var(--foreground) 88%, transparent);
   overflow-wrap: anywhere;
 }
+/* Paket Z1-ek - CMS zengin metin varyanti: kolon genisligini sarmalayici belirler. */
+.blog-prose.blog-prose--fill { max-inline-size: none; }
+.blog-prose.blog-prose--fill > :last-child { margin-block-end: 0; }
 .blog-prose > :first-child { margin-block-start: 0; }
 .blog-prose p { margin-block: 1.1em; }
 .blog-prose h2,

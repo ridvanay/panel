@@ -20,6 +20,7 @@ import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
+import { selectDisplayNodes } from "@/lib/page-builder/hide-duplicate-title";
 import { buildFaqPageJsonLd, buildMapPlaceJsonLd } from "@/lib/page-builder/structured-data";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 
@@ -127,6 +128,15 @@ export default async function DynamicPage({ params }: PageProps) {
   // `legalMode !== "content"`) — yapılandırılmış veri bastırma kararı (Boşluk 2) bu TEK değeri kullanır.
   const noIndexEffective = page.noIndex || legalMode !== "content";
   const normalizedNodes = normalizePageNodes(page.blocks);
+  // Paket Z1-ek - icerik sayfa basligiyla ayni H1/H2 ile basliyorsa (ve baslik bandi gorunuyorsa) tekrar gizlenir;
+  // yalnizca render katmani (veri ve yapilandirilmis veri `normalizedNodes` ile ayni kalir). Hukuki belgelere DOKUNULMAZ.
+  const displayNodes = selectDisplayNodes({
+    nodes: normalizedNodes,
+    title: page.title,
+    isLegalDocument: page.isLegalDocument,
+    isHomeTemplate: isHomeTemplatePage(page),
+    headerStyle: appearance.pageHeaderStyle,
+  });
 
   const canonicalUrl = `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
   const isHomeTemplate = isHomeTemplatePage(page);
@@ -163,7 +173,7 @@ export default async function DynamicPage({ params }: PageProps) {
             // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
             {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
           >
-            <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
+            <BlockRenderer nodes={displayNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           </div>
           {/* Şablon sayfası `/` adresindeki görünümüyle aynı kalır — CMS paylaşım satırı eklenmez. */}
           {!isHomeTemplate && appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
