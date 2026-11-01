@@ -144,6 +144,19 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
     out.push("");
   }
 
+  // Paket Z1 — sağlık rehberleri (blog): yalnızca indekslenebilir yayındaki yazılar, en yenisi önce.
+  const posts = (data.posts ?? [])
+    .filter((p) => !p.noIndex && p.title)
+    .sort((a, b) => Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? "") || 0);
+  if (posts.length > 0) {
+    out.push("## Health guides", "", `- [All health guides](${url(data, "/blog")}): patient guides written by the editorial team and reviewed by physicians.`);
+    for (const post of full ? posts : posts.slice(0, 20)) {
+      const sentence = firstSentence(post.excerpt);
+      out.push(`- [${post.title}](${url(data, `/blog/${post.slug}`)})${sentence ? `: ${sentence}` : ""}`);
+    }
+    out.push("");
+  }
+
   out.push("## Languages", "");
   for (const l of enabled) {
     const prefix = withLocalePrefix("/", l.code, defaultCode);

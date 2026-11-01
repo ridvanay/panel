@@ -8,6 +8,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoctorPortalContext } from "@/components/site/telehealth/doctor-portal-context";
 import { TwoFactorSetupPanel } from "@/components/site/security/two-factor-setup-panel";
 import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { useBlogStrings } from "@/lib/i18n/use-blog-strings";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
@@ -47,6 +48,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const { refreshSession } = useAuth();
   const { status, error, retry } = useDoctorPortalContext();
   const { t } = usePortalStrings();
+  const blogT = useBlogStrings();
   const friendlyErrorMessage = useFriendlyError();
 
   /**
@@ -122,6 +124,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const earningsHref = localize("/doctor/earnings");
   const profileHref = localize("/doctor/profile");
   const scheduleHref = localize("/doctor/schedule");
+  const blogReviewHref = localize("/doctor/blog-review");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -137,6 +140,9 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
         </Link>
         <Link href={scheduleHref} className={pathname === scheduleHref ? "font-medium text-primary" : "hover:text-foreground"}>
           {t.doctorSchedule.navLabel}
+        </Link>
+        <Link href={blogReviewHref} className={pathname === blogReviewHref ? "font-medium text-primary" : "hover:text-foreground"}>
+          {blogT.reviewNav}
         </Link>
       </nav>
       {children}

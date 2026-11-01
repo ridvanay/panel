@@ -634,16 +634,20 @@ export interface BlogCategory {
   name: string;
   slug: string;
   createdAt: string;
+  /** Paket Z1 — tıbbi kategori (varsayılan true); false olanda "not_required" seçilebilir. */
+  isMedical?: boolean;
 }
 
 export interface CreateBlogCategoryRequest {
   name: string;
   slug?: string;
+  isMedical?: boolean;
 }
 
 export interface UpdateBlogCategoryRequest {
   name?: string;
   slug?: string;
+  isMedical?: boolean;
 }
 
 // ---------- §10.14 Blog Etiketleri (Tag) ----------
@@ -705,9 +709,121 @@ export interface BlogPost {
   author: UserSummary | null;
   seoScore: number;
   seoScoreIssues: SeoScoreIssue[];
+  // ---- Paket Z1 — tıbbi inceleme / zengin alanlar (eski kayıtlarda/testlerde eksik olabilir) ----
+  specialtyId?: string | null;
+  careTopicIds?: string[];
+  reviewerDoctorId?: string | null;
+  medicalReviewStatus?: BlogMedicalReviewStatus;
+  medicalReviewNote?: string | null;
+  lastReviewedAt?: string | null;
+  readingMinutes?: number | null;
+  keyTakeaways?: string[];
+  faq?: BlogFaqItem[];
+  references?: BlogReference[];
+  isFeatured?: boolean;
 }
 
-export interface CreateBlogPostRequest {
+export type BlogMedicalReviewStatus = "not_required" | "pending" | "approved" | "changes_requested";
+export interface BlogFaqItem {
+  question: string;
+  answer: string;
+}
+export interface BlogReference {
+  title: string;
+  publisher: string;
+  url: string;
+  /** YYYY-AA-GG */
+  accessedAt: string;
+}
+
+/** Admin yazma gövdesine eklenen Z1 alanları. `medicalReviewStatus` yalnızca pending | not_required yazılabilir. */
+export interface BlogReviewWriteFields {
+  specialtyId?: string | null;
+  careTopicIds?: string[];
+  reviewerDoctorId?: string | null;
+  medicalReviewStatus?: "pending" | "not_required";
+  keyTakeaways?: string[];
+  faq?: BlogFaqItem[];
+  references?: BlogReference[];
+  isFeatured?: boolean;
+}
+
+// ---------- Paket Z1 — herkese açık blog (liste / konular / detay) ----------
+export interface PublicBlogReviewer {
+  name: string;
+  slug: string;
+  avatarUrl: string | null;
+}
+
+export interface PublicBlogCard {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  /** Ham (göreli olabilir) — tarayıcıya SafeImage/toPublicMediaUrl ile verilir. */
+  coverUrl: string | null;
+  category: { name: string; slug: string } | null;
+  specialty: { slug: string; name: string } | null;
+  reviewer: PublicBlogReviewer | null;
+  publishedAt: string | null;
+  lastReviewedAt: string | null;
+  readingMinutes: number;
+}
+
+export interface PublicBlogList {
+  items: PublicBlogCard[];
+  total: number;
+  page: number;
+  pageSize: number;
+  featured: PublicBlogCard | null;
+}
+
+export interface PublicBlogTopicGroup {
+  specialty: { slug: string; name: string };
+  count: number;
+  topics: { slug: string; label: string; count: number }[];
+}
+
+export interface PublicBlogDetail extends PublicBlogCard {
+  contentHtml: string;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  keyTakeaways: string[];
+  faq: BlogFaqItem[];
+  references: BlogReference[];
+  updatedAt: string;
+  reviewer:
+    | (PublicBlogReviewer & { title: string; specialty: { slug: string; name: string } | null })
+    | null;
+  careTopics: { slug: string; label: string }[];
+  relatedPosts: PublicBlogCard[];
+  consultDoctors: { slug: string; name: string; title: string; avatarUrl: string | null; specialty: { slug: string; name: string } | null }[];
+  coverCompatUrl: string | null;
+  /** Yalnızca çevirisi olan diller. */
+  localizations: { locale: string; slug: string }[];
+}
+
+// ---------- Paket Z1 — doktor paneli "Medical review" kuyruğu ----------
+export interface DoctorBlogReviewItem {
+  id: string;
+  title: string;
+  excerpt: string | null;
+  status: string;
+  medicalReviewStatus: BlogMedicalReviewStatus;
+  medicalReviewNote: string | null;
+  category: { name: string; slug?: string } | null;
+  readingMinutes: number | null;
+  keyTakeaways: string[];
+  contentHtml: string;
+  lastReviewedAt: string | null;
+  updatedAt: string;
+}
+
+export interface CreateBlogPostRequest extends BlogReviewWriteFields {
   title: string;
   slug?: string;
   excerpt?: string;
@@ -1848,7 +1964,7 @@ export interface UpdateSiteSettingsRequest {
   liveChatPosition?: LiveChatPosition;
 }
 
-export interface UpdateBlogPostRequest {
+export interface UpdateBlogPostRequest extends BlogReviewWriteFields {
   title?: string;
   slug?: string;
   excerpt?: string | null;

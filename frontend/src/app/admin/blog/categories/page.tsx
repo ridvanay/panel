@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -52,6 +53,9 @@ export default function AdminBlogCategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  // Paket Z1 — yeni kategori tıbbi mi? (varsayılan: evet) ve satır anahtarı kaydı sürerken kilit.
+  const [newIsMedical, setNewIsMedical] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -70,9 +74,10 @@ export default function AdminBlogCategoriesPage() {
   async function onCreateSubmit(values: CreateCategoryFormValues) {
     setCreateError(null);
     try {
-      await blogApi.createCategory({ name: values.name });
+      await blogApi.createCategory({ name: values.name, isMedical: newIsMedical });
       toast.success("Kategori eklendi.");
       resetCreateForm();
+      setNewIsMedical(true);
       await load();
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -110,6 +115,21 @@ export default function AdminBlogCategoriesPage() {
     }
   }
 
+  async function handleToggleMedical(category: BlogCategory, next: boolean) {
+    setTogglingId(category.id);
+    try {
+      await blogApi.updateCategory(category.id, { isMedical: next });
+      toast.success(next ? "Kategori tıbbi olarak işaretlendi." : "Kategori tıbbi değil olarak işaretlendi.");
+      await load();
+    } catch (err) {
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function handleDelete() {
     if (!pendingDelete) return;
     const categoryId = pendingDelete.id;
@@ -129,7 +149,7 @@ export default function AdminBlogCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <PageHeading icon={Tag} title="Kategoriler" description="Blog kategorilerini yönetin." />
 
       {error && (
@@ -152,6 +172,7 @@ export default function AdminBlogCategoriesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Ad</TableHead>
+              <TableHead>Tıbbi kategori</TableHead>
               <TableHead className="text-right">İşlemler</TableHead>
             </TableRow>
           </TableHeader>
@@ -180,6 +201,14 @@ export default function AdminBlogCategoriesPage() {
                     ) : (
                       category.name
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={category.isMedical ?? true}
+                      disabled={togglingId === category.id}
+                      onCheckedChange={(next) => void handleToggleMedical(category, next)}
+                      aria-label={`"${category.name}" kategorisi tıbbi`}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     {isEditing ? (
@@ -245,6 +274,10 @@ export default function AdminBlogCategoriesPage() {
             <Field id="category-name" label="Kategori adı" error={createErrors.name?.message} required>
               {(inputProps) => <Input {...inputProps} {...registerCreate("name")} />}
             </Field>
+          </div>
+          <div className="flex items-center gap-2 pb-2">
+            <Switch checked={newIsMedical} onCheckedChange={setNewIsMedical} aria-label="Yeni kategori tıbbi" />
+            <span className="text-sm text-foreground/70">Tıbbi kategori</span>
           </div>
           <Button type="submit" loading={creating}>
             Ekle

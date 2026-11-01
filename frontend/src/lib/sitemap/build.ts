@@ -22,6 +22,11 @@ interface LocalizedContent {
   localizations?: ContentLocalization[];
   noIndex?: boolean;
   publishedAt?: string | null;
+  /** Paket Z1 — blog: `lastmod = lastReviewedAt ?? updatedAt` (yoksa publishedAt). */
+  lastReviewedAt?: string | null;
+  updatedAt?: string | null;
+  title?: string;
+  excerpt?: string | null;
 }
 
 /** Paket X — yayındaki (aktif) sağlık paketi: yalnızca içeriği O DİLDE bulunan diller (`locales`) sitemap/hreflang'e girer. */
@@ -171,7 +176,11 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       if (items.length === 0) return [];
       const prefix = section === "blog" ? "/blog" : section === "products" ? "/products" : "/portfolio";
       const entries = expand(data, allLocaleVariants(data, prefix));
-      for (const item of items) entries.push(...expand(data, contentVariants(data, item, prefix), item.publishedAt));
+      for (const item of items) {
+        // Paket Z1 — blog yazısında lastmod hekim gözden geçirme tarihidir; yalnızca çevirisi olan diller girer (contentVariants).
+        const lastmod = section === "blog" ? (item.lastReviewedAt ?? item.updatedAt ?? item.publishedAt) : item.publishedAt;
+        entries.push(...expand(data, contentVariants(data, item, prefix), lastmod));
+      }
       return entries;
     }
   }

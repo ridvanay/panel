@@ -15,6 +15,7 @@ import { contactCtaStrings } from "./contact-cta";
 import { packagesStrings } from "./packages";
 import { destinationsStrings } from "./destinations";
 import { consultationStrings } from "./consultation";
+import { blogStrings } from "./blog";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -34,4 +35,5 @@ export const siteDictionary: SiteDictionary = {
   packages: packagesStrings,
   destinations: destinationsStrings,
   consultation: consultationStrings,
+  blog: blogStrings,
 };

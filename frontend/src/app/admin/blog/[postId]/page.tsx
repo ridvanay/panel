@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import * as blogApi from "@/lib/api/blog";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
-import type { BlogCategory, BlogTag, ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
+import type { BlogCategory, BlogMedicalReviewStatus, BlogTag, ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
@@ -30,7 +30,16 @@ import { TagSelect } from "@/components/admin/blog/tag-select";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { BlogReviewPanel } from "@/components/admin/blog/blog-review-panel";
+import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
+import {
+  cleanTranslationLists,
+  computeReadingMinutes,
+  getTranslatedFaq,
+  getTranslatedTakeaways,
+  setTranslatedList,
+} from "@/lib/blog/admin-fields";
+import { EMPTY_REVIEW_STATE, reviewStateFromPost, reviewStateKey, reviewStateToPayload, type BlogReviewState } from "@/lib/blog/admin-review-state";
 import { computeLocaleStatus, getTranslatedField, isFallbackField, localeStatusDetail, setTranslatedField } from "@/lib/i18n/translation-helpers";
 import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 import { motion } from "framer-motion";
@@ -55,6 +64,8 @@ interface PostSnapshot {
   canonicalUrl: string;
   noIndex: boolean;
   translations: string;
+  /** Paket Z1 — uzmanlık/hekim/özet/SSS/kaynak alanlarının kararlı anahtarı. */
+  review: string;
 }
 
 /** Küme kimliği için sıra anlamlı değildir — `tagIds` dirty kontrolü ve gövde karşılaştırması bununla yapılır. */
@@ -133,6 +144,14 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [viewCount, setViewCount] = useState(0);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PostSnapshot | null>(null);
+  // Paket Z1 — tıbbi inceleme alanları ve kayıtlı inceleme durumu (salt okunur).
+  const [review, setReview] = useState<BlogReviewState>(EMPTY_REVIEW_STATE);
+  const [reviewMeta, setReviewMeta] = useState<{ status: BlogMedicalReviewStatus; note: string | null; lastReviewedAt: string | null }>({
+    status: "pending",
+    note: null,
+    lastReviewedAt: null,
+  });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   // TipTap `useEditor({ content })` içeriği yalnızca ilk mount'ta okur (uncontrolled).
   // `load()` her çalıştığında (ilk yükleme, versiyon restore) bu sayaç artırılır ve
   // PostEditor'ın `key`'ine dahil edilerek editör TAM REMOUNT edilir — böylece restore
@@ -172,6 +191,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         canonicalUrl: post.canonicalUrl ?? "",
         noIndex: post.noIndex,
         translations: JSON.stringify(post.translations ?? {}),
+        review: reviewStateKey(reviewStateFromPost(post)),
       };
       setTitle(nextSnapshot.title);
       setSlug(nextSnapshot.slug);
@@ -188,6 +208,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setOgImageUrl(nextSnapshot.ogImageUrl);
       setCanonicalUrl(nextSnapshot.canonicalUrl);
       setNoIndex(nextSnapshot.noIndex);
+      setReview(reviewStateFromPost(post));
+      setReviewMeta({ status: post.medicalReviewStatus ?? "pending", note: post.medicalReviewNote ?? null, lastReviewedAt: post.lastReviewedAt ?? null });
       setTranslations(post.translations ?? {});
       setSavedTranslations(post.translations ?? {});
       setViewCount(post.viewCount);
@@ -234,7 +256,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       ogImageUrl !== snapshot.ogImageUrl ||
       canonicalUrl !== snapshot.canonicalUrl ||
       noIndex !== snapshot.noIndex ||
-      JSON.stringify(translations) !== snapshot.translations
+      JSON.stringify(translations) !== snapshot.translations ||
+      reviewStateKey(review) !== snapshot.review
     );
   }, [
     title,
@@ -253,6 +276,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
     canonicalUrl,
     noIndex,
     translations,
+    review,
     snapshot,
   ]);
 
@@ -279,6 +303,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
 
   async function handleSave() {
     setSaveError(null);
+    setFieldErrors({});
     setSaving(true);
     try {
       await blogApi.updatePost(postId, {
@@ -298,13 +323,16 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         ogImageUrl: ogImageUrl || null,
         canonicalUrl: canonicalUrl || null,
         noIndex,
-        translations,
+        translations: cleanTranslationLists(translations),
+        ...reviewStateToPayload(review),
       });
       toast.success("Yazı kaydedildi.");
       setSavedTranslations(translations);
       await load();
     } catch (err) {
       const message = friendlyErrorMessage(err);
+      // 422 alan hataları (ör. yayın için hekim onayı gerekli) ilgili alanın altında gösterilir.
+      setFieldErrors(fieldErrorsFrom(err));
       setSaveError(message);
       toast.error(message);
     } finally {
@@ -524,6 +552,27 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
               onChange={(html) => (isDefaultLocale ? setContentHtml(html) : setEnField("contentHtml", html))}
             />
           </div>
+
+          <BlogReviewPanel
+            value={review}
+            onChange={(patch) => setReview((prev) => ({ ...prev, ...patch }))}
+            currentStatus={reviewMeta.status}
+            reviewNote={reviewMeta.note}
+            lastReviewedAt={reviewMeta.lastReviewedAt}
+            categoryIsMedical={categoryId ? (categories.find((c) => c.id === categoryId)?.isMedical ?? true) : null}
+            isAdmin={user?.role === "ADMIN"}
+            localeLabel={locale.toUpperCase()}
+            takeaways={isDefaultLocale ? review.keyTakeaways : getTranslatedTakeaways(translations, locale)}
+            faq={isDefaultLocale ? review.faq : getTranslatedFaq(translations, locale)}
+            onTakeawaysChange={(list) =>
+              isDefaultLocale ? setReview((prev) => ({ ...prev, keyTakeaways: list })) : setTranslations((prev) => setTranslatedList(prev, locale, "keyTakeaways", list))
+            }
+            onFaqChange={(list) =>
+              isDefaultLocale ? setReview((prev) => ({ ...prev, faq: list })) : setTranslations((prev) => setTranslatedList(prev, locale, "faq", list))
+            }
+            readingMinutes={computeReadingMinutes(isDefaultLocale ? contentHtml : getEnField("contentHtml") || contentHtml)}
+            fieldErrors={fieldErrors}
+          />
         </TabsContent>
 
         <TabsContent value="seo" className="mt-6 outline-none">

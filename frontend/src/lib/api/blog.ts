@@ -8,6 +8,7 @@ import type {
   CreateBlogCategoryRequest,
   CreateBlogPostRequest,
   CreateBlogTagRequest,
+  DoctorBlogReviewItem,
   Page,
   TrashedFilter,
   UpdateBlogCategoryRequest,
@@ -106,4 +107,23 @@ export function autosavePost(
   body: { title?: string; excerpt?: string | null; contentHtml?: string }
 ) {
   return apiFetch<{ savedAt: string }>(`/admin/blog/${postId}/autosave`, { method: "POST", body });
+}
+
+/** Paket Z1 — editörde okuma süresi önizlemesi (sunucudaki formülün aynısı). */
+export function previewReadingTime(html: string) {
+  return apiFetch<{ minutes: number }>("/admin/blog/reading-time", { method: "POST", body: { html } });
+}
+
+// ---- Paket Z1 — doktor paneli "Medical review" kuyruğu ----
+export function listDoctorBlogReviews() {
+  return apiFetch<DoctorBlogReviewItem[]>("/doctor/blog-reviews");
+}
+
+export function approveDoctorBlogReview(id: string) {
+  return apiFetch<DoctorBlogReviewItem>(`/doctor/blog-reviews/${encodeURIComponent(id)}/approve`, { method: "POST" });
+}
+
+/** `note` 1..2000 karakter (backend zorunlu kılar; arayüz de gönderimden önce denetler). */
+export function requestDoctorBlogChanges(id: string, note: string) {
+  return apiFetch<DoctorBlogReviewItem>(`/doctor/blog-reviews/${encodeURIComponent(id)}/request-changes`, { method: "POST", body: { note } });
 }

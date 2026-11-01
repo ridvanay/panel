@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, ChevronLeft, Newspaper } from "lucide-react";
@@ -24,7 +24,10 @@ import { CategorySelect } from "@/components/admin/blog/category-select";
 import { TagSelect } from "@/components/admin/blog/tag-select";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { BlogReviewPanel } from "@/components/admin/blog/blog-review-panel";
+import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { cleanFaq, cleanTakeaways, computeReadingMinutes } from "@/lib/blog/admin-fields";
+import { EMPTY_REVIEW_STATE, reviewStateToPayload, type BlogReviewState } from "@/lib/blog/admin-review-state";
 import { useAuth } from "@/context/auth-context";
 
 // `blogApi.createPost` gövdesini BİREBİR yansıtan istemci tarafı zod şeması. `title` ve
@@ -49,6 +52,9 @@ export default function NewBlogPostPage() {
   const [tags, setTags] = useState<BlogTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Paket Z1 — tıbbi inceleme alanları (yeni yazıda inceleme durumu hep "pending" başlar).
+  const [review, setReview] = useState<BlogReviewState>(EMPTY_REVIEW_STATE);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   // §10.21 — blog kategori/etiket oluşturma-güncelleme SiteRole=ADMIN, MANAGER veya EDITOR'dür (§5.3 satır 3).
@@ -71,6 +77,9 @@ export default function NewBlogPostPage() {
       authorId: user?.id ?? "",
     },
   });
+
+  const watchedContent = useWatch({ control, name: "contentHtml" });
+  const watchedCategory = useWatch({ control, name: "categoryId" });
 
   useEffect(() => {
     (async () => {
@@ -103,6 +112,7 @@ export default function NewBlogPostPage() {
 
   async function onSubmit(values: FormValues) {
     setError(null);
+    setFieldErrors({});
     try {
       const post = await blogApi.createPost({
         title: values.title,
@@ -112,18 +122,20 @@ export default function NewBlogPostPage() {
         tagIds,
         contentHtml: values.contentHtml,
         authorId: isAdmin && values.authorId ? values.authorId : undefined,
+        ...reviewStateToPayload({ ...review, keyTakeaways: cleanTakeaways(review.keyTakeaways), faq: cleanFaq(review.faq) }),
       });
       toast.success("Yazı oluşturuldu.");
       router.push(`/admin/blog/${post.id}`);
     } catch (err) {
       const message = friendlyErrorMessage(err);
+      setFieldErrors(fieldErrorsFrom(err));
       setError(message);
       toast.error(message);
     }
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <Link
         href="/admin/blog"
         className="inline-flex items-center gap-1 text-sm text-foreground/60 transition-colors hover:text-foreground"
@@ -213,6 +225,21 @@ export default function NewBlogPostPage() {
               </p>
             )}
           </div>
+
+          <BlogReviewPanel
+            value={review}
+            onChange={(patch) => setReview((prev) => ({ ...prev, ...patch }))}
+            currentStatus="pending"
+            categoryIsMedical={watchedCategory ? (categories.find((c) => c.id === watchedCategory)?.isMedical ?? true) : null}
+            isAdmin={isAdmin}
+            localeLabel="Varsayılan dil"
+            takeaways={review.keyTakeaways}
+            faq={review.faq}
+            onTakeawaysChange={(list) => setReview((prev) => ({ ...prev, keyTakeaways: list }))}
+            onFaqChange={(list) => setReview((prev) => ({ ...prev, faq: list }))}
+            readingMinutes={computeReadingMinutes(watchedContent)}
+            fieldErrors={fieldErrors}
+          />
 
           <Button type="submit" loading={isSubmitting}>
             Oluştur ve devam et

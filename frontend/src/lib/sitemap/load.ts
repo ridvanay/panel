@@ -31,12 +31,12 @@ async function loadPackages(locales: SitemapData["locales"]): Promise<PackageSit
  * Paket S — sitemap ve llms.txt için ortak veri (yalnızca yayımlanmış/aktif içerik dönen public uçlar).
  * Önbellek: `fetchServerJson`'ın içerik etiketleri (sayfa/blog/doktor/uzmanlık/dil kaydında yenilenir);
  * ürün/portföy listelerinde etiket yok — en geç 60 sn'lik `revalidate` ile yenilenir. Liste uçlarının
- * sınırları (blog/ürün/portföy 50, doktor 100) bugünkü içerik sayısının çok üstünde; aşılırsa sayfalama gerekir.
+ * sınırları (blog yazıları imleçle tümü okunur; ürün/portföy 50, doktor 100) bugünkü içerik sayısının çok üstünde; aşılırsa sayfalama gerekir.
  */
 export async function loadSiteContent(): Promise<SitemapData & { siteName: string }> {
   const [pages, posts, products, portfolio, doctors, specialties, settings, locales] = await Promise.all([
     withBuildTimeFallback(() => fetchPublishedPagesServer(), []),
-    withBuildTimeFallback(() => fetchBlogPostsServer(), []),
+    withBuildTimeFallback(() => fetchBlogPostsServer(undefined, { all: true }), []),
     withBuildTimeFallback(() => fetchProductsServer(), []),
     withBuildTimeFallback(() => fetchPortfolioItemsServer(), []),
     withBuildTimeFallback(() => fetchDoctorsServer({}), []),

@@ -14,6 +14,7 @@ import type { ContactCtaStrings } from "./en/contact-cta";
 import type { PackagesStrings } from "./en/packages";
 import type { DestinationsStrings } from "./en/destinations";
 import type { ConsultationStrings } from "./en/consultation";
+import type { BlogStrings } from "./en/blog";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -44,6 +45,8 @@ export type SiteDictionary = {
   destinations: DestinationsStrings;
   /** Paket AF — video görüşme odası (consultation-room, interpreter-room, room/*). */
   consultation: ConsultationStrings;
+  /** Paket Z1 — blog ("Health Guides"), yazı sayfası ve doktor paneli "Medical review" kuyruğu. */
+  blog: BlogStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings, BlogStrings };

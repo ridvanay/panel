@@ -1,50 +1,18 @@
 import type { Metadata } from "next";
-import { fetchBlogPostsServer } from "@/lib/api/server-blog";
-import { fetchLocalesServer } from "@/lib/api/server-locales";
-import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
-import { BlogCard } from "@/components/site/blog-card";
-import { PageHeader } from "@/components/site/page-header";
+import { BlogIndexPage, buildBlogIndexMetadata, type BlogSearchParams } from "@/components/site/blog/blog-index-page";
 
-export const metadata: Metadata = { title: "Blog" };
+/** Paket Z1 — `/[lang]/blog` (1. sayfa). Sayfalama `/[lang]/blog/page/[n]`'dedir; canonical/noindex kararı `buildBlogIndexMetadata`'da. */
+type PageProps = {
+  params: Promise<{ lang: string }>;
+  searchParams: Promise<BlogSearchParams>;
+};
 
-export default async function BlogIndexPage({ params }: { params: Promise<{ lang: string }> }) {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { lang } = await params;
-  const [posts, locales, appearance] = await Promise.all([
-    fetchBlogPostsServer(lang),
-    fetchLocalesServer(),
-    fetchSiteAppearanceServer(),
-  ]);
-  const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+  return buildBlogIndexMetadata({ lang, page: 1, searchParams: await searchParams });
+}
 
-  return (
-    <>
-      <PageHeader
-        title="Blog"
-        style={appearance.pageHeaderStyle}
-        layout={appearance.pageHeaderLayout}
-        backgroundColor={appearance.pageHeaderBackgroundColor}
-        backgroundUrl={appearance.pageHeaderBackgroundUrl}
-        overlayOpacity={appearance.pageHeaderOverlayOpacity}
-        containerClassName="mx-auto max-w-4xl px-4 sm:px-6"
-      />
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-        {posts.length === 0 ? (
-          <p className="mt-8 text-sm text-foreground/60">Henüz yazı yayınlanmadı.</p>
-        ) : (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            {posts.map((post) => (
-              <BlogCard
-                key={post.id}
-                title={post.title}
-                excerpt={post.excerpt ?? ""}
-                slug={post.slug}
-                activeLocaleCode={lang}
-                defaultLocaleCode={defaultLocaleCode}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  );
+export default async function BlogIndexRoute({ params, searchParams }: PageProps) {
+  const { lang } = await params;
+  return <BlogIndexPage lang={lang} page={1} searchParams={await searchParams} />;
 }
