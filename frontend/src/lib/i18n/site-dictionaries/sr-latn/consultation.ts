@@ -106,4 +106,5 @@ export const consultationStrings: ConsultationStrings = {
   deviceCheckMicLevel: "Nivo mikrofona",
   deviceCheckSpeakerTest: "Pusti probni zvuk",
   deviceCheckHint: "Dozvolite pristup kameri i mikrofonu, a zatim proverite da vidite sebe i da se traka nivoa pomera kada govorite.",
+  moreOptions: "Više opcija",
 };

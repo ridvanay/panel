@@ -106,4 +106,5 @@ export const consultationStrings: ConsultationStrings = {
   deviceCheckMicLevel: "Mikrofon seviyesi",
   deviceCheckSpeakerTest: "Test sesini çal",
   deviceCheckHint: "Kamera ve mikrofon iznini verin; kendinizi görebildiğinizi ve konuşunca seviye çubuğunun hareket ettiğini kontrol edin.",
+  moreOptions: "Daha fazla",
 };

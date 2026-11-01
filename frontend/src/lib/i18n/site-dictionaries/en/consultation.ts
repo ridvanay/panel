@@ -108,6 +108,7 @@ export const consultationStrings = {
   deviceCheckMicLevel: "Microphone level",
   deviceCheckSpeakerTest: "Play test sound",
   deviceCheckHint: "Allow camera and microphone access, then check that you can see yourself and that the level bar moves when you speak.",
+  moreOptions: "More options",
 } as const;
 
 export type ConsultationStrings = Record<keyof typeof consultationStrings, string>;

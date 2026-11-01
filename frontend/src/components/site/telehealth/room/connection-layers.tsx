@@ -49,6 +49,19 @@ export function ConnectionLayers({
   const [weak, setWeak] = useState(false);
   const [lost, setLost] = useState<{ identity: string; name: string } | null>(null);
 
+  // KÖK NEDEN ("Yeniden bağlanılıyor…" takılı kalıyordu): katman yalnızca `RoomEvent.Reconnected` ile kapanıyordu; SDK'nın
+  // Reconnecting → (Disconnected) → yeniden bağlan → Connected yolunda bu olay gelmez. Bağlantı DURUMU Connected/Disconnected'a
+  // GEÇTİĞİNDE de temizlenir (geçiş bazlı: aynı durumda kalırken olaylarla açılan katmanı etkilemez).
+  const connectionState = useConnectionState();
+  const [seenState, setSeenState] = useState(connectionState);
+  if (seenState !== connectionState) {
+    setSeenState(connectionState);
+    if (connectionState === ConnectionState.Connected || connectionState === ConnectionState.Disconnected) {
+      setSdkReconnecting(false);
+      if (connectionState === ConnectionState.Connected) setWeak(false);
+    }
+  }
+
   useEffect(() => {
     const onReconnecting = () => setSdkReconnecting(true);
     const onReconnected = () => {

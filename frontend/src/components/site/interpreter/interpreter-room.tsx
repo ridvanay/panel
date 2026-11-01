@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import "@livekit/components-styles";
 import { LiveKitRoom, RoomAudioRenderer, TrackToggle, useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
@@ -239,6 +239,16 @@ export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
     setError(failureMessage(classifyMediaFailure(failure), ct));
   }
 
+  // Kararlı geri çağrılar: `useLiveKitRoom` bağlanma efekti `onError`'u izler; her render'da yeni kimlik eski token ile yeniden
+  // `room.connect()` çağırırdı (bkz. consultation-room.tsx).
+  const latestHandlers = useRef({ handleDisconnected, handleConnectionError, handleMediaFailure });
+  useEffect(() => {
+    latestHandlers.current = { handleDisconnected, handleConnectionError, handleMediaFailure };
+  });
+  const stableDisconnected = useCallback((reason?: DisconnectReason) => latestHandlers.current.handleDisconnected(reason), []);
+  const stableError = useCallback((err: unknown) => latestHandlers.current.handleConnectionError(err), []);
+  const stableMediaFailure = useCallback((failure?: string) => latestHandlers.current.handleMediaFailure(failure), []);
+
   async function join() {
     resetReconnect();
     setRequesting(true);
@@ -289,9 +299,9 @@ export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
             audio
             connect
             options={{ adaptiveStream: true, dynacast: true }}
-            onDisconnected={handleDisconnected}
-            onError={handleConnectionError}
-            onMediaDeviceFailure={handleMediaFailure}
+            onDisconnected={stableDisconnected}
+            onError={stableError}
+            onMediaDeviceFailure={stableMediaFailure}
             className="relative aspect-[3/4] max-h-[calc(100dvh-8rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video"
             data-testid="interpreter-room"
           >

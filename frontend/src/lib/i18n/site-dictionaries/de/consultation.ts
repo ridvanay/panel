@@ -106,4 +106,5 @@ export const consultationStrings: ConsultationStrings = {
   deviceCheckMicLevel: "Mikrofonpegel",
   deviceCheckSpeakerTest: "Testton abspielen",
   deviceCheckHint: "Erlauben Sie den Zugriff auf Kamera und Mikrofon und prüfen Sie, ob Sie sich sehen und der Pegelbalken beim Sprechen ausschlägt.",
+  moreOptions: "Weitere Optionen",
 };

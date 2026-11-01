@@ -187,7 +187,7 @@ function CountdownDigits({ ms, active }: { ms: number; active: boolean }) {
   return (
     <span
       className={cn(
-        "font-heading text-3xl font-bold tabular-nums tracking-tight sm:text-5xl",
+        "block font-heading text-3xl font-bold tabular-nums tracking-tight sm:text-5xl",
         active ? "text-primary" : "text-foreground"
       )}
     >
@@ -239,9 +239,11 @@ function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin,
         )}
 
         {joinState.isJoinable && !notConfigured && (
-          <Button type="button" onClick={onJoin} loading={requesting} className="mt-4 rounded-[var(--site-radius)]">
-            {t.joinButton}
-          </Button>
+          <div className="mt-4 flex justify-center">
+            <Button type="button" onClick={onJoin} loading={requesting} className="rounded-[var(--site-radius)]">
+              {t.joinButton}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -519,6 +521,17 @@ function ConsultationVideoRoom({
   // `LiveKitRoomProps` `React.RefAttributes<HTMLDivElement>` genişletir, yani ref doğrudan
   // altındaki DOM düğümüne bağlanır (bkz. `@livekit/components-react` LiveKitRoom.d.ts).
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // KÖK NEDEN (sekme çakışması ping-pong): `useLiveKitRoom`'un bağlanma efekti `onError`'u bağımlılık olarak izler. Üst bileşenin
+  // her render'ında yeni işlev kimliği gelince (ör. DUPLICATE_IDENTITY sonrası faz değişimi) efekt yeniden çalışıp ESKİ token ile
+  // `room.connect()` çağırıyor, diğer sekmeyi düşürüyordu. Geri çağrılar kararlı sarmalayıcılarla verilir; efekt yalnızca
+  // token/serverUrl değişince çalışır.
+  const latest = useRef({ onLeave, onConnectionError, onMediaFailure });
+  useEffect(() => {
+    latest.current = { onLeave, onConnectionError, onMediaFailure };
+  });
+  const stableOnLeave = useCallback((reason?: DisconnectReason) => latest.current.onLeave(reason), []);
+  const stableOnError = useCallback((err: unknown) => latest.current.onConnectionError(err), []);
+  const stableOnMediaFailure = useCallback((failure?: string) => latest.current.onMediaFailure(failure), []);
   // Paket AF (Aşama 2): görüşme süresi sayacının başlangıcı oda token ile yeniden kurulsa da korunsun diye burada tutulur.
   const [startedAt, setStartedAt] = useState<number | null>(null);
   // Kayıtlı cihaz/ses tercihleri YALNIZCA yakalama seçenekleri olarak (video/audio prop'u) uygulanır; Room `options` bu
@@ -556,11 +569,12 @@ function ConsultationVideoRoom({
       // kullanıcı "Bağlanıyor…" rozetinde SONSUZA KADAR asılı kalırdı (raporlanan asıl semptom).
       // `onError`/`onMediaDeviceFailure` artık BAĞLANMIŞ, ikisi de `onConnectionError` üzerinden
       // ön-katılım ekranına AÇIK bir hata mesajıyla döner.
-      onError={onConnectionError}
-      onMediaDeviceFailure={onMediaFailure}
-      onDisconnected={onLeave}
-      // Telefon yatayken (kısa ekran) sahne görünür alanı doldurur; dikeyde 3:4, geniş ekranda 16:9.
-      className="relative aspect-[3/4] max-h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video lg:max-h-none [@media(orientation:landscape)_and_(max-height:520px)]:aspect-auto [@media(orientation:landscape)_and_(max-height:520px)]:h-[calc(100dvh-1rem)] [@media(orientation:landscape)_and_(max-height:520px)]:max-h-none"
+      onError={stableOnError}
+      onMediaDeviceFailure={stableOnMediaFailure}
+      onDisconnected={stableOnLeave}
+      // Telefon yatayken (kısa ekran) sahne görünür alanı doldurur; dikeyde 3:4, geniş ekranda 16:9. `!` gerekli: LiveKit'in
+      // katmansız `.lk-room-container { height: 100% }` kuralı katmanlı Tailwind yardımcılarını ezip yüksekliği 0'a düşürüyordu.
+      className="relative aspect-[3/4] max-h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video lg:max-h-none [@media(orientation:landscape)_and_(max-height:520px)]:aspect-auto [@media(orientation:landscape)_and_(max-height:520px)]:h-[calc(100vh-1rem)]! [@media(orientation:landscape)_and_(max-height:520px)]:h-[calc(100dvh-1rem)]! [@media(orientation:landscape)_and_(max-height:520px)]:max-h-none"
     >
       <RoomAudioRenderer />
       <RecordingSignalBridge

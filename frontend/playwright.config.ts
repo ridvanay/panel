@@ -87,7 +87,7 @@ export default defineConfig({
       // qa-agent bulgusu (2026-09-15, gerçek yerel LiveKit turu) — `telehealth-consultation-
       // livekit-live.spec.ts` BİLEREK burada ÇALIŞTIRILMAZ (`chrome-livekit-media` projesine
       // devredilir, bkz. aşağıdaki proje tanımı ve o dosyanın başlığı).
-      testIgnore: /telehealth-consultation-livekit-live\.spec\.ts/,
+      testIgnore: /(telehealth-consultation-livekit-live|consultation-room-af-live)\.spec\.ts/,
     },
     {
       // qa-agent — `.claude/architect-scope-telehealth-template.md` §4.4 gerçek yerel LiveKit
@@ -102,7 +102,7 @@ export default defineConfig({
       // `permissions: ["camera","microphone"]` (context izni) `--use-fake-ui-for-media-permissions`
       // bayrağıyla BİRLİKTE gerekir — TEK BAŞINA hiçbiri yeterli değildir (elle doğrulandı).
       name: "chrome-livekit-media",
-      testMatch: /telehealth-consultation-livekit-live\.spec\.ts/,
+      testMatch: /(telehealth-consultation-livekit-live|consultation-room-af-live)\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         channel: "chrome",

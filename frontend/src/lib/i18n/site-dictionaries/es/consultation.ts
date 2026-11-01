@@ -106,4 +106,5 @@ export const consultationStrings: ConsultationStrings = {
   deviceCheckMicLevel: "Nivel del micrófono",
   deviceCheckSpeakerTest: "Reproducir sonido de prueba",
   deviceCheckHint: "Permita el acceso a la cámara y al micrófono y compruebe que se ve y que la barra de nivel se mueve al hablar.",
+  moreOptions: "Más opciones",
 };

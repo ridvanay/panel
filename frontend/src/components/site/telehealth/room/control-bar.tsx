@@ -5,6 +5,7 @@ import { useTrackToggle } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import {
   Grid2x2,
+  Ellipsis,
   Maximize,
   Mic,
   MicOff,
@@ -75,6 +76,20 @@ export function useIdleFade(hold: boolean, delayMs: number = IDLE_FADE_MS): bool
   return faded && !hold;
 }
 
+/** Dar ekran (<640px): ikincil düğmeler "daha fazla" paneline taşınır → çubuk tek satır kalır. `matchMedia` yoksa false. */
+function useCompact(): boolean {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setCompact(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+  return compact;
+}
+
 interface BarButtonProps {
   label: string;
   shortcut?: string;
@@ -142,6 +157,8 @@ export function RoomControlBar({ stageRef, onEndCall }: { stageRef: RefObject<HT
   const panelId = useId();
   const settingsButtonRef = useRef<HTMLDivElement | null>(null);
 
+  const compact = useCompact();
+  const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
   const modalityRef = useRef<"keyboard" | "pointer">("pointer");
@@ -159,7 +176,7 @@ export function RoomControlBar({ stageRef, onEndCall }: { stageRef: RefObject<HT
       document.removeEventListener("pointerdown", onPointer, true);
     };
   }, []);
-  const faded = useIdleFade(focusWithin || settingsOpen);
+  const faded = useIdleFade(focusWithin || settingsOpen || moreOpen);
 
   // Tarayıcı özellik tespiti sunucuda yapılamaz → ilk client render'dan sonra bir kez (hidrasyon uyuşmazlığı olmasın diye).
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
@@ -252,9 +269,39 @@ export function RoomControlBar({ stageRef, onEndCall }: { stageRef: RefObject<HT
 
   const layoutLabel = ui.layout === "speaker" ? t.layoutToGrid : t.layoutToSpeaker;
 
+  const shareButton = shareSupported && (
+    <BarButton
+      label={screenShare.enabled ? t.shareStop : t.shareStart}
+      pressed={screenShare.enabled}
+      disabled={screenShare.pending}
+      off={!screenShare.enabled}
+      onClick={() => void screenShare.toggle()}
+      Icon={screenShare.enabled ? ScreenShare : ScreenShareOff}
+      testId="bar-share"
+    />
+  );
+  const layoutButton = <BarButton label={layoutLabel} onClick={ui.toggleLayout} Icon={ui.layout === "speaker" ? Grid2x2 : UserRound} testId="bar-layout" />;
+  const pipButton = pipSupported && <BarButton label={inBrowserPip ? t.pipExit : t.pipEnter} pressed={inBrowserPip} onClick={() => void toggleBrowserPip()} Icon={PictureInPicture2} testId="bar-pip" />;
+  const fullscreenButton = fullscreenSupported && (
+    <BarButton label={isFullscreen ? t.fullscreenExit : t.fullscreenEnter} onClick={() => void toggleFullscreen()} Icon={isFullscreen ? Minimize : Maximize} testId="bar-fullscreen" />
+  );
+
   return (
     <>
       {settingsOpen && <SettingsPanel id={panelId} onClose={closeSettings} />}
+      {compact && moreOpen && (
+        <div
+          role="group"
+          aria-label={t.moreOptions}
+          data-testid="more-panel"
+          className="absolute inset-x-3 bottom-[5.5rem] z-30 mx-auto flex w-fit max-w-full items-center justify-center gap-1 rounded-full bg-black/85 px-2 py-1.5 backdrop-blur-md"
+        >
+          {shareButton}
+          {layoutButton}
+          {pipButton}
+          {fullscreenButton}
+        </div>
+      )}
       <div
         role="toolbar"
         aria-label={t.controlsLabel}
@@ -268,11 +315,11 @@ export function RoomControlBar({ stageRef, onEndCall }: { stageRef: RefObject<HT
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
         }}
         className={cn(
-          "absolute inset-x-0 bottom-3 z-20 flex flex-wrap items-center justify-center gap-2 px-2 transition-opacity duration-500 lg:bottom-6 lg:gap-3 lg:px-4",
+          "absolute inset-x-0 bottom-3 z-20 flex flex-nowrap items-center justify-center gap-2 px-2 transition-opacity duration-500 lg:bottom-6 lg:gap-3 lg:px-4",
           faded && "pointer-events-none opacity-25"
         )}
       >
-        <div className="flex flex-wrap items-center justify-center gap-1 rounded-full bg-black/70 px-2 py-1.5 backdrop-blur-md sm:gap-1.5 lg:gap-2 lg:px-3 lg:py-2">
+        <div className="flex flex-nowrap items-center justify-center gap-1 rounded-full bg-black/70 px-2 py-1.5 backdrop-blur-md sm:gap-1.5 lg:gap-2 lg:px-3 lg:py-2">
           <BarButton
             label={mic.enabled ? t.micMute : t.micUnmute}
             shortcut="M"
@@ -294,29 +341,15 @@ export function RoomControlBar({ stageRef, onEndCall }: { stageRef: RefObject<HT
             testId="bar-camera"
           />
           {canFlip && <BarButton label={t.flipCamera} disabled={busy} onClick={() => void flip()} Icon={RefreshCcw} testId="bar-flip-camera" />}
-          {shareSupported && (
-            <BarButton
-              label={screenShare.enabled ? t.shareStop : t.shareStart}
-              pressed={screenShare.enabled}
-              disabled={screenShare.pending}
-              off={!screenShare.enabled}
-              onClick={() => void screenShare.toggle()}
-              Icon={screenShare.enabled ? ScreenShare : ScreenShareOff}
-              testId="bar-share"
-            />
-          )}
+          {!compact && shareButton}
           <div ref={settingsButtonRef}>
             <BarButton label={t.settingsOpen} expanded={settingsOpen} controls={settingsOpen ? panelId : undefined} onClick={() => setSettingsOpen((open) => !open)} Icon={Settings} testId="bar-settings" />
           </div>
-          <BarButton label={layoutLabel} onClick={ui.toggleLayout} Icon={ui.layout === "speaker" ? Grid2x2 : UserRound} testId="bar-layout" />
-          {pipSupported && <BarButton label={inBrowserPip ? t.pipExit : t.pipEnter} pressed={inBrowserPip} onClick={() => void toggleBrowserPip()} Icon={PictureInPicture2} testId="bar-pip" />}
-          {fullscreenSupported && (
-            <BarButton
-              label={isFullscreen ? t.fullscreenExit : t.fullscreenEnter}
-              onClick={() => void toggleFullscreen()}
-              Icon={isFullscreen ? Minimize : Maximize}
-              testId="bar-fullscreen"
-            />
+          {!compact && layoutButton}
+          {!compact && pipButton}
+          {!compact && fullscreenButton}
+          {compact && (
+            <BarButton label={t.moreOptions} expanded={moreOpen} onClick={() => setMoreOpen((open) => !open)} Icon={Ellipsis} testId="bar-more" />
           )}
         </div>
         <div className="group/tip relative">

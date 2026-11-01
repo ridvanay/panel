@@ -106,4 +106,5 @@ export const consultationStrings: ConsultationStrings = {
   deviceCheckMicLevel: "مستوى الميكروفون",
   deviceCheckSpeakerTest: "تشغيل صوت تجريبي",
   deviceCheckHint: "اسمح بالوصول إلى الكاميرا والميكروفون، ثم تأكد من أنك ترى نفسك وأن شريط المستوى يتحرك عندما تتحدث.",
+  moreOptions: "المزيد",
 };
