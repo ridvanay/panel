@@ -58,7 +58,7 @@ describe("kayıt bileşenleri metinleri", () => {
   });
 
   it("kayıt yokken gösterge çizilmez (davranış aynı)", () => {
-    const { container } = render(<RecordingIndicator status="IDLE" />);
+    const { container } = render(<RecordingIndicator status={undefined} />);
     expect(container).toBeEmptyDOMElement();
   });
 });
