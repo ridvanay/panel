@@ -26,12 +26,6 @@ export async function fetchBlogPostsServer(locale?: string, options: { all?: boo
   return all;
 }
 
-export async function fetchBlogPostBySlugServer(slug: string, locale?: string): Promise<BlogPost | null> {
-  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
-  const json = await fetchServerJson<{ data: BlogPost }>(`/blog/${slug}${query}`, { tags: [CACHE_TAGS.blog] });
-  return json?.data ?? null;
-}
-
 export interface BlogListQuery {
   locale?: string | undefined;
   page?: number | undefined;

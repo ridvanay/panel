@@ -522,8 +522,15 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
       expect((await app.inject({ method: "GET", url: "/api/v1/blog/posts/cop-yazi" })).statusCode).toBe(404);
       expect((await app.inject({ method: "GET", url: "/api/v1/blog/posts/yok" })).statusCode).toBe(404);
       expect((await app.inject({ method: "GET", url: "/api/v1/blog/posts/kalp-rehberi-0?locale=en" })).statusCode).toBe(404);
-      // Eski uç davranışı korunur (kanonik metne düşer).
       expect((await app.inject({ method: "GET", url: "/api/v1/blog/taslak-yazi" })).statusCode).toBe(404);
+    });
+
+    it("eski GET /blog/:slug da (kullanıcı kararı) çevirisi olmayan dilde 404; çevirili dilde ve varsayılan dilde 200", async () => {
+      expect((await app.inject({ method: "GET", url: "/api/v1/blog/kalp-rehberi-0?locale=en" })).statusCode).toBe(404);
+      expect((await app.inject({ method: "GET", url: "/api/v1/blog/kalp-rehberi-0" })).statusCode).toBe(200);
+      const en = await app.inject({ method: "GET", url: "/api/v1/blog/translated-post?locale=en" });
+      expect(en.statusCode).toBe(200);
+      expect(en.json().data.title).toBe("Translated Post");
     });
 
     it("coverCompatUrl: Media'daki JPEG uyumluluk kopyası; yoksa kapağın kendisi", async () => {

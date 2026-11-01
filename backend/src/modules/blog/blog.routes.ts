@@ -51,6 +51,7 @@ import {
   attachLocalizationsOne,
   deleteContentSlugsForEntity,
   getLocaleSet,
+  isLocaleTranslated,
   mergeTranslations,
   resolveEffectiveLocaleCode,
   resolveEntityIdBySlug,
@@ -1106,6 +1107,9 @@ export async function publicBlogRoutes(app: FastifyInstance) {
           include: WITH_RELATIONS,
         }));
       if (!resolvedPost) throw new NotFoundError("Yazı bulunamadı.");
+      // Paket Z1 (kullanıcı kararı) — yeni `/blog/posts/:slug` ile aynı kural: kanonik olmayan dilde çevirisi
+      // yoksa 404 (eskiden kanonik metne düşüyordu).
+      if (effectiveLocale && !isLocaleTranslated(resolvedPost.translations, effectiveLocale)) throw new NotFoundError("Yazı bu dilde bulunamadı.");
 
       const localizations = await attachLocalizationsOne(app, "BLOG_POST", resolvedPost);
       return reply.send(ok(toBlogPostDto(applyBlogPostLocale(resolvedPost, effectiveLocale), localizations)));
