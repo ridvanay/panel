@@ -282,6 +282,8 @@ export const BlogCategorySchema = z.object({
   createdAt: z.string(),
   // Paket Z1 — tıbbi olmayan kategoride "hekim onayı gerekmez" seçilebilir.
   isMedical: z.boolean(),
+  /** Paket Z2 — `{ "<dil>": { name } }` kategori adı çevirileri. */
+  translations: z.record(z.string(), z.object({ name: z.string() })),
 });
 export type BlogCategoryDto = z.infer<typeof BlogCategorySchema>;
 

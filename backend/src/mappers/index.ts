@@ -363,6 +363,7 @@ export function toBlogCategoryDto(category: BlogCategory): BlogCategoryDto {
     slug: category.slug,
     createdAt: category.createdAt.toISOString(),
     isMedical: category.isMedical,
+    translations: (category.translations ?? {}) as Record<string, { name: string }>,
   };
 }
 

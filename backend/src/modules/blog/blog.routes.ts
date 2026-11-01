@@ -903,6 +903,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
           name: request.body.name,
           slug: request.body.slug ? slugify(request.body.slug) : slugify(request.body.name),
           ...(request.body.isMedical !== undefined ? { isMedical: request.body.isMedical } : {}),
+          ...(request.body.translations !== undefined ? { translations: request.body.translations } : {}),
         },
       });
       return reply.code(201).send(ok(toBlogCategoryDto(category)));

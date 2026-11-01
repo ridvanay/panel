@@ -90,6 +90,14 @@ function publicWhere(locale: string | undefined): Prisma.BlogPostWhereInput {
   };
 }
 
+/** Paket Z2 — kategori adı izleyicinin dilinde (`translations.<dil>.name`); yoksa kanonik ad. */
+export function localizedCategoryName(category: { name: string; translations?: unknown }, locale: string | undefined): string {
+  if (!locale) return category.name;
+  const map = (category.translations ?? {}) as Record<string, { name?: unknown } | undefined>;
+  const value = map[locale.toLowerCase()]?.name;
+  return typeof value === "string" && value.trim() ? value.trim() : category.name;
+}
+
 function buildCard(post: CardPost, locale: string | undefined, slugOf: (locale: string | undefined) => string): PublicBlogCard {
   const localized = locale ? applyFieldLocalization(post, locale, ["title", "excerpt"]) : post;
   const approved = post.medicalReviewStatus === "approved" && post.reviewerDoctor;
@@ -99,7 +107,7 @@ function buildCard(post: CardPost, locale: string | undefined, slugOf: (locale: 
     title: localized.title,
     excerpt: localized.excerpt,
     coverUrl: post.coverImageUrl,
-    category: post.category ? { name: post.category.name, slug: post.category.slug } : null,
+    category: post.category ? { name: localizedCategoryName(post.category, locale), slug: post.category.slug } : null,
     specialty: post.specialty ? localizedSpecialty(post.specialty, locale) : null,
     reviewer: approved
       ? {

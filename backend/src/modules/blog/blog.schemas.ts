@@ -155,16 +155,26 @@ export const AutosaveBlogPostRequestSchema = z.object({
   contentHtml: z.string().optional(),
 });
 
+/** Paket Z2 — kategori adı çevirileri: `{ "<dil>": { name } }`; dil kodu küçük harf BCP-47 (ör. "sr-latn"). */
+export const BlogCategoryTranslationsSchema = z
+  .record(
+    z.string().regex(/^[a-z]{2}(?:-[a-z]{2,4})?$/, "Geçersiz dil kodu."),
+    z.object({ name: z.string().trim().min(1).max(120) }).strict()
+  )
+  .refine((v) => Object.keys(v).length <= 20, "En fazla 20 dil.");
+
 export const CreateBlogCategoryRequestSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),
   isMedical: z.boolean().optional(),
+  translations: BlogCategoryTranslationsSchema.optional(),
 });
 
 export const UpdateBlogCategoryRequestSchema = z.object({
   name: z.string().min(1).optional(),
   slug: z.string().min(1).optional(),
   isMedical: z.boolean().optional(),
+  translations: BlogCategoryTranslationsSchema.optional(),
 });
 
 // ---- Paket Z1 — public liste/detay + doktor inceleme kuyruğu ----

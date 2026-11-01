@@ -585,5 +585,47 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
       const patched = await app.inject({ method: "PATCH", url: `/api/v1/admin/blog/categories/${created.json().data.id}`, headers: admin, payload: { isMedical: false } });
       expect(patched.json().data.isMedical).toBe(false);
     });
+
+    it("Paket Z2 — kategori adı çevirileri: varsayılan {}; admin yazar; ziyaretçi kartında izleyicinin dilinde, yoksa kanonik ad", async () => {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog/categories",
+        headers: admin,
+        payload: { name: "Seyahat Rehberi", slug: `travel-${crypto.randomUUID().slice(0, 6)}`, isMedical: false },
+      });
+      expect(created.statusCode).toBe(201);
+      expect(created.json().data.translations).toEqual({});
+      const id = created.json().data.id as string;
+      const patched = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/blog/categories/${id}`,
+        headers: admin,
+        payload: { translations: { en: { name: "Health travel guide" }, ar: { name: "دليل السفر الصحي" }, "sr-latn": { name: "Vodič za zdravstveni turizam" } } },
+      });
+      expect(patched.statusCode).toBe(200);
+      expect(patched.json().data.translations.en).toEqual({ name: "Health travel guide" });
+      // Geçersiz dil kodu ve boş ad reddedilir.
+      expect((await app.inject({ method: "PATCH", url: `/api/v1/admin/blog/categories/${id}`, headers: admin, payload: { translations: { EN_US: { name: "x" } } } })).statusCode).toBe(422);
+      expect((await app.inject({ method: "PATCH", url: `/api/v1/admin/blog/categories/${id}`, headers: admin, payload: { translations: { en: { name: "" } } } })).statusCode).toBe(422);
+
+      const post = await seedPublished({ title: "Kategori çeviri", categoryId: id, translations: { en: { title: "Category translation" } } });
+      const card = async (locale?: string) => {
+        const q = `q=${encodeURIComponent(locale === "en" ? "Category translation" : "Kategori çeviri")}${locale ? `&locale=${locale}` : ""}`;
+        const items = (await app.inject({ method: "GET", url: `/api/v1/blog/posts?${q}` })).json().data.items;
+        expect(items.length, `kart bulunamadı (${locale ?? "varsayılan"})`).toBeGreaterThan(0);
+        return items[0].category;
+      };
+      expect((await card("en")).name).toBe("Health travel guide");
+      expect((await card()).name).toBe("Seyahat Rehberi");
+      await app.prisma.blogPost.delete({ where: { id: post.id } });
+
+      // Çevirisi olmayan dilde kanonik ad; dil kodu büyük/küçük harf duyarsız; boş çeviri yok sayılır.
+      const { localizedCategoryName } = await import("../../src/modules/blog/lib/blog-public");
+      const cat = { name: "Seyahat Rehberi", translations: { en: { name: "Health travel guide" }, ru: { name: "  " } } };
+      expect(localizedCategoryName(cat, "de")).toBe("Seyahat Rehberi");
+      expect(localizedCategoryName(cat, "EN")).toBe("Health travel guide");
+      expect(localizedCategoryName(cat, "ru")).toBe("Seyahat Rehberi");
+      expect(localizedCategoryName(cat, undefined)).toBe("Seyahat Rehberi");
+    });
   });
 });

@@ -622,6 +622,9 @@ model BlogCategory {
   /// Paket Z1 — tıbbi kategori mi? false ("Health travel guide" gibi) ise yazı `not_required` (hekim onayı gerekmez)
   /// seçilebilir. Varsayılan true: mevcut kategoriler tıbbi sayılır.
   isMedical Boolean  @default(true)
+  /// Paket Z2 (kullanıcı kararı) — kategori adının dil başına çevirisi: `{ "<dil>": { "name": "…" } }`.
+  /// Kanonik `name` varsayılan dildedir (canlıda EN). Boş `{}` = çeviri yok, kanonik ad gösterilir.
+  translations Json   @default("{}")
 
   posts BlogPost[]
 
