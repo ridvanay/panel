@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { Languages, UserX } from "lucide-react";
@@ -18,7 +18,24 @@ import { RoomParticipantTile } from "@/components/site/telehealth/room/participa
  *  - Doktor "Görüşmeden çıkar" ile (onay penceresiyle) tercümanı çıkarabilir; sunucu atamayı
  *    `REMOVED` yapar, tercümanı odadan atar ve audit'e yazar.
  */
-export function InterpreterPresence({ appointmentId, isDoctor }: { appointmentId: string; isDoctor: boolean }) {
+/** Paket AF (Aşama 2) — varsayılan (eski) kutu konumu; sahne yerleşimi kendi sınıfını `tileClassName` ile verir. */
+const LEGACY_TILE_CLASS =
+  "absolute right-3 top-[8.75rem] z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:bottom-40 lg:right-6 lg:top-auto lg:h-28 lg:w-40";
+
+export function InterpreterPresence({
+  appointmentId,
+  isDoctor,
+  tileClassName,
+  tileStyle,
+  tileRole,
+}: {
+  appointmentId: string;
+  isDoctor: boolean;
+  /** Paket AF (Aşama 2): kutunun konum/boyut sınıfları (sahne yerleşimi: büyük/küçük/ızgara). Verilmezse eski konum. */
+  tileClassName?: string;
+  tileStyle?: CSSProperties;
+  tileRole?: string;
+}) {
   const { t } = usePortalStrings();
   const participants = useParticipants();
   const interpreter = participants.find((p) => !p.isLocal && isInterpreterParticipant(p)) ?? null;
@@ -77,7 +94,9 @@ export function InterpreterPresence({ appointmentId, isDoctor }: { appointmentId
         // Mobil: yerel kamera kartının altında (sağ üst); masaüstü: yerel kamera kartının üstünde (sağ alt).
         <div
           data-testid="interpreter-tile"
-          className="absolute right-3 top-[8.75rem] z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:bottom-40 lg:right-6 lg:top-auto lg:h-28 lg:w-40"
+          data-tile-role={tileRole}
+          style={tileStyle}
+          className={tileClassName ?? LEGACY_TILE_CLASS}
         >
           {tileRef && <RoomParticipantTile key="interpreter" trackRef={tileRef} className="h-full w-full" />}
           {isDoctor && (

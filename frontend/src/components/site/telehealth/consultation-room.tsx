@@ -1,38 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import "@livekit/components-styles";
-import {
-  LiveKitRoom,
-  RoomAudioRenderer,
-  useConnectionState,
-  useParticipants,
-  useRoomContext,
-  useTrackToggle,
-  useTracks,
-} from "@livekit/components-react";
-import { ConnectionState, RoomEvent, Track, type DisconnectReason } from "livekit-client";
-import {
-  AlertTriangle,
-  Loader2,
-  LogIn,
-  Maximize,
-  Mic,
-  MicOff,
-  Minimize,
-  PhoneOff,
-  ScreenShare,
-  ScreenShareOff,
-  Settings2,
-  ShieldAlert,
-  Video,
-  VideoOff,
-  Wifi,
-  WifiOff,
-  type LucideProps,
-} from "lucide-react";
+import { LiveKitRoom, RoomAudioRenderer, useConnectionState, useRoomContext } from "@livekit/components-react";
+import { ConnectionState, RoomEvent, type DisconnectReason } from "livekit-client";
+import { AlertTriangle, Loader2, LogIn, Settings2, ShieldAlert, Wifi, WifiOff } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { listPublicModules } from "@/lib/api/modules";
 import { isDoctorHostname, isSubdomainModeEnabled, toDoctorOrigin } from "@/lib/doctor-host";
@@ -49,23 +23,27 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RecordingConsentDialog } from "@/components/site/telehealth/recording-consent-dialog";
-import { QaListenerNotice, isQaListenerParticipant } from "@/components/site/telehealth/qa-listener-notice";
+import { QaListenerNotice } from "@/components/site/telehealth/qa-listener-notice";
 // Paket AA — tercüman katılımı (ayrı dosyalar; bu dosyada yalnızca bağlantı noktaları).
-import { InterpreterPresence } from "@/components/site/interpreter/interpreter-presence";
 import { InterpreterPreJoinNotice } from "@/components/site/interpreter/interpreter-prejoin-notice";
-import { isInterpreterParticipant } from "@/components/site/interpreter/interpreter-participant";
 import { RecordingIndicator } from "@/components/site/telehealth/recording-indicator";
 import { RecordingControls } from "@/components/site/telehealth/recording-controls";
 import { cn } from "@/lib/utils";
-import { RoomParticipantTile } from "@/components/site/telehealth/room/participant-tile";
 import { ParticipantLabelProvider } from "@/components/site/telehealth/room/label-context";
 import type { ConsultationStrings } from "@/lib/i18n/site-dictionaries/en/consultation";
 import type { LabelContext } from "@/components/site/telehealth/room/participant-label";
 import { ConnectionLayers, ConnectionStateReporter } from "@/components/site/telehealth/room/connection-layers";
 import { useAppReconnect, type AppReconnect } from "@/components/site/telehealth/room/use-app-reconnect";
 import { disconnectKind } from "@/components/site/telehealth/room/disconnect-kind";
+import { isCounterpart } from "@/components/site/telehealth/room/participant-kind";
+import { ConsultationStage } from "@/components/site/telehealth/room/stage";
+import { RoomControlBar } from "@/components/site/telehealth/room/control-bar";
+import { RoomUiProvider } from "@/components/site/telehealth/room/room-ui-context";
+import { SessionTimer, EndingSoonNotice } from "@/components/site/telehealth/room/session-timer";
+import { DeviceBootstrap } from "@/components/site/telehealth/room/device-bootstrap";
+import { PrejoinDeviceCheck, type PrejoinCheckHandle } from "@/components/site/telehealth/room/prejoin-device-check";
+import { buildCaptureOptions, loadPrefs } from "@/components/site/telehealth/room/device-prefs";
 import { classifyConnectionError, classifyMediaFailure, failureMessage, warnRaw } from "@/components/site/telehealth/room/connection-errors";
 
 /**
@@ -203,21 +181,6 @@ function LiveKitNotConfiguredPanel({ onRetry, retrying }: { onRetry: () => void;
   );
 }
 
-/** §6.1 — bekleme odası: nötr/sakin, `primary` tint + `Loader2` + `animate-ping`. */
-function WaitingRoomPanel() {
-  const { t } = useConsultationStrings();
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-primary/20 bg-primary/5 p-8 text-center">
-      <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-        <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" aria-hidden="true" />
-        <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
-      </span>
-      <h3 className="font-semibold text-foreground">{t.waitingRoomTitle}</h3>
-      <p className="max-w-xs text-sm text-foreground/60">{t.waitingRoomBody}</p>
-    </div>
-  );
-}
-
 /** §7 — geri sayım, "yakın" kademe: büyük, `tabular-nums`, açık pencerede `text-primary`. */
 function CountdownDigits({ ms, active }: { ms: number; active: boolean }) {
   const { minutes, seconds } = formatCountdownDigits(ms);
@@ -241,6 +204,8 @@ interface PreJoinStageProps {
   joinError: string | null;
   notConfigured: boolean;
   onJoin: () => void;
+  /** Paket AF (Aşama 2): giriş öncesi cihaz testi önizlemesini katılımdan önce durdurmak için tutamak. */
+  prejoinRef: RefObject<PrejoinCheckHandle | null>;
 }
 
 /**
@@ -248,7 +213,7 @@ interface PreJoinStageProps {
  * "yapılandırılmamış" paneli — §6.2'nin "iki durum ASLA aynı anda görünmez" kuralı burada
  * `notConfigured` kontrolüyle korunur (bekleme odası kavramı LiveKit bağlanmadan ANLAMSIZDIR).
  */
-function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin }: PreJoinStageProps) {
+function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin, prejoinRef }: PreJoinStageProps) {
   const { t } = useConsultationStrings();
   if (joinState.isExpired) {
     return (
@@ -280,6 +245,8 @@ function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin 
         )}
       </div>
 
+      {joinState.isJoinable && !notConfigured && <PrejoinDeviceCheck handleRef={prejoinRef} />}
+
       {joinError && !notConfigured && (
         <Alert variant="error">
           <span className="flex flex-wrap items-center justify-between gap-3">
@@ -296,44 +263,10 @@ function PreJoinStage({ joinState, requesting, joinError, notConfigured, onJoin 
   );
 }
 
-function ToggleButton({
-  enabled,
-  pending,
-  onClick,
-  onLabel,
-  offLabel,
-  OnIcon,
-  OffIcon,
-}: {
-  enabled: boolean;
-  pending: boolean;
-  onClick: () => void;
-  onLabel: string;
-  offLabel: string;
-  OnIcon: ComponentType<LucideProps>;
-  OffIcon: ComponentType<LucideProps>;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={enabled}
-      aria-label={enabled ? onLabel : offLabel}
-      disabled={pending}
-      onClick={onClick}
-      className={cn(
-        "flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-150 disabled:opacity-60 lg:h-12 lg:w-12",
-        enabled ? "bg-white/15 text-white hover:bg-white/25" : "bg-white/90 text-black"
-      )}
-    >
-      {enabled ? <OnIcon className="h-5 w-5" aria-hidden="true" /> : <OffIcon className="h-5 w-5" aria-hidden="true" />}
-    </button>
-  );
-}
-
 /**
- * §5 — video üzerine bindirilen yüzen kontrol çubuğu (bu projedeki TEK sistemik "cam" istisnası).
- * `LiveKitRoom` içeriğinde (RoomContext) render edilir. `stageRef` video sahnesini (tüm sayfayı
- * DEĞİL) tam ekrana almak için `ConsultationVideoRoom`'daki `<LiveKitRoom>` kök `div`'ine bağlıdır.
+ * Kontrol çubuğu görünümü/kısayolları `room/control-bar.tsx`'te; bu sarmalayıcı yalnızca MEVCUT sonlandırma akışını
+ * (onay penceresi → `room.disconnect()` → yönlendirme) korur. `stageRef` video sahnesini (tüm sayfayı DEĞİL) tam ekrana
+ * almak için `ConsultationVideoRoom`'daki `<LiveKitRoom>` kök `div`'ine bağlıdır.
  */
 function ConsultationControlBar({
   isDoctor,
@@ -342,55 +275,13 @@ function ConsultationControlBar({
   isDoctor: boolean;
   stageRef: RefObject<HTMLDivElement | null>;
 }) {
-  const mic = useTrackToggle({ source: Track.Source.Microphone });
-  const camera = useTrackToggle({ source: Track.Source.Camera });
-  const screenShare = useTrackToggle({ source: Track.Source.ScreenShare });
   const room = useRoomContext();
   const router = useRouter();
   const localize = useLocalizePath();
   const { t } = useConsultationStrings();
 
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  // SSR'da `document` YOKTUR — başlangıç değeri `false` (server ile hydration uyuşmazlığı
-  // yaratmaz), mount sonrası gerçek tarayıcı desteğiyle güncellenir.
-  const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-
-  useEffect(() => {
-    // `theme-toggle.tsx`'teki AYNI desen: tarayıcı özelliği tespiti sunucuda YAPILAMAZ, hydration
-    // uyuşmazlığını önlemek için ilk client render'dan SONRA bir kez senkron işaretlenir.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFullscreenSupported(
-      typeof document !== "undefined" &&
-        document.fullscreenEnabled !== false &&
-        typeof document.documentElement.requestFullscreen === "function"
-    );
-  }, []);
-
-  // Kullanıcı ESC'ye basarak tam ekrandan çıkabilir — bu, bizim `toggleFullscreen`
-  // çağrımızdan GEÇMEZ, o yüzden state'i `fullscreenchange` olayından senkronize ederiz.
-  useEffect(() => {
-    function handleFullscreenChange() {
-      setIsFullscreen(document.fullscreenElement === stageRef.current);
-    }
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [stageRef]);
-
-  async function toggleFullscreen() {
-    const el = stageRef.current;
-    if (!el) return;
-    try {
-      if (document.fullscreenElement === el) {
-        await document.exitFullscreen();
-      } else {
-        await el.requestFullscreen();
-      }
-    } catch {
-      // Tarayıcı izni reddedebilir (ör. kullanıcı jesti dışında çağrı) — sessizce yok say.
-    }
-  }
 
   /**
    * `room.disconnect()` medya track'lerini durdurur ve `onDisconnected` (`handleDisconnected`,
@@ -424,69 +315,9 @@ function ConsultationControlBar({
     }
   }
 
-  // Mobil/tablet (lg altı): düğmeler 44px, aralıklar daha dar — 360px'te bile TEK satıra sığar
-  // (iki satıra kırılınca sahneyi ve önizlemeyi örtüyordu). Masaüstü (lg) değerleri değişmedi.
   return (
-    <div className="absolute inset-x-0 bottom-3 flex flex-wrap items-center justify-center gap-2 px-2 lg:bottom-6 lg:gap-3 lg:px-4">
-      <div className="flex items-center gap-1.5 rounded-full bg-black/70 px-2 py-1.5 backdrop-blur-md lg:gap-2 lg:px-3 lg:py-2">
-        <ToggleButton
-          enabled={mic.enabled}
-          pending={mic.pending}
-          onClick={() => void mic.toggle()}
-          onLabel={t.micMute}
-          offLabel={t.micUnmute}
-          OnIcon={Mic}
-          OffIcon={MicOff}
-        />
-        <ToggleButton
-          enabled={camera.enabled}
-          pending={camera.pending}
-          onClick={() => void camera.toggle()}
-          onLabel={t.cameraOff}
-          offLabel={t.cameraOn}
-          OnIcon={Video}
-          OffIcon={VideoOff}
-        />
-        <ToggleButton
-          enabled={screenShare.enabled}
-          pending={screenShare.pending}
-          onClick={() => void screenShare.toggle()}
-          onLabel={t.shareStop}
-          offLabel={t.shareStart}
-          OnIcon={ScreenShare}
-          OffIcon={ScreenShareOff}
-        />
-        {fullscreenSupported && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={isFullscreen ? t.fullscreenExit : t.fullscreenEnter}
-                  onClick={() => void toggleFullscreen()}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition-colors duration-150 hover:bg-white/25 lg:h-12 lg:w-12"
-                />
-              }
-            >
-              {isFullscreen ? (
-                <Minimize className="h-5 w-5" aria-hidden="true" />
-              ) : (
-                <Maximize className="h-5 w-5" aria-hidden="true" />
-              )}
-            </TooltipTrigger>
-            <TooltipContent>{isFullscreen ? t.fullscreenExit : t.fullscreenEnter}</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      <button
-        type="button"
-        aria-label={t.endCall}
-        onClick={() => setConfirmOpen(true)}
-        className="ml-1 flex h-12 w-12 items-center justify-center rounded-full bg-danger text-white transition-colors hover:bg-danger/90 lg:ml-2 lg:h-14 lg:w-14"
-      >
-        <PhoneOff className="h-5 w-5" aria-hidden="true" />
-      </button>
-
+    <>
+      <RoomControlBar stageRef={stageRef} onEndCall={() => setConfirmOpen(true)} />
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -497,7 +328,7 @@ function ConsultationControlBar({
         loading={disconnecting}
         onConfirm={() => void handleConfirmEndCall()}
       />
-    </div>
+    </>
   );
 }
 
@@ -527,68 +358,11 @@ function ConnectionStatusBadge() {
   })();
 
   return (
-    <div className="absolute left-4 top-4 z-10">
+    <div className="absolute start-4 top-4 z-10">
       <Badge tone={config.tone} solid size="sm" className="gap-1 shadow-sm">
         <config.Icon className={cn("h-3 w-3", config.spin && "animate-spin")} aria-hidden="true" />
         {config.label}
       </Badge>
-    </div>
-  );
-}
-
-/** Paket C: dinleyici, Paket AA: tercüman "karşı taraf" SAYILMAZ. Modül düzeyinde (sabit referans). */
-function isCounterpart(p: { isLocal: boolean; identity: string; metadata?: string }): boolean {
-  return !p.isLocal && !isQaListenerParticipant(p) && !isInterpreterParticipant(p);
-}
-
-/**
- * Video düzeni — spotlight + picture-in-picture: karşı tarafın track'i tam alanı kaplayan ana
- * görünüm, kendi kameramız sağ altta yüzen küçük bir kart (`ParticipantTile`'ın `trackRef` prop'u
- * ile, tasarım-notes §7'nin "kontrol çubuğu" ile AYNI yüzen-kart konvansiyonu). Karşı taraf YOKSA
- * `WaitingRoomPanel` tam ekran korunur, kendi kamera PIP'i yine görünür kalır (video-konferans
- * standardı — kullanıcı beklerken de kendi görüntüsünü görür). `RoomContext` içinde çalışır.
- */
-function ConsultationStage() {
-  const participants = useParticipants();
-  // Bug-fix turu (2026-09-17, frontend-agent) — `onlySubscribed: false` karşı tarafın track'i
-  // için YAYINLANMIŞ ama HENÜZ ABONE OLUNMAMIŞ (`publication.track` boş) bir referans
-  // döndürebiliyordu; bu referans `ParticipantTile`'a geçince DOM'a bağlanacak gerçek bir
-  // `MediaStreamTrack` olmadığı için ekran placeholder'da TAKILI kalıyordu — SDK'nın kendi
-  // "publishing track"/"participant: doctor:..." logları GERÇEK olsa bile. Varsayılan
-  // `onlySubscribed: true` ile `tracks` yalnızca GERÇEKTEN abone olunmuş (DOM'a bağlanabilir)
-  // referansları döner; `withPlaceholder: true` karşı taraf HİÇ yayın yapmadığı durumda hâlâ
-  // nötr bir avatar göstermeye devam eder (davranış AYNI, yalnızca "yayınlandı ama abone
-  // olunmadı" ara durumu artık placeholder'a düşer, boş/donuk bir referansa değil).
-  const tracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: true },
-    { source: Track.Source.ScreenShare, withPlaceholder: false },
-  ]);
-  // Paket C — kalite kontrol dinleyicisi "karşı taraf" sayılmaz (bekleme odası/spotlight onu yok sayar).
-  // Paket AA — tercüman da spotlight'a girmez; ayrı 3. kutuda gösterilir (`InterpreterPresence`).
-  const hasRemoteParticipant = participants.some(isCounterpart);
-
-  const remoteTrack =
-    tracks.find((t) => isCounterpart(t.participant) && t.source === Track.Source.ScreenShare) ??
-    tracks.find((t) => isCounterpart(t.participant) && t.source === Track.Source.Camera);
-  const localCameraTrack = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
-
-  return (
-    <div className="relative h-full w-full">
-      {hasRemoteParticipant && remoteTrack ? (
-        <RoomParticipantTile key={`${remoteTrack.participant.identity}:${remoteTrack.source}`} trackRef={remoteTrack} className="h-full w-full" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center p-6">
-          <WaitingRoomPanel />
-        </div>
-      )}
-
-      {localCameraTrack && (
-        // Mobil/tablet (lg altı): sağ üstte, kayıt göstergesinin (right-4 top-4) altında — alttaki kontrol
-        // çubuğunu örtmez. Masaüstü (lg): eskisi gibi sağ altta, 160×112.
-        <div className="absolute right-3 top-12 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:bottom-6 lg:right-6 lg:top-auto lg:h-28 lg:w-40">
-          <RoomParticipantTile key="local-camera" trackRef={localCameraTrack} className="h-full w-full" />
-        </div>
-      )}
     </div>
   );
 }
@@ -710,6 +484,8 @@ interface ConsultationVideoRoomProps {
   appointmentId: string;
   accessToken?: string;
   isDoctor: boolean;
+  /** Paket AF (Aşama 2): randevu bitişi (mevcut randevu verisi) — bitişe 5 dk kala bilgi uyarısı için. */
+  endsAt: string;
   /** `telehealth-recording` modülü açık mı — qa-agent bulgusu: kapalıyken doktor "Kaydı Başlat"
    *  butonunu GÖRMEMELİDİR (tıklarsa backend zaten 404 döner, ama UI baştan göstermemeli). */
   recordingModuleEnabled: boolean;
@@ -730,6 +506,7 @@ function ConsultationVideoRoom({
   appointmentId,
   accessToken,
   isDoctor,
+  endsAt,
   recordingModuleEnabled,
   recording,
   consentDialogOpen,
@@ -742,8 +519,15 @@ function ConsultationVideoRoom({
   // `LiveKitRoomProps` `React.RefAttributes<HTMLDivElement>` genişletir, yani ref doğrudan
   // altındaki DOM düğümüne bağlanır (bkz. `@livekit/components-react` LiveKitRoom.d.ts).
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // Paket AF (Aşama 2): görüşme süresi sayacının başlangıcı oda token ile yeniden kurulsa da korunsun diye burada tutulur.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Kayıtlı cihaz/ses tercihleri YALNIZCA yakalama seçenekleri olarak (video/audio prop'u) uygulanır; Room `options` bu
+  // tercihlerden etkilenmez. Kayıtlı bir şey yoksa AYNEN `true` (eski davranış). Token başına bir kez hesaplanır (kararlı referans).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- bilinçli: yeni token (yeniden kurulum) = tercihler yeniden okunur
+  const capture = useMemo(() => buildCaptureOptions(loadPrefs()), [meeting.token]);
 
   return (
+    <RoomUiProvider>
     <LiveKitRoom
       // Bug-fix turu (2026-09-18, frontend-agent) — `key`, token değiştiğinde (ilk katılım VE
       // aşağıdaki `handleDisconnected` otomatik yeniden bağlanması) React'in `<LiveKitRoom>`'u
@@ -754,8 +538,8 @@ function ConsultationVideoRoom({
       ref={stageRef}
       token={meeting.token}
       serverUrl={meeting.serverUrl}
-      video
-      audio
+      video={capture.video}
+      audio={capture.audio}
       connect
       // Bug-fix turu (2026-09-21, kullanıcı talebi) — SDK varsayılanları `adaptiveStream: false`/
       // `dynacast: false`'tır (bkz. `livekit-client/src/room/defaults.ts`); bu proje bunları HİÇ
@@ -775,7 +559,8 @@ function ConsultationVideoRoom({
       onError={onConnectionError}
       onMediaDeviceFailure={onMediaFailure}
       onDisconnected={onLeave}
-      className="relative aspect-[3/4] max-h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video lg:max-h-none"
+      // Telefon yatayken (kısa ekran) sahne görünür alanı doldurur; dikeyde 3:4, geniş ekranda 16:9.
+      className="relative aspect-[3/4] max-h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video lg:max-h-none [@media(orientation:landscape)_and_(max-height:520px)]:aspect-auto [@media(orientation:landscape)_and_(max-height:520px)]:h-[calc(100dvh-1rem)] [@media(orientation:landscape)_and_(max-height:520px)]:max-h-none"
     >
       <RoomAudioRenderer />
       <RecordingSignalBridge
@@ -785,18 +570,20 @@ function ConsultationVideoRoom({
         onSignal={onRecordingSignal}
       />
       <ConnectionStateReporter reconnect={reconnect} />
+      <DeviceBootstrap />
       <ConnectionStatusBadge />
       <QaListenerNotice />
-      <InterpreterPresence appointmentId={appointmentId} isDoctor={isDoctor} />
-      <div className="absolute right-4 top-4 z-10">
+      <SessionTimer startedAt={startedAt} onStart={setStartedAt} />
+      <div className="absolute end-4 top-4 z-10">
         <RecordingIndicator status={recording?.status} />
       </div>
-      <ConsultationStage />
+      {/* Tercüman kutusu/bildirimi (InterpreterPresence) sahnenin içinde, yerleşim sistemine bağlı çizilir. */}
+      <ConsultationStage appointmentId={appointmentId} isDoctor={isDoctor} />
       <ConsultationControlBar isDoctor={isDoctor} stageRef={stageRef} />
-      <ConnectionLayers reconnect={reconnect} isCounterpart={isCounterpart} />
+      <ConnectionLayers reconnect={reconnect} isCounterpart={isCounterpart} topSlot={<EndingSoonNotice endsAt={endsAt} />} />
 
       {isDoctor && recordingModuleEnabled && (
-        <div className="absolute left-3 top-12 z-10 lg:bottom-6 lg:left-4 lg:top-auto">
+        <div className="absolute start-3 top-12 z-10 lg:bottom-6 lg:start-4 lg:top-auto">
           <RecordingControls appointmentId={appointmentId} recording={recording} onUpdate={onRecordingSnapshot} />
         </div>
       )}
@@ -812,6 +599,7 @@ function ConsultationVideoRoom({
         />
       )}
     </LiveKitRoom>
+    </RoomUiProvider>
   );
 }
 
@@ -834,6 +622,8 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
   const [notConfigured, setNotConfigured] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  // Paket AF (Aşama 2): giriş öncesi cihaz testi önizlemesi katılımdan önce durdurulur (tek kameralı telefonlarda cihaz serbest kalsın).
+  const prejoinRef = useRef<PrejoinCheckHandle | null>(null);
 
   // qa-agent bulgusu — `RecordingControls` daha önce modül durumunu hiç kontrol etmiyordu,
   // `telehealth-recording` KAPALIYKEN (her yeni kurulumun varsayılanı) bile doktora "Kaydı
@@ -886,6 +676,7 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
   const resetReconnect = reconnect.reset;
 
   async function handleJoin() {
+    prejoinRef.current?.stop();
     resetReconnect();
     setRequesting(true);
     setJoinError(null);
@@ -972,6 +763,7 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
             appointmentId={appointment.id}
             accessToken={accessToken}
             isDoctor={isDoctor}
+            endsAt={appointment.endsAt}
             recordingModuleEnabled={recordingModuleEnabled}
             recording={recording}
             consentDialogOpen={consentDialogOpen}
@@ -988,6 +780,7 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
           joinError={joinError}
           notConfigured={notConfigured}
           onJoin={() => void handleJoin()}
+          prejoinRef={prejoinRef}
         />
       )}
     </div>

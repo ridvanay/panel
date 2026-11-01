@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useConnectionState, useRoomContext } from "@livekit/components-react";
 import { ConnectionState, RoomEvent, type Participant } from "livekit-client";
 import { AlertTriangle, Loader2, MonitorSmartphone, SignalLow, UserX } from "lucide-react";
@@ -29,8 +29,19 @@ type Counterpart = { isLocal: boolean; identity: string; metadata?: string };
  *    ya da uygulama düzeyi deneme sürerken,
  *  - başarısızlık ve DUPLICATE_IDENTITY ekranları (açıklayıcı mesaj + düğme).
  * Oda/abonelik/yayın durumuna DOKUNMAZ; yalnızca olayları dinler.
+ * Aşama 2: banner'lar üst-ortada (süre sayacının altında) durur — alttaki kontrol çubuğu, kayıt kontrolleri ve kendi
+ * görüntü kutusu (varsayılan sağ-alt) ile çakışmaz.
  */
-export function ConnectionLayers({ reconnect, isCounterpart }: { reconnect: AppReconnect; isCounterpart: (p: Counterpart) => boolean }) {
+export function ConnectionLayers({
+  reconnect,
+  isCounterpart,
+  topSlot,
+}: {
+  reconnect: AppReconnect;
+  isCounterpart: (p: Counterpart) => boolean;
+  /** Aşama 2: aynı üst-orta sütunda gösterilecek ek bilgi (ör. randevu bitişi uyarısı) — banner'larla çakışmasın. */
+  topSlot?: ReactNode;
+}) {
   const { t, fmt } = useConsultationStrings();
   const room = useRoomContext();
   const labeler = useParticipantLabeler();
@@ -79,15 +90,16 @@ export function ConnectionLayers({ reconnect, isCounterpart }: { reconnect: AppR
 
   return (
     <>
-      {showBanners && (weak || lost) && (
-        <div className="pointer-events-none absolute inset-x-3 bottom-[8.5rem] z-20 flex flex-col items-center gap-2 lg:bottom-36">
-          {weak && (
+      {(topSlot || (showBanners && (weak || lost))) && (
+        <div className="pointer-events-none absolute inset-x-3 top-14 z-20 flex flex-col items-center gap-2">
+          {topSlot}
+          {showBanners && weak && (
             <div role="status" aria-live="polite" data-testid="weak-connection-banner" className="flex max-w-md items-center gap-2 rounded-[var(--site-radius)] bg-warning px-3 py-2 text-sm font-medium text-warning-foreground shadow-lg">
               <SignalLow className="h-4 w-4 shrink-0" aria-hidden="true" />
               {t.weakConnection}
             </div>
           )}
-          {lost && (
+          {showBanners && lost && (
             <div role="status" aria-live="polite" data-testid="participant-lost-banner" className="flex max-w-md items-center gap-2 rounded-[var(--site-radius)] bg-black/75 px-3 py-2 text-sm font-medium text-white shadow-lg">
               <UserX className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{fmt(t.participantLost, { name: lost.name })}</span>

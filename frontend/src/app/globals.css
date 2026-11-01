@@ -800,3 +800,13 @@
   outline: none;
   box-shadow: var(--slider-media-focus-ring);
 }
+/* Paket AF (Aşama 2) — görüşme odasında YEREL önizlemenin aynalanması (yalnızca CSS; karşıya giden görüntü hiçbir durumda
+   aynalanmaz). Ön kamera ayna, arka kamera ayna DEĞİL. `data-mirrored` değeri `room/stage.tsx` içinde yerel kamera yönünden
+   (`facingMode`) türetilir; LiveKit'in kendi `data-lk-facing-mode` kuralı, yeniden başlatma sonrası güncellenmeyebildiği
+   için bununla `!important` ile tutarlı kılınır. Ekran paylaşımı kutusu (`data-lk-source=screen_share`) etkilenmez. */
+[data-local-camera="true"][data-mirrored="false"] .lk-participant-media-video[data-lk-source="camera"] {
+  transform: none !important;
+}
+[data-local-camera="true"][data-mirrored="true"] .lk-participant-media-video[data-lk-source="camera"] {
+  transform: rotateY(180deg) !important;
+}

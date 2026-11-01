@@ -111,6 +111,15 @@ export function resolveParticipantLabel(p: LabelParticipant, ctx: LabelContext):
   return usableName(p.name, p.identity) ?? roleName(role, ctx.t) ?? "";
 }
 
+/**
+ * Bekleme odasında "X birazdan katılacak" için beklenen karşı tarafın adı (aşama 1 etiket mantığıyla aynı kaynaklar):
+ * doktor ekranında hasta (tam ad), hasta ekranında doktor (unvan + görünen ad); ad yoksa izleyicinin dilinde rol adı.
+ */
+export function resolveExpectedCounterpartName(ctx: LabelContext): string {
+  if (ctx.viewer === "doctor") return (ctx.patientName ?? "").trim() || ctx.t.rolePatient;
+  return (ctx.doctorName ?? "").trim() || (ctx.doctorFallbackName ?? "").trim() || ctx.t.roleDoctor;
+}
+
 /** Ekran paylaşımı kutusu etiketi. */
 export function resolveScreenShareLabel(p: LabelParticipant, ctx: LabelContext): string {
   const name = resolveParticipantLabel(p, ctx) ?? "";

@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import "@livekit/components-styles";
 import { LiveKitRoom, RoomAudioRenderer, TrackToggle, useParticipants, useRoomContext, useTracks } from "@livekit/components-react";
 import { DisconnectReason, Track } from "livekit-client";
-import { AlertTriangle, Circle, Languages, LogOut } from "lucide-react";
+import { AlertTriangle, Circle, Languages, LogOut, RefreshCcw, Settings } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
@@ -28,6 +28,10 @@ import { ConnectionLayers, ConnectionStateReporter } from "@/components/site/tel
 import { useAppReconnect } from "@/components/site/telehealth/room/use-app-reconnect";
 import { disconnectKind } from "@/components/site/telehealth/room/disconnect-kind";
 import { classifyConnectionError, classifyMediaFailure, failureMessage, warnRaw } from "@/components/site/telehealth/room/connection-errors";
+// Paket AF (Aşama 2) — yalnızca arayüz: kamerayı çevir, cihaz ayarları, yerel önizleme aynalama. Yetki/token akışı değişmez.
+import { RoomUiProvider, useRoomUi } from "@/components/site/telehealth/room/room-ui-context";
+import { useCameraFlip, useSyncLocalFacing } from "@/components/site/telehealth/room/use-camera-flip";
+import { SettingsPanel } from "@/components/site/telehealth/room/settings-panel";
 
 /**
  * Paket AA — tercümanın görüşme ekranı. Hasta/doktor odası (`consultation-room.tsx`) KULLANILMAZ;
@@ -43,6 +47,8 @@ function isCounterpart(p: { isLocal: boolean; identity: string; metadata?: strin
 
 function InterpreterStage() {
   const { t } = usePortalStrings();
+  const ui = useRoomUi();
+  useSyncLocalFacing();
   const participants = useParticipants();
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
   // Görüşmenin asıl katılımcıları (hasta ve doktor) — dinleyici yayın yapmaz, gösterilmez.
@@ -62,7 +68,12 @@ function InterpreterStage() {
         </div>
       )}
       {local && (
-        <div className="absolute bottom-20 end-4 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:h-28 lg:w-40">
+        <div
+          data-local-camera="true"
+          data-facing={ui.facing}
+          data-mirrored={String(ui.facing === "user")}
+          className="absolute bottom-20 end-4 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:h-28 lg:w-40"
+        >
           <RoomParticipantTile key="local-camera" trackRef={local} className="h-full w-full" />
         </div>
       )}
@@ -75,11 +86,35 @@ const TOGGLE_CLASS =
 
 function InterpreterControls() {
   const { t } = usePortalStrings();
+  const { t: ct } = useConsultationStrings();
   const room = useRoomContext();
+  const { canFlip, flip, busy } = useCameraFlip();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const panelId = useId();
   return (
-    <div className="absolute inset-x-0 bottom-3 z-20 flex justify-center gap-2">
+    <>
+    {/* Panel, konumlandırma için sahnenin (LiveKitRoom) kökünü baz almalı → kontrol satırının DIŞINDA çizilir. */}
+    {settingsOpen && <SettingsPanel id={panelId} onClose={() => setSettingsOpen(false)} />}
+    <div className="absolute inset-x-0 bottom-3 z-20 flex flex-wrap justify-center gap-2 px-2">
       <TrackToggle source={Track.Source.Microphone} aria-label={t.interpreter.microphone} title={t.interpreter.microphone} className={TOGGLE_CLASS} />
       <TrackToggle source={Track.Source.Camera} aria-label={t.interpreter.camera} title={t.interpreter.camera} className={TOGGLE_CLASS} />
+      {canFlip && (
+        <button type="button" aria-label={ct.flipCamera} title={ct.flipCamera} disabled={busy} onClick={() => void flip()} className={TOGGLE_CLASS} data-testid="interpreter-flip-camera">
+          <RefreshCcw className="h-5 w-5" aria-hidden="true" />
+        </button>
+      )}
+      <button
+        type="button"
+        aria-label={ct.settingsOpen}
+        title={ct.settingsOpen}
+        aria-expanded={settingsOpen}
+        aria-controls={settingsOpen ? panelId : undefined}
+        onClick={() => setSettingsOpen((open) => !open)}
+        className={TOGGLE_CLASS}
+        data-testid="interpreter-settings"
+      >
+        <Settings className="h-5 w-5" aria-hidden="true" />
+      </button>
       <button
         type="button"
         data-testid="interpreter-leave"
@@ -91,6 +126,7 @@ function InterpreterControls() {
         {t.interpreter.leave}
       </button>
     </div>
+    </>
   );
 }
 
@@ -244,6 +280,7 @@ export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
 
       {meeting ? (
         <ParticipantLabelProvider value={labelContext}>
+          <RoomUiProvider>
           <LiveKitRoom
             key={meeting.token}
             token={meeting.token}
@@ -266,6 +303,7 @@ export function InterpreterRoom({ assignmentId }: { assignmentId: string }) {
             <InterpreterControls />
             <ConnectionLayers reconnect={reconnect} isCounterpart={isCounterpart} />
           </LiveKitRoom>
+          </RoomUiProvider>
         </ParticipantLabelProvider>
       ) : (
         <div className="flex flex-col items-center gap-4 rounded-[var(--site-radius)] border border-border bg-surface p-8 text-center">
