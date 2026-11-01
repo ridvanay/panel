@@ -27,9 +27,11 @@ vi.mock("next/dynamic", async () => {
 
 const getPackage = vi.fn();
 const submitPackageInquiry = vi.fn();
+const reportPackageView = vi.fn();
 vi.mock("@/lib/api/packages", () => ({
   getPackage: (...args: unknown[]) => getPackage(...args),
   submitPackageInquiry: (...args: unknown[]) => submitPackageInquiry(...args),
+  reportPackageView: (...args: unknown[]) => reportPackageView(...args),
 }));
 vi.mock("@/lib/legal-pages", () => ({
   fetchLegalPagesClient: async () => [],
@@ -87,6 +89,7 @@ beforeEach(() => {
   state.pathname = "/";
   window.sessionStorage.clear();
   getPackage.mockReset();
+  reportPackageView.mockReset();
   submitPackageInquiry.mockReset();
   stubMatchMedia({});
 });
@@ -222,6 +225,10 @@ describe("yan panel davranışı", () => {
     expect(await screen.findByTestId("package-detail-sheet")).toBeInTheDocument();
     expect(await screen.findByTestId("package-detail-body")).toBeInTheDocument();
     expect(getPackage).toHaveBeenCalledWith("executive-check-up", "en");
+    // Kullanıcı kararı (2026-11-01): panel ve sheet CRM'de kişi bazında izlenmez; yalnızca anonim sayaç artar.
+    expect(screen.getByTestId("packages-runner")).toHaveAttribute("data-crm-ignore");
+    expect(screen.getByTestId("package-detail-sheet")).toHaveAttribute("data-crm-ignore");
+    expect(reportPackageView).toHaveBeenCalledWith("package", "executive-check-up");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByTestId("package-detail-sheet")).toBeNull());
   });
@@ -453,5 +460,22 @@ describe("PackagesRunnerSlot", () => {
     const { PackagesRunnerSlot } = await import("@/components/site/packages/packages-runner-slot");
     expect(await PackagesRunnerSlot({ lang: "en" })).toBeNull();
     vi.doUnmock("@/lib/api/server-packages");
+  });
+});
+
+describe("anonim görüntülenme sayacı", () => {
+  it("PackageViewBeacon sayfa başına bir kez, kimliksiz çağrılır", async () => {
+    const { PackageViewBeacon } = await import("@/components/site/packages/package-view-beacon");
+    const { rerender } = render(<PackageViewBeacon kind="package" slug="executive-check-up" />);
+    rerender(<PackageViewBeacon kind="package" slug="executive-check-up" />);
+    expect(reportPackageView).toHaveBeenCalledTimes(1);
+    expect(reportPackageView).toHaveBeenCalledWith("package", "executive-check-up");
+  });
+
+  it("mobil şerit ve bottom sheet CRM'de izlenmez", async () => {
+    stubMatchMedia({ desktop: false });
+    render(<PackagesRunnerLazy featured={[card()]} items={[card()]} categories={["check-up"]} />);
+    await act(async () => {});
+    expect(screen.getByTestId("packages-runner-strip")).toHaveAttribute("data-crm-ignore");
   });
 });

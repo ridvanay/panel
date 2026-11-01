@@ -22,6 +22,7 @@ import {
   toAdminDestinationDto,
   toAdminPackageDto,
 } from "./packages.shared";
+import { packageViewSummary } from "./packages.stats";
 
 const IdParams = z.object({ id: z.string().uuid() });
 
@@ -57,6 +58,9 @@ export async function adminPackagesRoutes(app: FastifyInstance) {
     const rows = await app.prisma.healthPackage.findMany({ include, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
     return reply.send(ok(rows.map(toAdminPackageDto)));
   });
+
+  /** Anonim görüntülenme toplamları (son 90 gün; kişi bazında veri yok). */
+  server.get("/view-stats", async (_request, reply) => reply.send(ok(await packageViewSummary(app))));
 
   server.get("/:id", { schema: { params: IdParams } }, async (request, reply) => {
     const row = await app.prisma.healthPackage.findUnique({ where: { id: request.params.id }, include });

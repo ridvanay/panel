@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, Package, Pencil, Star } from "lucide-react";
 import * as packagesApi from "@/lib/api/admin-packages";
-import { PACKAGE_CATEGORY_LABELS, type AdminPackage, type PackageInput } from "@/lib/api/admin-packages";
+import { PACKAGE_CATEGORY_LABELS, type AdminPackage, type PackageInput, type PackageViewStats } from "@/lib/api/admin-packages";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ function packageTitle(p: AdminPackage): string {
 
 export default function AdminPackagesPage() {
   const [packages, setPackages] = useState<AdminPackage[] | null>(null);
+  const [views, setViews] = useState<PackageViewStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AdminPackage | null>(null);
@@ -42,6 +43,8 @@ export default function AdminPackagesPage() {
     try {
       setPackages(await packagesApi.listAdminPackages());
       setError(null);
+      // Sayaç yüklenemezse liste yine görünür (sütun "—").
+      packagesApi.getPackageViewStats().then(setViews).catch(() => setViews(null));
     } catch (err) {
       setError(friendlyErrorMessage(err));
     }
@@ -137,6 +140,13 @@ export default function AdminPackagesPage() {
         </Alert>
       )}
 
+      {views && (
+        <p className="text-sm text-foreground/70" data-testid="package-view-summary">
+          Son {views.days} gün (anonim toplam, kişi bazında kayıt yok): paket listesi {views.list.toLocaleString("tr-TR")} görüntülenme · destinasyon bölümü{" "}
+          {views.destinations.toLocaleString("tr-TR")} görüntülenme
+        </p>
+      )}
+
       {sorted === null ? (
         !error && (
           <div className="flex justify-center py-8">
@@ -161,6 +171,7 @@ export default function AdminPackagesPage() {
               <TableHead>Paket</TableHead>
               <TableHead>Kategori</TableHead>
               <TableHead>Durum</TableHead>
+              <TableHead className="text-right">Görüntülenme ({views?.days ?? 90} gün)</TableHead>
               <TableHead className="text-right">Talep</TableHead>
               <TableHead className="text-right">Sıra</TableHead>
               <TableHead className="text-right">İşlemler</TableHead>
@@ -187,6 +198,7 @@ export default function AdminPackagesPage() {
                     )}
                   </span>
                 </TableCell>
+                <TableCell className="text-right">{views ? (views.packages[p.slug] ?? 0).toLocaleString("tr-TR") : "—"}</TableCell>
                 <TableCell className="text-right">{p.inquiryCount ?? 0}</TableCell>
                 <TableCell className="text-right">{p.sortOrder}</TableCell>
                 <TableCell className="text-right">

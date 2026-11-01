@@ -174,7 +174,8 @@ describe("CRM N1 — uçlar", () => {
 
   it("config: takip varsayılan KAPALI; kapalıyken olay yazılmaz", async () => {
     const config = (await app.inject({ method: "GET", url: "/api/v1/crm/config" })).json().data;
-    expect(config).toMatchObject({ trackingEnabled: false, whatsappRef: false, consentVersion: "2026-10-23", heartbeatSeconds: 15 });
+    // Kullanıcı kararı (2026-11-01): Ref kodu varsayılan açık (yalnızca onaylı izleyicide eklenir).
+    expect(config).toMatchObject({ trackingEnabled: false, whatsappRef: true, consentVersion: "2026-10-23", heartbeatSeconds: 15 });
 
     const res = await collect(app, payload(id(), id(), [{ t: "pageview", p: "/en" }]));
     expect(res.statusCode).toBe(204);

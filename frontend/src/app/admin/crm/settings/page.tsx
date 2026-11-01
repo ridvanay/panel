@@ -156,7 +156,7 @@ export default function CrmSettingsPage() {
         <Toggle
           id="crm-whatsapp-ref"
           label="WhatsApp mesajına Ref kodu ekle"
-          description="WhatsApp bağlantısına tıklayan ziyaretçinin mesajına “(Ref: XXXXXX)” eklenir; talebi ziyaretçiyle elle eşleştirmek için kullanılır."
+          description="Yalnızca analitik onayı veren ziyaretçide, WhatsApp mesajına rastgele ve anlamsız “(Ref: XXXXXX)” kodu eklenir; talebi ziyaretçiyle elle eşleştirmek için kullanılır. Onay yoksa kod eklenmez. Paket sayfalarında izleme olmadığı için kod da eklenmez."
           checked={form.whatsappRef}
           onChange={(v) => set("whatsappRef", v)}
         />

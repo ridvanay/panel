@@ -4176,3 +4176,17 @@ model DestinationHighlight {
   @@index([coverMediaId])
   @@map("destination_highlights")
 }
+
+/// Kullanıcı kararı (2026-11-01): paket/destinasyon ziyaretleri CRM'de kişi bazında KAYDEDİLMEZ; yalnızca bu anonim
+/// günlük toplam tutulur (ziyaretçi/oturum kimliği, IP, dil yok). `kind`: list | package | destinations;
+/// `key`: paket slug'ı ya da "all". 90 günden eski satırlar CRM saklama zincirinde silinir.
+model PackageViewStat {
+  day   DateTime @db.Date
+  kind  String
+  key   String
+  count Int      @default(0)
+
+  @@id([day, kind, key])
+  @@index([kind, day])
+  @@map("package_view_stats")
+}

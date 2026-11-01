@@ -3,11 +3,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /** Paket X — admin: paket formu, destinasyon, iletişim kanalları, CRM paket paneli, sidebar. */
-const { api } = vi.hoisted(() => ({ api: { getContactChannelsSettings: vi.fn(), updateContactChannelsSettings: vi.fn() } }));
+const { api } = vi.hoisted(() => ({ api: { getContactChannelsSettings: vi.fn(), updateContactChannelsSettings: vi.fn(), listAdminPackages: vi.fn(), getPackageViewStats: vi.fn() } }));
 vi.mock("@/lib/api/admin-packages", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/admin-packages")>("@/lib/api/admin-packages");
   return { ...actual, ...api };
 });
+vi.mock("@/lib/api/telehealth", () => ({ listAdminSpecialties: () => Promise.resolve([]), listAdminDoctors: () => Promise.resolve([]) }));
+vi.mock("@/components/admin/translation-locale-tabs", async (orig) => ({ ...(await orig<object>()), useTranslationLocales: () => [] }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock("@/components/admin/media/media-select-field", () => ({ MediaSelectField: () => <div data-testid="media-field" /> }));
 
@@ -205,5 +207,21 @@ describe("Sidebar", () => {
       expect(visible("ADMIN", false)).not.toContain(href);
       expect(navItems.find((i) => i.href === href)?.module).toBe("telehealth");
     }
+  });
+});
+
+describe("paket listesi: anonim görüntülenme sayaçları", () => {
+  it("90 günlük toplamlar ve paket başına sayı gösterilir; kişi bazında veri yok", async () => {
+    const { default: AdminPackagesPage } = await import("@/app/admin/packages/page");
+    api.listAdminPackages.mockResolvedValue([
+      { id: "p1", slug: "executive", category: "check-up", translations: { en: { title: "Executive" } }, isActive: true, isFeatured: false, sortOrder: 0, inquiryCount: 2 },
+      { id: "p2", slug: "dental", category: "dental", translations: { en: { title: "Dental" } }, isActive: false, isFeatured: false, sortOrder: 1, inquiryCount: 0 },
+    ]);
+    api.getPackageViewStats.mockResolvedValue({ days: 90, list: 1500, destinations: 40, packages: { executive: 321 } });
+    render(<AdminPackagesPage />);
+    expect(await screen.findByTestId("package-view-summary")).toHaveTextContent("paket listesi 1.500 görüntülenme");
+    expect(screen.getByTestId("package-view-summary")).toHaveTextContent("destinasyon bölümü 40 görüntülenme");
+    expect(screen.getByText("321")).toBeInTheDocument();
+    expect(screen.getByText("Görüntülenme (90 gün)")).toBeInTheDocument();
   });
 });

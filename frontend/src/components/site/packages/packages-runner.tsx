@@ -108,6 +108,7 @@ export default function PackagesRunner({ featured, items, categories, onDismiss 
         <aside
           aria-label={t.sectionTitle}
           data-testid="packages-runner"
+          data-crm-ignore=""
           className="fixed end-0 top-1/2 z-40 flex -translate-y-1/2 items-stretch"
           onKeyDown={(e) => {
             if (e.key === "Escape" && mode === "peek") {
@@ -205,7 +206,7 @@ function MobileStrip({ categories, reduced, onOpen, onDismiss }: { categories: P
   const t = usePackagesStrings();
   const label = categories.map((c) => categoryLabel(t, c)).join(" · ");
   return (
-    <div data-bottom-bar data-testid="packages-runner-strip" className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_8px_rgba(0,0,0,0.08)]">
+    <div data-bottom-bar data-crm-ignore="" data-testid="packages-runner-strip" className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_8px_rgba(0,0,0,0.08)]">
       <div className="flex items-center">
       <button type="button" onClick={onOpen} aria-label={`${t.sectionTitle}. ${t.stripAria}`} className="flex h-9 min-w-0 flex-1 items-center gap-2 overflow-hidden px-3 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--site-primary)]">
         <HeartPulse className="h-4 w-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
@@ -256,7 +257,7 @@ function MobileSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-hidden rounded-t-2xl p-0" data-testid="packages-runner-sheet">
+      <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-hidden rounded-t-2xl p-0" data-testid="packages-runner-sheet" data-crm-ignore="">
         <div className="px-4 pb-2 pt-4">
           <SheetTitle className="font-heading text-lg font-semibold">{t.sectionTitle}</SheetTitle>
           <SheetDescription className="sr-only">{t.filterAria}</SheetDescription>

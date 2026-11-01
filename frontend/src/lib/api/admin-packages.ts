@@ -111,6 +111,16 @@ function toList<T>(raw: unknown): T[] {
 export async function listAdminPackages(): Promise<AdminPackage[]> {
   return toList<AdminPackage>(await apiFetch<unknown>("/admin/packages"));
 }
+/** Anonim görüntülenme toplamları (son `days` gün; kişi bazında veri yok). */
+export interface PackageViewStats {
+  days: number;
+  list: number;
+  destinations: number;
+  packages: Record<string, number>;
+}
+export function getPackageViewStats(): Promise<PackageViewStats> {
+  return apiFetch<PackageViewStats>("/admin/packages/view-stats");
+}
 export function getAdminPackage(id: string): Promise<AdminPackage> {
   return apiFetch<AdminPackage>(`/admin/packages/${id}`);
 }

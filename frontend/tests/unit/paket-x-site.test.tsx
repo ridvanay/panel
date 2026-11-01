@@ -145,6 +145,8 @@ describe("mobil birleşik Contact düğmesi", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(trigger);
     const menu = screen.getByTestId("mobile-contact-menu");
+    // Ref kodu için CRM izleyicisinin WhatsApp tıklamasını görmesi gerekir (onaylıysa): düğme izleme dışı DEĞİL.
+    expect(screen.getByTestId("mobile-contact-button")).not.toHaveAttribute("data-crm-ignore");
     expect(within(menu).getByTestId("mobile-contact-whatsapp")).toHaveAttribute("href", buildWhatsappHref(WA, "Site"));
     expect(within(menu).getByTestId("mobile-contact-whatsapp-note")).toHaveTextContent(en.contactCta.whatsappNote);
     expect(within(menu).getByTestId("mobile-contact-chat")).toBeInTheDocument();
@@ -240,6 +242,11 @@ const DEST: Destination = {
 describe("Top destinations", () => {
   const view = (items: Destination[]) =>
     render(wrap(<DestinationsView items={items} dict={en.destinations} lang="en" siteName="Acme Clinic" packagesHref="/en/packages" />));
+
+  it("bölüm CRM'de kişi bazında izlenmez (yalnızca anonim sayaç)", () => {
+    view([DEST]);
+    expect(screen.getByTestId("home-destinations")).toHaveAttribute("data-crm-ignore");
+  });
 
   it("kayıt yokken bölüm yok", () => {
     const { container } = view([]);

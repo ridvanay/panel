@@ -307,6 +307,61 @@ describe("Paket X — paketler, destinasyonlar, iletişim kanalları", () => {
     });
   });
 
+  describe("anonim görüntülenme sayacı (kullanıcı kararı 2026-11-01)", () => {
+    const view = (payload: Record<string, unknown>, headers: Record<string, string> = ORIGIN) =>
+      app.inject({ method: "POST", url: "/api/v1/packages/views", headers, payload, remoteAddress: nextIp() });
+
+    it("yalnızca kimliksiz günlük toplam artar; pasif/bilinmeyen paket sayılmaz; CRM'e kişi bazında hiçbir şey yazılmaz", async () => {
+      await app.prisma.packageViewStat.deleteMany();
+      const active = await createPackage();
+      const draft = await createPackage({ isActive: false });
+      const [visitors, events] = await Promise.all([app.prisma.crmVisitor.count(), app.prisma.crmEvent.count()]);
+
+      for (const payload of [{ kind: "list" }, { kind: "list" }, { kind: "package", slug: active.slug }, { kind: "destinations" }, { kind: "package", slug: draft.slug }, { kind: "package", slug: "yok" }, { kind: "package" }]) {
+        expect((await view(payload)).statusCode, JSON.stringify(payload)).toBe(204);
+      }
+      expect((await view({ kind: "list", vid: "abc" })).statusCode).toBe(422);
+      expect((await view({ kind: "doctor" })).statusCode).toBe(422);
+      expect((await view({ kind: "list" }, {})).statusCode).toBe(403);
+
+      const rows = await app.prisma.packageViewStat.findMany({ orderBy: [{ kind: "asc" }, { key: "asc" }] });
+      expect(rows.map((r) => [r.kind, r.key, r.count])).toEqual([
+        ["destinations", "all", 1],
+        ["list", "all", 2],
+        ["package", active.slug, 1],
+      ]);
+      // Tablo şemasında kişi/oturum/IP alanı yok; CRM ham verisi değişmedi.
+      expect(Object.keys(rows[0]!).sort()).toEqual(["count", "day", "key", "kind"]);
+      expect([await app.prisma.crmVisitor.count(), await app.prisma.crmEvent.count()]).toEqual([visitors, events]);
+
+      const summary = await app.inject({ method: "GET", url: "/api/v1/admin/packages/view-stats", headers: auth(manager.token) });
+      expect(summary.statusCode).toBe(200);
+      expect(summary.json().data).toEqual({ days: 90, list: 2, destinations: 1, packages: { [active.slug]: 1 } });
+      expect((await app.inject({ method: "GET", url: "/api/v1/admin/packages/view-stats", headers: auth(editor.token) })).statusCode).toBe(403);
+    });
+
+    it("saklama: 90 günden eski satırlar silinir", async () => {
+      const { purgeOldPackageViewStats } = await import("../../src/modules/packages/packages.stats");
+      await app.prisma.packageViewStat.deleteMany();
+      const day = (daysAgo: number) => new Date(`${new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)}T00:00:00Z`);
+      await app.prisma.packageViewStat.createMany({ data: [{ day: day(120), kind: "list", key: "all", count: 5 }, { day: day(10), kind: "list", key: "all", count: 3 }] });
+      expect(await purgeOldPackageViewStats(app)).toBe(1);
+      expect((await app.prisma.packageViewStat.findMany()).map((r) => r.count)).toEqual([3]);
+    });
+
+    it("paket yolları CRM'de her zaman hariç (ön yüz ile aynı liste)", async () => {
+      const { isExcludedPath: isCrmExcludedPath } = await import("../../src/modules/crm/crm.privacy");
+      for (const path of ["/packages", "/en/packages", "/tr/packages/executive", "/sr-latn/packages/x"]) expect(isCrmExcludedPath(path), path).toBe(true);
+      expect(isCrmExcludedPath("/en/packaging")).toBe(false);
+      expect(isCrmExcludedPath("/en")).toBe(false);
+    });
+  });
+
+  it("CRM varsayılanı: WhatsApp Ref kodu açık (kod yalnızca onaylı izleyicide eklenir)", async () => {
+    const { DEFAULT_CRM_SETTINGS } = await import("../../src/modules/crm/crm.settings");
+    expect(DEFAULT_CRM_SETTINGS.whatsappRef).toBe(true);
+  });
+
   it("telehealth modülü kapalıyken herkese açık uçlar 404", async () => {
     await app.prisma.siteModule.update({ where: { key: "telehealth" }, data: { enabled: false } });
     try {

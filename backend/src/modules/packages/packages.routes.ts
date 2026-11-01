@@ -17,6 +17,7 @@ import { PUBLIC_DOCTOR_WHERE } from "../telehealth/lib/archive-filters";
 import { localizeSpecialty } from "../telehealth/lib/doctor-localization";
 import { PACKAGE_CATEGORIES, parseContactChannels, pickLocale, publicWhatsapp, toPublicDestination, toPublicPackageCard, toPublicPackageDetail, type PackageText } from "./packages.shared";
 import { notifyPackageInquiry, sendPackageConfirmation } from "./packages.notifications";
+import { PACKAGE_VIEW_KINDS, incrementPackageViewStat } from "./packages.stats";
 
 const localeCode = z.string().regex(LOCALE_CODE_PATTERN);
 export const PACKAGE_NOTE_MAX = 500;
@@ -129,6 +130,27 @@ export async function packagesPublicRoutes(app: FastifyInstance) {
     const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" }, select: { settings: true } });
     return reply.header("cache-control", "public, max-age=60").send(ok({ whatsapp: publicWhatsapp(parseContactChannels(row?.settings), request.query.locale) }));
   });
+
+  /**
+   * Anonim görüntülenme sayacı (kişi/oturum kimliği, çerez yok; onay gerektirmez). Paket sayfaları CRM izlemesinden
+   * hariçtir — bu uç kişi bazında hiçbir şey yazmaz. Yalnızca aktif paket slug'ı sayılır.
+   */
+  server.post(
+    "/packages/views",
+    {
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: { body: z.object({ kind: z.enum(PACKAGE_VIEW_KINDS), slug: z.string().trim().min(1).max(80).optional() }).strict(), response: { 204: z.undefined() } },
+    },
+    async (request, reply) => {
+      const { kind, slug } = request.body;
+      if (kind === "package") {
+        if (slug && (await app.prisma.healthPackage.count({ where: { slug, isActive: true } })) > 0) await incrementPackageViewStat(app, "package", slug);
+      } else {
+        await incrementPackageViewStat(app, kind, "all");
+      }
+      return reply.code(204).send();
+    }
+  );
 
   server.post(
     "/packages/:slug/inquiries",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { SafeImage } from "@/components/site/safe-image";
 import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
+import { DestinationsViewBeacon } from "./destinations-view-beacon";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { fetchDestinationsServer, type Destination } from "@/lib/api/server-destinations";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
@@ -32,7 +33,8 @@ export function DestinationsView({ items, dict, lang, siteName, packagesHref }: 
   const periodLabel = items.find((d) => d.dataPeriodLabel)?.dataPeriodLabel ?? null;
   const anyPrice = items.some((d) => d.treatments.slice(0, MAX_TREATMENTS).some((t) => t.price));
   return (
-    <section aria-labelledby="home-destinations-title" className="bg-background py-12 sm:py-16" data-testid="home-destinations">
+    <section aria-labelledby="home-destinations-title" className="bg-background py-12 sm:py-16" data-testid="home-destinations" data-crm-ignore="">
+      <DestinationsViewBeacon />
       <div className={aboutContainerClass}>
         <header className="max-w-2xl">
           <h2 id="home-destinations-title" className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">

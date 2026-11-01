@@ -10,6 +10,7 @@ import { localeDirection } from "@/lib/i18n/locale-direction";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { SITE_URL } from "@/lib/env";
 import { PackagesPageView } from "@/components/site/packages/packages-page-view";
+import { PackageViewBeacon } from "@/components/site/packages/package-view-beacon";
 
 /**
  * Paket X — `/[lang]/packages`: kategori filtreli paket ızgarası (`?category=`). Telehealth modülü kapalıysa 404.
@@ -60,7 +61,9 @@ export default async function PackagesPage({ params, searchParams }: PageProps) 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const categories = all.categories.length > 0 ? all.categories : Array.from(new Set(all.items.map((p) => p.category)));
   return (
-    <PackagesPageView
+    <>
+      <PackageViewBeacon kind="list" />
+      <PackagesPageView
       t={dict.packages}
       items={(filtered ?? all).items}
       categories={categories}
@@ -70,5 +73,6 @@ export default async function PackagesPage({ params, searchParams }: PageProps) 
       localize={(path) => withLocalePrefix(path, lang, defaultLocaleCode)}
       dir={localeDirection(lang)}
     />
+    </>
   );
 }

@@ -65,7 +65,6 @@ export function MobileContactButton({ topic, position = "BOTTOM_RIGHT", stackAbo
   return (
     <div
       ref={rootRef}
-      data-crm-ignore=""
       data-testid="mobile-contact-button"
       className={cn(
         "fixed z-50 flex flex-col gap-2 transition-[bottom] duration-300 lg:hidden [html[data-live-chat-open]_&]:hidden",

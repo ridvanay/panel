@@ -14,6 +14,7 @@ import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SafeImage } from "@/components/site/safe-image";
 import { PackageDetailBody } from "@/components/site/packages/package-detail-body";
 import { PackageDetailActions } from "@/components/site/packages/package-detail-actions";
+import { PackageViewBeacon } from "@/components/site/packages/package-view-beacon";
 import { buildPackageJsonLd, packageSocialImage } from "@/components/site/packages/package-json-ld";
 import { categoryLabel } from "@/components/site/packages/package-format";
 
@@ -75,6 +76,7 @@ export default async function PackagePage({ params }: PageProps) {
   return (
     <article dir={localeDirection(lang)} className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-14" data-testid="package-page">
       <JsonLdScript json={buildPackageJsonLd(pkg, canonical)} />
+      <PackageViewBeacon kind="package" slug={pkg.slug} />
       <Link href={localize("/packages")} className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--site-link,var(--site-primary))]">
         <ChevronLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
         {t.backToList}

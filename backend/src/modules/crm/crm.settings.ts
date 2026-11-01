@@ -83,7 +83,8 @@ export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   retentionDays: 180,
   leadRetentionDays: 730,
   notificationEmail: null,
-  whatsappRef: false,
+  // Kullanıcı kararı (2026-11-01): açık. Kod yalnızca analitik onayı veren ziyaretçide eklenir (izleyici onaysız yüklenmez).
+  whatsappRef: true,
   scoreWeights: { perEngagedMinute: 2, perPageview: 3, perReturnVisit: 10, bookingPage: 20, contactClick: 25, hotThreshold: 50 },
   slaHours: 2,
   // Google'a giden dosyada sağlık bilgisi ima etmeyen NÖTR adlar (ör. "Tedavi oldu" YAZILMAZ).

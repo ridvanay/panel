@@ -170,6 +170,44 @@ describe("takip modülü", () => {
     expect(sent[0]!.body.ref).toBe(ref);
   });
 
+  it("Ref kodu yalnızca onaylı (çalışan) izleyicide; onay geri alınınca, paket sayfalarında ve paket panelinde eklenmez", async () => {
+    const html = `<a id="wa" href="https://wa.me/905551112233?text=Hello">WhatsApp</a><div data-crm-ignore><a id="wa-pkg" href="https://wa.me/905551112233?text=Executive">WhatsApp</a></div>`;
+    const click = (id: string) => {
+      const a = document.getElementById(id) as HTMLAnchorElement;
+      a.addEventListener("click", (e) => e.preventDefault());
+      a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      return decodeURIComponent(a.href.replace(/\+/g, " "));
+    };
+
+    // Onay yok → izleyici hiç başlatılmaz (yükleyici dinamik import etmez): bağlantı değişmez, kod üretilmez.
+    window.history.replaceState({}, "", "/en");
+    document.body.innerHTML = html;
+    expect(click("wa")).not.toContain("Ref:");
+    expect(localStorage.getItem("wmcrm_ref")).toBeNull();
+
+    // Paket sayfası: her zaman hariç yol → kod yok, olay yok.
+    window.history.replaceState({}, "", "/en/packages/executive");
+    document.body.innerHTML = html;
+    startTracker({ ...CONFIG, whatsappRef: true });
+    vi.advanceTimersByTime(400);
+    expect(click("wa")).not.toContain("Ref:");
+    expect(await collected()).toEqual([]);
+
+    // Diğer sayfa: panel/sheet (`data-crm-ignore`) içindeki paket bağlantısına kod eklenmez; genel bağlantıya eklenir.
+    window.history.pushState({}, "", "/en/about");
+    vi.advanceTimersByTime(400);
+    expect(click("wa-pkg")).not.toContain("Ref:");
+    expect(click("wa")).toMatch(/Hello \(Ref: [A-HJ-NP-Z2-9]{6}\)$/);
+    const events = await collected();
+    expect(events.filter((e) => e.t === "whatsapp_click")).toHaveLength(1);
+    expect(events.some((e) => String(e.p).includes("/packages"))).toBe(false);
+
+    // Onay geri alındı → izleyici durdu: yeni bağlantıya kod eklenmez.
+    stopTracker();
+    document.body.innerHTML = html;
+    expect(click("wa")).not.toContain("Ref:");
+  });
+
   it("randevu adımı ve randevu atfı; durdurulunca gönderim olmaz", async () => {
     window.history.replaceState({}, "", "/en/doctors/x");
     startTracker(CONFIG);

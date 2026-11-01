@@ -31,6 +31,8 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
   "/2fa",
   "/invitations",
   "/dashboard",
+  // Kullanıcı kararı (2026-11-01) — paket ziyaretleri kişi bazında kaydedilmez; yalnızca anonim sayaç (packages.stats).
+  "/packages",
 ] as const;
 
 // Paket T — dil öneki iki harfli ya da yazı sistemli (`/sr-latn`) olabilir.

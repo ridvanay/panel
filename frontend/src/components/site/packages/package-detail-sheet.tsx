@@ -14,6 +14,7 @@ import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { usePackagesStrings } from "@/lib/i18n/use-packages-strings";
 import { PackageDetailBody } from "./package-detail-body";
 import { PackageInquiryForm, focusPackageInquiryForm } from "./package-inquiry-form";
+import { PackageViewBeacon } from "./package-view-beacon";
 
 type DetailState = { status: "loading" } | { status: "error" } | { status: "ready"; pkg: PackageDetailData };
 
@@ -28,7 +29,7 @@ export function PackageDetailSheet({ card, onClose }: { card: PackageCardData | 
 
   return (
     <Sheet open={card !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full overflow-y-auto p-0 data-[side=right]:sm:max-w-xl" data-testid="package-detail-sheet">
+      <SheetContent side="right" className="w-full overflow-y-auto p-0 data-[side=right]:sm:max-w-xl" data-testid="package-detail-sheet" data-crm-ignore="">
         <div className="space-y-6 p-4 pt-12 sm:p-6 sm:pt-12">
           <div>
             <SheetTitle className="font-heading text-xl font-semibold">{card?.title ?? ""}</SheetTitle>
@@ -40,6 +41,7 @@ export function PackageDetailSheet({ card, onClose }: { card: PackageCardData | 
               </Link>
             )}
           </div>
+          {card && <PackageViewBeacon key={card.slug} kind="package" slug={card.slug} />}
           {card && <DetailLoader key={`${card.slug}:${attempt}`} card={card} onClose={onClose} onRetry={() => setAttempt((n) => n + 1)} />}
         </div>
       </SheetContent>
