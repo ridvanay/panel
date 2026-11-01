@@ -66,7 +66,7 @@ import {
   demotionPatch,
   isReviewSatisfied,
 } from "./lib/medical-review";
-import { getPublicPostDetail, listPublicPosts, listPublicTopics } from "./lib/blog-public";
+import { getPublicPostDetail, listPublicPosts, listPublicReviewers, listPublicTopics } from "./lib/blog-public";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { toPublicBlogPostDto } from "../public-api/public-api.mappers";
 import {
@@ -1077,6 +1077,10 @@ export async function publicBlogRoutes(app: FastifyInstance) {
 
   server.get("/topics", { schema: { querystring: LocaleQuerySchema } }, async (request, reply) => {
     return reply.send(ok(await listPublicTopics(app, request.query.locale)));
+  });
+
+  server.get("/reviewers", { schema: { querystring: LocaleQuerySchema } }, async (request, reply) => {
+    return reply.send(ok(await listPublicReviewers(app, request.query.locale)));
   });
 
   server.get("/posts/:slug", { schema: { params: PostSlugParamSchema, querystring: LocaleQuerySchema } }, async (request, reply) => {

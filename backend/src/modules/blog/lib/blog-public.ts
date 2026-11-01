@@ -226,6 +226,40 @@ export async function listPublicTopics(app: FastifyInstance, localeRaw: string |
   });
 }
 
+/**
+ * Paket Z1-ek — "İnceleyen hekimler" ızgarası: en az bir yazıyı onaylamış (approved, çöpte değil) VE şu an
+ * herkese açık (PUBLIC_DOCTOR_WHERE) hekimler. Kişisel iletişim verisi (e-posta/telefon) DÖNMEZ.
+ */
+export async function listPublicReviewers(app: FastifyInstance, localeRaw: string | undefined) {
+  const localeSet = await getLocaleSet(app);
+  const locale = resolveEffectiveLocaleCode(localeSet, localeRaw);
+
+  const groups = await app.prisma.blogPost.groupBy({
+    by: ["reviewerDoctorId"],
+    where: { medicalReviewStatus: "approved", deletedAt: null, reviewerDoctorId: { not: null } },
+    _count: { _all: true },
+  });
+  if (groups.length === 0) return { items: [] };
+  const countById = new Map(groups.map((g) => [g.reviewerDoctorId!, g._count._all]));
+
+  const doctors = await app.prisma.doctorProfile.findMany({
+    where: { ...PUBLIC_DOCTOR_WHERE, id: { in: [...countById.keys()] } },
+    include: { avatarMedia: true, specialty: true },
+  });
+
+  const items = doctors
+    .map((d) => ({
+      slug: d.slug,
+      name: reviewerDisplayName(d, locale),
+      title: localizedDoctorTitle(d, locale),
+      avatarUrl: d.avatarMedia ? absolutizeMediaUrl(d.avatarMedia.url) : null,
+      specialty: d.specialty ? localizedSpecialty(d.specialty, locale) : null,
+      approvedCount: countById.get(d.id) ?? 0,
+    }))
+    .sort((a, b) => b.approvedCount - a.approvedCount || a.name.localeCompare(b.name, locale ?? "en"));
+  return { items };
+}
+
 async function resolveCoverCompatUrl(app: FastifyInstance, coverImageUrl: string | null): Promise<string | null> {
   if (!coverImageUrl) return null;
   const candidates = [coverImageUrl];
