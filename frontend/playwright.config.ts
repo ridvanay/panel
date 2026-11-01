@@ -106,7 +106,9 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         channel: "chrome",
-        headless: false,
+        // Paket AF — `E2E_HEADLESS=1` ile gerçek Chrome'un yeni headless modunda koşar (sahte cihaz bayrakları
+        // orada da çalışır); varsayılan davranış değişmedi (headed).
+        headless: process.env.E2E_HEADLESS === "1",
         permissions: ["camera", "microphone"],
         launchOptions: {
           args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-permissions"],
