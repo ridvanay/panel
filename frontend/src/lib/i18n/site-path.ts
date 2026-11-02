@@ -1,4 +1,4 @@
-import { canonicalSitePath } from "./physicians-path";
+import { visitorSitePath } from "./physicians-path";
 
 /**
  * §4 Public routing — varsayılan dil prefix'siz, diğerleri prefix'li (bkz.
@@ -12,7 +12,7 @@ import { canonicalSitePath } from "./physicians-path";
 export function withLocalePrefix(rawPath: string, activeLocale: string, defaultLocale: string): string {
   if (!rawPath.startsWith("/")) return rawPath;
   // Paket V — eski `/doctors` bağlantıları (panelden girilmiş menü/CTA) yeni `/physicians` yoluna.
-  const path = canonicalSitePath(rawPath);
+  const path = visitorSitePath(rawPath);
   if (activeLocale === defaultLocale) return path;
   // qa-agent bulgusu (2026-09-16) — kök path (`"/"`) için `${activeLocale}${path}` çift slash'a
   // (`/en/`) düşer; ana sayfanın prefix'li kanonik URL'i her zaman `/en` (SONDA slash YOK)

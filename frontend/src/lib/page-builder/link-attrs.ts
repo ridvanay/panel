@@ -1,4 +1,4 @@
-import { canonicalSitePath } from "@/lib/i18n/physicians-path";
+import { visitorSitePath } from "@/lib/i18n/physicians-path";
 
 /**
  * Sayfa oluşturucu bloklarının opsiyonel `href` alanı için bağlantı öznitelikleri (Paket A3).
@@ -10,5 +10,5 @@ export function isExternalHref(href: string): boolean {
 }
 
 export function linkAttrs(href: string): { href: string; target?: "_blank"; rel?: string } {
-  return isExternalHref(href) ? { href, target: "_blank", rel: "noopener noreferrer" } : { href: canonicalSitePath(href) };
+  return isExternalHref(href) ? { href, target: "_blank", rel: "noopener noreferrer" } : { href: visitorSitePath(href) };
 }

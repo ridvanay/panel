@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-import { canonicalSitePath } from "@/lib/i18n/physicians-path";
+import { visitorSitePath } from "@/lib/i18n/physicians-path";
 
 interface LinkButtonProps extends ComponentProps<typeof Link>, VariantProps<typeof buttonVariants> {}
 
@@ -15,5 +15,5 @@ interface LinkButtonProps extends ComponentProps<typeof Link>, VariantProps<type
  */
 export function LinkButton({ className, variant, size, href, ...props }: LinkButtonProps) {
   // Paket V — panelden girilmiş eski `/doctors` bağlantıları yeni yola.
-  return <Link className={cn(buttonVariants({ variant, size }), className)} href={typeof href === "string" ? canonicalSitePath(href) : href} {...props} />;
+  return <Link className={cn(buttonVariants({ variant, size }), className)} href={typeof href === "string" ? visitorSitePath(href) : href} {...props} />;
 }

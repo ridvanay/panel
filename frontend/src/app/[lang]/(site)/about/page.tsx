@@ -12,6 +12,7 @@ import {
   buildDefaultAboutContent,
   getAboutDataForLocale,
   resolveAboutContent,
+  sanitizeAboutOverrides,
   resolveAboutHref,
   selectAboutDoctors,
 } from "@/lib/about-page";
@@ -77,9 +78,11 @@ export async function generateMetadata({ params }: AboutPageProps): Promise<Meta
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const canonical =
     seoField(page, lang, defaultLocaleCode, "canonicalUrl") ?? `${SITE_URL}${withLocalePrefix(ABOUT_PATH, lang, defaultLocaleCode)}`;
-  const title = seoField(page, lang, defaultLocaleCode, "seoTitle") ?? dict.about.metaTitle;
-  const description = seoField(page, lang, defaultLocaleCode, "seoDescription") ?? dict.about.metaDescription;
-  const ogTitle = seoField(page, lang, defaultLocaleCode, "ogTitle") ?? title;
+  // Paket AH — hekimler kapalıyken CMS SEO metinleri kullanılmaz (aracı kuruluş vurgusu sözlükten).
+  const useCmsText = DOCTORS_VISIBLE_TO_VISITORS;
+  const title = (useCmsText ? seoField(page, lang, defaultLocaleCode, "seoTitle") : null) ?? dict.about.metaTitle;
+  const description = (useCmsText ? seoField(page, lang, defaultLocaleCode, "seoDescription") : null) ?? dict.about.metaDescription;
+  const ogTitle = (useCmsText ? seoField(page, lang, defaultLocaleCode, "ogTitle") : null) ?? title;
   const ogImage = page?.ogImageUrl?.trim() || null;
 
   return {
@@ -120,7 +123,10 @@ export default async function AboutPage({ params }: AboutPageProps) {
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
-  const content = resolveAboutContent(getAboutDataForLocale(page, lang, defaultLocaleCode), buildDefaultAboutContent(dict.about));
+  const content = resolveAboutContent(
+    sanitizeAboutOverrides(getAboutDataForLocale(page, lang, defaultLocaleCode), DOCTORS_VISIBLE_TO_VISITORS),
+    buildDefaultAboutContent(dict.about)
+  );
   const href = (value: string) => resolveAboutHref(value, lang, defaultLocaleCode);
 
   // "Tedavi alanları" kutusu adı (isim bazlı, case-insensitive) bir uzmanlığa karşılık geliyorsa

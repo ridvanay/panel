@@ -35,9 +35,9 @@ describe("legacyPhysiciansPath / canonicalSitePath", () => {
     expect(canonicalSitePath("/doctors?specialty=x")).toBe("/physicians?specialty=x");
     expect(canonicalSitePath("/doctors#team")).toBe("/physicians#team");
     expect(canonicalSitePath("/doctor")).toBe("/doctor");
-    expect(withLocalePrefix("/doctors/a", "en", "tr")).toBe("/en/physicians/a");
-    expect(withLocalePrefix("/doctors", "tr", "tr")).toBe("/physicians");
-    expect(linkAttrs("/doctors/a")).toEqual({ href: "/physicians/a" });
+    expect(withLocalePrefix("/doctors/a", "en", "tr")).toBe("/en/request");
+    expect(withLocalePrefix("/doctors", "tr", "tr")).toBe("/request");
+    expect(linkAttrs("/doctors/a")).toEqual({ href: "/request" });
     expect(linkAttrs("https://example.com/doctors")).toMatchObject({ href: "https://example.com/doctors" });
     expect(isPhysiciansListHref("/doctors")).toBe(true);
     expect(isPhysiciansListHref("/physicians/")).toBe(true);

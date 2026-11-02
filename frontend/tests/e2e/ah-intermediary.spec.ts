@@ -112,6 +112,7 @@ function requestBody(over: Record<string, unknown> = {}) {
 
 async function postRequest(body: Record<string, unknown>) {
   const res = await fetch(`${API_BASE_URL}/consultation-requests`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e: serbest JSON gövdesi
   return { status: res.status, json: (await res.json().catch(() => null)) as any };
 }
 
@@ -678,6 +679,7 @@ test.describe("Talep formu", () => {
     expect(lead.country).toBe("DE");
     const detail = await adminFetch(`/admin/crm/leads/${lead.id}`, {}, crmToken);
     expect(detail.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e: serbest JSON gövdesi
     const d = ((await detail.json()) as { data: any }).data;
     const cr = d.consultationRequest ?? d.lead?.consultationRequest;
     expect(cr, "lead detayında consultationRequest").toBeTruthy();

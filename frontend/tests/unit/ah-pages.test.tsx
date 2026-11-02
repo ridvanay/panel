@@ -248,3 +248,31 @@ describe("Bölüm sayfası — hekim yok", () => {
     expect(screen.getByTestId("intermediary-notice")).toBeInTheDocument();
   });
 });
+
+describe("Hakkımızda — CMS override'ları (hekimler kapalıyken)", () => {
+  it("CMS metin/CTA override'ları yok sayılır; yalnızca hero görseli korunur", async () => {
+    const { sanitizeAboutOverrides, resolveAboutContent, buildDefaultAboutContent } = await import("@/lib/about-page");
+    const dict = await getSiteDictionary("en");
+    const cms = {
+      hero: { title: "Dr. Vahit Mutlu önderliğinde", body: "Founded under the leadership of Dr. Vahit Mutlu", imageUrl: "/uploads/hero.webp", primaryCta: { label: "Randevu Al", href: "/physicians" } },
+      closing: { primaryCta: { label: "Randevu Al", href: "/physicians" } },
+    };
+    const content = resolveAboutContent(sanitizeAboutOverrides(cms, false), buildDefaultAboutContent(dict.about));
+    expect(JSON.stringify({ hero: content.hero, closing: content.closing })).not.toMatch(/Vahit|Randevu|physicians/);
+    expect(content.hero.imageUrl).toBe("/uploads/hero.webp");
+    expect(content.hero.primaryCta.href).toBe("/request");
+    expect(content.hero.secondaryCta.href).toBe("#authorized-facilities");
+    expect(sanitizeAboutOverrides(cms, true)).toBe(cms);
+    expect(sanitizeAboutOverrides({ hero: { title: "x" } }, false)).toBeNull();
+  });
+
+  it("CMS'ten gelen /physicians bağlantıları render anında /request'e çevrilir", async () => {
+    const { withLocalePrefix } = await import("@/lib/i18n/site-path");
+    const { linkAttrs } = await import("@/lib/page-builder/link-attrs");
+    expect(withLocalePrefix("/physicians", "de", "en")).toBe("/de/request");
+    expect(withLocalePrefix("/physicians/ali?x=1", "en", "en")).toBe("/request");
+    expect(withLocalePrefix("/doctors", "en", "en")).toBe("/request");
+    expect(withLocalePrefix("/specialties", "en", "en")).toBe("/specialties");
+    expect(linkAttrs("/physicians").href).toBe("/request");
+  });
+});

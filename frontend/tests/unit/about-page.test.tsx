@@ -164,10 +164,10 @@ describe("getAboutDataForLocale — dil sızıntısı yok", () => {
 
 describe("resolveAboutHref", () => {
   it("site içi yolları aktif dile göre önekler; çapa ve mutlak adresleri olduğu gibi bırakır", () => {
-    expect(resolveAboutHref("/physicians", "en", "tr")).toBe("/en/physicians");
-    // Paket V — eski yol yeni yola çevrilir.
-    expect(resolveAboutHref("/doctors", "en", "tr")).toBe("/en/physicians");
-    expect(resolveAboutHref("/physicians", "tr", "tr")).toBe("/physicians");
+    expect(resolveAboutHref("/physicians", "en", "tr")).toBe("/en/request");
+    // Paket AH — hekim yolları ziyaretçide talep formuna çevrilir.
+    expect(resolveAboutHref("/doctors", "en", "tr")).toBe("/en/request");
+    expect(resolveAboutHref("/physicians", "tr", "tr")).toBe("/request");
     expect(resolveAboutHref("#doctors", "en", "tr")).toBe("#doctors");
     expect(resolveAboutHref("https://example.com/a", "en", "tr")).toBe("https://example.com/a");
     expect(resolveAboutHref("//cdn.example.com/a", "en", "tr")).toBe("//cdn.example.com/a");

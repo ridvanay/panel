@@ -1,4 +1,5 @@
 import { LOCALE_SEGMENT_SOURCE } from "./locale-code";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "../intermediary";
 
 /**
  * Paket V (2026-10-30) — hekim listesi ve profilleri `/doctors` yerine `/physicians` altında.
@@ -20,6 +21,16 @@ export function legacyPhysiciansPath(pathname: string, defaultLocaleCode: string
   if (locale && enabledLocaleCodes && !enabledLocaleCodes.has(locale)) return null;
   const prefix = locale && locale !== defaultLocaleCode ? `/${locale}` : "";
   return `${prefix}/physicians${slug ? `/${slug}` : ""}`;
+}
+
+/**
+ * Paket AH — ziyaretçi tarafında hekim sayfaları yok: panelden/CMS'ten girilmiş `/physicians` (ve eski `/doctors`)
+ * bağlantıları render anında talep formuna çevrilir (veri değişmez). Bayrak açılırsa eski davranış.
+ */
+export function visitorSitePath(path: string): string {
+  const canonical = canonicalSitePath(path);
+  if (DOCTORS_VISIBLE_TO_VISITORS) return canonical;
+  return /^\/physicians(?:\/[^?#]*)?(?=$|[?#])/.test(canonical) ? "/request" : canonical;
 }
 
 const LEGACY_LINK_PATTERN = /^\/doctors(?=$|[/?#])/;

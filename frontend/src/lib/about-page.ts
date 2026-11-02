@@ -328,6 +328,17 @@ export function getAboutDataForLocale(
   return findAboutBlockData(translation.blocks);
 }
 
+/**
+ * Paket AH — hekimler ziyaretçiye kapalıyken CMS `about-page` bloğunun METİN ve CTA override'ları kullanılmaz
+ * (kayıtta kurucu hekim adı / randevu CTA'sı kalmış olabilir); yalnızca metin içermeyen hero görseli korunur.
+ * Metinler sözlükten (aracı kuruluş dili, 8 dil) gelir. Bayrak açıksa veri olduğu gibi döner.
+ */
+export function sanitizeAboutOverrides(raw: unknown, doctorsVisible: boolean): unknown {
+  if (doctorsVisible || raw == null) return raw;
+  const hero = asRecord(asRecord(raw).hero);
+  return typeof hero.imageUrl === "string" && hero.imageUrl.trim() ? { hero: { imageUrl: hero.imageUrl } } : null;
+}
+
 export interface AboutDoctorsSelection {
   doctors: DoctorProfile[];
   /** Kurucu listede bulunduysa onun `id`'si, aksi hâlde `null`. */
