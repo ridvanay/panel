@@ -578,8 +578,10 @@ test("blog dolu: ust bant + guven satiri, one cikan yazi, kart izgarasi (kapakli
   await expect(page.getByTestId("blog-find-physician-cta")).toBeVisible();
 
   // "Browse by specialty": yazisi olan kart filtreye gider ve API sayisini gosterir; yazisi olmayanda sayi yok.
+  // Kullanici karari (2026-11-01, 88989d9): yalnizca en az bir AKTIF hekimi olan uzmanliklar gosterilir.
+  // Fixture'da aktif hekim yalnizca cardio (docA) ve derm (docB) uzmanliklarinda; neuro'nun yazisi olsa da hekimi yok.
   const cards = page.getByTestId("blog-specialty-card");
-  for (const key of ["cardio", "derm", "neuro"] as const) {
+  for (const key of ["cardio", "derm"] as const) {
     const apiCount = (await publicPosts("en", { topic: SPEC_DEF[key].slug, pageSize: "1" })).total;
     expect(apiCount).toBeGreaterThan(0);
     const c = cards.filter({ hasText: SPEC_DEF[key].name.en });
@@ -588,12 +590,10 @@ test("blog dolu: ust bant + guven satiri, one cikan yazi, kart izgarasi (kapakli
     await expect(c).toHaveAttribute("href", new RegExp(`/en/blog\\?topic=${SPEC_DEF[key].slug}$`));
     await expect(c).toHaveAttribute("data-has-posts", "true");
   }
-  const emptyCard = cards.filter({ hasText: SPEC_DEF.empty.name.en });
-  await expect(emptyCard).toHaveCount(1);
-  await expect(emptyCard).toHaveAttribute("data-has-posts", "false");
-  await expect(emptyCard.getByTestId("blog-specialty-meta")).toHaveText("View specialty");
-  await expect(emptyCard.getByTestId("blog-specialty-meta")).not.toContainText(/\d/);
-  await expect(emptyCard).toHaveAttribute("href", new RegExp(`/en/specialties/${SPEC_DEF.empty.slug}$`));
+  // Aktif hekimi olmayan uzmanliklar (yazisi olsa da olmasa da) kart olarak cizilmez.
+  expect((await publicPosts("en", { topic: SPEC_DEF.neuro.slug, pageSize: "1" })).total).toBeGreaterThan(0);
+  await expect(cards.filter({ hasText: SPEC_DEF.neuro.name.en })).toHaveCount(0);
+  await expect(cards.filter({ hasText: SPEC_DEF.empty.name.en })).toHaveCount(0);
   // Toplamda, yazisi olmayan hicbir kartta rakam yok.
   for (const meta of await page.locator('[data-testid="blog-specialty-card"][data-has-posts="false"] [data-testid="blog-specialty-meta"]').allTextContents()) {
     expect(meta).not.toMatch(/\d/);
