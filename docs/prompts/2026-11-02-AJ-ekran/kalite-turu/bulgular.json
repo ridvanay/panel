@@ -1,0 +1,2602 @@
+{
+  "rows": [
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "admin-masaustu-01-talepler-liste.png"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "admin-masaustu-02-talep-detay.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-02-request-adim1.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-03-request-adim4.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-04-vip.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-05-specialties.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-07-find-your-treatment.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-09-about.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-10-blog.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-11-blog-yazisi.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-12-contact.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-13-content-standards.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 404,
+      "file": "en-1440-14-404.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-02-request-adim1.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-03-request-adim4.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-04-vip.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-05-specialties.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-07-find-your-treatment.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-09-about.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-10-blog.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-11-blog-yazisi.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-12-contact.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-13-content-standards.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 404,
+      "file": "en-1280-14-404.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-02-request-adim1.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-03-request-adim4.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-04-vip.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-05-specialties.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-07-find-your-treatment.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-09-about.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-10-blog.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-11-blog-yazisi.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-12-contact.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-13-content-standards.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 404,
+      "file": "en-1024-14-404.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-02-request-adim1.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-03-request-adim4.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-04-vip.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-05-specialties.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-07-find-your-treatment.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-09-about.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-10-blog.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-11-blog-yazisi.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-12-contact.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-13-content-standards.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 404,
+      "file": "en-768-14-404.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-02-request-adim1.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-03-request-adim4.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-04-vip.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-05-specialties.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-07-find-your-treatment.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-09-about.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-10-blog.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-11-blog-yazisi.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-12-contact.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-13-content-standards.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 404,
+      "file": "en-390-14-404.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-02-request-adim1.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-03-request-adim4.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-04-vip.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-05-specialties.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-07-find-your-treatment.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-09-about.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-10-blog.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-11-blog-yazisi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-12-contact.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-13-content-standards.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 404,
+      "file": "ar-1440-14-404.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-02-request-adim1.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-03-request-adim4.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-04-vip.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-05-specialties.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-07-find-your-treatment.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-09-about.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-10-blog.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-11-blog-yazisi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-12-contact.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-13-content-standards.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 404,
+      "file": "ar-1280-14-404.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-02-request-adim1.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-03-request-adim4.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-04-vip.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-05-specialties.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-07-find-your-treatment.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-09-about.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-10-blog.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-11-blog-yazisi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-12-contact.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-13-content-standards.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 404,
+      "file": "ar-1024-14-404.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-02-request-adim1.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-03-request-adim4.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-04-vip.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-05-specialties.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-07-find-your-treatment.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-09-about.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-10-blog.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-11-blog-yazisi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-12-contact.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-13-content-standards.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 404,
+      "file": "ar-768-14-404.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "02-request-adim1",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-02-request-adim1.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "03-request-adim4",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-03-request-adim4.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "04-vip",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-04-vip.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "05-specialties",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-05-specialties.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "06-bolum-sayfasi",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-06-bolum-sayfasi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "07-find-your-treatment",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-07-find-your-treatment.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "08-bolum-finder-modal",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-08-bolum-finder-modal.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "09-about",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-09-about.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-10-blog.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-11-blog-yazisi.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "12-contact",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-12-contact.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "13-content-standards",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-13-content-standards.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "14-404",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 404,
+      "file": "ar-390-14-404.png"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "en-1440-01-ana-sayfa.png"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "en-1280-01-ana-sayfa.png"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "en-1024-01-ana-sayfa.png"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "en-768-01-ana-sayfa.png"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "en-390-01-ana-sayfa.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "status": 200,
+      "file": "ar-1440-01-ana-sayfa.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "status": 200,
+      "file": "ar-1280-01-ana-sayfa.png"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "status": 200,
+      "file": "ar-1024-01-ana-sayfa.png"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "status": 200,
+      "file": "ar-768-01-ana-sayfa.png"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "01-ana-sayfa",
+      "overflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "status": 200,
+      "file": "ar-390-01-ana-sayfa.png"
+    }
+  ],
+  "findings": [
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "kesik-metin-adayi",
+      "detail": "div.relative.flex.h-full \"Yönetim Paneliİçerik ve site yönetimiMenüGenel Bak\" sw=271 cw=255"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.relative.min-w-0.flex-1 \"Yetki Belgeleri ve Akreditasyonlar\" sw=213 cw=169"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "mor-indigo-kalinti",
+      "detail": "span.inline-flex.flex-shrink-0.items-center color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "mor-indigo-kalinti",
+      "detail": "span.mt-0.5.flex.h-10 color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "mor-indigo-kalinti",
+      "detail": "svg color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "mor-indigo-kalinti",
+      "detail": "path color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "mor-indigo-kalinti",
+      "detail": "path color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-requests",
+      "kind": "mor-indigo-kalinti",
+      "detail": "path color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "kesik-metin-adayi",
+      "detail": "div.relative.flex.h-full \"Yönetim Paneliİçerik ve site yönetimiMenüGenel Bak\" sw=271 cw=255"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.relative.min-w-0.flex-1 \"Yetki Belgeleri ve Akreditasyonlar\" sw=213 cw=169"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "mor-indigo-kalinti",
+      "detail": "span.inline-flex.flex-shrink-0.items-center color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "mor-indigo-kalinti",
+      "detail": "span.mt-0.5.flex.h-10 color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "mor-indigo-kalinti",
+      "detail": "svg color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "mor-indigo-kalinti",
+      "detail": "path color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "mor-indigo-kalinti",
+      "detail": "path color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "tr-admin",
+      "width": 1440,
+      "page": "admin-crm-request-detay",
+      "kind": "mor-indigo-kalinti",
+      "detail": "path color=rgb(79, 70, 229)"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities. Global TeleHealth In\""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities.\""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"n at the healthcare facility. We do not guarantee treatment outcomes. Start with a consultation Request a cons\""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"vice. Medical decisions are made by the physician at the healthcare facility. We do not guarantee treatment ou\""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=639 cw=615"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=419 cw=395"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=680 cw=656"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=334 cw=310"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. International Health \""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"do not publish prices, success rates or guarantees in these guides. Editorial approval Before a guide is pub\""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. From draft to publica\""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities. Global TeleHealth In\""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities.\""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"n at the healthcare facility. We do not guarantee treatment outcomes. Start with a consultation Request a cons\""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"vice. Medical decisions are made by the physician at the healthcare facility. We do not guarantee treatment ou\""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=639 cw=615"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=419 cw=395"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=680 cw=656"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=334 cw=310"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. International Health \""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"do not publish prices, success rates or guarantees in these guides. Editorial approval Before a guide is pub\""
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. From draft to publica\""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities. Global TeleHealth In\""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities.\""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"n at the healthcare facility. We do not guarantee treatment outcomes. Start with a consultation Request a cons\""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"vice. Medical decisions are made by the physician at the healthcare facility. We do not guarantee treatment ou\""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Obesity & Metabolic Surgery\" sw=193 cw=129"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Interventional Radiology\" sw=164 cw=129"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Plastic & Aesthetic Surgery\" sw=184 cw=129"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Hair Transplantation\" sw=137 cw=129"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"IVF & Reproductive Health\" sw=177 cw=129"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=511 cw=487"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=680 cw=656"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=334 cw=310"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. International Health \""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"do not publish prices, success rates or guarantees in these guides. Editorial approval Before a guide is pub\""
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. From draft to publica\""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities. Global TeleHealth In\""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities.\""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"n at the healthcare facility. We do not guarantee treatment outcomes. Start with a consultation Request a cons\""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"vice. Medical decisions are made by the physician at the healthcare facility. We do not guarantee treatment ou\""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Obesity & Metabolic Surgery\" sw=193 cw=126"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Interventional Radiology\" sw=164 cw=126"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Plastic & Aesthetic Surgery\" sw=184 cw=126"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Hair Transplantation\" sw=137 cw=126"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"IVF & Reproductive Health\" sw=177 cw=126"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=742 cw=718"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=744 cw=720"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=372 cw=348"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. International Health \""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"do not publish prices, success rates or guarantees in these guides. Editorial approval Before a guide is pub\""
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. From draft to publica\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "02-request-adim1",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "03-request-adim4",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "04-vip",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "05-specialties",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "06-bolum-sayfasi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "07-find-your-treatment",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities. Global TeleHealth In\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "08-bolum-finder-modal",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ent and treatment decisions are made by physicians at authorized healthcare facilities.\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "09-about",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"n at the healthcare facility. We do not guarantee treatment outcomes. Start with a consultation Request a cons\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"vice. Medical decisions are made by the physician at the healthcare facility. We do not guarantee treatment ou\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Obesity & Metabolic Surgery\" sw=193 cw=67"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-specialty-meta].block.truncate.text-xs \"View specialty\" sw=82 cw=67"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Surgical Oncology\" sw=124 cw=67"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-specialty-meta].block.truncate.text-xs \"View specialty\" sw=82 cw=67"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"Thoracic Surgery\" sw=117 cw=67"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=382 cw=358"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"Health guide\" sw=380 cw=356"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. International Health \""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "12-contact",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "13-content-standards",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"do not publish prices, success rates or guarantees in these guides. Editorial approval Before a guide is pub\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"s and treatment decisions are made by a physician at an authorized healthcare facility. From draft to publica\""
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "14-404",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة. Global TeleHealth وسيط دولي في السي\""
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة.\""
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"بية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشارة تواصل معنا Global TeleH\""
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ّم نصائح طبية. القرارات الطبية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشا\""
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=639 cw=615"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=419 cw=395"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=680 cw=656"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=334 cw=310"
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يحة طبية. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. وسيط دولي في السياحة العلاجية WM Health م\""
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"شر في هذه الأدلة أسعارًا أو نسب نجاح أو ضمانات. الاعتماد التحريري قبل نشر أي دليل، يراجعه الفريق التحريري لل\""
+    },
+    {
+      "lang": "ar",
+      "width": 1440,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"خطة علاج. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. من المسودة إلى النشر 1. الكتابة يعدّ فريق\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة. Global TeleHealth وسيط دولي في السي\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة.\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"بية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشارة تواصل معنا Global TeleH\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ّم نصائح طبية. القرارات الطبية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشا\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=639 cw=615"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=419 cw=395"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=680 cw=656"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=334 cw=310"
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يحة طبية. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. وسيط دولي في السياحة العلاجية WM Health م\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"شر في هذه الأدلة أسعارًا أو نسب نجاح أو ضمانات. الاعتماد التحريري قبل نشر أي دليل، يراجعه الفريق التحريري لل\""
+    },
+    {
+      "lang": "ar",
+      "width": 1280,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"خطة علاج. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. من المسودة إلى النشر 1. الكتابة يعدّ فريق\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة. Global TeleHealth وسيط دولي في السي\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة.\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"بية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشارة تواصل معنا Global TeleH\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ّم نصائح طبية. القرارات الطبية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشا\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"جراحة السمنة والتمثيل الغذائي\" sw=179 cw=129"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"جراحة الدماغ والأعصاب\" sw=135 cw=129"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"الجراحة التجميلية والترميمية\" sw=163 cw=129"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"أطفال الأنابيب والصحة الإنجابية\" sw=184 cw=129"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=511 cw=487"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=334 cw=310"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=680 cw=656"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=334 cw=310"
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يحة طبية. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. وسيط دولي في السياحة العلاجية WM Health م\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"شر في هذه الأدلة أسعارًا أو نسب نجاح أو ضمانات. الاعتماد التحريري قبل نشر أي دليل، يراجعه الفريق التحريري لل\""
+    },
+    {
+      "lang": "ar",
+      "width": 1024,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"خطة علاج. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. من المسودة إلى النشر 1. الكتابة يعدّ فريق\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة. Global TeleHealth وسيط دولي في السي\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة.\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"بية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشارة تواصل معنا Global TeleH\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ّم نصائح طبية. القرارات الطبية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشا\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"جراحة السمنة والتمثيل الغذائي\" sw=179 cw=126"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"جراحة الدماغ والأعصاب\" sw=135 cw=126"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"أمراض الجهاز الهضمي\" sw=130 cw=126"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"الجراحة التجميلية والترميمية\" sw=163 cw=126"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"أطفال الأنابيب والصحة الإنجابية\" sw=184 cw=126"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=742 cw=718"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=744 cw=720"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=372 cw=348"
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يحة طبية. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. وسيط دولي في السياحة العلاجية WM Health م\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"شر في هذه الأدلة أسعارًا أو نسب نجاح أو ضمانات. الاعتماد التحريري قبل نشر أي دليل، يراجعه الفريق التحريري لل\""
+    },
+    {
+      "lang": "ar",
+      "width": 768,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"خطة علاج. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. من المسودة إلى النشر 1. الكتابة يعدّ فريق\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "07-find-your-treatment",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة. Global TeleHealth وسيط دولي في السي\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "08-bolum-finder-modal",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يتم التقييم الطبي وقرارات العلاج من قبل أطباء في منشآت رعاية صحية مرخصة.\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "09-about",
+      "kind": "yasak:garanti",
+      "detail": "\"بية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشارة تواصل معنا Global TeleH\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "09-about",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"ّم نصائح طبية. القرارات الطبية يتخذها الطبيب في المنشأة الصحية. لا نضمن نتائج العلاج. ابدأ باستشارة اطلب استشا\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"جراحة السمنة والتمثيل الغذائي\" sw=179 cw=67"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-specialty-meta].block.truncate.text-xs \"عرض التخصص\" sw=75 cw=67"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"الجراحة الأورامية\" sw=94 cw=67"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-specialty-meta].block.truncate.text-xs \"عرض التخصص\" sw=75 cw=67"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.block.truncate.text-sm \"جراحة الصدر\" sw=72 cw=67"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "10-blog",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-specialty-meta].block.truncate.text-xs \"عرض التخصص\" sw=75 cw=67"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=382 cw=358"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "kesik-metin-adayi",
+      "detail": "span[blog-cover-template].relative.flex.flex-col \"دليل صحي\" sw=380 cw=356"
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "11-blog-yazisi",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"يحة طبية. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. وسيط دولي في السياحة العلاجية WM Health م\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "13-content-standards",
+      "kind": "yasak:garanti",
+      "detail": "\"شر في هذه الأدلة أسعارًا أو نسب نجاح أو ضمانات. الاعتماد التحريري قبل نشر أي دليل، يراجعه الفريق التحريري لل\""
+    },
+    {
+      "lang": "ar",
+      "width": 390,
+      "page": "13-content-standards",
+      "kind": "yasak:doktor-ifadesi",
+      "detail": "\"خطة علاج. قرارات التشخيص والعلاج يتخذها طبيب في منشأة صحية مرخّصة. من المسودة إلى النشر 1. الكتابة يعدّ فريق\""
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "page": "01-ana-sayfa",
+      "kind": "turkce-harf",
+      "detail": "113 adet; örn: ok a consultation GÖRÜNTÜLÜ SAĞLIK DANIŞMANLIĞI Uzman Doktorlarla Görü"
+    },
+    {
+      "lang": "en",
+      "width": 1280,
+      "page": "01-ana-sayfa",
+      "kind": "turkce-harf",
+      "detail": "113 adet; örn: ok a consultation GÖRÜNTÜLÜ SAĞLIK DANIŞMANLIĞI Uzman Doktorlarla Görü"
+    },
+    {
+      "lang": "en",
+      "width": 1024,
+      "page": "01-ana-sayfa",
+      "kind": "turkce-harf",
+      "detail": "113 adet; örn: ok a consultation GÖRÜNTÜLÜ SAĞLIK DANIŞMANLIĞI Uzman Doktorlarla Görü"
+    },
+    {
+      "lang": "en",
+      "width": 768,
+      "page": "01-ana-sayfa",
+      "kind": "turkce-harf",
+      "detail": "113 adet; örn: ok a consultation GÖRÜNTÜLÜ SAĞLIK DANIŞMANLIĞI Uzman Doktorlarla Görü"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "01-ana-sayfa",
+      "kind": "kesik-metin-adayi",
+      "detail": "span.truncate \"Global TeleHealth\" sw=154 cw=112"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "page": "01-ana-sayfa",
+      "kind": "turkce-harf",
+      "detail": "113 adet; örn: ok a consultation GÖRÜNTÜLÜ SAĞLIK DANIŞMANLIĞI Uzman Doktorlarla Görü"
+    }
+  ]
+}
