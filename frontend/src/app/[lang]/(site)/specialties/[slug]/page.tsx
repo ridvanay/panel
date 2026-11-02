@@ -191,8 +191,16 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href={requestHref}
+            data-testid="specialty-book-cta"
+            aria-label={`${dict.services.bookConsultation}: ${specialty.name}`}
+            className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-primary px-5 py-2.5 text-center text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {dict.services.bookConsultation}
+          </Link>
+          <Link
+            href={requestHref}
             data-testid="specialty-request-cta"
-            className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-primary px-5 py-2.5 text-center text-sm font-semibold text-primary transition-colors duration-300 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {formatSiteString(dict.request.requestForService, { service: specialty.name })}
           </Link>

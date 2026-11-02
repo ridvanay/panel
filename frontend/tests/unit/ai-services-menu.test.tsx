@@ -336,7 +336,8 @@ describe("Hizmetler sayfası bileşenleri", () => {
     expect(within(card).getByRole("link", { name: "ERCP" })).toHaveAttribute("href", "/de/specialties/ercp");
     expect(within(card).getByTestId("service-card-book")).toHaveAttribute("href", "/de/request?service=gastroenterology");
     expect(within(card).getByTestId("service-card-request")).toHaveAttribute("href", "/de/request?service=gastroenterology");
-    expect(within(card).getByTestId("service-card-book")).toHaveAccessibleName("Book an online consultation: Gastroenterology");
+    expect(within(card).getByTestId("service-card-book")).toHaveAccessibleName("Book a consultation: Gastroenterology");
+    expect(within(card).getByTestId("service-card-book")).toHaveTextContent("Book a consultation");
   });
 
   it("kısa açıklama yoksa (alan yok/null) açıklama satırı ve çipler çizilmez", () => {

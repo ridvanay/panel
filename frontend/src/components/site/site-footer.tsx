@@ -5,6 +5,7 @@ import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { IntermediaryStrings } from "@/lib/i18n/site-dictionaries/types";
 import { legacyFooterTitleKey, looksTurkish } from "@/lib/legacy-turkish-text";
 import { isPhysiciansListHref } from "@/lib/i18n/physicians-path";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import { SOCIAL_PLATFORM_ICONS, SOCIAL_PLATFORM_LABELS } from "@/lib/social-platform-icons";
 import type { FooterColumnDto, PublicAccreditation, SocialLinkDto } from "@/lib/api/types";
 import { AccreditationLogo } from "@/components/site/accreditations/accreditation-logo";
@@ -39,6 +40,19 @@ interface SiteFooterProps {
   labels?: { allRightsReserved: string; servicesHeading: string; legalHeading: string; navAria: string };
 }
 
+/**
+ * Paket AJ-6 — ziyaretçiye gösterilecek footer kolonları: hekim listesine giden bağlantılar (hekimler kapalıyken) ve
+ * bağlantısı kalmayan ya da başlığı boş kolonlar çıkarılır (boş "Services"/"Legal" başlığı görünmez).
+ */
+export function visibleFooterColumns(columns: FooterColumnDto[] | undefined): FooterColumnDto[] {
+  return (columns ?? [])
+    .map((column) => ({
+      ...column,
+      links: column.links.filter((link) => DOCTORS_VISIBLE_TO_VISITORS || !isPhysiciansListHref(link.href)),
+    }))
+    .filter((column) => column.links.length > 0 && column.title.trim().length > 0);
+}
+
 function columnTitle(title: string, labels: SiteFooterProps["labels"]): string {
   const key = legacyFooterTitleKey(title);
   if (key && labels) return labels[key];
@@ -68,7 +82,8 @@ export function SiteFooter({
   const localize = (path: string) =>
     activeLocaleCode ? withLocalePrefix(path, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode) : path;
   const hasSocial = Boolean(socialLinks && socialLinks.length > 0);
-  const hasColumns = Boolean(footerColumns && footerColumns.length > 0);
+  const columns = visibleFooterColumns(footerColumns);
+  const hasColumns = columns.length > 0;
   const year = new Date().getFullYear();
   const displayName = siteName?.trim() || "Site";
   const defaultCopyright = labels ? `© ${year} ${displayName}. ${labels.allRightsReserved}` : `© ${year} ${displayName}`;
@@ -135,7 +150,7 @@ export function SiteFooter({
 
           {hasColumns && (
             <div className="flex flex-1 flex-wrap gap-8 sm:justify-end">
-              {footerColumns!.map((column) => (
+              {columns.map((column) => (
                 <div key={column.id} className="min-w-[140px] space-y-2">
                   <p className="text-sm font-medium text-foreground">{columnTitle(column.title, labels)}</p>
                   <ul className="space-y-1.5">

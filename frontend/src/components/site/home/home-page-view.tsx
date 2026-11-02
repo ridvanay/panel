@@ -5,7 +5,7 @@ import { Eyebrow } from "@/components/site/about/eyebrow";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { MatcherHeroSearch } from "@/components/site/matcher/matcher-modal";
 import { ABOUT_ICONS } from "@/components/site/about/about-icons";
-import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
+import { DOCTORS_VISIBLE_TO_VISITORS, sanitizeDoctorTexts } from "@/lib/intermediary";
 import { AboutDoctors } from "@/components/site/about/about-doctors";
 import { SpecialtyCardsGrid } from "@/components/site/blocks/specialty-cards-block";
 import type { BlockSiteContext } from "@/components/site/blocks/index";
@@ -66,7 +66,8 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
   const lang = siteContext?.lang ?? "en";
   const defaultLocaleCode = siteContext?.defaultLocaleCode ?? lang;
   const dict = await getSiteDictionary(lang);
-  const content = resolveHomeContent(data, buildDefaultHomeContent(dict.home));
+  // Paket AJ-6 — CMS'te kalmış hekim vurgulu metinler (ör. "Meet Our Medical Team") ziyaretçiye gösterilmez; sözlük varsayılanı gelir.
+  const content = resolveHomeContent(sanitizeDoctorTexts(data), buildDefaultHomeContent(dict.home));
   const href = (value: string) => resolveAboutHref(value, lang, defaultLocaleCode);
 
   const telehealthEnabled = await isModuleEnabledServer("telehealth");

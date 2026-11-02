@@ -15,7 +15,7 @@ function iconGlyph(name: string, className: string) {
 
 /**
  * Paket AI — "Health Tourism Services" sayfası hizmet kartı: ikon, ad (hizmet sayfasına bağlantı), tek satır kısa
- * açıklama (yoksa gösterilmez), alt uzmanlık çipleri ve "Book" / "Request" bağlantıları. Her ikisi de şimdilik
+ * açıklama (yoksa gösterilmez), alt uzmanlık çipleri ve "Book a consultation" / "Request" bağlantıları. Her ikisi de şimdilik
  * `/request?service=<slug>` (İş 3 canlıya çıkınca "Book" randevu akışına gider).
  */
 export function ServiceCard({
@@ -34,7 +34,7 @@ export function ServiceCard({
   const localize = (path: string) => withLocalePrefix(path, activeLocaleCode, defaultLocaleCode);
   const requestHref = localize(requestFormPath({ service: service.slug }));
   const actionClass =
-    "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius)] px-3 text-sm font-semibold transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[var(--site-primary)]/40";
+    "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius)] px-3 py-2 text-center text-sm leading-tight font-semibold transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[var(--site-primary)]/40";
   return (
     <article
       data-testid="service-card"
@@ -65,15 +65,15 @@ export function ServiceCard({
           ))}
         </div>
       )}
-      <div className="mt-auto flex gap-2 pt-4">
+      <div className="mt-auto flex flex-wrap gap-2 pt-4">
         <Link
           href={requestHref}
           data-testid="service-card-book"
-          aria-label={formatSiteString(strings.cardBookAria, { service: service.name })}
+          aria-label={`${strings.bookConsultation}: ${service.name}`}
           className={`${actionClass} bg-[var(--site-button)] text-[var(--site-button-text)] hover:opacity-90`}
         >
           <CalendarCheck className="size-4" aria-hidden="true" />
-          {strings.cardBook}
+          {strings.bookConsultation}
         </Link>
         <Link
           href={requestHref}

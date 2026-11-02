@@ -190,7 +190,7 @@ describe("HomePageView", () => {
     render(
       await HomePageView({
         data: {
-          hero: { imageUrl: "https://cdn.example.com/hero.jpg", imageAlt: "Doctor on a video call" },
+          hero: { imageUrl: "https://cdn.example.com/hero.jpg", imageAlt: "Coordinator on a video call" },
           how: { enabled: false, steps: [] },
           trust: { enabled: false, items: [] },
           doctors: { enabled: false },
@@ -201,7 +201,7 @@ describe("HomePageView", () => {
     expect(screen.queryByRole("link", { name: tr.heroSecondaryCta })).toBeNull();
     expect(screen.queryByText(tr.trust1Title)).toBeNull();
     expect(screen.queryByTestId("doctors-section")).toBeNull();
-    const image = screen.getByAltText("Doctor on a video call");
+    const image = screen.getByAltText("Coordinator on a video call");
     expect(image.getAttribute("loading") === "eager" || image.getAttribute("fetchpriority") === "high").toBe(true);
   });
 
