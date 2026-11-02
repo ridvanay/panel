@@ -421,6 +421,41 @@ tags:
       **`SUPER_ADMIN` rolü İCAT EDİLMEDİ** — 5 kademeli rol modeli (bkz. kök `x-site-rbac`)
       değişmez; "yalnızca en üst yetki" isteği projenin mevcut en yüksek kademesi olan
       `ADMIN`'e daraltılarak karşılanır.
+  - name: Meetings
+    description: >
+      **Harici görüntülü toplantı (Paket AG, İş 3)** — randevudan/consultation akışından TAMAMEN bağımsız.
+      Ev sahibi uçları (`/meetings*`, oturum gerekir), herkese açık misafir uçları (`/meet/guest/*`, `mg_…`
+      belirteciyle) ve ADMIN gözetimi (`/admin/meetings*`). Hepsi `requireModuleEnabled("telehealth")` arkasındadır
+      (modül kapalıyken 404). Odalar `meet_<32 hex>` önekli, LiveKit kimlikleri `meet-host:<userId>` /
+      `meet-guest:<guestId>` biçimindedir (PII yok). Kayıt (egress) YOKTUR.
+
+
+      **Yetki:** `User.meetingHostGrantedAt` (+ `PATCH /admin/users/{userId}/meeting-host`), API'de türetilmiş
+      `canHostMeetings`. ADMIN her zaman yetkili. Yetki her istekte DB'den taze okunur. **2FA ZORUNLU DEĞİLDİR**
+      (kullanıcı kararı S2); ev sahibi yanıtları `twoFactorEnabled` taşır, istemci kapalıysa bilgilendirme gösterir.
+      Başkasının toplantısı (ADMIN dahil) → `404 MEETING_NOT_FOUND`. ADMIN başkasının toplantısı için token ALAMAZ.
+
+
+      **Misafir bağlantısı:** `https://<site>/{lang}/meet/join#mg_<43 karakter>` — belirteç URL PARÇASINDA taşınır
+      (sunucuya/loglara/Referer'a gitmez), uç noktalara yalnızca POST GÖVDESİNDE gider. DB'de yalnızca SHA-256 özeti;
+      düz bağlantı YALNIZCA oluşturma ve yeniden üretme yanıtında döner. Yeniden üretme eskisini geçersiz kılar.
+
+
+      **Tek tip 404:** misafir uçlarında geçersiz biçim, bilinmeyen / yenilenmiş / iptal edilmiş belirteç, iptal
+      edilmiş veya bitmiş toplantı, kurcalanmış / başka toplantıya ait / süresi dolmuş oturum ve ev sahibinin çıkardığı
+      misafir HEP AYNI `404 MEETING_LINK_INVALID` (aynı gövde ve başlıklar). Yanıtlar `Cache-Control: no-store`,
+      `X-Robots-Tag: noindex, nofollow`. Misafir uçları TARAYICIDAN çağrılmalıdır (SSR iç kovasını paylaşır).
+
+
+      **Zaman:** token yalnızca `startsAt − 15 dk ≤ şimdi < endsAt` aralığında verilir (sunucu saati). İçeridekiler
+      `endsAt + 10 dk` sonunda sunucu tarafından çıkarılır (süpürücü); uzatma yoktur. Katılımcı sınırı ev sahibi
+      DAHİL toplamdır (2–8, varsayılan 4). Misafir adı yalnızca `ExternalMeetingGuest`'te tutulur ve toplantı
+      bitişinden 90 gün sonra silinir; audit'e ad ve IP yazılmaz.
+
+
+      **Token grant'ları:** ev sahibi kamera + mikrofon + ekran paylaşımı (+ses); misafir yalnızca kamera + mikrofon.
+      İkisinde de `canPublishData=false`, `canUpdateOwnMetadata=false`; `roomAdmin/roomRecord/roomCreate/roomList/hidden`
+      verilmez.
   - name: TeleHealth
     description: >
       **Tele-Sağlık modülü** (`/doctors`, `/appointments`, `/admin/telehealth/*`) —
@@ -2050,6 +2085,56 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/users/{userId}/meeting-host:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [AdminUsers, Meetings]
+      summary: Kullanıcıya "harici toplantı oluşturabilir" yetkisi ver / geri al (yalnızca ADMIN)
+      description: >
+        Paket AG (İş 3). Uygun kullanıcılar: panel rolleri (`ADMIN`, `MANAGER`, `EDITOR`) veya bir doktor profiline
+        bağlı kullanıcı; `CUSTOMER`, `INTERPRETER` ve doktor olmayan `USER` → `422 MEETING_HOST_NOT_ELIGIBLE`.
+        `DELETED` kullanıcı → 404. Hedef `ADMIN` ise no-op (her zaman yetkili; 200, audit yok). Aynı değer tekrar
+        gönderilirse no-op.
+
+
+        **Geri alma (S3):** kullanıcının gelecekteki (bitmemiş, iptal edilmemiş) toplantıları AYNI serializable
+        işlemde `CANCELLED` olur (misafir bağlantıları kapanır); açık odaları süpürücü ≤1 dk içinde boşaltır.
+
+
+        **Audit:** `user.meeting_host_granted` / `user.meeting_host_revoked` (`targetType: User`, metadata
+        `{from,to}` + geri almada `cancelledMeetings`); iptal edilen her toplantı için `meeting.cancelled`
+        (`source: host_revoked`).
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (`ADMIN_USERS_RATE_LIMIT`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAdminUserMeetingHostRequest" }
+      responses:
+        "200":
+          description: Güncellendi (`canHostMeetings` yansır)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Uygun olmayan kullanıcı (`MEETING_HOST_NOT_ELIGIBLE`) veya gövde hatası (`VALIDATION_ERROR`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/users/{userId}/password:
@@ -13918,6 +14003,611 @@ paths:
         "200": { description: "OK — { created, skipped, errors }" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  # ---------------------------------------------------------------------------------------------
+  # Paket AG (İş 3) — Harici görüntülü toplantı. Bkz. `Meetings` tag'i.
+  # ---------------------------------------------------------------------------------------------
+  /meetings/host-status:
+    get:
+      tags: [Meetings]
+      summary: Oturum sahibinin toplantı yetkisi ve 2FA durumu
+      description: "Yetkisiz kullanıcıya da 200 döner (`canHostMeetings: false`). İstemci menü görünürlüğü ve 2FA bilgilendirmesi için kullanır."
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MeetingHostStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /meetings:
+    get:
+      tags: [Meetings]
+      summary: Kendi toplantılarım (ev sahibi)
+      description: >
+        `scope=upcoming` (varsayılan; bitmemiş + iptal edilmemiş, `startsAt` artan) veya `scope=past` (bitmiş ya da
+        iptal, `startsAt` azalan). İmleçli sayfalama (`meta.nextCursor`, opak). `meta.host.twoFactorEnabled` ile
+        kullanıcının 2FA durumu döner (2FA zorunlu değildir; kapalıysa istemci "iki adımlı doğrulamayı açmanızı
+        öneririz" bilgilendirmesi gösterir). Yanıt HİÇBİR ZAMAN belirteç veya özet taşımaz.
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [upcoming, past], default: upcoming } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Meeting" }
+                  meta:
+                    type: object
+                    properties:
+                      nextCursor: { type: string, nullable: true }
+                      host:
+                        type: object
+                        properties:
+                          twoFactorEnabled: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    post:
+      tags: [Meetings]
+      summary: Toplantı oluştur (ev sahibi)
+      description: >
+        `startsAt` ISO-8601 `Z`, ≥ şimdi − 5 dk ve ≤ şimdi + 180 gün. `durationMin` 15–120, 5'in katı;
+        `endsAt = startsAt + durationMin` (sunucu hesaplar). `maxParticipants` EV SAHİBİ DAHİL toplam, 2–8
+        (varsayılan 4). `title` 3–120 karakter ve **misafire görünür** (hasta adı yazmayın); `note` ≤1000 karakter
+        ve YALNIZCA ev sahibine görünür. Kullanıcı başına en çok 20 gelecek toplantı → `409 MEETING_LIMIT_REACHED`.
+
+
+        **`guestLink` düz olarak YALNIZCA bu yanıtta döner** (DB'de yalnızca SHA-256 özeti). Kaybedilirse
+        `POST /meetings/{id}/guest-link` ile yenilenir (eskisi geçersiz olur). "E-postayla gönder" yalnızca bu
+        anda bellekteki bağlantıyla yapılır (`POST /meetings/{id}/invite-email`).
+
+
+        Audit: `meeting.created`, `meeting.guest_link.created`. **Hız sınırı:** 10 istek / dakika.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMeetingRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          meeting: { $ref: "#/components/schemas/Meeting" }
+                          guestLink: { type: string, description: "https://<site>/{locale}/meet/join#mg_… (yalnızca burada düz döner)" }
+                          host:
+                            type: object
+                            properties:
+                              twoFactorEnabled: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Gelecek toplantı sınırı (`MEETING_LIMIT_REACHED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /meetings/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Meetings]
+      summary: Toplantı ayrıntısı (ev sahibi)
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Meeting" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    patch:
+      tags: [Meetings]
+      summary: Toplantıyı güncelle (ev sahibi)
+      description: >
+        Kısmi güncelleme. `title`, `note` (`null` siler) ve `autoAdmitGuests` bitmemiş her aşamada değişir;
+        `startsAt`/`durationMin` yalnızca toplantı BAŞLAMADAN; `maxParticipants` yalnızca oda AÇILMADAN (başlangıçtan
+        15 dk öncesine kadar — LiveKit sınırı oda ilk oluşturulurken uygulanır). İptal edilmiş / bitmiş toplantı veya
+        yasak alan → `409 MEETING_NOT_EDITABLE`. Audit: `meeting.updated` (metadata'da yalnız alan adları).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMeetingRequest" }
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Meeting" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "`MEETING_NOT_EDITABLE`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /meetings/{id}/guest-link:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Meetings]
+      summary: Misafir bağlantısını yeniden üret (ev sahibi)
+      description: >
+        Yeni belirteç üretilir ve eski özetin üzerine yazılır (eski bağlantı anında geçersiz). Gövde isteğe bağlıdır
+        (`locale`, varsayılan `en`). Düz bağlantı YALNIZCA bu yanıtta döner. İptal edilmiş / bitmiş toplantı → 409.
+        Audit: `meeting.guest_link.created` (`regenerated: true`). **Hız sınırı:** 10 / dakika.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale: { type: string, example: tr }
+      responses:
+        "200":
+          description: Yeni bağlantı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          guestLink: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      tags: [Meetings]
+      summary: Misafir bağlantısını iptal et (ev sahibi)
+      description: >
+        Özet silinir; bağlantı ve bekleyen misafirlerin yoklaması `404 MEETING_LINK_INVALID` almaya başlar.
+        Odadakiler kalır (ev sahibi tek tek çıkarabilir). Audit: `meeting.guest_link.revoked`.
+      responses:
+        "204": { description: İptal edildi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /meetings/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Meetings]
+      summary: Toplantıyı iptal et (ev sahibi)
+      description: >
+        `status=CANCELLED`, misafir bağlantısı silinir, odadaki herkes best-effort atılır (kesin kapanışı süpürücü
+        yazar). İdempotent; bitmiş toplantı → 409. Audit: `meeting.cancelled` (`source: host`).
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Meeting" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /meetings/{id}/host-token:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Meetings]
+      summary: Ev sahibi için LiveKit token'ı (yalnızca toplantının ev sahibi)
+      description: >
+        Önce `LIVEKIT_*` yapılandırması (`503 LIVEKIT_NOT_CONFIGURED`), sonra yetki ve sahiplik (başkasının toplantısı
+        — ADMIN dahil — 404). Pencere: `startsAt − 15 dk ≤ şimdi < endsAt`; aksi `409 MEETING_NOT_OPEN`
+        (`error.details.reason`: `not_yet_open` | `ended` | `cancelled`; `not_yet_open` ise `details.opensAt`).
+
+
+        Kimlik `meet-host:<userId>`; görünen ad kullanıcı adı (doktorsa `unvan + kısaltılmış ad`). Grant: kamera,
+        mikrofon, ekran paylaşımı (+ses); `canPublishData=false`, `canUpdateOwnMetadata=false`; yönetici/kayıt
+        grant'ı YOK. TTL = `min(endsAt + 10 dk − şimdi, LIVEKIT_TOKEN_TTL_MIN)`, en az 60 sn.
+
+
+        Audit: `meeting.host_token.issued` (metadata yok; token ASLA yazılmaz). **Hız sınırı:** 10 / dakika.
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MeetingToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "`MEETING_NOT_OPEN`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: "LiveKit yapılandırılmamış (`LIVEKIT_NOT_CONFIGURED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /meetings/{id}/guests:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Meetings]
+      summary: Misafirler ve bekleme listesi (ev sahibi)
+      description: >
+        Ev sahibinin bekleme paneli. `waiting`: henüz token almamış, çıkarılmamış ve yoklaması son 30 sn içinde
+        görülmüş misafir. `inRoom`: LiveKit'te mi (`null` = Server API yapılandırılmamış). Misafir adları YALNIZCA
+        bu uçta (ve yalnızca ev sahibine) görünür. **Hız sınırı:** 60 / dakika.
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/MeetingGuestListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /meetings/{id}/guests/{guestId}/remove:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: guestId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Meetings]
+      summary: Misafiri çıkar (ev sahibi)
+      description: >
+        `removedAt` yazılır, misafir odadan atılır (best-effort; süpürücü tekrar atar) ve aynı oturumla bir daha token
+        alamaz (`MEETING_LINK_INVALID`). Audit: `meeting.guest.removed` (`{guestId}`).
+      responses:
+        "204": { description: Çıkarıldı }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /meetings/{id}/invite-email:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Meetings]
+      summary: Misafir bağlantısını e-postayla gönder (ev sahibi; yalnızca güncel bağlantıyla)
+      description: >
+        Düz belirteç saklanmadığı için istemci, oluşturma / yeniden üretme yanıtındaki bağlantıyı (`guestLink`) bu
+        istekte geri gönderir. Belirtecin SHA-256 özeti mevcut `guestTokenHash` ile eşleşmezse (yenilenmiş / iptal
+        edilmiş) → `409 CONFLICT`, e-posta GİTMEZ. Bağlantı e-postaya SUNUCUDA yeniden kurulur. Kurumsal şablon
+        (audience `user`): başlık, ev sahibinin görünen adı, zaman ve bağlantı; not, ev sahibi e-postası ve PII YOK.
+        Alıcı adresi saklanmaz ve audit'e yazılmaz. Gönderim hatası 202'yi bozmaz (`sent: false`).
+        Toplantı başına en çok 10 davet (`409 MEETING_LIMIT_REACHED`). Audit: `meeting.invite.sent` (`{count:1}`,
+        yalnız başarıda). **Hız sınırı:** 5 / dakika.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InviteEmailRequest" }
+      responses:
+        "202":
+          description: Kabul edildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          sent: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/meetings:
+    get:
+      tags: [Meetings]
+      summary: Tüm toplantılar (yalnızca ADMIN gözetimi)
+      description: >
+        Ev sahibi adıyla birlikte. Ev sahibinin NOTU ve misafir adları dönmez. ADMIN'in katılım hakkı YOKTUR
+        (token ucu yok; `host-token` başkasının toplantısı için 404). `scope`: `upcoming` | `past` | `all`.
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [upcoming, past, all], default: upcoming } }
+        - { name: hostUserId, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AdminMeeting" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/meetings/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Meetings]
+      summary: Toplantıyı iptal et (yalnızca ADMIN)
+      description: >
+        Başkasının toplantısını iptal eder (misafir bağlantısı kapanır, oda boşaltılır). Bitmiş toplantı → 409.
+        Audit: `meeting.cancelled` (`source: admin`). **Hız sınırı:** 30 / dakika.
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminMeeting" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "Başkasının (ADMIN dahil) veya olmayan toplantı (`error.code: MEETING_NOT_FOUND`) ya da modül kapalı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /meet/guest/preflight:
+    post:
+      tags: [Meetings]
+      security: []
+      summary: Misafir bağlantısı ön kontrolü (oturumsuz)
+      description: >
+        Ad formunu ve "henüz açılmadı" ekranını besler. Yalnızca başlık (S9), ev sahibinin görünen adı ve zamanlar
+        döner — not, e-posta, toplantı/oda kimliği dönmez. Misafir kaydı OLUŞTURMAZ. Her geçersiz durum aynı
+        `404 MEETING_LINK_INVALID`. **Hız sınırı:** 30 / dakika / IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [t]
+              properties:
+                t: { type: string, description: "mg_… belirteci (URL parçasından)" }
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MeetingGuestPreflight" }
+        "404":
+          description: "`MEETING_LINK_INVALID` (tek tip)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /meet/guest/join:
+    post:
+      tags: [Meetings]
+      security: []
+      summary: Misafir katılımı / bekleme yoklaması (oturumsuz)
+      description: >
+        Sıra bağlayıcıdır: (1) belirteç çözümü (aksi hâlde tek tip 404); (2) LiveKit yapılandırması
+        (`503` — YALNIZCA geçerli belirteç sahibine); (3) pencere (`409 MEETING_NOT_OPEN`, `details.opensAt`);
+        (4) misafir oturumu — `guestSession` yoksa `name` zorunlu (2–40 karakter; NFC; kontrol/görünmez/bidi karakter,
+        `<>&"/:` ve `meet-`/`doctor:`/`patient:`/`interpreter:`/`qa-listener-` önekleri yasak → `422 VALIDATION_ERROR`),
+        toplantı başına en çok 50 oturum (`409 MEETING_FULL`); (5) bekleme kapısı — `autoAdmitGuests=false` ve ev
+        sahibi odada değilse `status: waiting` (token VERİLMEZ; `pollAfterSec` sonra tekrar çağır);
+        (6) kapasite — ev sahibi DAHİL toplam; ev sahibi koltuğu her zaman ayrılır → `409 MEETING_FULL`;
+        (7) `status: ready` + token.
+
+
+        Misafir grant'ı: yalnızca kamera + mikrofon (ekran paylaşımı YOK), `canPublishData=false`,
+        `canUpdateOwnMetadata=false`. Kimlik `meet-guest:<guestId>` (aynı oturum yeniden bağlanınca aynı kimlik).
+        `guestSession` (`gs_v1…`, `endsAt + 10 dk` geçerli) sonraki çağrılarda aynen geri gönderilir.
+
+
+        Audit: `meeting.guest.joined` YALNIZCA ilk `ready` anında (`actorId=null`, IP yok, metadata yalnız
+        `{guestId}`; ad yazılmaz). **Hız sınırı:** 30 / dakika / IP (429 + `Retry-After`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [t]
+              properties:
+                t: { type: string }
+                name: { type: string, description: "İlk çağrıda zorunlu" }
+                guestSession: { type: string, description: "Sonraki çağrılarda (yoklama / yeniden bağlanma)" }
+      responses:
+        "200":
+          description: Başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MeetingGuestJoin" }
+        "404":
+          description: "`MEETING_LINK_INVALID` (tek tip)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "`MEETING_NOT_OPEN` (`details.opensAt`) veya `MEETING_FULL`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: "LiveKit yapılandırılmamış (`LIVEKIT_NOT_CONFIGURED`; yalnızca geçerli belirteçte)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+
 components:
   securitySchemes:
     bearerAuth:
@@ -15106,6 +15796,14 @@ components:
                   DOCTOR_HAS_HISTORY,
                   DOCTOR_HAS_UPCOMING_APPOINTMENTS,
                   BOOKING_NOT_ARCHIVABLE,
+                  MEETING_HOST_FORBIDDEN,
+                  MEETING_HOST_NOT_ELIGIBLE,
+                  MEETING_NOT_FOUND,
+                  MEETING_LINK_INVALID,
+                  MEETING_NOT_OPEN,
+                  MEETING_FULL,
+                  MEETING_NOT_EDITABLE,
+                  MEETING_LIMIT_REACHED,
                 ]
             message: { type: string }
             details:
@@ -15139,6 +15837,14 @@ components:
             Yeni kayıtların varsayılanı `USER`'dır (sıfırdan kurulan ortamda İLK hesap
             `ADMIN`). Tam yetki matrisi: kök seviyedeki `x-site-rbac` bloğu +
             `.claude/architect-scope-rbac-5-tier.md` §5.
+        canHostMeetings:
+          type: boolean
+          readOnly: true
+          description: >
+            Paket AG (İş 3) — bu kullanıcı harici görüntülü toplantı oluşturabilir mi. TÜRETİLMİŞ ve SALT-OKUNUR:
+            `role === "ADMIN"` her zaman `true`; diğerleri için admin'in verdiği yetki
+            (`PATCH /admin/users/{userId}/meeting-host`) VE uygunluk (panel rolü ya da doktor profili). Yalnızca UI
+            görünürlüğü içindir; sunucu her `/meetings/*` isteğinde yetkiyi DB'den bağımsız yeniden okur.
         canUseAdvancedBuilder:
           type: boolean
           readOnly: true
@@ -15247,6 +15953,147 @@ components:
       required: [role]
       properties:
         role: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
+
+    UpdateAdminUserMeetingHostRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: "`true` yetki ver, `false` geri al (gelecekteki toplantılar iptal edilir)."
+
+    Meeting:
+      type: object
+      description: "Hiçbir zaman belirteç veya özet taşımaz."
+      required: [id, title, note, startsAt, endsAt, durationMin, maxParticipants, autoAdmitGuests, status, phase, hostJoinedAt, guestLinkActive, opensAt, createdAt]
+      properties:
+        id: { type: string }
+        title: { type: string, description: "Misafire görünür." }
+        note: { type: string, nullable: true, description: "YALNIZCA ev sahibine görünür." }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        durationMin: { type: integer, minimum: 15, maximum: 120 }
+        maxParticipants: { type: integer, minimum: 2, maximum: 8, description: "Ev sahibi DAHİL toplam." }
+        autoAdmitGuests: { type: boolean, description: "true ise ev sahibi beklenmeden token verilir." }
+        status: { type: string, enum: [SCHEDULED, CANCELLED] }
+        phase:
+          type: string
+          enum: [upcoming, open, ended, cancelled]
+          description: "Sunucu saatiyle: `open` = startsAt − 15 dk ≤ şimdi < endsAt."
+        hostJoinedAt: { type: string, format: date-time, nullable: true }
+        guestLinkActive: { type: boolean }
+        opensAt: { type: string, format: date-time, description: "Pencere açılışı (startsAt − 15 dk)." }
+        createdAt: { type: string, format: date-time }
+
+    AdminMeeting:
+      description: "`Meeting` − `note` + ev sahibi (misafir adları hiçbir zaman yer almaz)."
+      allOf:
+        - type: object
+          required: [id, title, startsAt, endsAt, durationMin, maxParticipants, autoAdmitGuests, status, phase, hostJoinedAt, guestLinkActive, opensAt, createdAt, host]
+          properties:
+            id: { type: string }
+            title: { type: string }
+            startsAt: { type: string, format: date-time }
+            endsAt: { type: string, format: date-time }
+            durationMin: { type: integer }
+            maxParticipants: { type: integer }
+            autoAdmitGuests: { type: boolean }
+            status: { type: string, enum: [SCHEDULED, CANCELLED] }
+            phase: { type: string, enum: [upcoming, open, ended, cancelled] }
+            hostJoinedAt: { type: string, format: date-time, nullable: true }
+            guestLinkActive: { type: boolean }
+            opensAt: { type: string, format: date-time }
+            createdAt: { type: string, format: date-time }
+            host:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
+
+    CreateMeetingRequest:
+      type: object
+      required: [title, startsAt, durationMin]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 120, description: "Misafire görünür; hasta adı yazmayın." }
+        startsAt: { type: string, format: date-time, description: "ISO-8601 `Z`; ≥ şimdi − 5 dk, ≤ şimdi + 180 gün." }
+        durationMin: { type: integer, minimum: 15, maximum: 120, description: "5'in katı." }
+        maxParticipants: { type: integer, minimum: 2, maximum: 8, default: 4, description: "Ev sahibi dahil." }
+        note: { type: string, maxLength: 1000, description: "Yalnızca ev sahibine görünür." }
+        autoAdmitGuests: { type: boolean, default: false }
+        locale: { type: string, default: en, description: "Misafir bağlantısındaki dil öneki." }
+
+    UpdateMeetingRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 3, maxLength: 120 }
+        startsAt: { type: string, format: date-time }
+        durationMin: { type: integer, minimum: 15, maximum: 120 }
+        maxParticipants: { type: integer, minimum: 2, maximum: 8 }
+        note: { type: string, nullable: true, maxLength: 1000 }
+        autoAdmitGuests: { type: boolean }
+
+    MeetingHostStatus:
+      type: object
+      properties:
+        canHostMeetings: { type: boolean }
+        twoFactorEnabled: { type: boolean }
+
+    MeetingToken:
+      type: object
+      required: [token, serverUrl, roomName, expiresAt]
+      properties:
+        token: { type: string, description: "LiveKit JWT (asla loglanmaz / audit'e yazılmaz)." }
+        serverUrl: { type: string }
+        roomName: { type: string, description: "`meet_` + 32 hex" }
+        expiresAt: { type: string, format: date-time }
+
+    MeetingGuestListItem:
+      type: object
+      properties:
+        id: { type: string }
+        displayName: { type: string, description: "Yalnızca ev sahibine görünür; 90 gün sonra silinir." }
+        createdAt: { type: string, format: date-time }
+        admittedAt: { type: string, format: date-time, nullable: true }
+        removedAt: { type: string, format: date-time, nullable: true }
+        waiting: { type: boolean }
+        inRoom: { type: boolean, nullable: true }
+
+    InviteEmailRequest:
+      type: object
+      required: [guestLink, email]
+      properties:
+        guestLink: { type: string, description: "Oluşturma / yeniden üretme yanıtındaki bağlantı (veya çıplak `mg_…` belirteci)." }
+        email: { type: string, format: email }
+        locale: { type: string, default: en, description: "E-posta dili (9 dil; bilinmeyen → en) ve bağlantı dil öneki." }
+
+    MeetingGuestPreflight:
+      type: object
+      properties:
+        title: { type: string }
+        hostName: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        phase: { type: string, enum: [upcoming, open] }
+
+    MeetingGuestJoin:
+      description: "`status` ayırt edicisi: `waiting` (token yok) | `ready`."
+      oneOf:
+        - type: object
+          required: [status, guestSession, pollAfterSec]
+          properties:
+            status: { type: string, enum: [waiting] }
+            guestSession: { type: string }
+            pollAfterSec: { type: integer, example: 5 }
+        - type: object
+          required: [status, guestSession, token, serverUrl, roomName, expiresAt]
+          properties:
+            status: { type: string, enum: [ready] }
+            guestSession: { type: string }
+            token: { type: string }
+            serverUrl: { type: string }
+            roomName: { type: string }
+            expiresAt: { type: string, format: date-time }
 
     UpdateAdminUserStatusRequest:
       type: object

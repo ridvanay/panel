@@ -25,6 +25,7 @@ import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
 import { LinkDoctorDialog } from "@/components/admin/telehealth/link-doctor-dialog";
 import { SetUserPasswordDialog } from "@/components/admin/users/set-user-password-dialog";
 import { ResetTwoFactorDialog } from "@/components/admin/users/reset-two-factor-dialog";
+import { MeetingHostToggle } from "@/components/admin/users/meeting-host-toggle";
 import { useModules } from "@/context/modules-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -787,6 +788,7 @@ export default function AdminUsersPage() {
                               </option>
                             )}
                           </Select>
+                          {telehealthEnabled && <MeetingHostToggle user={user} onChanged={() => void load()} />}
                         </TableCell>
                         <TableCell className="w-28">
                           <Badge tone={statusBadgeTone[user.status]}>{statusLabels[user.status]}</Badge>

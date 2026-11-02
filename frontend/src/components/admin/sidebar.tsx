@@ -39,6 +39,7 @@ import {
   MessageSquareQuote,
   Package,
   MapPin,
+  Video,
 } from "lucide-react";
 import {
   Sidebar,
@@ -80,6 +81,11 @@ export interface NavItem {
    * Düzenleme)" görür (blok yapısı EDITOR'e kapalı — bkz. `page-template-guard`).
    */
   roleLabelKeys?: Partial<Record<SiteRole, string>>;
+  /**
+   * Paket AG İş 3 — yalnızca "harici toplantı oluşturabilir" yetkisi olan kullanıcıya (`canHostMeetings`) ve ADMIN'e görünür.
+   * Gizleme kullanılabilirlik içindir; sunucu her istekte yetkiyi bağımsız doğrular.
+   */
+  meetingHost?: boolean;
 }
 
 /**
@@ -89,11 +95,14 @@ export interface NavItem {
  */
 export function filterVisibleNavItems(
   items: NavItem[],
-  user: { role: SiteRole } | null,
+  user: { role: SiteRole; canHostMeetings?: boolean } | null,
   isModuleEnabled: (key: string) => boolean
 ): NavItem[] {
   return items.filter(
-    (item) => (!item.roles || (user && item.roles.includes(user.role))) && (!item.module || isModuleEnabled(item.module))
+    (item) =>
+      (!item.roles || (user && item.roles.includes(user.role))) &&
+      (!item.module || isModuleEnabled(item.module)) &&
+      (!item.meetingHost || (user !== null && (user.role === "ADMIN" || user.canHostMeetings === true)))
   );
 }
 
@@ -132,6 +141,8 @@ export const navItems: NavItem[] = [
   },
   { href: "/admin/telehealth/doctors", labelKey: "nav.telehealth", icon: Stethoscope, module: "telehealth" },
   { href: "/admin/telehealth/specialties", labelKey: "nav.telehealthSpecialties", icon: Tag, module: "telehealth" },
+  // Paket AG İş 3 — harici görüntülü toplantılar: yalnızca ADMIN ve "harici toplantı oluşturabilir" yetkisi verilenler görür.
+  { href: "/admin/meetings", labelKey: "nav.meetings", icon: Video, module: "telehealth", meetingHost: true },
   {
     href: "/admin/telehealth/appointments",
     labelKey: "nav.telehealthAppointments",

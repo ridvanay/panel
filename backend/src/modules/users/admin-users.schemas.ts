@@ -38,6 +38,11 @@ export const UpdateAdminUserStatusRequestSchema = z.object({
   status: SiteUserStatusSchema,
 });
 
+/** Paket AG (İş 3) — `PATCH /admin/users/{userId}/meeting-host` gövdesi. */
+export const UpdateAdminUserMeetingHostRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+
 /**
  * `PATCH /admin/users/{userId}/password` gövdesi — minimum uzunluk kuralı
  * `users.schemas.ts::ChangePasswordRequestSchema`/`auth.schemas.ts::RegisterRequestSchema` ile

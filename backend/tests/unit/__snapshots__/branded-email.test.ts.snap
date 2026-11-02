@@ -1332,6 +1332,108 @@ Bu e-posta otomatik olarak gönderilmiştir.",
 }
 `;
 
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:meeting-invite · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">دعوة إلى اجتماع مرئي: Weekly coordination call</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>دعاك Op. Dr. M. Demir إلى اجتماع مرئي.</p><p><strong>الموضوع:</strong> Weekly coordination call<br><strong>الوقت:</strong> 2026-11-12 13:30 – 14:00 (Europe/Istanbul) · 10:30 – 11:00 UTC</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">الانضمام إلى الاجتماع</a></td></tr></table><p>تُفتح القاعة قبل موعد البدء بـ 15 دقيقة. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاجتماع. هذا الرابط شخصي، يرجى عدم إعادة توجيهه.</p></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "دعوة إلى اجتماع مرئي: Weekly coordination call",
+  "text": "دعاك Op. Dr. M. Demir إلى اجتماع مرئي.
+الموضوع: Weekly coordination call
+الوقت: 2026-11-12 13:30 – 14:00 (Europe/Istanbul) · 10:30 – 11:00 UTC
+الانضمام إلى الاجتماع (http://localhost:3000/ar/meet/join#mg_sample)
+تُفتح القاعة قبل موعد البدء بـ 15 دقيقة. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاجتماع. هذا الرابط شخصي، يرجى عدم إعادة توجيهه.
+----
+WM Health Istanbul
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:meeting-invite · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Video meeting invitation: Weekly coordination call</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>Op. Dr. M. Demir has invited you to a video meeting.</p><p><strong>Topic:</strong> Weekly coordination call<br><strong>Time:</strong> 2026-11-12 13:30 – 14:00 (Europe/Istanbul) · 10:30 – 11:00 UTC</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the meeting</a></td></tr></table><p>The room opens 15 minutes before the start time. No account is needed; you will be asked for your name. The meeting is not recorded. This link is personal, please do not forward it.</p></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Video meeting invitation: Weekly coordination call",
+  "text": "Op. Dr. M. Demir has invited you to a video meeting.
+Topic: Weekly coordination call
+Time: 2026-11-12 13:30 – 14:00 (Europe/Istanbul) · 10:30 – 11:00 UTC
+Join the meeting (http://localhost:3000/en/meet/join#mg_sample)
+The room opens 15 minutes before the start time. No account is needed; you will be asked for your name. The meeting is not recorded. This link is personal, please do not forward it.
+----
+WM Health Istanbul
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:meeting-invite · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Görüntülü toplantı daveti: Weekly coordination call</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>Op. Dr. M. Demir sizi bir görüntülü toplantıya davet etti.</p><p><strong>Konu:</strong> Weekly coordination call<br><strong>Zaman:</strong> 2026-11-12 13:30 – 14:00 (Europe/Istanbul) · 10:30 – 11:00 UTC</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/tr/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Toplantıya katıl</a></td></tr></table><p>Oda, başlangıçtan 15 dakika önce açılır. Hesap gerekmez; katılırken adınız sorulur. Toplantı kaydedilmez. Bu bağlantı size özeldir, lütfen başkalarına iletmeyin.</p></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Örnek Mah. 1, İstanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/tr/contact" style="color:#6b7280;text-decoration:underline;">Bize ulaşın</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/tr/kvkk-aydinlatma-metni" style="color:#6b7280;text-decoration:underline;">KVKK Aydınlatma Metni</a> &middot; <a href="http://localhost:3000/tr/gizlilik-politikasi" style="color:#6b7280;text-decoration:underline;">Gizlilik Politikası</a></p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Görüntülü toplantı daveti: Weekly coordination call",
+  "text": "Op. Dr. M. Demir sizi bir görüntülü toplantıya davet etti.
+Konu: Weekly coordination call
+Zaman: 2026-11-12 13:30 – 14:00 (Europe/Istanbul) · 10:30 – 11:00 UTC
+Toplantıya katıl (http://localhost:3000/tr/meet/join#mg_sample)
+Oda, başlangıçtan 15 dakika önce açılır. Hesap gerekmez; katılırken adınız sorulur. Toplantı kaydedilmez. Bu bağlantı size özeldir, lütfen başkalarına iletmeyin.
+----
+WM Health Istanbul
+Örnek Mah. 1, İstanbul
++90 212 000 00 00 · info@example.com · Bize ulaşın (http://localhost:3000/tr/contact)
+KVKK Aydınlatma Metni (http://localhost:3000/tr/kvkk-aydinlatma-metni) · Gizlilik Politikası (http://localhost:3000/tr/gizlilik-politikasi)
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
 exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:package-confirmation · ar 1`] = `
 {
   "html": "<!doctype html>

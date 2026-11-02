@@ -259,6 +259,28 @@ describe("personel/doktor e-postaları — hasta adı ve sağlık bilgisi yok", 
   }
 });
 
+describe("toplantı daveti (Paket AG İş 3) — PII yok, kurumsal kabuk", () => {
+  const entry = SYSTEM_EMAILS.find((e) => e.id === "code:meeting-invite")!;
+
+  it("katalogda var; alıcı kitlesi user", () => {
+    expect(entry).toBeDefined();
+    expect(entry.audience).toBe("user");
+  });
+
+  it("9 dilde hasta adı, sağlık bilgisi, e-posta adresi ve not içermez; bağlantı düğmede", async () => {
+    for (const locale of ["tr", "en", "de", "es", "fr", "ar", "ru", "ro", "sr-latn"] as const) {
+      const sample = await renderSystemEmailSample(fakeApp(), entry, locale);
+      expect(sample.available).toBe(true);
+      for (const body of [sample.subject, sample.html, sample.text]) {
+        expect(body).not.toMatch(/Ayşe/);
+        // Kurumsal alt bilgideki kurum adresi (info@) dışında hiçbir e-posta adresi yok.
+        expect(body.replaceAll("info@example.com", "")).not.toMatch(/@[a-z0-9-]+\.[a-z]{2,}/i);
+      }
+      expect(sample.html).toContain("/meet/join#mg_sample");
+    }
+  });
+});
+
 describe("statik tarama — ham HTML ile sendMail kalmadı", () => {
   const SRC = join(__dirname, "../../src");
   function walk(dir: string): string[] {
