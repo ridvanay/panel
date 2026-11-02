@@ -9,6 +9,7 @@ import { useDoctorPortalContext } from "@/components/site/telehealth/doctor-port
 import { TwoFactorSetupPanel } from "@/components/site/security/two-factor-setup-panel";
 import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { useBlogStrings } from "@/lib/i18n/use-blog-strings";
+import { useMeetingStrings } from "@/lib/i18n/use-meeting-strings";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
@@ -45,10 +46,11 @@ interface DoctorPortalShellProps {
 export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const pathname = usePathname();
   const localize = useLocalizePath();
-  const { refreshSession } = useAuth();
+  const { refreshSession, user } = useAuth();
   const { status, error, retry } = useDoctorPortalContext();
   const { t } = usePortalStrings();
   const blogT = useBlogStrings();
+  const { t: meetingT } = useMeetingStrings();
   const friendlyErrorMessage = useFriendlyError();
 
   /**
@@ -125,6 +127,9 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const profileHref = localize("/doctor/profile");
   const scheduleHref = localize("/doctor/schedule");
   const blogReviewHref = localize("/doctor/blog-review");
+  const meetingsHref = localize("/doctor/meetings");
+  // Paket AG İş 3 — yalnızca "harici toplantı oluşturabilir" yetkisi olan doktora görünür (sunucu ayrıca doğrular).
+  const canHostMeetings = user?.canHostMeetings === true;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -144,6 +149,15 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
         <Link href={blogReviewHref} className={pathname === blogReviewHref ? "font-medium text-primary" : "hover:text-foreground"}>
           {blogT.reviewNav}
         </Link>
+        {canHostMeetings && (
+          <Link
+            href={meetingsHref}
+            data-testid="doctor-nav-meetings"
+            className={pathname === meetingsHref ? "font-medium text-primary" : "hover:text-foreground"}
+          >
+            {meetingT.navLabel}
+          </Link>
+        )}
       </nav>
       {children}
     </div>

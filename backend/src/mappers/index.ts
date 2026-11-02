@@ -167,6 +167,7 @@ import {
   computeProductSeoScore,
 } from "../lib/seo-score";
 import { canUseAdvancedBuilder } from "../lib/builder-capability";
+import { canHostMeetings } from "../lib/meeting-host";
 import { readTranslations } from "../lib/entity-translations";
 import { readSlideTranslations, resolveSlideTranslationMedia } from "../modules/sliders/lib/slide-translations";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
@@ -210,6 +211,8 @@ export function toUserDto(user: UserWithDoctorLink): UserDto {
     // lib/builder-capability.ts, TEK türetme kaynağı; saf rol türevi, `advancedBuilderEnabled`
     // bayrağı KALDIRILDI).
     canUseAdvancedBuilder: canUseAdvancedBuilder(user),
+    // Paket AG (İş 3) — bkz. lib/meeting-host.ts (TEK türetme kaynağı).
+    canHostMeetings: canHostMeetings(user),
     doctorProfileId: user.doctorProfile?.id ?? null,
   };
 }

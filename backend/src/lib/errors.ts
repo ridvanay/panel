@@ -174,7 +174,16 @@ export type ApiErrorCode =
   | "CONTACT_FORM_TOKEN_INVALID"
   | "BULK_PREVIEW_STALE"
   | "BULK_CONFLICT_ACK_REQUIRED"
-  | "BULK_UNDO_BLOCKED";
+  | "BULK_UNDO_BLOCKED"
+  /** Paket AG (İş 3) — harici toplantı. */
+  | "MEETING_HOST_FORBIDDEN"
+  | "MEETING_HOST_NOT_ELIGIBLE"
+  | "MEETING_NOT_FOUND"
+  | "MEETING_LINK_INVALID"
+  | "MEETING_NOT_OPEN"
+  | "MEETING_FULL"
+  | "MEETING_NOT_EDITABLE"
+  | "MEETING_LIMIT_REACHED";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -625,5 +634,65 @@ export class BulkConflictAckRequiredError extends ApiError {
 export class BulkUndoBlockedError extends ApiError {
   constructor(changes: string[]) {
     super(409, "BULK_UNDO_BLOCKED", "Bu işlemden sonra elle değiştirilmiş kayıtlar var; geri alma yapılmadı.", { changes });
+  }
+}
+
+/** Paket AG (İş 3) — kullanıcının harici toplantı oluşturma yetkisi yok / geri alınmış. 403. */
+export class MeetingHostForbiddenError extends ApiError {
+  constructor(message = "Harici toplantı oluşturma yetkiniz yok.") {
+    super(403, "MEETING_HOST_FORBIDDEN", message);
+  }
+}
+
+/** Paket AG (İş 3) — yetki, uygun olmayan bir kullanıcıya (müşteri, tercüman, doktor olmayan USER) veriliyor. 422. */
+export class MeetingHostNotEligibleError extends ApiError {
+  constructor(message = "Bu kullanıcıya harici toplantı yetkisi verilemez.") {
+    super(422, "MEETING_HOST_NOT_ELIGIBLE", message);
+  }
+}
+
+/** Paket AG (İş 3) — başkasının veya olmayan toplantı (ev sahibi / admin uçları). 404. */
+export class MeetingNotFoundError extends ApiError {
+  constructor(message = "Toplantı bulunamadı.") {
+    super(404, "MEETING_NOT_FOUND", message);
+  }
+}
+
+/** Paket AG (İş 3) — misafir bağlantısı geçersiz (bozuk, bilinmeyen, iptal, bitmiş, çıkarılmış). Mesaj SABİT. 404. */
+export class MeetingLinkInvalidError extends ApiError {
+  constructor() {
+    // Ziyaretçiye dönen yanıt: Türkçe olmaz (müşteri tarafı kuralı); mesaj SABİT ve tek tiptir.
+    super(404, "MEETING_LINK_INVALID", "This link is invalid or has expired.");
+  }
+}
+
+/** Paket AG (İş 3) — katılım penceresi dışında. `details.reason` = not_yet_open | ended | cancelled; `details.opensAt` yalnız not_yet_open. 409. */
+export class MeetingNotOpenError extends ApiError {
+  constructor(reason: "not_yet_open" | "ended" | "cancelled", opensAt?: Date, message = "Toplantı şu anda katılıma açık değil.") {
+    super(409, "MEETING_NOT_OPEN", message, {
+      reason: [reason],
+      ...(opensAt ? { opensAt: [opensAt.toISOString()] } : {}),
+    });
+  }
+}
+
+/** Paket AG (İş 3) — katılımcı sınırı (ev sahibi dahil) dolu veya misafir oturum tavanı aşıldı. 409. */
+export class MeetingFullError extends ApiError {
+  constructor(message = "Toplantı dolu.") {
+    super(409, "MEETING_FULL", message);
+  }
+}
+
+/** Paket AG (İş 3) — iptal edilmiş / bitmiş / başlamış toplantıda değiştirilemeyen alan. 409. */
+export class MeetingNotEditableError extends ApiError {
+  constructor(message = "Bu toplantı artık değiştirilemez.") {
+    super(409, "MEETING_NOT_EDITABLE", message);
+  }
+}
+
+/** Paket AG (İş 3) — gelecek toplantı sayısı (20) veya e-posta daveti (10) sınırı. 409. */
+export class MeetingLimitReachedError extends ApiError {
+  constructor(message = "Toplantı veya davet sınırı aşıldı.") {
+    super(409, "MEETING_LIMIT_REACHED", message);
   }
 }

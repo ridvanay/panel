@@ -7,8 +7,8 @@ import type { SiteRole } from "@/lib/api/types";
  * regresyon testi. `isModuleEnabled` her zaman `true` döner — bu test yalnızca ROL eksenini
  * doğrular, modül aç/kapa eksenini DEĞİL (bkz. `sidebar-module-filter.test.tsx`).
  */
-function visibleHrefsFor(role: SiteRole): string[] {
-  return filterVisibleNavItems(navItems, { role }, () => true).map((item) => item.href);
+function visibleHrefsFor(role: SiteRole, canHostMeetings?: boolean): string[] {
+  return filterVisibleNavItems(navItems, { role, canHostMeetings }, () => true).map((item) => item.href);
 }
 
 describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
@@ -61,6 +61,21 @@ describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
     // §8.4 (telehealth architect scope) — hasta PII'si taşıyan randevular EDITOR'e
     // hiçbir koşulda görünmez/erişilemez olmalı (veri minimizasyonu, security-agent onaylı).
     expect(visible).not.toContain("/admin/telehealth/appointments");
+  });
+
+  // Paket AG İş 3 — "Toplantılar" yalnızca ADMIN'e ve `canHostMeetings` yetkisi olanlara görünür.
+  it("Toplantılar: yetkisiz MANAGER/EDITOR için GİZLİ, yetkili olunca görünür; ADMIN her zaman görür", () => {
+    expect(visibleHrefsFor("ADMIN")).toContain("/admin/meetings");
+    for (const role of ["MANAGER", "EDITOR"] as const) {
+      expect(visibleHrefsFor(role), role).not.toContain("/admin/meetings");
+      expect(visibleHrefsFor(role, false), role).not.toContain("/admin/meetings");
+      expect(visibleHrefsFor(role, true), role).toContain("/admin/meetings");
+    }
+  });
+
+  it("Toplantılar: telehealth modülü kapalıysa yetkili kullanıcıda bile gizlenir; kullanıcı yoksa gizli", () => {
+    expect(filterVisibleNavItems(navItems, { role: "EDITOR", canHostMeetings: true }, (key) => key !== "telehealth").map((i) => i.href)).not.toContain("/admin/meetings");
+    expect(filterVisibleNavItems(navItems, null, () => true).map((i) => i.href)).not.toContain("/admin/meetings");
   });
 
   // K10b — mali/iş verisi analitik paneli, randevular İLE AYNI eşik (ADMIN/MANAGER), EDITOR'e KAPALI.

@@ -93,6 +93,10 @@ import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders"
 import { registerAdminNotificationSweeper } from "./modules/telehealth/lib/admin-booking-notifications";
 import { registerAppointmentAutoCloseSweeper } from "./lib/appointment-auto-close";
 import { registerQaListenerSweeper } from "./modules/telehealth/lib/qa-listener-sweeper";
+import { registerMeetingSweeper } from "./modules/telehealth/lib/meeting-sweeper";
+import { meetingsRoutes } from "./modules/meetings/meetings.routes";
+import { meetingsGuestRoutes } from "./modules/meetings/meetings.guest.routes";
+import { adminMeetingsRoutes } from "./modules/meetings/meetings.admin.routes";
 import { registerInterpreterSweeper } from "./modules/telehealth/lib/interpreter-sweeper";
 import { adminSupportRoutes } from "./modules/support/support.routes";
 import { supportPublicRoutes } from "./modules/support/support.public.routes";
@@ -320,6 +324,12 @@ export function buildApp() {
       // `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` + kimlik
       // doğrulama hook'larını KENDİSİ taşır.
       api.register(telehealthLiveKitRoutes);
+      // Paket AG (İş 3) — randevudan BAĞIMSIZ harici görüntülü toplantı: ev sahibi (/meetings), herkese açık
+      // misafir (/meet/guest, belirteçli) ve ADMIN gözetimi (/admin/meetings). `telehealth.livekit.routes.ts`'e
+      // DOKUNULMAZ; ayrı token üreticisi `telehealth/lib/meeting-livekit.ts`. Üçü de `requireModuleEnabled("telehealth")` taşır.
+      api.register(meetingsRoutes, { prefix: "/meetings" });
+      api.register(meetingsGuestRoutes, { prefix: "/meet/guest" });
+      api.register(adminMeetingsRoutes, { prefix: "/admin/meetings" });
       // §9.7.1/§9.7.9/§9.7.10 (bağlayıcı) — Stripe Checkout oturumu, integration-agent'ın AYRI
       // dosyası (`telehealth.checkout.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI). Aynı
       // public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +
@@ -556,6 +566,14 @@ export function buildApp() {
       registerQaListenerSweeper(app);
     } catch (err) {
       app.log.error({ err }, "QA dinleyici temizleyicisi (qa-listener-sweeper) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket AG (İş 3) — dakikalık kadans: biten/iptal edilen harici toplantı odalarını boşaltır, çıkarılan misafiri
+      // atar; saatlik kadans: 90 günü dolan misafir adlarını siler (bkz. meeting-sweeper.ts).
+      registerMeetingSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Toplantı süpürücüsü (meeting-sweeper) scheduler kurulumu başarısız oldu.");
     }
 
     try {

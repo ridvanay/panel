@@ -11,7 +11,7 @@ import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
  * §K6 (`.claude/architect-scope-telehealth-template.md`) + görev talimatı — doktor hesabı
  * (`User.doctorProfileId !== null`) oturum açtığında `(site)` route grubunda `/doctor/**` DIŞINDA
  * bir sayfaya erişemez; her navigasyonda `/doctor`'a geri yönlendirilir. TEK istisna
- * `/consultation/{id}` (2026-09-15) ve `/blog/preview/{postId}` (2026-11-02) istisnalarıdır (bkz. `isDoctorSharedRouteException`). Guard SADECE bu
+ * `/consultation/{id}` (2026-09-15), `/blog/preview/{postId}` ve `/meet/{id}` + `/meet/join` (2026-11-02) istisnalarıdır (bkz. `isDoctorSharedRouteException`). Guard SADECE bu
  * `"use client"` bileşende yaşar — `proxy.ts` erişim tokenına (bellek-içi) sahip DEĞİLDİR,
  * bkz. `frontend/src/proxy.ts` (bakım modu + locale rewrite/redirect dışında sorumluluğu YOK).
  *
@@ -63,7 +63,11 @@ export function isDoctorSharedRouteException(pathname: string | null): boolean {
   // 2026-11-02 istisnası (kullanıcı kararı; §5.6'ya tarihli not) — atanan inceleyen hekim, doktor panelindeki
   // "Medical review" listesinden taslak yazının önizlemesini açar: YALNIZCA `/blog/preview/{postId}`.
   // Yetki burada değil, URL'deki imzalı belirteçtedir (`GET /blog/preview/:postId?t=` — belirteçsiz 404).
-  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?blog/preview/[^/]+$`).test(pathname);
+  if (new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?blog/preview/[^/]+$`).test(pathname)) return true;
+  // 2026-11-02 istisnası (Paket AG İş 3, kullanıcı kararı S10; §5.6'ya tarihli not) — harici görüntülü toplantı: ev sahibi odası
+  // `/meet/{meetingId}` ve misafir girişi `/meet/join` (aynı tek segment). Yetki burada değil, sunucudadır (`POST /meetings/:id/host-token`
+  // yalnızca toplantının ev sahibine; misafir yalnızca imzalı bağlantıyla). Daha derin yollar (`/meet/a/b`) ve çıplak `/meet` istisna DEĞİLDİR.
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?meet/[^/]+$`).test(pathname);
 }
 
 export function DoctorPortalRouteGuard() {

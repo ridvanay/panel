@@ -52,6 +52,9 @@ export const UserSchema = z.object({
   // yalnızca `role === "ADMIN"` iken `true` (bkz. lib/builder-capability.ts). Eski
   // `User.advancedBuilderEnabled` bayrağı KALDIRILDI.
   canUseAdvancedBuilder: z.boolean(),
+  // Paket AG (İş 3) — TÜRETİLMİŞ + SALT-OKUNUR: ADMIN için her zaman true; diğerleri için admin'in verdiği
+  // "harici toplantı oluşturabilir" yetkisi (bkz. lib/meeting-host.ts). Yazma: PATCH /admin/users/{id}/meeting-host.
+  canHostMeetings: z.boolean(),
   // [TCT] §9.7.7 KARAR K3 — doktorluk `DoctorProfile.userId === user.id` İLİŞKİSİDİR
   // (`SiteRole.DOCTOR` YOK). Bu alan o ilişkinin TÜRETİLMİŞ + SALT-OKUNUR bir yansımasıdır —
   // `null` = bu kullanıcı hiçbir doktor profiline bağlı DEĞİL.

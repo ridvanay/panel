@@ -33,6 +33,15 @@ export type ApiErrorCode =
   | "APPOINTMENT_NOT_JOINABLE"
   | "QA_LISTENER_NOT_ALLOWED"
   | "LIVEKIT_NOT_CONFIGURED"
+  // Paket AG İş 3 — harici görüntülü toplantı (tasarım §4.4).
+  | "MEETING_HOST_FORBIDDEN"
+  | "MEETING_NOT_FOUND"
+  | "MEETING_LINK_INVALID"
+  | "MEETING_NOT_OPEN"
+  | "MEETING_FULL"
+  | "MEETING_NOT_EDITABLE"
+  | "MEETING_LIMIT_REACHED"
+  | "MEETING_HOST_NOT_ELIGIBLE"
   // `.claude/architect-scope-telehealth-template.md` §9.7.10 — TADİLAT TURU 2 (booking/ödeme/
   // sağlık verisi/portal) hata kodları. Bkz. `backend/src/lib/errors.ts`.
   | "PAYMENTS_NOT_CONFIGURED"
@@ -134,6 +143,11 @@ export interface User {
    * DEĞİLDİR** — sunucu her yazma isteğinde yeteneği bağımsız olarak yeniden hesaplar.
    */
   readonly canUseAdvancedBuilder: boolean;
+  /**
+   * Paket AG İş 3 — "Harici toplantı oluşturabilir" (türetilmiş, salt okunur): `role === "ADMIN" || yetki verilmiş`.
+   * Yalnızca menü/sayfa görünürlüğü içindir; sunucu her istekte bağımsız karar verir. Eski yanıtta yoksa `undefined` (= yetki yok).
+   */
+  readonly canHostMeetings?: boolean;
   createdAt: string;
   twoFactorEnabled: boolean;
   /**
@@ -158,6 +172,8 @@ export interface AdminUser {
   role: SiteRole;
   /** Bkz. `User.canUseAdvancedBuilder` — aynı türetilmiş, salt-okunur alan. */
   readonly canUseAdvancedBuilder: boolean;
+  /** Bkz. `User.canHostMeetings` — Admin → Kullanıcılar anahtarı bunu okur. */
+  readonly canHostMeetings?: boolean;
   createdAt: string;
   status: SiteUserStatus;
   lastLoginAt: string | null;

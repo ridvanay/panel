@@ -382,6 +382,11 @@ model User {
   supportSessionsAssigned  SupportChatSession[]    @relation("SupportAgent")
   supportSessionsClosed    SupportChatSession[]    @relation("SupportCloser")
   supportMessagesSent      SupportChatMessage[]    @relation("SupportMessageSender")
+  // Paket AG (Is 3) - harici goruntulu toplanti. NULL = yetki yok; ADMIN icin alana bakilmaz (her zaman yetkili).
+  // API'de turetilmis `canHostMeetings` olarak yansir. Veren admin id'si FK degildir (iz kalir).
+  meetingHostGrantedAt     DateTime?
+  meetingHostGrantedById   String?
+  externalMeetingsHosted   ExternalMeeting[]       @relation("ExternalMeetingHost")
 
   @@map("users")
 }
@@ -4317,4 +4322,65 @@ model AdminNotification {
 
   @@index([status, nextAttemptAt])
   @@map("admin_notifications")
+}
+
+enum ExternalMeetingStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+/// Paket AG (Is 3) - randevudan bagimsiz harici goruntulu toplanti. "Bitti" saklanmaz, `endsAt`'ten turetilir.
+/// Misafir baglantisi: yalniz SHA-256 ozeti (`guestTokenHash`); duz belirtec saklanmaz. `note` yalniz ev sahibine gorunur.
+model ExternalMeeting {
+  id                  String                @id @default(uuid())
+  seq                 Int                   @unique @default(autoincrement())
+  hostUserId          String
+  title               String
+  note                String?
+  startsAt            DateTime
+  endsAt              DateTime
+  durationMin         Int
+  /// Ev sahibi dahil toplam katilimci (2-8, varsayilan 4).
+  maxParticipants     Int                   @default(4)
+  /// "meet_" + 32 hex.
+  roomName            String                @unique
+  guestTokenHash      String?               @unique
+  guestTokenCreatedAt DateTime?
+  autoAdmitGuests     Boolean               @default(false)
+  hostJoinedAt        DateTime?
+  /// E-postayla gonderilen davet sayaci (adres saklanmaz); toplanti basina ust sinir uygulamada.
+  inviteCount         Int                   @default(0)
+  status              ExternalMeetingStatus @default(SCHEDULED)
+  cancelledAt         DateTime?
+  cancelledById       String?
+  /// Supurucu odayi bosaltip kapattiginda dolar.
+  closedAt            DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  host   User                   @relation("ExternalMeetingHost", fields: [hostUserId], references: [id], onDelete: Restrict)
+  guests ExternalMeetingGuest[]
+
+  @@index([hostUserId, startsAt])
+  @@index([status, endsAt])
+  @@index([closedAt, endsAt])
+  @@map("external_meetings")
+}
+
+/// Misafir kaydi: YALNIZCA girilen gorunen ad ve zaman damgalari (e-posta/telefon/IP YOK). Toplanti bitisinden
+/// 90 gun sonra supurucu tarafindan silinir.
+model ExternalMeetingGuest {
+  id          String    @id @default(uuid())
+  meetingId   String
+  displayName String
+  createdAt   DateTime  @default(now())
+  /// Bekleme yoklamasinin son goruldugu an (ev sahibinin "bekleyenler" listesi icin).
+  lastSeenAt  DateTime?
+  admittedAt  DateTime?
+  removedAt   DateTime?
+
+  meeting ExternalMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt])
+  @@map("external_meeting_guests")
 }
