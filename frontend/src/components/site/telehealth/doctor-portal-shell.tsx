@@ -9,6 +9,7 @@ import { useDoctorPortalContext } from "@/components/site/telehealth/doctor-port
 import { TwoFactorSetupPanel } from "@/components/site/security/two-factor-setup-panel";
 import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { useBlogStrings } from "@/lib/i18n/use-blog-strings";
+import { EXTERNAL_MEETINGS_ENABLED } from "@/lib/feature-flags";
 import { useMeetingStrings } from "@/lib/i18n/use-meeting-strings";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -129,7 +130,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const blogReviewHref = localize("/doctor/blog-review");
   const meetingsHref = localize("/doctor/meetings");
   // Paket AG İş 3 — yalnızca "harici toplantı oluşturabilir" yetkisi olan doktora görünür (sunucu ayrıca doğrular).
-  const canHostMeetings = user?.canHostMeetings === true;
+  const canHostMeetings = EXTERNAL_MEETINGS_ENABLED && user?.canHostMeetings === true;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
