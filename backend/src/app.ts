@@ -75,6 +75,7 @@ import { telehealthDemoPaymentRoutes } from "./modules/telehealth/telehealth.dem
 import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
 import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
 import { adminDoctorTimeOffRoutes, doctorScheduleRoutes } from "./modules/telehealth/telehealth.time-off.routes";
+import { adminBlogPreviewRoutes, publicBlogPreviewRoutes } from "./modules/blog/blog.preview.routes";
 import { doctorBlogReviewRoutes } from "./modules/blog/blog.doctor-review.routes";
 import { adminBulkAvailabilityRoutes } from "./modules/telehealth/telehealth.bulk-availability.routes";
 import { geoRoutes } from "./modules/geo/geo.routes";
@@ -211,7 +212,9 @@ export function buildApp() {
       api.register(publicPagesRoutes, { prefix: "/pages" });
       api.register(adminPagesRoutes, { prefix: "/admin/pages" });
       api.register(publicBlogRoutes, { prefix: "/blog" });
+      api.register(publicBlogPreviewRoutes, { prefix: "/blog" });
       api.register(adminBlogPostsRoutes, { prefix: "/admin/blog" });
+      api.register(adminBlogPreviewRoutes, { prefix: "/admin/blog" });
       api.register(adminBlogCategoriesRoutes, { prefix: "/admin/blog/categories" });
       api.register(adminBlogTagsRoutes, { prefix: "/admin/blog/tags" });
       // §10.9.2 Ürünler Modülü — public uçlar `requireModuleEnabled("products")` ile korunur

@@ -265,6 +265,50 @@ describe("scripts/import-blog-posts.ts", () => {
     expect(await prisma.auditLog.count({ where: { action: "blog.import_batch" } })).toBe(1);
   });
 
+  it("medicalReviewNote: oluşturmada yazılır; yalnızca not değişince güncellenir; alan yoksa mevcut not korunur; approved atlanır", async () => {
+    const NOTE = "Tedavi sonrası seyahat süresi notunu özellikle kontrol edin.";
+    const withNote = (note: string | null | undefined) => {
+      const b = baseBatch();
+      if (note !== undefined) (b.posts[0] as PostJson).medicalReviewNote = note;
+      return b;
+    };
+    const noteOf = async () => (await prisma.blogPost.findUniqueOrThrow({ where: { slug: "ercp-explained" } })).medicalReviewNote;
+
+    // oluşturma
+    expect(real(writeBatch(withNote(NOTE))).status).toBe(0);
+    expect(await noteOf()).toBe(NOTE);
+
+    // aynı not: değişiklik yok
+    const same = real(writeBatch(withNote(NOTE)));
+    expect(same.stdout).toContain("Yapılacak değişiklik yok");
+
+    // yalnızca not değişir: kuru çalıştırma "güncelle", gerçek çalıştırma yalnızca notu günceller
+    const changed = writeBatch(withNote("Yeni not"));
+    const dry = runScript([`--file=${changed}`, `--backup-dir=${backupDir}`]);
+    expect(dry.stdout).toMatch(/ercp-explained\s+güncelle/);
+    expect(real(changed).status).toBe(0);
+    expect(await noteOf()).toBe("Yeni not");
+
+    // alan yok: mevcut not korunur ve "değişiklik yok"
+    const omitted = real(writeBatch(withNote(undefined)));
+    expect(omitted.stdout).toContain("Yapılacak değişiklik yok");
+    expect(await noteOf()).toBe("Yeni not");
+
+    // null: notu temizler
+    expect(real(writeBatch(withNote(null))).status).toBe(0);
+    expect(await noteOf()).toBeNull();
+
+    // 2000 karakter üstü şema hatası
+    const long = real(writeBatch(withNote("x".repeat(2001))));
+    expect(long.status).not.toBe(0);
+    expect(long.stderr).toMatch(/şema/);
+
+    // approved yazıda not da ezilmez
+    await prisma.blogPost.update({ where: { slug: "ercp-explained" }, data: { medicalReviewStatus: "approved", medicalReviewNote: "hekim" } });
+    expect(real(writeBatch(withNote(NOTE))).stdout).toContain("Yapılacak değişiklik yok");
+    expect(await noteOf()).toBe("hekim");
+  });
+
   it("DRAFT yazı güncellenir; kategoriye yalnızca eksik çeviri eklenir; approved ve PUBLISHED atlanır", async () => {
     const batch = baseBatch();
     expect(real(writeBatch(batch)).status).toBe(0);

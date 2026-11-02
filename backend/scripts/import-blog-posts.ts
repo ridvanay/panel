@@ -93,6 +93,8 @@ const BatchSchema = z.object({
       references: z.unknown(),
       sourcesMissing: z.boolean().optional().default(false),
       sourcesNote: z.string().nullable().optional(),
+      /** İsteğe bağlı hekim notu (<=2000; null = notu temizle). ALAN YOKSA mevcut not KORUNUR. */
+      medicalReviewNote: z.string().max(2000).nullable().optional(),
       wordCount: z.number().int().nonnegative().optional(),
       contentHtml: z.string().min(1),
     })
@@ -186,6 +188,8 @@ interface PostPlan {
     careTopicIds: string[];
     reviewerDoctorId: string | null;
     medicalReviewStatus: "pending" | "not_required";
+    /** undefined = partide alan yok (mevcut not korunur); null = notu temizle. */
+    medicalReviewNote: string | null | undefined;
     translationsEn: Record<string, unknown> | null;
   } | null;
 }
@@ -229,7 +233,7 @@ function isUnchanged(
   existing: {
     title: string; excerpt: string | null; contentHtml: string; seoTitle: string | null; seoDescription: string | null;
     keyTakeaways: unknown; faq: unknown; references: unknown; categoryId: string | null; specialtyId: string | null;
-    careTopicIds: string[]; reviewerDoctorId: string | null; medicalReviewStatus: string | null; translations: unknown;
+    careTopicIds: string[]; reviewerDoctorId: string | null; medicalReviewStatus: string | null; medicalReviewNote: string | null; translations: unknown;
   },
   d: NonNullable<PostPlan["data"]>,
   categoryId: string | null
@@ -240,6 +244,7 @@ function isUnchanged(
     existing.seoTitle === d.seoTitle && existing.seoDescription === d.seoDescription &&
     existing.specialtyId === d.specialtyId && existing.reviewerDoctorId === d.reviewerDoctorId &&
     (existing.medicalReviewStatus ?? "pending") === d.medicalReviewStatus &&
+    (d.medicalReviewNote === undefined || existing.medicalReviewNote === d.medicalReviewNote) &&
     canon([...existing.careTopicIds].sort()) === canon([...d.careTopicIds].sort()) &&
     canon(existing.keyTakeaways) === canon(d.keyTakeaways) && canon(existing.faq) === canon(d.faq) &&
     canon(existing.references) === canon(d.references);
@@ -534,6 +539,7 @@ async function buildPlan(raw: unknown): Promise<Plan> {
       careTopicIds: [...new Set(topicIds)],
       reviewerDoctorId: reviewerId,
       medicalReviewStatus: p.medicalReviewStatus,
+      medicalReviewNote: p.medicalReviewNote,
       translationsEn,
     };
     let note = "";
@@ -587,7 +593,7 @@ function printPlan(plan: Plan) {
 
 const POST_RESTORE_FIELDS = [
   "title", "excerpt", "contentHtml", "seoTitle", "seoDescription", "keyTakeaways", "faq", "references", "translations",
-  "readingMinutes", "categoryId", "specialtyId", "careTopicIds", "reviewerDoctorId", "medicalReviewStatus",
+  "readingMinutes", "categoryId", "specialtyId", "careTopicIds", "reviewerDoctorId", "medicalReviewStatus", "medicalReviewNote",
 ] as const;
 
 async function enabledLocaleList() {
@@ -677,6 +683,8 @@ async function applyPlan(plan: Plan, operator: string, backupName: string) {
           careTopicIds: d.careTopicIds,
           reviewerDoctorId: d.reviewerDoctorId,
           medicalReviewStatus: d.medicalReviewStatus,
+          // Alan partide yoksa (undefined) Prisma kolona dokunmaz → mevcut not korunur.
+          ...(d.medicalReviewNote !== undefined ? { medicalReviewNote: d.medicalReviewNote } : {}),
           translations: jsonValue(translations),
         };
         let post;

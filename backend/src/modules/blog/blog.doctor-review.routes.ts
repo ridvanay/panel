@@ -7,6 +7,7 @@ import { ApiSuccessSchema } from "../../schemas/common";
 import { NotFoundError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
 import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
+import { issueSessionToken } from "./lib/preview-token";
 import { requireDoctorPortalAccess } from "../telehealth/telehealth.portal.routes";
 import { RequestChangesBodySchema, ReviewPostIdParamSchema } from "./blog.schemas";
 
@@ -101,6 +102,27 @@ export async function doctorBlogReviewRoutes(app: FastifyInstance) {
     });
     return reply.send(ok(rows.map(toReviewItem)));
   });
+
+  // Atanan hekim kendi yazısının taslak önizlemesini açar (30 dk, yazıya özel). Başkasının yazısı 404.
+  server.post(
+    "/blog-reviews/:id/preview-session",
+    {
+      schema: {
+        params: ReviewPostIdParamSchema,
+        response: { 200: ApiSuccessSchema(z.object({ token: z.string(), expiresAt: z.string() })) },
+      },
+    },
+    async (request, reply) => {
+      const { doctorProfileId } = await requireDoctorPortalAccess(app, request.user!.id);
+      const post = await app.prisma.blogPost.findFirst({
+        where: { id: request.params.id, reviewerDoctorId: doctorProfileId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!post) throw new NotFoundError("İncelenecek yazı bulunamadı.");
+      const { token, expiresAt } = issueSessionToken(post.id, "doctor");
+      return reply.send(ok({ token, expiresAt: expiresAt.toISOString() }));
+    }
+  );
 
   server.post(
     "/blog-reviews/:id/approve",

@@ -348,6 +348,16 @@ export async function getPublicPostDetail(app: FastifyInstance, slug: string, lo
   // Kanonik olmayan dilde çevirisi yoksa 404 (taslak çeviri/boş başlık yayına çıkmaz).
   if (locale && !isLocaleTranslated(post.translations, locale)) throw new NotFoundError("Yazı bu dilde bulunamadı.");
 
+  return buildPostDetail(app, post, locale, localeSet, false);
+}
+
+type DetailPost = Prisma.BlogPostGetPayload<{ include: typeof CARD_INCLUDE }>;
+
+/**
+ * Detay DTO'su (herkese açık ve önizleme için ortak). `preview=true`: `reviewer` DAİMA null (onaylı görünüm yok) ve
+ * `lastReviewedAt` null; yayın/inceleme durumu hiçbir şekilde okunmaz-değiştirilmez.
+ */
+async function buildPostDetail(app: FastifyInstance, post: DetailPost, locale: string | undefined, localeSet: LocaleSet, preview: boolean) {
   const [card] = await toCards(app, [post], locale, localeSet);
   const localized = locale ? applyFieldLocalization(post, locale, ["contentHtml", "seoTitle", "seoDescription"]) : post;
   const override = locale ? ((post.translations as Record<string, Record<string, unknown> | undefined> | null)?.[locale] ?? {}) : {};
@@ -360,7 +370,7 @@ export async function getPublicPostDetail(app: FastifyInstance, slug: string, lo
     post.careTopicIds.length > 0 ? await app.prisma.careTopic.findMany({ where: { id: { in: post.careTopicIds }, isActive: true } }) : [];
   const localizationsAll = (await attachLocalizations(app, "BLOG_POST", [post], localeSet)).get(post.id) ?? [];
 
-  const doctor = post.medicalReviewStatus === "approved" ? post.reviewerDoctor : null;
+  const doctor = !preview && post.medicalReviewStatus === "approved" ? post.reviewerDoctor : null;
   const reviewerSpecialty = doctor?.specialtyId
     ? (post.specialty && post.specialty.id === doctor.specialtyId
         ? post.specialty
@@ -375,6 +385,7 @@ export async function getPublicPostDetail(app: FastifyInstance, slug: string, lo
 
   return {
     ...card!,
+    ...(preview ? { lastReviewedAt: null } : {}),
     contentHtml: localized.contentHtml,
     seoTitle: localized.seoTitle,
     seoDescription: localized.seoDescription,
@@ -400,5 +411,34 @@ export async function getPublicPostDetail(app: FastifyInstance, slug: string, lo
     consultDoctors,
     coverCompatUrl,
     localizations: localizationsAll.filter((l) => l.translated).map((l) => ({ locale: l.locale, slug: l.slug })),
+  };
+}
+
+/**
+ * Taslak önizleme detayı: yayındaki detayla AYNI şekil + `preview: true`, `pendingReviewer`, `reviewApproved`.
+ * Her durumdaki (DRAFT/SCHEDULED/PUBLISHED) çöpte olmayan yazı; yetkilendirme (belirteç) çağıranda yapılır.
+ * Dil: çeviri varsa o dil, yoksa kanonik.
+ */
+export async function getPreviewPostDetail(app: FastifyInstance, postId: string, localeRaw: string | undefined) {
+  const post = await app.prisma.blogPost.findFirst({ where: { id: postId, deletedAt: null }, include: { ...CARD_INCLUDE } });
+  if (!post) throw new NotFoundError("Yazı bulunamadı.");
+  const localeSet = await getLocaleSet(app);
+  let locale = resolveEffectiveLocaleCode(localeSet, localeRaw);
+  if (locale && !isLocaleTranslated(post.translations, locale)) locale = undefined;
+
+  const detail = await buildPostDetail(app, post, locale, localeSet, true);
+  const doctor = post.reviewerDoctor;
+  return {
+    ...detail,
+    preview: true as const,
+    reviewApproved: post.medicalReviewStatus === "approved",
+    pendingReviewer: doctor
+      ? {
+          name: reviewerDisplayName(doctor, locale),
+          title: localizedDoctorTitle(doctor, locale),
+          slug: doctor.slug,
+          avatarUrl: doctor.avatarMedia ? absolutizeMediaUrl(doctor.avatarMedia.url) : null,
+        }
+      : null,
   };
 }

@@ -689,6 +689,12 @@ model BlogPost {
   /// { title, publisher, url, accessedAt }[]
   references           Json       @default("[]")
   isFeatured           Boolean    @default(false)
+  // ---- Taslak önizleme (paylaşım bağlantısı) — yalnızca SHA-256 özeti saklanır; düz belirteç DB'ye yazılmaz ----
+  previewTokenHash        String?   @unique
+  previewTokenExpiresAt   DateTime?
+  previewTokenCreatedAt   DateTime?
+  /// Bağlantıyı oluşturan kullanıcı id'si (FK yok; kullanıcı silinse de iz kalır).
+  previewTokenCreatedById String?
 
   category BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
