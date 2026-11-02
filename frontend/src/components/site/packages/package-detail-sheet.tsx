@@ -11,6 +11,8 @@ import { getPackage } from "@/lib/api/packages";
 import type { PackageCardData, PackageDetailData } from "@/lib/api/types";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { usePackagesStrings } from "@/lib/i18n/use-packages-strings";
+import { useServiceBooking } from "@/components/site/service-booking/service-booking-context";
+import { bookingPath } from "@/lib/service-booking-links";
 import { PackageDetailBody } from "./package-detail-body";
 import { PackageInquiryForm, focusPackageInquiryForm } from "./package-inquiry-form";
 import { PackageViewBeacon } from "./package-view-beacon";
@@ -53,6 +55,7 @@ function DetailLoader({ card, onClose, onRetry }: { card: PackageCardData; onClo
   const t = usePackagesStrings();
   const lang = useActiveLocaleCode();
   const localize = useLocalizePath();
+  const { enabled: bookingEnabled, bookLabel } = useServiceBooking();
   const intlLocale = contentLocaleToIntl(lang);
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const slug = card.slug;
@@ -92,7 +95,16 @@ function DetailLoader({ card, onClose, onRetry }: { card: PackageCardData; onClo
   return (
     <>
       <PackageDetailBody pkg={state.pkg} t={t} intlLocale={intlLocale} localize={localize} />
-      <div onClickCapture={onClose}>
+      <div onClickCapture={onClose} className="space-y-3">
+        {bookingEnabled && (
+          <Link
+            href={localize(bookingPath({ pkg: card.slug }))}
+            data-testid="package-book-cta"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-5 text-sm font-semibold text-white transition-all duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]"
+          >
+            {bookLabel}
+          </Link>
+        )}
         <Link
           href={`${localize("/request")}?package=${encodeURIComponent(card.slug)}`}
           data-testid="package-request-cta"

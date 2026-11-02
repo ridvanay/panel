@@ -12,6 +12,8 @@ import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { groupServices, serviceGroupTitle, type ServiceGroup } from "@/lib/service-groups";
 import { buildWhatsappHref } from "@/lib/whatsapp-link";
 import { useContactCtaStrings } from "@/lib/i18n/use-contact-cta-strings";
+import { useServiceBookingEnabled } from "@/components/site/service-booking/service-booking-context";
+import { BOOK_CONSULTATION_ROUTE } from "@/lib/service-booking-links";
 import type { ServicesStrings } from "@/lib/i18n/site-dictionaries/types";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +65,8 @@ const CHIP_CLASS =
  */
 export function ServicesMegaMenu({ link, localize, active, specialties, strings, contactTopic, triggerClassName, activeTriggerClassName }: ServicesMegaMenuProps) {
   const groups = useServiceGroups(specialties);
+  // AI İş 3 — rezervasyon açıkken "Book an online consultation" rezervasyon sayfasına gider.
+  const bookingEnabled = useServiceBookingEnabled();
   const { whatsapp } = useContactChannels();
   const contact = useContactCtaStrings();
 
@@ -169,7 +173,7 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                   {strings.findYourTreatment}
                 </Menu.Item>
                 <Menu.Item
-                  render={<Link href={localize(BOOK_CONSULTATION_PATH)} />}
+                  render={<Link href={localize(bookingEnabled ? BOOK_CONSULTATION_ROUTE : BOOK_CONSULTATION_PATH)} />}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] border border-[var(--site-primary)] bg-surface px-4 text-sm font-semibold text-[var(--site-primary)] outline-none transition-colors hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))]"
                 >
                   <CalendarCheck className="size-4" aria-hidden="true" />

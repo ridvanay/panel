@@ -33,6 +33,8 @@ import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
 import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { HomeReviewsSection } from "@/components/site/reviews/home-reviews-section";
 import { DestinationsSection } from "@/components/site/destinations/destinations-section";
+import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
+import { primaryBookPath } from "@/lib/service-booking-links";
 
 type PageProps = { params: Promise<{ lang: string }> };
 
@@ -132,9 +134,10 @@ export default async function RootPage({ params }: PageProps) {
 
   // Paket V — hero'nun hemen altı: "kendi dilinizde destek" bandı (yalnızca destek dili seçiliyse) ve
   // "Licensed & accredited" şeridi (yalnızca görünür belge varsa). İkisi de boşsa hiçbir şey eklenmez.
-  const [telehealthSettings, accreditations] = await Promise.all([
+  const [telehealthSettings, accreditations, bookingEnabled] = await Promise.all([
     telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
     fetchAccreditationsServer(lang),
+    isServiceBookingEnabledServer(),
   ]);
   const support = resolveLanguageSupport(telehealthSettings, lang, locales);
   const afterHero =
@@ -144,7 +147,7 @@ export default async function RootPage({ params }: PageProps) {
           support={support}
           dict={dict.common}
           topic={settings.siteName}
-          bookHref={withLocalePrefix("/request", lang, defaultLocaleCode)}
+          bookHref={withLocalePrefix(primaryBookPath(bookingEnabled), lang, defaultLocaleCode)}
           bookLabel={dict.services.bookConsultation}
         />
         <AccreditationStrip

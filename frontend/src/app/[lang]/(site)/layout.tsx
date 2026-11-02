@@ -32,6 +32,8 @@ import { CrmTrackerLoader } from "@/components/site/crm-tracker-loader";
 import { fetchCrmConfigServer } from "@/lib/api/server-crm";
 import { CartDrawer } from "@/components/site/cart-drawer";
 import { SiteScope } from "@/components/site/site-scope";
+import { ServiceBookingProvider } from "@/components/site/service-booking/service-booking-context";
+import { fetchServiceConsultationConfigServer } from "@/lib/api/server-service-consultations";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
 
@@ -64,13 +66,15 @@ export default async function SiteLayout({
     getSiteDictionary(lang),
     fetchCrmConfigServer(),
   ]);
-  const [navSpecialties, telehealthSettings, accreditations, contactChannels] = await Promise.all([
+  const [navSpecialties, telehealthSettings, accreditations, contactChannels, serviceBookingConfig] = await Promise.all([
     telehealthModuleEnabled ? fetchSpecialtiesServer(lang) : Promise.resolve([]),
     // Paket V — footer'daki destek satırı ve yetki belgesi logoları.
     telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
     fetchAccreditationsServer(lang),
     // Paket X — WhatsApp yalnızca yönetici açıp numara girdiyse dolu gelir; modül kapalıysa null (düğme yok).
     telehealthModuleEnabled ? fetchContactChannelsServer(lang) : Promise.resolve({ whatsapp: null }),
+    // AI İş 3 — "Book a consultation" düğmelerinin hedefi (açıkken /book-consultation, kapalıyken /request); 60 sn önbellek.
+    fetchServiceConsultationConfigServer(),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
@@ -85,6 +89,7 @@ export default async function SiteLayout({
           gidebilmesi için alt sayfaların `localizations`'ı header'a bu Provider üzerinden akar
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
+        <ServiceBookingProvider enabled={serviceBookingConfig?.enabled === true} callbackLabel={dict.serviceBooking.callbackLink} bookLabel={dict.services.bookOnlineConsultation}>
         {/* Paket X — iletişim kanalları (WhatsApp/canlı destek/iletişim sayfası): header, mobil düğme, bant ve CTA'lar buradan okur. */}
         <ContactChannelsProvider
           value={{
@@ -192,6 +197,7 @@ export default async function SiteLayout({
           </MatcherModalProvider>
         </SiteScope>
         </ContactChannelsProvider>
+        </ServiceBookingProvider>
       </LocaleAlternatesProvider>
 
       {/*

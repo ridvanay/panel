@@ -11,6 +11,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
 import { IntermediaryNotice } from "@/components/site/intermediary-notice";
+import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
 
 /**
  * Görev (2026-09-16) — uzmanlık (branş) ızgarası. `doctors/page.tsx` İLE AYNI desen: veri sunucu
@@ -62,11 +63,12 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
 
 export default async function SpecialtiesIndexPage({ params }: SpecialtiesPageProps) {
   const { lang } = await params;
-  const [allSpecialties, locales, dict, settings] = await Promise.all([
+  const [allSpecialties, locales, dict, settings, bookingEnabled] = await Promise.all([
     fetchSpecialtiesServer(lang),
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchSiteSettingsServer(),
+    isServiceBookingEnabledServer(),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   // Paket AI: gruplu bölümler (sabit grup sırası, boş grup yok); alt uzmanlıklar üst kartta çip olur.
@@ -103,6 +105,8 @@ export default async function SpecialtiesIndexPage({ params }: SpecialtiesPagePr
                     strings={dict.services}
                     activeLocaleCode={lang}
                     defaultLocaleCode={defaultLocaleCode}
+                    bookingEnabled={bookingEnabled}
+                    callbackLabel={dict.serviceBooking.callbackLink}
                   />
                 ))}
               </div>

@@ -17,6 +17,7 @@ import Link from "next/link";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL } from "@/lib/env";
 import type { Locale } from "@/lib/api/types";
+import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
 
 /** `specialty-card.tsx` İLE AYNI `react-hooks/static-components` yanlış-pozitifi kaçınma deseni. */
 function iconGlyph(name: string, className: string) {
@@ -104,11 +105,12 @@ export async function generateMetadata({ params }: SpecialtyDetailPageProps): Pr
 export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPageProps) {
   const { lang, slug } = await params;
 
-  const [specialty, locales, dict, settings] = await Promise.all([
+  const [specialty, locales, dict, settings, bookingEnabled] = await Promise.all([
     fetchSpecialtyBySlugServer(slug, lang),
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchSiteSettingsServer(lang),
+    isServiceBookingEnabledServer(),
   ]);
   if (!specialty) notFound();
 
@@ -119,6 +121,8 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
   const canonicalUrl = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
   // Paket AH — ziyaretçi tarafında hekim yok: talep formu bağlantısı bu bölümü önceden seçer.
   const requestHref = `${withLocalePrefix("/request", lang, defaultLocaleCode)}?service=${encodeURIComponent(slug)}`;
+  // AI İş 3 — rezervasyon açıkken birincil düğme rezervasyon sayfasına, ikincil düğme "Request a call back"e gider.
+  const bookHref = bookingEnabled ? `${withLocalePrefix("/book-consultation", lang, defaultLocaleCode)}?service=${encodeURIComponent(slug)}` : requestHref;
 
   const specialtiesListHref = withLocalePrefix("/specialties", lang, defaultLocaleCode);
   const breadcrumbItems = parent
@@ -190,7 +194,7 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            href={requestHref}
+            href={bookHref}
             data-testid="specialty-book-cta"
             aria-label={`${dict.services.bookConsultation}: ${specialty.name}`}
             className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-primary px-5 py-2.5 text-center text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -202,7 +206,7 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
             data-testid="specialty-request-cta"
             className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-primary px-5 py-2.5 text-center text-sm font-semibold text-primary transition-colors duration-300 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            {formatSiteString(dict.request.requestForService, { service: specialty.name })}
+            {bookingEnabled ? dict.serviceBooking.callbackLink : formatSiteString(dict.request.requestForService, { service: specialty.name })}
           </Link>
           <ContactActions
             chatEnabled={settings.liveChatEnabled === true}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { fetchPackageServer } from "@/lib/api/server-packages";
 import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
@@ -15,8 +16,11 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { resolveExplicitConsentPage, resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { SITE_URL } from "@/lib/env";
 import type { ContactConsentLocale, Specialty } from "@/lib/api/types";
-import { RequestForm, type RequestServiceGroup } from "@/components/site/request/request-form";
+import { RequestForm } from "@/components/site/request/request-form";
+import { buildServiceGroups } from "@/components/site/request/build-groups";
 import { RequestSidePanel } from "@/components/site/request/request-side-panel";
+import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
+import { bookingPath } from "@/lib/service-booking-links";
 
 /**
  * Paket AH — `/{lang}/request`: bölüm bazlı talep formu (randevu/ödeme yerine). `?service=<slug>` bölümü,
@@ -39,7 +43,7 @@ function firstParam(value: string | string[] | undefined): string {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { lang } = await params;
-  const [locales, dict, settings] = await Promise.all([fetchLocalesServer(), getSiteDictionary(lang), fetchSiteSettingsServer()]);
+  const [locales, dict, settings, bookingEnabled] = await Promise.all([fetchLocalesServer(), getSiteDictionary(lang), fetchSiteSettingsServer(), isServiceBookingEnabledServer()]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const canonical = `${SITE_URL}${withLocalePrefix("/request", lang, defaultLocaleCode)}`;
   const languages: Record<string, string> = {};
@@ -48,7 +52,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     languages[locale.hreflang ?? locale.code] = `${SITE_URL}${withLocalePrefix("/request", locale.code, defaultLocaleCode)}`;
   }
   languages["x-default"] = `${SITE_URL}${withLocalePrefix("/request", defaultLocaleCode, defaultLocaleCode)}`;
-  const title = dict.services.bookConsultation;
+  // AI İş 3 — rezervasyon açıkken bu sayfa "Request a call back" olur.
+  const title = bookingEnabled ? dict.serviceBooking.requestCallbackTitle : dict.services.bookConsultation;
   const description = dict.request.metaDescription;
   return {
     title,
@@ -59,23 +64,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-/** Üst bölümler + alt bölümler (yalnızca aktif olanlar), sıralı. */
-function buildGroups(specialties: Specialty[]): RequestServiceGroup[] {
-  const active = specialties.filter((s) => s.isActive !== false);
-  const byOrder = (a: Specialty, b: Specialty) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name);
-  const parents = active.filter((s) => s.parentId == null).sort(byOrder);
-  return parents.map((parent) => ({
-    slug: parent.slug,
-    name: parent.name,
-    icon: parent.icon,
-    serviceGroup: parent.serviceGroup ?? null,
-    children: active
-      .filter((s) => s.parentId === parent.id)
-      .sort(byOrder)
-      .map((child) => ({ slug: child.slug, name: child.name })),
-  }));
-}
-
 export default async function RequestPage({ params, searchParams }: PageProps) {
   const { lang } = await params;
   const query = await searchParams;
@@ -83,7 +71,7 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
   const packageParam = firstParam(query.package);
   const topicParam = firstParam(query.topic);
 
-  const [locales, dict, settings, specialties, pages, pkg, channels, contactPage] = await Promise.all([
+  const [locales, dict, settings, specialties, pages, pkg, channels, contactPage, bookingEnabled] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchSiteSettingsServer(),
@@ -92,11 +80,12 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
     packageParam ? fetchPackageServer(packageParam, lang) : Promise.resolve(null),
     fetchContactChannelsServer(lang),
     fetchContactPageServer(contactLocale(lang)).catch(() => null),
+    isServiceBookingEnabledServer(),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const localize = (path: string) => withLocalePrefix(path, lang, defaultLocaleCode);
 
-  const groups = buildGroups(specialties);
+  const groups = buildServiceGroups(specialties);
   const knownSlugs = new Set(groups.flatMap((g) => [g.slug, ...g.children.map((c) => c.slug)]));
   const initialService = serviceParam && knownSlugs.has(serviceParam) ? serviceParam : null;
 
@@ -130,8 +119,22 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
     <div dir={localeDirection(lang)} data-testid="request-page">
       <header className="border-b border-border bg-[var(--site-primary)]/5">
         <div className="mx-auto max-w-[1360px] px-4 py-12 sm:px-6 md:py-16 xl:px-8">
-          <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">{dict.services.bookConsultation}</h1>
+          <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            {bookingEnabled ? dict.serviceBooking.requestCallbackTitle : dict.services.bookConsultation}
+          </h1>
           <p className="mt-3 max-w-2xl text-base text-foreground/80 sm:text-lg">{t.heroSubtitle}</p>
+          {bookingEnabled && (
+            <p className="mt-3 text-sm text-foreground/80" data-testid="request-pick-time">
+              {dict.serviceBooking.requestPickTimePrompt}{" "}
+              <Link
+                href={localize(bookingPath({ service: initialService, pkg: selectedPackage?.slug ?? null }))}
+                className="font-semibold text-[var(--site-primary)] underline"
+                data-testid="request-pick-time-link"
+              >
+                {dict.serviceBooking.requestPickTimeLink}
+              </Link>
+            </p>
+          )}
           <ul aria-label={t.trustAria} className="mt-6 flex flex-wrap gap-2" data-testid="request-trust-badges">
             {badges.map(({ icon: Icon, label }) => (
               <li key={label} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[var(--site-primary)]/20 bg-background px-3.5 text-sm font-medium text-foreground">

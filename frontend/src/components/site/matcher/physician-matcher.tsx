@@ -38,6 +38,7 @@ import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePatientTimeZoneState } from "@/components/site/telehealth/use-patient-time-zone";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useServiceBooking } from "@/components/site/service-booking/service-booking-context";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import { fmt } from "@/lib/i18n/use-portal-strings";
 import { countryForTimeZone, countryName } from "@/lib/country-display";
@@ -135,6 +136,9 @@ export function PhysicianMatcher({
 }) {
   const { m, lang, intlLocale } = useMatcherStrings();
   const localize = useLocalizePath();
+  // AI İş 3 — rezervasyon açıkken sonuçtaki "Book an online consultation" rezervasyon sayfasına gider; ikincil düğme
+  // "Request a call back" olur. Kırmızı bayrak görüldüyse rezervasyon düğmesi gösterilmez (acil yönlendirme önceliklidir).
+  const { enabled: bookingEnabled, callbackLabel } = useServiceBooking();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -176,6 +180,7 @@ export function PhysicianMatcher({
   const [stepError, setStepError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [recommendation, setRecommendation] = useState<MatcherRecommendation | null>(null);
+  const redFlagSeen = redFlagAck || Boolean(recommendation?.redFlag);
   const [submission, setSubmission] = useState<{ id: string; number: number; token: string } | null>(null);
   const [callbackPending, setCallbackPending] = useState(false);
   const [callbackDone, setCallbackDone] = useState(false);
@@ -1038,23 +1043,25 @@ export function PhysicianMatcher({
                       <p className="font-semibold text-foreground">{s.name}</p>
                       {s.description && <p className="mt-1 line-clamp-3 text-xs text-foreground/70">{s.description}</p>}
                       <div className="mt-4 flex flex-col gap-2">
-                        <Link
-                          href={`${localize("/request")}?service=${encodeURIComponent(s.slug)}`}
-                          onClick={() => trackMatcher("matcher_book_click", { position: index + 1 })}
-                          aria-label={fmt(m.bookOnlineFor, { service: s.name })}
-                          className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
-                          data-testid="matcher-book-online"
-                        >
-                          {m.bookOnline}
-                        </Link>
+                        {(!bookingEnabled || !redFlagSeen) && (
+                          <Link
+                            href={`${localize(bookingEnabled ? "/book-consultation" : "/request")}?service=${encodeURIComponent(s.slug)}`}
+                            onClick={() => trackMatcher("matcher_book_click", { position: index + 1 })}
+                            aria-label={fmt(m.bookOnlineFor, { service: s.name })}
+                            className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
+                            data-testid="matcher-book-online"
+                          >
+                            {m.bookOnline}
+                          </Link>
+                        )}
                         <Link
                           href={`${localize("/request")}?service=${encodeURIComponent(s.slug)}`}
                           onClick={() => trackMatcher("matcher_request_click", { position: index + 1 })}
-                          aria-label={fmt(m.requestFor, { service: s.name })}
+                          aria-label={bookingEnabled ? `${callbackLabel}: ${s.name}` : fmt(m.requestFor, { service: s.name })}
                           className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-border px-4 text-center text-sm font-semibold text-foreground hover:bg-surface-muted"
                           data-testid="matcher-request"
                         >
-                          {m.requestGeneric}
+                          {bookingEnabled ? callbackLabel : m.requestGeneric}
                         </Link>
                       </div>
                     </li>

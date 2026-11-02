@@ -46,6 +46,8 @@ import {
   type NavSpecialty,
 } from "@/components/site/nav-dropdown";
 import { ServicesMegaMenu, ServicesMobileGroups, FIND_YOUR_TREATMENT_PATH } from "@/components/site/services-mega-menu";
+import { useServiceBookingEnabled } from "@/components/site/service-booking/service-booking-context";
+import { BOOK_CONSULTATION_ROUTE } from "@/lib/service-booking-links";
 import { servicesStrings as enServicesStrings } from "@/lib/i18n/site-dictionaries/en/services";
 import type { ServicesStrings } from "@/lib/i18n/site-dictionaries/types";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
@@ -375,7 +377,10 @@ export function SiteHeader({
   // Paket AI — birincil CTA: veri "Appointment" ya da boşsa sözlükteki "Book a consultation" (→ /request).
   const dataCtaLabel = ctaLabel?.trim() ?? "";
   const effectiveCtaLabel = dataCtaLabel === "" || dataCtaLabel.toLowerCase() === "appointment" ? (services ? svc.bookConsultation : dataCtaLabel) : dataCtaLabel;
-  const effectiveCtaHref = ctaHref?.trim() ? ctaHref : services ? DEFAULT_CTA_PATH : "";
+  const bookingEnabled = useServiceBookingEnabled();
+  const baseCtaHref = ctaHref?.trim() ? ctaHref : services ? DEFAULT_CTA_PATH : "";
+  // AI İş 3 — rezervasyon açıkken talep formuna giden birincil CTA rezervasyon sayfasına gider; yönetici özel bir bağlantı verdiyse ona dokunulmaz.
+  const effectiveCtaHref = bookingEnabled && baseCtaHref === DEFAULT_CTA_PATH ? BOOK_CONSULTATION_ROUTE : baseCtaHref;
   const showCta = Boolean(effectiveCtaLabel && effectiveCtaHref);
   const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname) && !isDoctorSession;
   const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "en";
