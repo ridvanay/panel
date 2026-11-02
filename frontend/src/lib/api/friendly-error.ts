@@ -3,7 +3,7 @@ import { ApiClientError } from "./error";
 /** Formlarda üst seviye hata mesajı olarak göstermek için: API hata mesajını, yoksa genel bir metni döner. */
 export function friendlyErrorMessage(err: unknown): string {
   if (err instanceof ApiClientError) return err.message;
-  return "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.";
+  return "An unexpected error occurred. Please try again.";
 }
 
 /** VALIDATION_ERROR'daki `details` (alan adı -> mesaj listesi) zarfını form state'ine çevirir. */

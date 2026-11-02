@@ -1,19 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { ContactCta } from "@/components/site/contact/contact-cta";
-import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
+import { useLocalizePath } from "@/context/locale-alternates-context";
 import { usePackagesStrings } from "@/lib/i18n/use-packages-strings";
 import { PackageInquiryForm, focusPackageInquiryForm } from "./package-inquiry-form";
 
-/** Paket X — tam sayfadaki istemci eylemleri: "Find my physician", `ContactCta` (topic = paket adı) ve talep formu. */
+/** Paket X / AH — tam sayfadaki istemci eylemleri: "Request this package" (talep formu), `ContactCta` (topic = paket adı) ve planlama formu. */
 export function PackageDetailActions({ slug, title }: { slug: string; title: string }) {
   const t = usePackagesStrings();
+  const localize = useLocalizePath();
   return (
     <div className="space-y-6">
-      <div className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-4">
-        <p className="text-sm font-semibold text-foreground">{t.findPhysicianText}</p>
-        <MatcherLaunchButton />
-      </div>
+      <Link
+        href={`${localize("/request")}?package=${encodeURIComponent(slug)}`}
+        data-testid="package-request-cta"
+        className="inline-flex min-h-11 w-full items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-5 text-sm font-semibold text-white transition-all duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]"
+      >
+        {t.requestPackage}
+      </Link>
       <div className="space-y-3">
         <p className="text-sm font-semibold text-foreground">{t.contactTitle}</p>
         <ContactCta topic={title} onCallback={focusPackageInquiryForm} />

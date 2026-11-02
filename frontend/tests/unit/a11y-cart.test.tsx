@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
-import CartPage from "@/app/[lang]/(site)/cart/page";
+import CartPage from "@/components/site/checkout/cart-page-view";
 import { CartProvider } from "@/context/cart-context";
 import type { Cart } from "@/lib/api/types";
 

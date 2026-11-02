@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import Link from "next/link";
 import { BadgeCheck, Languages, User } from "lucide-react";
 import type { FeaturedReviewItem } from "@/lib/api/types";
@@ -164,7 +165,8 @@ export function ReviewGridCard({ review, defaultLocaleCode }: { review: Featured
       )}
 
       <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border/60 pt-3 text-xs text-foreground/60">
-        {review.doctor && (
+        {/* Paket AH — hekim adı/bağlantısı ziyaretçi tarafında gösterilmez. */}
+        {DOCTORS_VISIBLE_TO_VISITORS && review.doctor && (
           <p className="w-full">
             <span>{t.physicianLabel}: </span>
             <Link

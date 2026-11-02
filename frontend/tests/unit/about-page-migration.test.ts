@@ -21,7 +21,13 @@ function dollarQuoted(tag: string): unknown {
   if (!match) throw new Error(`$${tag}$ bloğu bulunamadı`);
   // Paket V — hekim sayfaları `/doctors` → `/physicians` taşındı; uygulanmış migration değişmez, eski
   // bağlantı sitede render anında yeni yola çevrilir (`canonicalSitePath`).
-  return JSON.parse(match[1]!.replaceAll('"/doctors"', '"/physicians"'));
+  // Paket AH — varsayılan CTA hedefleri talep formuna (`/request`), ikincil CTA "Who we are" çapasına taşındı.
+  return JSON.parse(
+    match[1]!
+      .replaceAll('"/doctors"', '"/physicians"')
+      .replaceAll('"/physicians"', '"/request"')
+      .replaceAll('"#doctors"', '"#authorized-facilities"')
+  );
 }
 
 /**
@@ -33,6 +39,10 @@ const EN_BEFORE_V = {
   meetDoctorsCta: "Meet our doctors",
   doctorsTitle: "Meet our doctors",
   viewAllDoctorsCta: "View all doctors",
+  // Paket AH — aracı kuruluş dönüşümünde bilinçli değişen metinler (migration anındaki değerler).
+  heroBody:
+    "Founded under the leadership of Dr. Vahit Mutlu, WM Health welcomes patients from different countries to Istanbul. We bring together high standards of care, clear communication and careful coordination to support a safe and well-informed treatment journey. From the first consultation to the planning of next steps, we aim to make quality healthcare more accessible across borders.",
+  bookConsultationCta: "Book a consultation",
 };
 const TR_BEFORE_V = { meetDoctorsCta: "Doktorlarımızla tanışın", doctorsTitle: "Doktorlarımızla tanışın", viewAllDoctorsCta: "Tüm doktorlar" };
 

@@ -73,7 +73,7 @@ export function bookingHref(localize: (path: string) => string, doctorSlug: stri
 /** CRM olayı — yalnızca CRM izleyici yüklüyse (çerez onayı varsa) gider; kişisel veri KONMAZ. */
 // Güvenlik/uyumluluk incelemesi: "matcher_red_flag" CRM olayı GÖNDERİLMEZ (ziyaretçi kimliğiyle sağlık
 // çıkarımı riski); kırmızı bayrak yalnızca anonim sayaçta (`/matcher/progress`) sayılır.
-export function trackMatcher(name: "matcher_start" | "matcher_step" | "matcher_result" | "matcher_book_click" | "matcher_submit", props?: Record<string, string | number | boolean>): void {
+export function trackMatcher(name: "matcher_start" | "matcher_step" | "matcher_result" | "matcher_book_click" | "matcher_request_click" | "matcher_submit", props?: Record<string, string | number | boolean>): void {
   if (typeof window === "undefined") return;
   const tracker = (window as unknown as { WMCRM?: { track?: (n: string, p?: Record<string, string | number | boolean>) => void } }).WMCRM;
   try {

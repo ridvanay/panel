@@ -12,38 +12,38 @@ export const trustPagesStrings = {
   profileLink: "View profile",
   // ---- Content standards ----
   csMetaTitle: "Content standards",
-  csMetaDescription: "How WM Health prepares, reviews and updates its patient guides.",
+  csMetaDescription: "How WM Health prepares and updates its patient guides.",
   csTitle: "Content standards",
   csIntro:
-    "Our guides help you understand a health topic before you speak with a physician. They offer general information in plain language. They do not replace a medical consultation.",
+    "Our guides help you understand a health topic before you decide on next steps. They offer general information in plain language. They are not medical advice and do not replace a consultation with a physician.",
   csPrinciplesAria: "Our editorial principles",
   csWrittenTitle: "How guides are written",
   csWrittenText:
     "Each guide is prepared by the WM Health Editorial Team. We aim for clear, calm and practical language, and we avoid alarming wording. We do not publish prices, success rates or guarantees in these guides.",
-  csReviewTitle: "Medical review",
+  csReviewTitle: "Editorial approval",
   csReviewText:
-    "Before a medical guide is published, a physician from our network reviews it. The reviewing physician is shown on the article together with the date of the last review. If the content of an article changes after a review, it is sent for review again.",
+    "Before a guide is published, the editorial team checks it for clarity, accuracy against its sources and consistency with our standards. If an article changes substantially after publication, it is checked again.",
   csSourcesTitle: "Sources",
   csSourcesText:
-    "Medical statements are based on recognised public health and clinical sources, such as international health organisations, national health services and professional societies. Each guide lists its references with the date we last accessed them.",
+    "Statements are based on reliable public health sources, such as international health organisations, national health services and professional societies. Each guide lists its references with the date we last accessed them.",
   csUpdatesTitle: "Updates & corrections",
   csUpdatesText:
     "We review our guides regularly. If you notice an error or an out-of-date statement, please contact us and we will check it.",
   csNotTitle: "What our guides are not",
   csNotText:
-    "Our guides are for general information. They are not a diagnosis, a treatment plan or a substitute for a medical consultation.",
+    "Our guides are for general information. They are not medical advice, a diagnosis or a treatment plan. Diagnosis and treatment decisions are made by a physician at an authorized healthcare facility.",
   csProcessTitle: "From draft to publication",
   csProcessAria: "Editorial process",
   csStep1Title: "Writing",
   csStep1Text: "The Editorial Team prepares the text in clear, plain language.",
   csStep2Title: "Source check",
   csStep2Text: "Medical statements are checked against recognised public health and clinical sources.",
-  csStep3Title: "Physician review",
-  csStep3Text: "A physician from our network reviews the guide.",
+  csStep3Title: "Editorial approval",
+  csStep3Text: "The Editorial Team approves the guide for publication.",
   csStep4Title: "Publication",
-  csStep4Text: "The guide is published with the reviewing physician and the date of the review.",
+  csStep4Text: "The guide is published with its date and list of sources.",
   csStep5Title: "Regular re-review",
-  csStep5Text: "We review our guides regularly. Changed content is sent for review again.",
+  csStep5Text: "We review our guides regularly and update them when needed.",
   csAlertTitle: "Important",
   csAlertText:
     "Our guides are not a substitute for a medical consultation. If you have urgent symptoms, contact your local emergency services.",

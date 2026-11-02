@@ -75,7 +75,7 @@ export const telehealthStrings: TelehealthStrings = {
 
   availabilityAndBookingTitle: "Dostupnost i zakazivanje",
 
-  specialtiesPageTitle: "Naše oblasti stručnosti",
+  specialtiesPageTitle: "Usluge zdravstvenog turizma",
 
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
 
@@ -83,20 +83,20 @@ export const telehealthStrings: TelehealthStrings = {
 
   doctorsMetaDescriptionDefault: "Zakažite onlajn konsultaciju sa našim lekarima.",
 
-  specialtiesMetaDescription: "Upoznajte naše lekare u oblastima kao što su {specialties}.",
+  specialtiesMetaDescription: "Upoznajte naše usluge zdravstvenog turizma, na primer: {specialties}.",
 
-  specialtiesMetaDescriptionDefault: "Upoznajte naše oblasti i zakažite onlajn konsultaciju.",
+  specialtiesMetaDescriptionDefault: "Upoznajte naše usluge zdravstvenog turizma i zatražite konsultaciju.",
 
-  specialtyMetaDescription: "Zakažite onlajn konsultaciju sa našim lekarima iz oblasti {specialty}.",
-  specialtiesPageSubtitle: "Pronađite naše lekare prema specijalnosti i zakažite svoj onlajn termin.",
+  specialtyMetaDescription: "Zatražite konsultaciju: {specialty}. Koordinator pacijenata organizuje lečenje u ovlašćenim zdravstvenim ustanovama.",
+  specialtiesPageSubtitle: "Izaberite uslugu i pošaljite zahtev za konsultaciju. Lečenje se obavlja u ovlašćenim zdravstvenim ustanovama.",
   specialtiesEmptyTitle: "Nije pronađena nijedna specijalnost",
   specialtiesEmptyDescription: "Trenutno nema specijalnosti za prikaz.",
   doctorCountOne: "Broj lekara: {count}",
   doctorCountOther: "Broj lekara: {count}",
   specialtyDoctorsEmptyTitle: "U ovoj specijalnosti nije pronađen nijedan lekar",
   specialtyDoctorsEmptyDescription: "Trenutno nema objavljenih lekara u ovoj specijalnosti.",
-  specialtyCoordinatorTitle: "Neka naš koordinator pronađe odgovarajućeg lekara za vas",
-  specialtyCoordinatorText: "Opišite nam svoju situaciju i koordinator pacijenata će vas povezati sa odgovarajućim lekarom iz ove oblasti.",
+  specialtyCoordinatorTitle: "Prepustite se vođstvu našeg koordinatora",
+  specialtyCoordinatorText: "Recite nam o svojoj situaciji, a koordinator pacijenata će vam pomoći da isplanirate lečenje u ovlašćenoj zdravstvenoj ustanovi.",
 
   featuredDoctorsCarouselLabel: "Istaknuti lekari",
   featuredDoctorsPrevious: "Prethodni lekari",
@@ -134,5 +134,5 @@ export const telehealthStrings: TelehealthStrings = {
   /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
   physiciansPerformingProcedure: "Lekari koji izvode ovu proceduru",
   /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
-  breadcrumbSpecialties: "Specijalnosti",
+  breadcrumbSpecialties: "Usluge zdravstvenog turizma",
 };

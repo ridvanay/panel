@@ -3,7 +3,7 @@ import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { fetchBlogPostsServer } from "@/lib/api/server-blog";
 import { fetchProductsServer } from "@/lib/api/server-products";
 import { fetchPortfolioItemsServer } from "@/lib/api/server-portfolio";
-import { fetchDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
+import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { DEFAULT_SETTINGS, fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { FALLBACK_LOCALES, fetchLocalesServer } from "@/lib/api/server-locales";
 import { withBuildTimeFallback } from "@/lib/api/server-fetch";
@@ -34,12 +34,11 @@ async function loadPackages(locales: SitemapData["locales"]): Promise<PackageSit
  * sınırları (blog yazıları imleçle tümü okunur; ürün/portföy 50, doktor 100) bugünkü içerik sayısının çok üstünde; aşılırsa sayfalama gerekir.
  */
 export async function loadSiteContent(): Promise<SitemapData & { siteName: string }> {
-  const [pages, posts, products, portfolio, doctors, specialties, settings, locales] = await Promise.all([
+  const [pages, posts, products, portfolio, specialties, settings, locales] = await Promise.all([
     withBuildTimeFallback(() => fetchPublishedPagesServer(), []),
     withBuildTimeFallback(() => fetchBlogPostsServer(undefined, { all: true }), []),
     withBuildTimeFallback(() => fetchProductsServer(), []),
     withBuildTimeFallback(() => fetchPortfolioItemsServer(), []),
-    withBuildTimeFallback(() => fetchDoctorsServer({}), []),
     withBuildTimeFallback(() => fetchSpecialtiesServer(), []),
     withBuildTimeFallback(() => fetchSiteSettingsServer(), DEFAULT_SETTINGS),
     withBuildTimeFallback(() => fetchLocalesServer(), FALLBACK_LOCALES),
@@ -51,7 +50,8 @@ export async function loadSiteContent(): Promise<SitemapData & { siteName: strin
     locales,
     homePageId: settings.homePageId ?? null,
     pages,
-    doctors,
+    // Paket AH — hekimler sitemap/llms verisine yüklenmez (ziyaretçi tarafında hekim yok).
+    doctors: [],
     specialties,
     posts,
     products: products as unknown as SitemapData["products"],

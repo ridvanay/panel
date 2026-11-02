@@ -29,17 +29,17 @@ export default function ConsultationError({ error, reset }: { error: Error & { d
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-danger/10 text-danger">
         <AlertTriangle className="h-5 w-5" aria-hidden="true" />
       </span>
-      <h1 className="text-lg font-semibold text-foreground">Görüşmeye ulaşılamadı</h1>
+      <h1 className="text-lg font-semibold text-foreground">Could not reach the consultation</h1>
       <p className="text-sm text-foreground/60">
-        Bu görüşme sayfası yüklenirken beklenmeyen bir sorun oluştu. Lütfen tekrar deneyin veya randevularım
-        sayfasından tekrar giriş yapın.
+        An unexpected problem occurred while loading this consultation page. Please try again or rejoin from your
+        appointments page.
       </p>
       <div className="mt-2 flex items-center gap-3">
         <Button onClick={reset} className="rounded-[var(--site-radius)]">
-          Tekrar Dene
+          Try again
         </Button>
         <Link href="/patient/appointments" className="text-sm font-medium text-primary hover:underline">
-          Randevularım
+          My appointments
         </Link>
       </div>
     </div>

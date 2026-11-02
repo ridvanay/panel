@@ -73,7 +73,7 @@ describe("Paket Z1-ek — güven sayfaları sözlüğü (9 dil)", () => {
 
   it("onaylı EN metni aynen korunur (içerik standartları ve inceleyici cümleleri)", () => {
     expect(en.csIntro).toBe(
-      "Our guides help you understand a health topic before you speak with a physician. They offer general information in plain language. They do not replace a medical consultation."
+      "Our guides help you understand a health topic before you decide on next steps. They offer general information in plain language. They are not medical advice and do not replace a consultation with a physician."
     );
     expect(en.csAlertText).toContain("If you have urgent symptoms, contact your local emergency services.");
     expect(en.mrReviewersEmpty).toBe("Our physicians review each guide before publication.");

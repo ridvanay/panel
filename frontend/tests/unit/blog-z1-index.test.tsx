@@ -57,7 +57,7 @@ describe("Paket Z1 — blog ana sayfası", () => {
   it("H1, açıklama, toplam sayı, arama formu ve breadcrumb", async () => {
     await renderIndex();
     expect(screen.getByRole("heading", { level: 1, name: "Health Guides" })).toBeInTheDocument();
-    expect(screen.getByText("Patient guides written by our editorial team and reviewed by our physicians.")).toBeInTheDocument();
+    expect(screen.getByText("Patient guides written by our editorial team, based on reliable public health sources.")).toBeInTheDocument();
     expect(screen.getByTestId("blog-total")).toHaveTextContent("Articles: 2");
     const search = screen.getByRole("search");
     expect(search).toHaveAttribute("method", "get");
@@ -87,21 +87,22 @@ describe("Paket Z1 — blog ana sayfası", () => {
     expect(screen.getByRole("search").querySelector('input[name="topic"]')).toHaveValue("hip");
   });
 
-  it("Latest öne çıkan blok: kategori, başlık, özet, ✓ hekim, tarih, okuma süresi, Read the article; kart ızgarasında tekrar edilmez", async () => {
+  it("Latest öne çıkan blok: kategori, başlık, özet, tarih, okuma süresi, Read the article; hekim satırı yok; kart ızgarasında tekrar edilmez", async () => {
     await renderIndex();
     const featured = screen.getByTestId("blog-featured");
     expect(within(featured).getByRole("heading", { level: 2, name: "Latest" })).toBeInTheDocument();
     expect(within(featured).getByRole("heading", { name: "Alpha post" })).toBeInTheDocument();
-    expect(within(featured).getByTestId("blog-featured-reviewer")).toHaveTextContent("Reviewed by Prof. Dr. H. Sofu");
+    expect(within(featured).queryByTestId("blog-featured-reviewer")).toBeNull();
+    expect(featured).not.toHaveTextContent(/Reviewed by|Sofu/);
     expect(within(featured).getByText("6 min read")).toBeInTheDocument();
-    expect(within(featured).getByText("October 20, 2026")).toBeInTheDocument();
+    expect(within(featured).getByText("October 1, 2026")).toBeInTheDocument();
     expect(within(featured).getByRole("link", { name: /Read the article/ })).toHaveAttribute("href", "/blog/a-post");
     const grid = screen.getByTestId("blog-grid");
     expect(within(grid).queryByText("Alpha post")).toBeNull();
     expect(within(grid).getByText("Beta post")).toBeInTheDocument();
   });
 
-  it("hekim onayı yoksa kartta '✓ Reviewed by' satırı hiç çizilmez", async () => {
+  it("kartta '✓ Reviewed by' satırı hiç çizilmez (Paket AH)", async () => {
     await renderIndex();
     const cards = screen.getAllByTestId("blog-card");
     expect(cards).toHaveLength(1);
@@ -113,9 +114,9 @@ describe("Paket Z1 — blog ana sayfası", () => {
     expect(screen.getAllByTestId("blog-cover-template").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("Find my physician CTA her zaman çizilir", async () => {
+  it("eşleştirme CTA'sı her zaman çizilir (hizmet diliyle)", async () => {
     await renderIndex();
-    expect(screen.getByTestId("blog-find-physician-cta")).toHaveTextContent("Not sure which physician you need?");
+    expect(screen.getByTestId("blog-find-physician-cta")).toHaveTextContent("Not sure which service you need?");
     expect(screen.getByRole("button", { name: "Find my physician" })).toBeInTheDocument();
   });
 
@@ -141,13 +142,13 @@ describe("Paket Z1 — blog ana sayfası", () => {
     await renderIndex();
     const trust = screen.getAllByTestId("blog-trust-links").at(-1)!;
     expect(within(trust).getByRole("link", { name: "Content standards" })).toHaveAttribute("href", "/content-standards");
-    expect(within(trust).getByRole("link", { name: "Authors & medical reviewers" })).toHaveAttribute("href", "/medical-reviewers");
+    expect(within(trust).queryByRole("link", { name: "Authors & medical reviewers" })).toBeNull();
   });
 
   it("boş blog ve sonuçsuz filtre için ayrı boş durumlar", async () => {
     mocks.list.mockResolvedValue(listOf({ items: [], total: 0, featured: null }));
     const { unmount } = await renderIndex();
-    expect(screen.getByTestId("blog-empty")).toHaveTextContent("Our first guides are being reviewed by our physicians.");
+    expect(screen.getByTestId("blog-empty")).toHaveTextContent("Our first guides will be published soon.");
     unmount();
     await renderIndex({ searchParams: { q: "zzz" } });
     expect(screen.getAllByTestId("blog-empty").at(-1)).toHaveTextContent("No articles found");

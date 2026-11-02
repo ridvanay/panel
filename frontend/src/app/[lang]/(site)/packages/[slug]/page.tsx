@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { IntermediaryNotice } from "@/components/site/intermediary-notice";
+import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -66,7 +68,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function PackagePage({ params }: PageProps) {
   const { lang, slug } = await params;
   if (!(await isModuleEnabledServer("telehealth"))) notFound();
-  const [pkg, locales, dict] = await Promise.all([fetchPackageServer(slug, lang), fetchLocalesServer(), getSiteDictionary(lang)]);
+  const [pkg, locales, dict, settings] = await Promise.all([fetchPackageServer(slug, lang), fetchLocalesServer(), getSiteDictionary(lang), fetchSiteSettingsServer()]);
   if (!pkg) notFound();
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const localize = (path: string) => withLocalePrefix(path, lang, defaultLocaleCode);
@@ -95,6 +97,7 @@ export default async function PackagePage({ params }: PageProps) {
           <PackageDetailActions slug={pkg.slug} title={pkg.title} />
         </div>
       </div>
+      <IntermediaryNotice strings={dict.intermediary} certificateNo={settings.healthTourismCertificateNo} className="mt-10" />
     </article>
   );
 }

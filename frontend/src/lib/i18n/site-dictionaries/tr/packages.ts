@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "Hiçbir şey kaydedilmedi",
   notStoredText: "İletişim izni vermediğiniz için talebinizi ve bilgilerinizi kaydetmedik. Talep göndermek için iletişim iznini işaretleyip yeniden gönderin.",
   editAgain: "Düzenleyip yeniden gönderin",
+  requestPackage: "Request this package",
 };

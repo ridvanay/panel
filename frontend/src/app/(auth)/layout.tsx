@@ -20,7 +20,7 @@ import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
  */
 export default async function AuthLayout({ children }: { children: ReactNode }) {
   const [settings, locales, headerList] = await Promise.all([fetchSiteSettingsServer(), fetchLocalesServer(), headers()]);
-  const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? locales[0]?.code ?? "tr";
+  const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? locales[0]?.code ?? "en";
   const requested = headerList.get("x-active-locale");
   const activeLocaleCode = requested && locales.some((l) => l.code === requested) ? requested : defaultLocaleCode;
 

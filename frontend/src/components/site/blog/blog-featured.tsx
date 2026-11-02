@@ -4,12 +4,11 @@ import type { PublicBlogCard } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
 import { fillBlogString, formatBlogDate } from "@/lib/blog/format";
 import { BlogCover } from "./blog-cover";
-import { BlogAvatar } from "./blog-article-parts";
 import { BlogSpecialtyChip } from "./blog-specialty-chip";
 
 /** Paket Z1 — "Latest" öne çıkan blok: büyük kapak, kategori, başlık, özet, ✓ hekim, tarih, okuma süresi, "Read the article". */
 export function BlogFeatured({ post, href, t, lang }: { post: PublicBlogCard; href: string; t: BlogStrings; lang: string }) {
-  const date = formatBlogDate(post.lastReviewedAt ?? post.publishedAt, lang);
+  const date = formatBlogDate(post.publishedAt, lang);
   return (
     <section aria-labelledby="blog-latest-heading" className="mt-8" data-testid="blog-featured">
       <h2 id="blog-latest-heading" className="sr-only">
@@ -28,14 +27,8 @@ export function BlogFeatured({ post, href, t, lang }: { post: PublicBlogCard; hr
             </Link>
           </h3>
           {post.excerpt ? <p className="mt-3 text-base text-foreground/70">{post.excerpt}</p> : null}
-          {post.reviewer ? (
-            <p className="mt-4 flex items-center gap-1.5 text-sm font-medium text-foreground/80" data-testid="blog-featured-reviewer">
-              <BlogAvatar src={post.reviewer.avatarUrl} size={28} />
-              <span>{fillBlogString(t.reviewedBy, { name: post.reviewer.name })}</span>
-            </p>
-          ) : null}
           <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-foreground/70">
-            {date ? <time dateTime={(post.lastReviewedAt ?? post.publishedAt) ?? undefined}>{date}</time> : null}
+            {date ? <time dateTime={post.publishedAt ?? undefined}>{date}</time> : null}
             <span className="inline-flex items-center gap-1">
               <Clock className="h-4 w-4" aria-hidden="true" />
               {fillBlogString(t.minRead, { n: post.readingMinutes })}

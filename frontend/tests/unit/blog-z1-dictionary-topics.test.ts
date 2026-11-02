@@ -41,9 +41,9 @@ describe("Paket Z1 — sözlük paritesi (9 dil)", () => {
   });
 
   it("uyarı metni 9 dilde mevcut ve İngilizcesi sabit cümle", () => {
-    expect(en.disclaimer).toBe("This article is for general information and is not a substitute for a medical consultation.");
+    expect(en.disclaimer).toBe("This article is for general information and is not medical advice. Diagnosis and treatment decisions are made by a physician at an authorized healthcare facility.");
     expect(en.pageTitle).toBe("Health Guides");
-    expect(en.pageIntro).toBe("Patient guides written by our editorial team and reviewed by our physicians.");
+    expect(en.pageIntro).toBe("Patient guides written by our editorial team, based on reliable public health sources.");
   });
 });
 

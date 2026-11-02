@@ -1903,6 +1903,8 @@ export interface SiteSettings {
   /** Apple touch icon (PNG, önerilen 180×180). `null`/yok = favicon kullanılır. */
   appleTouchIconUrl?: string | null;
   tagline: string | null;
+  /** Paket AH — Uluslararası Sağlık Turizmi Yetki Belgesi numarası (public); boş/null ise belge satırı gösterilmez. */
+  healthTourismCertificateNo?: string | null;
   homePageId: string | null;
   siteTemplate: SiteTemplate;
   /** px, 16-96. `null` ise render sırasında `DEFAULT_HEADER_LOGO_HEIGHT` (32) kullanılır. */
@@ -1969,6 +1971,11 @@ export interface SiteSettings {
   bookingNotificationRecipients?: string | null;
   /** Gerçekte kullanılan alıcı listesi (varsayılan dahil). */
   bookingNotificationRecipientsEffective?: string[];
+  /**
+   * Paket AH — YALNIZCA `GET/PATCH /admin/settings`. `true` iken blog yayınında tıbbi (hekim) onay şartı aranır;
+   * `false` (varsayılan) iken editoryal yayın yeterlidir. Alan yoksa (eski backend) `false` kabul edilir.
+   */
+  blogMedicalReviewRequired?: boolean;
 }
 
 export type LiveChatPosition = "BOTTOM_RIGHT" | "BOTTOM_LEFT";
@@ -2002,6 +2009,10 @@ export interface UpdateSiteSettingsRequest {
   liveChatPosition?: LiveChatPosition;
   /** Paket AG — `null` = varsayılana dön, `""` = bildirim gönderme, dolu = virgülle ayrılmış adresler (sunucu doğrular, 422). */
   bookingNotificationRecipients?: string | null;
+  /** Paket AH — Sağlık Turizmi Yetki Belgesi numarası (ADMIN; kırpılır, en çok 64 karakter, boş = `null`). */
+  healthTourismCertificateNo?: string | null;
+  /** Paket AH — blog yayınında tıbbi onay şartı (ADMIN). */
+  blogMedicalReviewRequired?: boolean;
 }
 
 export interface UpdateBlogPostRequest extends BlogReviewWriteFields {

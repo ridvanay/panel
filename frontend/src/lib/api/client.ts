@@ -29,7 +29,7 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
 function networkError(): ApiClientError {
   return new ApiClientError(0, {
     code: "NETWORK_ERROR",
-    message: "Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
+    message: "Could not reach the server. Check your internet connection and try again.",
   });
 }
 
@@ -122,7 +122,7 @@ async function request(path: string, options: RequestOptions): Promise<ParsedRes
   if (!res.ok) {
     const errorBody = (body as ApiErrorBody | null)?.error ?? {
       code: "INTERNAL_ERROR" as const,
-      message: "Beklenmeyen bir sunucu hatası oluştu.",
+      message: "An unexpected server error occurred.",
     };
     // Backend zaten bilinen/ele alınmış hataları (4xx — validation, 404, 429 vb.) Sentry'ye
     // hiç göndermiyor (bkz. backend/src/plugins/error-handler.ts::reportUnexpectedError);

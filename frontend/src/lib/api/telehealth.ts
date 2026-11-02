@@ -348,17 +348,17 @@ export function uploadBookingDocument(
       try {
         body = JSON.parse(xhr.responseText);
       } catch {
-        body = { error: { code: "INTERNAL_ERROR", message: "Belge yüklenemedi." } };
+        body = { error: { code: "INTERNAL_ERROR", message: "Could not upload the document." } };
       }
       if (xhr.status >= 200 && xhr.status < 300 && body.data) {
         resolve(body.data);
       } else {
-        const error = body.error ?? { code: "INTERNAL_ERROR", message: "Belge yüklenemedi." };
+        const error = body.error ?? { code: "INTERNAL_ERROR", message: "Could not upload the document." };
         reject(new ApiClientError(xhr.status, error));
       }
     };
-    xhr.onerror = () => reject(new ApiClientError(0, { code: "NETWORK_ERROR", message: "Sunucuya ulaşılamadı." }));
-    xhr.onabort = () => reject(new ApiClientError(0, { code: "NETWORK_ERROR", message: "Yükleme iptal edildi." }));
+    xhr.onerror = () => reject(new ApiClientError(0, { code: "NETWORK_ERROR", message: "Could not reach the server." }));
+    xhr.onabort = () => reject(new ApiClientError(0, { code: "NETWORK_ERROR", message: "Upload cancelled." }));
 
     if (options.signal) {
       options.signal.addEventListener("abort", () => xhr.abort());
@@ -394,11 +394,11 @@ export async function fetchDocumentContentBlob(documentId: string, accessToken?:
   try {
     res = await fetch(url.toString(), { headers, credentials: "include" });
   } catch {
-    throw new ApiClientError(0, { code: "NETWORK_ERROR", message: "Sunucuya ulaşılamadı." } as never);
+    throw new ApiClientError(0, { code: "NETWORK_ERROR", message: "Could not reach the server." } as never);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const error = body?.error ?? { code: "NOT_FOUND", message: "Belge bulunamadı." };
+    const error = body?.error ?? { code: "NOT_FOUND", message: "Document not found." };
     throw new ApiClientError(res.status, error);
   }
   const disposition = res.headers.get("Content-Disposition") ?? "";
@@ -809,11 +809,11 @@ export async function downloadBulkAvailabilityTemplate(delimiter: "semicolon" | 
   try {
     res = await fetch(`${API_BASE_URL}${BULK_BASE}/template?delimiter=${delimiter}`, { headers, credentials: "include" });
   } catch {
-    throw new ApiClientError(0, { code: "NETWORK_ERROR", message: "Sunucuya ulaşılamadı." } as never);
+    throw new ApiClientError(0, { code: "NETWORK_ERROR", message: "Could not reach the server." } as never);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiClientError(res.status, body?.error ?? { code: "INTERNAL_ERROR", message: "Şablon indirilemedi." });
+    throw new ApiClientError(res.status, body?.error ?? { code: "INTERNAL_ERROR", message: "Could not download the template." });
   }
   const match = /filename="([^"]*)"/.exec(res.headers.get("Content-Disposition") ?? "");
   return { blob: await res.blob(), filename: match?.[1] ?? null };

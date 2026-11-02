@@ -9,33 +9,34 @@ const input = (post = makeDetail()) => ({
   url: "https://wm.example/blog/knee-pain-guide",
   siteUrl: "https://wm.example",
   siteName: "WM Health",
-  physicianUrl: (slug: string) => `https://wm.example/physicians/${slug}`,
   imageUrl: "https://wm.example/uploads/x.jpg",
   inLanguage: "en",
 });
 
 describe("Paket Z1 — JSON-LD", () => {
-  it("MedicalWebPage + Article: reviewedBy Physician, lastReviewed, author Organization, about MedicalSpecialty", () => {
+  it("Article: reviewedBy/Physician/lastReviewed YOK, author Organization (Editorial Team), about Thing", () => {
     const [main] = buildBlogJsonLd(input());
-    expect(main!["@type"]).toEqual(["MedicalWebPage", "Article"]);
-    expect(main!.lastReviewed).toBe("2026-10-20T10:00:00.000Z");
-    expect(main!.reviewedBy).toMatchObject({ "@type": "Physician", name: "Prof. Dr. H. Sofu", url: "https://wm.example/physicians/hakan-sofu" });
+    expect(main!["@type"]).toBe("Article");
+    expect(main).not.toHaveProperty("lastReviewed");
+    expect(main).not.toHaveProperty("reviewedBy");
+    expect(JSON.stringify(main)).not.toMatch(/Physician|MedicalWebPage|Sofu/);
     expect(main!.author).toMatchObject({ "@type": "Organization", name: BLOG_AUTHOR_NAME });
-    expect(main!.about).toEqual({ "@type": "MedicalSpecialty", name: "Orthopaedics" });
+    expect(BLOG_AUTHOR_NAME).toBe("WM Health Editorial Team");
+    expect(main!.about).toEqual({ "@type": "Thing", name: "Orthopaedics" });
     expect(main!.datePublished).toBe("2026-10-01T10:00:00.000Z");
-    expect(main!.dateModified).toBe("2026-10-20T10:00:00.000Z");
+    expect(main!.dateModified).toBe("2026-10-25T10:00:00.000Z");
     expect(main!.image).toEqual(["https://wm.example/uploads/x.jpg"]);
   });
 
   it("FAQPage yalnızca SSS varken üretilir", () => {
     const withFaq = buildBlogJsonLd(input());
-    expect(withFaq.map((o) => o["@type"])).toEqual([["MedicalWebPage", "Article"], "FAQPage"]);
+    expect(withFaq.map((o) => o["@type"])).toEqual(["Article", "FAQPage"]);
     expect(withFaq[1]).toMatchObject({ mainEntity: [{ "@type": "Question", name: "Is surgery needed?", acceptedAnswer: { "@type": "Answer", text: "Rarely." } }] });
     const withoutFaq = buildBlogJsonLd(input(makeDetail({ faq: [] })));
     expect(withoutFaq).toHaveLength(1);
   });
 
-  it("hekim onayı/uzmanlık/tarih yoksa ilgili alanlar hiç yazılmaz", () => {
+  it("uzmanlık yoksa about hiç yazılmaz; hekim alanları hiçbir durumda yazılmaz", () => {
     const [main] = buildBlogJsonLd(input(makeDetail({ reviewer: null, lastReviewedAt: null, specialty: null })));
     expect(main).not.toHaveProperty("reviewedBy");
     expect(main).not.toHaveProperty("lastReviewed");

@@ -89,6 +89,29 @@ export function groupSpecialtyNavChildren(
   return result;
 }
 
+/**
+ * Paket AH — "Health Tourism Services" menü öğesi mi (`/specialties`, dil öneki ve sondaki `/` göz ardı)?
+ * Bu öğe veride alt öğe taşımıyorsa header aktif uzmanlıklarla otomatik doldurur (veri değiştirilmez).
+ */
+export function isSpecialtiesListHref(href: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(href.trim(), "https://nav.invalid");
+  } catch {
+    return false;
+  }
+  if (url.origin !== "https://nav.invalid") return false;
+  const path = url.pathname.replace(/\/+$/, "").replace(new RegExp(`^/${LOCALE_SEGMENT_SOURCE}(?=/)`), "");
+  return path === "/specialties";
+}
+
+/** Aktif uzmanlıklardan açılır menü alt öğeleri: üst bölümler önce, alt bölümler sonra (gruplama `groupSpecialtyNavChildren`'de). */
+export function specialtiesToNavChildren(specialties: NavSpecialty[]): { id: string; href: string; label: string }[] {
+  const tops = specialties.filter((s) => !s.parentSlug);
+  const subs = specialties.filter((s) => Boolean(s.parentSlug));
+  return [...tops, ...subs].map((s) => ({ id: `specialty-${s.slug}`, href: `/specialties/${s.slug}`, label: s.name }));
+}
+
 /** Header'ın alt kenarı ile panel arasındaki boşluk. */
 const PANEL_GAP_PX = 12;
 
@@ -96,11 +119,6 @@ const PANEL_GAP_PX = 12;
 function hasOwnLink(href: string): boolean {
   const trimmed = href.trim();
   return trimmed !== "" && !trimmed.startsWith("#");
-}
-
-function normalizePath(href: string): string {
-  const path = href.split(/[?#]/)[0] ?? "";
-  return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
 /** `react-hooks/static-components` yanlış-pozitifinden kaçınma deseni (bkz. icon-box-block.tsx). */
@@ -116,7 +134,6 @@ export interface NavDropdownProps {
   active: boolean;
   specialties: NavSpecialty[];
   viewAllLabel: string;
-  findDoctorLabel: string;
   /** Paket AG — "Procedures" etiketi (üst uzmanlık kartı altındaki alt uzmanlık satırı). */
   proceduresLabel?: string;
   triggerClassName: string;
@@ -127,8 +144,8 @@ export interface NavDropdownProps {
  * Masaüstü header açılır menüsü. Panel header'ın ~12 px altında, düğmeye küçük bir okla bağlı;
  * beyaz, 18 px köşe, ince kenarlık, yumuşak gölge. Üstte üst öğenin adı (küçük, büyük harf);
  * 4'ten fazla alt öğede 2 kolon. Uzmanlığa giden öğelerde 42 px yuvarlak görsel (uzmanlık görseli,
- * yoksa ikonu). Altta ince çizgiyle ayrılmış bölüm: üst öğenin kendi linki varsa "View all …",
- * uzmanlık menüsünde ayrıca "Find a doctor" (üst öğe zaten doktorlar sayfasına gitmiyorsa).
+ * yoksa ikonu). Altta ince çizgiyle ayrılmış bölüm: üst öğenin kendi linki varsa "View all …"
+ * (uzmanlık menüsünde "All services"; Paket AH — hekim bağlantısı kaldırıldı).
  * Açılış ~150 ms geçiş; `prefers-reduced-motion`'da animasyon yok. Klavye: Base UI Menu (oklar,
  * Home/End, Esc, tür-başı arama).
  */
@@ -138,17 +155,14 @@ export function NavDropdown({
   active,
   specialties,
   viewAllLabel,
-  findDoctorLabel,
   proceduresLabel = "Procedures",
   triggerClassName,
   activeTriggerClassName,
 }: NavDropdownProps) {
   const items = groupSpecialtyNavChildren(link.children, specialties);
-  const isSpecialtyMenu = items.some((item) => item.slug !== null);
   const twoColumns = items.length > 4;
   const showViewAll = hasOwnLink(link.href);
-  const showFindDoctor = isSpecialtyMenu && canonicalSitePath(normalizePath(link.href)) !== "/physicians";
-  const hasFooter = showViewAll || showFindDoctor;
+  const hasFooter = showViewAll;
 
   // Panel header'ın ALT KENARININ ~12 px altında açılır (düğmenin değil) — düğme header içinde
   // dikeyde ortalı olduğu için aradaki fark açılışta ölçülüp ofsete eklenir.
@@ -268,14 +282,6 @@ export function NavDropdown({
                   >
                     {viewAllLabel}
                     <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
-                  </Menu.Item>
-                )}
-                {showFindDoctor && (
-                  <Menu.Item
-                    render={<Link href={localize("/physicians")} />}
-                    className="ms-auto inline-flex min-h-11 items-center rounded-full bg-[color-mix(in_oklch,var(--site-primary)_7%,var(--site-surface))] px-5 text-sm font-semibold text-[var(--site-primary)] outline-none hover:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_12%,var(--site-surface))]"
-                  >
-                    {findDoctorLabel}
                   </Menu.Item>
                 )}
               </div>

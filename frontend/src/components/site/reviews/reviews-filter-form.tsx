@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import type { ReviewsStrings } from "@/lib/i18n/site-dictionaries/en/reviews";
 import { fillReview } from "@/lib/review-format";
 import { languageName } from "@/lib/review-format";
@@ -36,19 +37,22 @@ export function ReviewsFilterForm({
       role="search"
       aria-label={t.filtersAria}
       data-testid="reviews-filters"
-      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end"
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end"
     >
-      <label className="flex flex-col gap-1 text-xs font-medium text-foreground/70">
-        {t.filterPhysician}
-        <select name="doctor" defaultValue={query.doctor ?? ""} className={selectClass}>
-          <option value="">{t.filterAllPhysicians}</option>
-          {doctors.map((d) => (
-            <option key={d.slug} value={d.slug}>
-              {d.name} ({d.count})
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* Paket AH — hekim süzgeci ziyaretçi tarafında gösterilmez. */}
+      {DOCTORS_VISIBLE_TO_VISITORS && (
+        <label className="flex flex-col gap-1 text-xs font-medium text-foreground/70">
+          {t.filterPhysician}
+          <select name="doctor" defaultValue={query.doctor ?? ""} className={selectClass}>
+            <option value="">{t.filterAllPhysicians}</option>
+            {doctors.map((d) => (
+              <option key={d.slug} value={d.slug}>
+                {d.name} ({d.count})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="flex flex-col gap-1 text-xs font-medium text-foreground/70">
         {t.languageFilterLabel}
         <select name="language" defaultValue={query.language ?? ""} className={selectClass}>

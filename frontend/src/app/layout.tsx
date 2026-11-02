@@ -33,7 +33,9 @@ export async function generateMetadata(): Promise<Metadata> {
       default: "WM Health Istanbul",
       template: "%s · WM Health Istanbul",
     },
-    description: "Uzman doktorlarla güvenli online görüşme ve randevu platformu.",
+    // Paket AH — aracı kuruluş vurgusu (dile özgü sayfa açıklamaları `buildContentMetadata.fallbackDescription` ile).
+    description:
+      "WM Health is an international health tourism intermediary organization, not a healthcare provider. Treatments are performed by authorized healthcare facilities.",
     icons: buildSiteIconsMetadata(settings),
   };
 }

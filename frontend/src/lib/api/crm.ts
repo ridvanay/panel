@@ -70,7 +70,7 @@ export type CrmLeadStatus =
   | "NEGATIVE"
   | "SPAM";
 
-export type CrmLeadChannel = "CONTACT_FORM" | "LIVE_CHAT" | "WHATSAPP" | "PHONE" | "EMAIL" | "BOOKING_ABANDONED" | "MANUAL" | "ADS_IMPORT" | "MATCHER" | "PACKAGE";
+export type CrmLeadChannel = "CONTACT_FORM" | "LIVE_CHAT" | "WHATSAPP" | "PHONE" | "EMAIL" | "BOOKING_ABANDONED" | "MANUAL" | "ADS_IMPORT" | "MATCHER" | "PACKAGE" | "CONSULTATION_REQUEST";
 
 export const CRM_LEAD_STATUS_OPTIONS: { value: CrmLeadStatus; label: string }[] = [
   { value: "NEW", label: "Yeni" },
@@ -95,6 +95,7 @@ export const CRM_LEAD_CHANNEL_OPTIONS: { value: CrmLeadChannel; label: string }[
   { value: "ADS_IMPORT", label: "Google Ads" },
   { value: "MATCHER", label: "Eşleştirme sihirbazı" },
   { value: "PACKAGE", label: "Sağlık paketi" },
+  { value: "CONSULTATION_REQUEST", label: "Danışma talebi" },
 ];
 
 export const leadStatusLabel = (s: CrmLeadStatus) => CRM_LEAD_STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s;
@@ -168,7 +169,23 @@ export interface CrmPackageInquiry {
   consentTextVersion?: string | null;
 }
 
+/** Paket AH — `POST /consultation-requests` ile oluşan talebin ayrıntısı (lead detayında, yalnızca yetkili rol). */
+export interface CrmConsultationRequest {
+  number: string;
+  serviceName: string | null;
+  preferredFrom: string | null;
+  preferredTo: string | null;
+  country: string | null;
+  contactLanguage: string | null;
+  needsInterpreter: boolean;
+  message: string | null;
+  contactConsentAt: string | null;
+  healthDataConsentAt: string | null;
+  locale: string | null;
+}
+
 export interface CrmLeadDetail extends CrmLead {
+  consultationRequest?: CrmConsultationRequest | null;
   packageInquiry?: CrmPackageInquiry | null;
   notes: CrmLeadNote[];
   bookingSuggestions: CrmBookingSuggestion[];

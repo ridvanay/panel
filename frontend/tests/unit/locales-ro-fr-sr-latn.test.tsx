@@ -114,9 +114,10 @@ describe("kapalı diller hiçbir yerde görünmez; açılınca hreflang sr-Latn"
 
   it("sr-latn açıkken: /sr-latn/... URL'leri ve hreflang=\"sr-Latn\"; llms.txt'de Latin dil adı", () => {
     const d = data(true);
-    const entries = buildSection("physicians", d);
-    expect(entries.map((e) => e.loc)).toContain("https://example.com/sr-latn/physicians/vahit-mutlu");
-    expect(entries[0]!.alternates).toEqual(expect.arrayContaining([{ hreflang: "sr-Latn", href: "https://example.com/sr-latn/physicians" }]));
+    const entries = buildSection("pages", d);
+    expect(entries.map((e) => e.loc)).toContain("https://example.com/sr-latn/request");
+    const request = entries.find((e) => e.loc === "https://example.com/request")!;
+    expect(request.alternates).toEqual(expect.arrayContaining([{ hreflang: "sr-Latn", href: "https://example.com/sr-latn/request" }]));
     expect(buildLlmsTxt(d)).toContain("(sr-latn): https://example.com/sr-latn");
     expect(buildLlmsTxt(d)).not.toMatch(CYRILLIC);
   });

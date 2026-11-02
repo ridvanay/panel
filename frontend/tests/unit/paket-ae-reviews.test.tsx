@@ -193,11 +193,12 @@ describe("ReviewGridCard", () => {
     expect(screen.queryByText(t.verifiedPatient)).not.toBeInTheDocument();
   });
 
-  it("doğrulanmış hasta rozeti, hekim bağlantısı ve dil etiketi görünür", () => {
-    render(<ReviewGridCard review={makeItem({ language: "de" })} defaultLocaleCode="en" />);
+  it("doğrulanmış hasta rozeti ve dil etiketi görünür; hekim adı/bağlantısı gösterilmez (Paket AH)", () => {
+    const { container } = render(<ReviewGridCard review={makeItem({ language: "de" })} defaultLocaleCode="en" />);
     expect(screen.getByText(t.verifiedPatient)).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Dr. E. Aydemir" });
-    expect(link).toHaveAttribute("href", "/physicians/elif-aydemir-4");
+    expect(screen.queryByRole("link", { name: "Dr. E. Aydemir" })).toBeNull();
+    expect(container.textContent).not.toContain("Aydemir");
+    expect(container.querySelector('a[href*="/physicians"]')).toBeNull();
     expect(screen.getByTestId("review-language")).toHaveTextContent(/German/i);
   });
 
@@ -264,7 +265,9 @@ describe("/reviews sayfası", () => {
     const form = screen.getByTestId("reviews-filters");
     expect(form).toHaveAttribute("method", "get");
     expect(form).toHaveAttribute("action", "/reviews");
-    expect(within(form).getByLabelText(t.filterPhysician)).toHaveAttribute("name", "doctor");
+    // Paket AH — hekim süzgeci ziyaretçi formunda yok.
+    expect(within(form).queryByLabelText(t.filterPhysician)).toBeNull();
+    expect(form.querySelector('select[name="doctor"]')).toBeNull();
     expect(within(form).getByLabelText(t.languageFilterLabel)).toHaveAttribute("name", "language");
     expect(within(form).getByLabelText(t.filterMinRating)).toHaveAttribute("name", "minRating");
     expect(screen.getAllByTestId("review-card")).toHaveLength(2);
@@ -273,7 +276,6 @@ describe("/reviews sayfası", () => {
   it("URL'deki filtreler formda seçili gelir ve 'temizle' bağlantısı çıkar", () => {
     view(listData(), { doctor: "elif-aydemir-4", language: "de", minRating: 4 });
     const form = screen.getByTestId("reviews-filters");
-    expect(within(form).getByLabelText(t.filterPhysician)).toHaveValue("elif-aydemir-4");
     expect(within(form).getByLabelText(t.languageFilterLabel)).toHaveValue("de");
     expect(within(form).getByLabelText(t.filterMinRating)).toHaveValue("4");
     expect(within(form).getByRole("link", { name: t.filterReset })).toHaveAttribute("href", "/reviews");

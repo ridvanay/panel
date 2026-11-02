@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "لم يتم حفظ أي شيء",
   notStoredText: "لأنك لم تمنح إذن التواصل معك، لم نحفظ طلبك ولا بياناتك. لإرسال طلب، حدّد إذن التواصل ثم أرسله مرة أخرى.",
   editAgain: "تعديل وإعادة الإرسال",
+  requestPackage: "اطلب هذه الباقة",
 };

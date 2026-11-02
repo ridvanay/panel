@@ -20,7 +20,7 @@ import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { AccreditationList } from "@/components/site/accreditations/accreditation-list";
 import { AccreditationStrip } from "@/components/site/accreditations/accreditation-strip";
 import { SiteFooter } from "@/components/site/site-footer";
-import { buildMedicalOrganizationJsonLd } from "@/lib/page-builder/structured-data";
+import { buildOrganizationJsonLd } from "@/lib/page-builder/structured-data";
 import { SITEMAP_SECTIONS, buildIndex, buildSection, type SitemapData } from "@/lib/sitemap/build";
 import type { DoctorProfile, PublicAccreditation, SiteSettings, Specialty, TelehealthThemeSettings } from "@/lib/api/types";
 
@@ -175,9 +175,9 @@ describe("yetki belgeleri — görünüm ve JSON-LD", () => {
     expect(screen.getByTestId("footer-support-line")).toHaveTextContent("Patient support in your language: English");
   });
 
-  it("MedicalOrganization.hasCredential yalnızca verilen (görünür) belgelerden; liste boşsa alan yok", () => {
+  it("Organization.hasCredential yalnızca verilen (görünür) belgelerden; liste boşsa alan yok", () => {
     const settings = { siteName: "WM Health" } as SiteSettings;
-    const withBadge = JSON.parse(buildMedicalOrganizationJsonLd(settings, [], "https://x.test", [BADGE]));
+    const withBadge = JSON.parse(buildOrganizationJsonLd(settings, [], "https://x.test", [BADGE]));
     expect(withBadge.hasCredential).toEqual([
       {
         "@type": "EducationalOccupationalCredential",
@@ -189,11 +189,11 @@ describe("yetki belgeleri — görünüm ve JSON-LD", () => {
         expires: "2027-01-31",
       },
     ]);
-    expect(JSON.parse(buildMedicalOrganizationJsonLd(settings, [], "https://x.test"))).not.toHaveProperty("hasCredential");
+    expect(JSON.parse(buildOrganizationJsonLd(settings, [], "https://x.test"))).not.toHaveProperty("hasCredential");
   });
 });
 
-describe("sitemap — /physicians ve hekimsiz uzmanlık", () => {
+describe("sitemap — hekim adresleri yok (Paket AH)", () => {
   const doctor = (slug: string, specialtySlug: string, extra: string[] = []) =>
     ({ id: slug, slug, isActive: true, archivedAt: null, updatedAt: "2026-10-20T00:00:00.000Z", specialty: { slug: specialtySlug }, additionalSpecialties: extra.map((s) => ({ id: s, name: s, slug: s })), avatarMedia: null }) as unknown as DoctorProfile;
   const specialty = (slug: string) => ({ slug, name: slug, isActive: true }) as unknown as Specialty;
@@ -209,17 +209,14 @@ describe("sitemap — /physicians ve hekimsiz uzmanlık", () => {
     portfolio: [],
   };
 
-  it("hiçbir bölümde ve index'te /doctors yok; hekim sayfaları /physicians altında", () => {
+  it("hiçbir bölümde ve index'te /doctors ya da /physicians yok", () => {
     const all = [...SITEMAP_SECTIONS.flatMap((s) => buildSection(s, DATA)), ...buildIndex(DATA)];
-    expect(JSON.stringify(all)).not.toMatch(/\/doctors(\/|"|\.)/);
-    expect(buildSection("physicians", DATA).map((e) => e.loc)).toContain("https://x.test/en/physicians/hakan-sofu");
+    expect(JSON.stringify(all)).not.toMatch(/\/doctors(\/|"|\.)|\/physicians|hakan-sofu/);
   });
 
-  it("hekimi olmayan uzmanlık sitemap'e girmez (birincil ya da ek uzmanlıkla atanınca girer)", () => {
+  it("hekimden bağımsız: tüm aktif bölümler sitemap'e girer", () => {
     const locs = buildSection("specialties", DATA).map((e) => e.loc);
-    expect(locs).toContain("https://x.test/specialties/orthopedics");
-    expect(locs).toContain("https://x.test/specialties/sports-medicine");
-    expect(locs.some((l) => l.includes("thoracic-surgery") || l.includes("neurosurgery"))).toBe(false);
+    for (const slug of ["orthopedics", "sports-medicine", "thoracic-surgery", "neurosurgery"]) expect(locs).toContain(`https://x.test/specialties/${slug}`);
   });
 });
 

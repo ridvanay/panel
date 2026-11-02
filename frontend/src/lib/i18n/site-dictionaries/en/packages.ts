@@ -78,6 +78,7 @@ export const packagesStrings = {
   notStoredTitle: "Nothing was saved",
   notStoredText: "You did not give permission to be contacted, so we did not save your request or your details. To send a request, tick the contact permission and send it again.",
   editAgain: "Edit and send again",
+  requestPackage: "Request this package",
 } as const;
 
 export type PackagesStrings = Record<keyof typeof packagesStrings, string>;

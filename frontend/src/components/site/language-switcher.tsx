@@ -82,7 +82,7 @@ export function LanguageSwitcher({
   variant = "dropdown",
   heading,
   onNavigate,
-  label = "Dil seç",
+  label = "Select language",
   compactBelowXl = false,
   compact,
 }: LanguageSwitcherProps) {
@@ -191,5 +191,5 @@ export function localeHref(alternates: ReturnType<typeof useLocaleAlternates>, l
 }
 
 function defaultCode(locales: Locale[]): string {
-  return locales.find((l) => l.isDefault)?.code ?? locales[0]?.code ?? "tr";
+  return locales.find((l) => l.isDefault)?.code ?? locales[0]?.code ?? "en";
 }

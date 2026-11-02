@@ -1,16 +1,11 @@
-import type { Metadata } from "next";
-import { MedicalReviewersPage } from "@/components/site/trust/medical-reviewers-page";
-import { buildTrustMetadata } from "@/lib/blog/trust-pages";
+import { permanentRedirect } from "next/navigation";
+import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
 
-/** Paket Z1-ek - bkz. `content-standards/page.tsx` (statik klasor `[slug]` CMS rotasinin onune gecer). */
-type PageProps = { params: Promise<{ lang: string }> };
-
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+/** Paket AH — "Authors & medical reviewers" sayfası kaldırıldı: kalıcı yönlendirme → `/content-standards`. */
+export default async function MedicalReviewersRedirect({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
-  return buildTrustMetadata(lang, "medical-reviewers");
-}
-
-export default async function MedicalReviewersRoute({ params }: PageProps) {
-  const { lang } = await params;
-  return <MedicalReviewersPage lang={lang} />;
+  const locales = await fetchLocalesServer();
+  const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+  permanentRedirect(withLocalePrefix("/content-standards", lang, defaultLocaleCode));
 }

@@ -39,7 +39,7 @@ describe("Paket Z1 — yazı sayfası", () => {
     expect(mocks.detail).toHaveBeenCalledWith("knee-pain-guide", "de");
   });
 
-  it("sırasıyla breadcrumb, kategori, H1, yazar + hekim, Last reviewed, okuma süresi", async () => {
+  it("sırasıyla breadcrumb, kategori, H1, yazar (Editorial Team), yayın tarihi, okuma süresi; hekim yok", async () => {
     await renderPost();
     const crumb = screen.getByTestId("blog-breadcrumb");
     expect(within(crumb).getByRole("link", { name: "Health Guides" })).toHaveAttribute("href", "/blog");
@@ -47,17 +47,16 @@ describe("Paket Z1 — yazı sayfası", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Knee pain guide" })).toBeInTheDocument();
     const byline = screen.getByTestId("blog-byline");
     expect(within(byline).getByText("WM Health Editorial Team")).toBeInTheDocument();
-    const reviewer = within(screen.getByTestId("blog-byline-reviewer")).getByRole("link");
-    expect(reviewer).toHaveTextContent("Prof. Dr. H. Sofu");
-    expect(reviewer).toHaveAttribute("href", "/physicians/hakan-sofu");
-    expect(screen.getByTestId("blog-last-reviewed")).toHaveTextContent("Last reviewed: October 20, 2026");
+    expect(screen.queryByTestId("blog-byline-reviewer")).toBeNull();
+    expect(byline).not.toHaveTextContent(/Sofu|Medically reviewed/);
+    expect(screen.getByTestId("blog-published-date")).toHaveTextContent("October 1, 2026");
     expect(within(byline).getByText("6 min read")).toBeInTheDocument();
     const order = [crumb, screen.getByRole("heading", { level: 1 }), byline].map((el) => el);
     expect(order[0]!.compareDocumentPosition(order[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(order[1]!.compareDocumentPosition(order[2]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("onaylı hekim yoksa hekim satırı çizilmez; Last reviewed tarihi yoksa gizlenir", async () => {
+  it("hekim verisi gelse de gelmese de hekim satırı ve 'Last reviewed' çizilmez", async () => {
     mocks.detail.mockResolvedValue(makeDetail({ reviewer: null, lastReviewedAt: null }));
     await renderPost();
     expect(screen.queryByTestId("blog-byline-reviewer")).toBeNull();
@@ -85,25 +84,23 @@ describe("Paket Z1 — yazı sayfası", () => {
     expect(container.querySelector("img[onerror]")).toBeNull();
   });
 
-  it("Consult a physician kartı ortada ve sonda; 2 hekim ve Book → profil #randevu", async () => {
+  it("'Consult a physician' kartları ve hekim fotoğrafları/bağlantıları yok; sonda tek 'Talk to a patient coordinator' kartı", async () => {
     const { container } = await renderPost();
-    const cards = screen.getAllByTestId("blog-consult-card");
-    expect(cards).toHaveLength(2);
-    for (const card of cards) {
-      const book = within(card).getAllByRole("link", { name: /Book an appointment with/ });
-      expect(book.map((a) => a.getAttribute("href"))).toEqual(["/physicians/hakan-sofu#randevu", "/physicians/ayse-demir#randevu"]);
-      expect(within(card).getAllByText("Book")).toHaveLength(2);
-    }
-    // ilk kart içeriğin ortasında (3 H2: ikinci başlıktan önce), ikincisi en sonda
+    expect(screen.queryAllByTestId("blog-consult-card")).toHaveLength(0);
+    expect(screen.queryByText("Consult a physician")).toBeNull();
+    expect(container.textContent).not.toMatch(/Sofu|Demir/);
+    expect(container.querySelector('a[href*="/physicians"]')).toBeNull();
+    const cards = screen.getAllByTestId("blog-coordinator-card");
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]!).getByRole("link")).toHaveAttribute("href", "/request");
     const treatment = container.querySelector("h2#treatment")!;
-    expect(cards[0]!.compareDocumentPosition(treatment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(treatment.compareDocumentPosition(cards[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(treatment.compareDocumentPosition(cards[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("danışılacak hekim yoksa kartlar çizilmez", async () => {
+  it("danışılacak hekim verisi boş olsa da koordinatör kartı çizilir", async () => {
     mocks.detail.mockResolvedValue(makeDetail({ consultDoctors: [] }));
     await renderPost();
-    expect(screen.queryByTestId("blog-consult-card")).toBeNull();
+    expect(screen.getByTestId("blog-coordinator-card")).toBeInTheDocument();
   });
 
   it("FAQ akordeonu: aria-expanded / aria-controls, tıklayınca açılır, cevap düz metin", async () => {
@@ -149,19 +146,21 @@ describe("Paket Z1 — yazı sayfası", () => {
 
   it("sabit uyarı, ilgili yazılar ve paylaşım bölümü", async () => {
     await renderPost();
-    expect(screen.getByTestId("blog-disclaimer")).toHaveTextContent("This article is for general information and is not a substitute for a medical consultation.");
+    expect(screen.getByTestId("blog-disclaimer")).toHaveTextContent("This article is for general information and is not medical advice. Diagnosis and treatment decisions are made by a physician at an authorized healthcare facility.");
     const related = screen.getByTestId("blog-related");
     expect(within(related).getByRole("link", { name: "Hip guide" })).toHaveAttribute("href", "/blog/hip-guide");
     expect(screen.getByTestId("blog-share")).toBeInTheDocument();
   });
 
-  it("JSON-LD: MedicalWebPage + Article ve (SSS varken) FAQPage script'leri", async () => {
+  it("JSON-LD: Article (MedicalWebPage/reviewedBy/Physician YOK) ve (SSS varken) FAQPage script'leri", async () => {
     const { container } = await renderPost();
-    const scripts = [...container.querySelectorAll('script[type="application/ld+json"]')].map((s) => JSON.parse(s.textContent!));
+    const raw = [...container.querySelectorAll('script[type="application/ld+json"]')].map((s) => s.textContent!);
+    const scripts = raw.map((r) => JSON.parse(r));
     expect(scripts).toHaveLength(2);
-    expect(scripts[0]["@type"]).toEqual(["MedicalWebPage", "Article"]);
-    expect(scripts[0].reviewedBy["@type"]).toBe("Physician");
-    expect(scripts[0].lastReviewed).toBe("2026-10-20T10:00:00.000Z");
+    expect(scripts[0]["@type"]).toBe("Article");
+    expect(scripts[0]).not.toHaveProperty("reviewedBy");
+    expect(scripts[0]).not.toHaveProperty("lastReviewed");
+    expect(raw.join("")).not.toMatch(/Physician|MedicalWebPage|reviewedBy|Sofu/);
     expect(scripts[1]["@type"]).toBe("FAQPage");
   });
 
@@ -175,7 +174,7 @@ describe("Paket Z1 — yazı sayfası", () => {
     await renderPost("ar");
     expect(screen.getByTestId("blog-post")).toHaveAttribute("dir", "rtl");
     expect(screen.getByRole("heading", { name: "أهم النقاط" })).toBeInTheDocument();
-    expect(screen.getByTestId("blog-disclaimer")).toHaveTextContent("هذا المقال للمعلومات العامة");
+    expect(screen.getByTestId("blog-disclaimer")).toHaveTextContent("هذه المقالة للمعلومات العامة");
   });
 
   it("dilin kendi slug'ı farklıysa kalıcı yönlendirme (kopya içerik yok)", async () => {

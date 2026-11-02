@@ -187,7 +187,7 @@ describe("sihirbaz akışı", () => {
     expect(screen.getByTestId("matcher-emergency-number")).toHaveAttribute("href", "tel:112");
   });
 
-  it("tam akış (iletişim opsiyonel): sonuç kartı, tercüman rozeti, randevu bağlantısı, 'tanı değildir' notu; URL'de ve CRM olaylarında kişisel veri yok", async () => {
+  it("tam akış (iletişim opsiyonel): bölüm önerisi, 'Request a consultation for {bölüm}' bağlantısı, 'tanı değildir' notu; URL'de ve CRM olaylarında kişisel veri yok", async () => {
     const track = vi.fn();
     (window as unknown as { WMCRM: unknown }).WMCRM = { track };
     const user = userEvent.setup();
@@ -207,12 +207,17 @@ describe("sihirbaz akışı", () => {
     await waitFor(() => expect(nav.params.get("step")).toBe("5"));
     rerender(<PhysicianMatcher mode="page" />);
 
-    const card = await screen.findByTestId("matcher-doctor-card");
-    expect(card).toHaveTextContent("Prof. Dr. A. Veli");
-    expect(within(card).getByTestId("matcher-interpreter-badge")).toHaveTextContent("Ücretsiz tercüman desteği");
-    expect(within(card).getByTestId("matcher-book")).toHaveAttribute("href", "/tr/physicians/ali-veli?specialty=gastroenterology&from=matcher#randevu");
-    expect(within(card).getByTestId("matcher-book").getAttribute("href")).not.toMatch(/topic|reflux|mide/);
-    expect(within(card).getByTestId("matcher-book")).toHaveTextContent("A. Veli ile randevu al");
+    // Paket AH — sonuç hekim değil BÖLÜM önerir; hekim kartı/adı/saat yok.
+    const card = await screen.findByTestId("matcher-specialty-card");
+    expect(card).toHaveTextContent("Gastroenteroloji");
+    expect(screen.queryByTestId("matcher-doctor-card")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Veli|Prof\. Dr\./);
+    expect(screen.queryByTestId("matcher-book")).toBeNull();
+    expect(screen.queryByTestId("matcher-interpreter-badge")).toBeNull();
+    const request = within(card).getByTestId("matcher-request");
+    expect(request).toHaveAttribute("href", "/tr/request?service=gastroenterology");
+    expect(request.getAttribute("href")).not.toMatch(/topic|reflux|mide/);
+    expect(request).toHaveTextContent("Request a consultation for Gastroenteroloji");
     expect(screen.getByTestId("matcher-disclaimer")).toHaveTextContent("Bu araç tanı koymaz ve tıbbi tavsiye vermez.");
     expect(screen.getByRole("link", { name: "WhatsApp’tan yazın" })).toHaveAttribute("href", "https://wa.me/905551112233");
     expect(api.recommend).toHaveBeenCalledWith({ topicIds: ["t1"], preferredLanguage: "tr", locale: "tr", preference: "online" });
@@ -224,7 +229,7 @@ describe("sihirbaz akışı", () => {
     expect(track.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(["matcher_start", "matcher_step", "matcher_result"]));
   });
 
-  it("tercüman rozeti ayara bağlı (interpreterIncluded=false → yok); eşleşme yoksa koordinatör yolu", async () => {
+  it("bölüm önerisi yoksa koordinatör yolu ve genel talep bağlantısı (hekim kartı hiç çizilmez)", async () => {
     api.rec = { ...REC, interpreterIncluded: false };
     nav.params = new URLSearchParams("step=1");
     const user = userEvent.setup();
@@ -240,8 +245,8 @@ describe("sihirbaz akışı", () => {
     await user.click(screen.getByTestId("matcher-continue"));
     await waitFor(() => expect(nav.params.get("step")).toBe("5"));
     rerender(<PhysicianMatcher mode="page" />);
-    await screen.findByTestId("matcher-doctor-card");
-    expect(screen.queryByTestId("matcher-interpreter-badge")).not.toBeInTheDocument();
+    await screen.findByTestId("matcher-specialty-card");
+    expect(screen.queryByTestId("matcher-doctor-card")).not.toBeInTheDocument();
 
     api.rec = { ...REC, coordinator: true, specialties: [], doctors: [] };
     await user.click(screen.getByRole("button", { name: "Cevapları değiştir" }));
@@ -254,6 +259,7 @@ describe("sihirbaz akışı", () => {
     await waitFor(() => expect(nav.params.get("step")).toBe("5"));
     rerender(<PhysicianMatcher mode="page" />);
     expect(await screen.findByTestId("matcher-no-match")).toHaveTextContent("koordinatörümüz size en uygun hekimi 1 iş günü içinde bildirsin");
+    expect(screen.getByTestId("matcher-request-generic")).toHaveAttribute("href", "/tr/request");
   });
 
   it("iletişim zorunlu: 18 yaş altı veli alanı; iki onay kutusu varsayılan işaretsiz; gönderimde sağlık rızası olduğu gibi iletilir", async () => {

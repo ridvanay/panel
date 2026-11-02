@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
+  ClipboardList,
   ChevronRight,
   Globe,
   Heart,
@@ -23,12 +24,10 @@ import {
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import { getInterpreterAccess } from "@/lib/api/interpreter";
-import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
 import { HeaderContactLinks } from "@/components/site/contact/header-contact-links";
 import { MoreMenu } from "@/components/site/header/more-menu";
 import { useDesktopNavLayout } from "@/components/site/header/use-desktop-nav-layout";
 import { useScrolledPast } from "@/components/site/header/use-scrolled-past";
-import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +39,13 @@ import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/co
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { LanguageSheet } from "@/components/site/language-sheet";
 import { LocaleFlag } from "@/components/site/locale-flag";
-import { NavDropdown, groupSpecialtyNavChildren, type NavSpecialty } from "@/components/site/nav-dropdown";
+import {
+  NavDropdown,
+  groupSpecialtyNavChildren,
+  isSpecialtiesListHref,
+  specialtiesToNavChildren,
+  type NavSpecialty,
+} from "@/components/site/nav-dropdown";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -124,6 +129,11 @@ interface SiteHeaderProps {
    * `null`/verilmezse (ayar kapalı, admin önizleme) destek metni gösterilmez.
    */
   support?: { count: number; interpreterIncluded: boolean } | null;
+  /**
+   * Paket AH — kurumsal kimlik ibaresi (üst şerit + mobil menü): kısa ibare ve "Treatments by authorized
+   * healthcare facilities" bağlantısı (Hakkımızda `#authorized-facilities`). Verilmezse (admin önizleme) gösterilmez.
+   */
+  intermediary?: { shortLabel: string; facilitiesLink: string } | null;
 }
 
 /**
@@ -148,19 +158,19 @@ interface NavNode {
  * 2 (kök + bir alt seviye) — backend zaten bunu garanti ediyor (kök olmayan bir öğe yalnızca
  * kök bir öğeyi işaret edebilir), bu yüzden tek geçişli bir gruplama yeterlidir.
  */
-function buildNavTree(items: NavigationItemDto[], physiciansLabel: string): NavNode[] {
+function buildNavTree(items: NavigationItemDto[], physiciansLabel: string, specialties: NavSpecialty[]): NavNode[] {
   // Paket V — hekim listesine giden öğenin etiketi sözlükten (9 dilde "Consult Physicians").
   const labelOf = (item: NavigationItemDto) => (isPhysiciansListHref(item.href) ? physiciansLabel : item.label);
   const roots = items.filter((item) => item.parentId === null).sort((a, b) => a.order - b.order);
-  return roots.map((root) => ({
-    id: root.id,
-    href: root.href,
-    label: labelOf(root),
-    children: items
+  return roots.map((root) => {
+    const children = items
       .filter((item) => item.parentId === root.id)
       .sort((a, b) => a.order - b.order)
-      .map((child) => ({ id: child.id, href: child.href, label: labelOf(child) })),
-  }));
+      .map((child) => ({ id: child.id, href: child.href, label: labelOf(child) }));
+    // Paket AH — "Health Tourism Services" (`/specialties`) veride alt öğe taşımıyorsa aktif uzmanlıklarla dolar.
+    const autoChildren = children.length === 0 && isSpecialtiesListHref(root.href) ? specialtiesToNavChildren(specialties) : children;
+    return { id: root.id, href: root.href, label: labelOf(root), children: autoChildren };
+  });
 }
 
 /** Sondaki `/`'i kaldırır (kök `/` hariç) — `withLocalePrefix`'in prefixli kök yol için ürettiği
@@ -303,6 +313,7 @@ export function SiteHeader({
   dict = legacyFallbackNavStrings,
   navSpecialties = [],
   support = null,
+  intermediary = null,
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -333,12 +344,11 @@ export function SiteHeader({
     };
   }, [userId, telehealthModuleEnabled]);
   const hasInterpreterPanel = interpreterAccess !== null && interpreterAccess.userId === userId && interpreterAccess.hasProfile;
-  const matcherText = useMatcherStrings().m;
   const pathname = usePathname();
   const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
   const navTree: NavNode[] =
     navigationItems && navigationItems.length > 0
-      ? buildNavTree(navigationItems, dict.consultPhysicians)
+      ? buildNavTree(navigationItems, dict.consultPhysicians, navSpecialties)
       : [
           ...pages.map((page) => ({ id: `page-${page.id}`, href: `/${page.slug}`, label: page.title, children: [] })),
           { id: "fallback-blog", href: "/blog", label: "Blog", children: [] },
@@ -346,7 +356,7 @@ export function SiteHeader({
 
   const showCta = Boolean(ctaLabel && ctaHref);
   const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname) && !isDoctorSession;
-  const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "tr";
+  const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "en";
   const localize = (path: string) =>
     activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
 
@@ -472,8 +482,20 @@ export function SiteHeader({
       <div className="hidden h-9 border-b border-border/60 bg-[color-mix(in_oklch,var(--site-primary)_4%,transparent)] text-[13px] lg:block" data-testid="site-header-topbar">
         <div className="mx-auto flex h-full max-w-[1360px] items-center justify-between gap-4 px-6 xl:px-8">
           <div className="flex min-w-0 items-center gap-3 text-[var(--site-header-link)]">
+            {intermediary && (
+              <span className="inline-flex min-w-0 items-center gap-1.5" data-testid="site-header-intermediary">
+                <span className="truncate font-medium">{intermediary.shortLabel}</span>
+                <span aria-hidden="true">·</span>
+                <Link
+                  href={`${localize("/about")}#authorized-facilities`}
+                  className="shrink-0 rounded text-[var(--site-header-link)] underline-offset-2 hover:text-[var(--site-header-link-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--site-primary)]"
+                >
+                  {intermediary.facilitiesLink}
+                </Link>
+              </span>
+            )}
             {support && support.count > 0 && (
-              <span className="inline-flex min-w-0 items-center gap-1.5 truncate" data-testid="site-header-support">
+              <span className="inline-flex min-w-0 items-center gap-1.5 truncate max-2xl:hidden" data-testid="site-header-support">
                 <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span className="truncate">
                   {formatSiteString(dict.topbarSupport, { count: support.count })}
@@ -539,7 +561,7 @@ export function SiteHeader({
         </div>
       </div>
 
-      {/* 2) Ana bar — logo · menü · "Find my physician" + "Appointment". */}
+      {/* 2) Ana bar — logo · menü · "Request a consultation" + "Appointment" (ikisi de talep formuna gider). */}
       <nav
         ref={rowRef}
         className="relative mx-auto flex h-16 max-w-[1360px] flex-nowrap items-center justify-between gap-3 px-4 sm:px-6 lg:h-20 lg:gap-6 xl:px-8"
@@ -589,8 +611,11 @@ export function SiteHeader({
                   localize={localize}
                   active={hasActiveChild}
                   specialties={navSpecialties}
-                  viewAllLabel={formatSiteString(dict.dropdownViewAll, { label: link.label.toLocaleLowerCase(activeLocale?.code ?? "en") })}
-                  findDoctorLabel={dict.dropdownFindDoctor}
+                  viewAllLabel={
+                    isSpecialtiesListHref(link.href)
+                      ? dict.allServices
+                      : formatSiteString(dict.dropdownViewAll, { label: link.label.toLocaleLowerCase(activeLocale?.code ?? "en") })
+                  }
                   proceduresLabel={dict.specialtyProceduresTitle}
                   triggerClassName={NAV_LINK_TEXT_CLASSES}
                   activeTriggerClassName={NAV_LINK_ACTIVE_TEXT_CLASS}
@@ -625,9 +650,20 @@ export function SiteHeader({
           )}
         </div>
 
-        {/* Masaüstü sağ: ikincil "Find my physician" (dar düzende yalnızca ikon) + birincil "Appointment". */}
+        {/* Masaüstü sağ: ikincil "Request a consultation" (dar düzende yalnızca ikon) + birincil CTA ("Appointment"). */}
         <div className={cn("hidden shrink-0 items-center gap-2 lg:flex", shrinkOnScroll)} data-testid="site-header-actions">
-          {telehealthModuleEnabled && <MatcherLaunchButton variant="outline" display={findDisplay} className="h-10 min-h-10" />}
+          <Link
+            href={localize("/request")}
+            data-testid="header-request-consultation"
+            title={dict.requestConsultation}
+            className={cn(
+              "inline-flex h-10 min-h-10 items-center justify-center gap-2 rounded-[var(--site-radius)] border border-[var(--site-primary)] text-sm font-semibold text-[var(--site-primary)] transition-colors hover:bg-[var(--site-primary)]/5 motion-reduce:transition-none",
+              findDisplay === "icon" ? "w-11 px-0" : findDisplay === "auto" ? "w-11 px-0 xl:w-auto xl:px-4" : "px-4"
+            )}
+          >
+            <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className={findDisplay === "icon" ? "sr-only" : findDisplay === "auto" ? "sr-only xl:not-sr-only" : undefined}>{dict.requestConsultation}</span>
+          </Link>
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text`; `buttonStyle` yapısal sınıf varyantı.
             <Link href={localize(ctaHref as string)} className={cn(ctaClassName, "inline-flex h-10 items-center px-4 text-[15px] whitespace-nowrap")}>
@@ -649,15 +685,11 @@ export function SiteHeader({
               {dict.moreMenu}
               <ChevronDown className="h-3.5 w-3.5" />
             </span>
-            {telehealthModuleEnabled && (
-              <>
-                <span data-measure="find-full" className="inline-flex h-10 items-center gap-2 border px-4 text-sm font-semibold">
-                  <Stethoscope className="h-4 w-4" />
-                  {matcherText.entryButton}
-                </span>
-                <span data-measure="find-icon" className="inline-flex h-10 w-11" />
-              </>
-            )}
+            <span data-measure="find-full" className="inline-flex h-10 items-center gap-2 border px-4 text-sm font-semibold">
+              <ClipboardList className="h-4 w-4" />
+              {dict.requestConsultation}
+            </span>
+            <span data-measure="find-icon" className="inline-flex h-10 w-11" />
             {showCta && (
               <span data-measure="cta" className="inline-flex h-10 items-center px-4 text-[15px] font-semibold">
                 {ctaLabel}
@@ -732,18 +764,16 @@ export function SiteHeader({
               </div>
 
               <div className="flex flex-col gap-3 p-3">
-                {/* Paket AB — "Find my physician" mobil menünün en üstünde, belirgin düğme. */}
-                {telehealthModuleEnabled && (
-                  <Link
-                    href={localize("/find-a-physician")}
+                {/* Paket AH — "Request a consultation" mobil menünün en üstünde, belirgin düğme (talep formu). */}
+                <Link
+                    href={localize("/request")}
                     onClick={closeMobileMenu}
-                    data-testid="mobile-menu-find-physician"
+                    data-testid="mobile-menu-request-consultation"
                     className="flex min-h-12 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] border-2 border-[var(--site-primary,var(--color-primary))] px-4 text-base font-semibold text-[var(--site-primary,var(--color-primary))] hover:bg-[var(--site-primary,var(--color-primary))]/5"
                   >
-                    <Stethoscope className="h-5 w-5" aria-hidden="true" />
-                    {matcherText.entryButton}
-                  </Link>
-                )}
+                    <ClipboardList className="h-5 w-5" aria-hidden="true" />
+                    {dict.requestConsultation}
+                </Link>
                 <ul className="flex flex-col gap-0.5">
                   {navTree.map((link) => {
                     if (link.children.length > 0) {
@@ -796,6 +826,17 @@ export function SiteHeader({
                                       </li>
                                     );
                                   })}
+                                  {isSpecialtiesListHref(link.href) && (
+                                    <li>
+                                      <Link
+                                        href={localize(link.href)}
+                                        onClick={closeMobileMenu}
+                                        className="flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-semibold text-[var(--site-primary)] hover:bg-surface-muted"
+                                      >
+                                        {dict.allServices}
+                                      </Link>
+                                    </li>
+                                  )}
                                 </ul>
                               </AccordionPanel>
                             </AccordionItem>
@@ -822,6 +863,19 @@ export function SiteHeader({
                     );
                   })}
                 </ul>
+
+                {intermediary && (
+                  <div className="border-t border-border pt-3 text-sm text-foreground/70" data-testid="mobile-menu-intermediary">
+                    <p className="px-3 font-medium text-foreground">{intermediary.shortLabel}</p>
+                    <Link
+                      href={`${localize("/about")}#authorized-facilities`}
+                      onClick={closeMobileMenu}
+                      className="flex min-h-11 items-center rounded-lg px-3 hover:bg-surface-muted"
+                    >
+                      {intermediary.facilitiesLink}
+                    </Link>
+                  </div>
+                )}
 
                 {showLanguage && activeLocale && (
                   <div className="border-t border-border pt-3">

@@ -75,7 +75,7 @@ export const telehealthStrings: TelehealthStrings = {
 
   availabilityAndBookingTitle: "Свободное время и запись",
 
-  specialtiesPageTitle: "Наши специализации",
+  specialtiesPageTitle: "Услуги медицинского туризма",
 
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
 
@@ -83,20 +83,20 @@ export const telehealthStrings: TelehealthStrings = {
 
   doctorsMetaDescriptionDefault: "Запишитесь на онлайн-консультацию к нашим врачам.",
 
-  specialtiesMetaDescription: "Познакомьтесь с нашими врачами по таким специальностям, как {specialties}.",
+  specialtiesMetaDescription: "Познакомьтесь с нашими услугами медицинского туризма, например: {specialties}.",
 
-  specialtiesMetaDescriptionDefault: "Ознакомьтесь с нашими специальностями и запишитесь на онлайн-консультацию.",
+  specialtiesMetaDescriptionDefault: "Познакомьтесь с нашими услугами медицинского туризма и запросите консультацию.",
 
-  specialtyMetaDescription: "Запишитесь на онлайн-консультацию к нашим врачам по направлению «{specialty}».",
-  specialtiesPageSubtitle: "Найдите врача по специализации и запишитесь на онлайн-приём.",
+  specialtyMetaDescription: "Запросите консультацию: {specialty}. Координатор пациентов организует лечение в авторизованных медицинских учреждениях.",
+  specialtiesPageSubtitle: "Выберите услугу и отправьте запрос на консультацию. Лечение проводится в авторизованных медицинских учреждениях.",
   specialtiesEmptyTitle: "Специализации не найдены",
   specialtiesEmptyDescription: "Сейчас нет специализаций для отображения.",
   doctorCountOne: "Врачей: {count}",
   doctorCountOther: "Врачей: {count}",
   specialtyDoctorsEmptyTitle: "В этой специализации нет врачей",
   specialtyDoctorsEmptyDescription: "Сейчас в этой специализации нет опубликованных врачей.",
-  specialtyCoordinatorTitle: "Наш координатор подберёт подходящего врача",
-  specialtyCoordinatorText: "Расскажите о своей ситуации, и координатор пациентов подберёт вам подходящего врача этого профиля.",
+  specialtyCoordinatorTitle: "Доверьтесь нашему координатору",
+  specialtyCoordinatorText: "Расскажите о вашей ситуации, и координатор пациентов поможет спланировать лечение в авторизованном медицинском учреждении.",
 
   featuredDoctorsCarouselLabel: "Рекомендуемые врачи",
   featuredDoctorsPrevious: "Предыдущие врачи",
@@ -134,5 +134,5 @@ export const telehealthStrings: TelehealthStrings = {
   /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
   physiciansPerformingProcedure: "Врачи, выполняющие эту процедуру",
   /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
-  breadcrumbSpecialties: "Специализации",
+  breadcrumbSpecialties: "Услуги медицинского туризма",
 };

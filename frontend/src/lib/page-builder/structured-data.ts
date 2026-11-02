@@ -67,7 +67,11 @@ export function buildFaqPageJsonLd(nodes: PageNode[]): string | null {
 }
 
 /**
- * Görev (2026-09-16) — ana sayfa `schema.org/MedicalOrganization` + `WebSite` JSON-LD'si.
+ * Paket AH — WM Health bir sağlık kuruluşu DEĞİL, uluslararası sağlık turizmi aracı kuruluşudur: kurum tipi
+ * `Organization` (+ `TravelAgency`); `MedicalOrganization`/`MedicalClinic`/`Physician` KULLANILMAZ.
+ * `description` aracı kuruluş açıklamasıdır (`dict.intermediary.description`, aktif dilde).
+ *
+ * Görev (2026-09-16) — ana sayfa kurum + `WebSite` JSON-LD'si (eskiden `MedicalOrganization`).
  * `doctor-json-ld.ts`/`specialty-json-ld.ts` İLE AYNI disiplin: yalnızca GERÇEKTEN var olan
  * kaynaktan (`SiteSettings`/`NavigationConfigDto.socialLinks` — `settings/navigation` uçları,
  * `site-footer.tsx`'in KULLANDIĞI AYNI kaynak) alan doldurulur. `address`/`telephone` KASITLI
@@ -77,11 +81,12 @@ export function buildFaqPageJsonLd(nodes: PageNode[]): string | null {
  * DEĞİL) — mimar "Kurallar" madde 1/2 (sahte/uydurma alan üretme yasağı) gereği bu iki alan
  * atlanır, ikinci bir veri kaynağı İCAT EDİLMEZ.
  */
-export function buildMedicalOrganizationJsonLd(
+export function buildOrganizationJsonLd(
   settings: SiteSettings,
   socialLinks: SocialLinkDto[],
   siteUrl: string,
-  accreditations: PublicAccreditation[] = []
+  accreditations: PublicAccreditation[] = [],
+  description?: string
 ): string {
   const sameAs = socialLinks.map((link) => link.url).filter((url) => url.trim().length > 0);
   // Paket V — `hasCredential` yalnızca sitede görünen (aktif + belge no + süresi geçmemiş) belgeler;
@@ -98,18 +103,18 @@ export function buildMedicalOrganizationJsonLd(
 
   return safeJsonLdString({
     "@context": "https://schema.org",
-    "@type": "MedicalOrganization",
+    "@type": ["Organization", "TravelAgency"],
     name: settings.siteName,
     url: siteUrl,
     ...(settings.logoUrl ? { logo: settings.logoUrl } : {}),
-    ...(settings.tagline ? { description: settings.tagline } : {}),
+    ...(description ? { description } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
     ...(hasCredential.length > 0 ? { hasCredential } : {}),
   });
 }
 
 /** `potentialAction: SearchAction` KASITLI OLARAK EKLENMEZ — doğrulanmış bir site-içi arama
- *  endpoint'i yok (uydurma alan üretme yasağı, `buildMedicalOrganizationJsonLd` İLE AYNI gerekçe). */
+ *  endpoint'i yok (uydurma alan üretme yasağı, `buildOrganizationJsonLd` İLE AYNI gerekçe). */
 export function buildWebSiteJsonLd(settings: SiteSettings, siteUrl: string): string {
   return safeJsonLdString({
     "@context": "https://schema.org",

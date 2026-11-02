@@ -132,4 +132,6 @@ export const matcherStrings: MatcherStrings = {
   callbackConsentNote: "Bu düğmeye basarak koordinatörümüzün bu talep hakkında sizinle iletişime geçmesini kabul etmiş olursunuz.",
   noContactNote: "Bu izni vermezseniz adınızı, telefonunuzu, e-postanızı ve sağlık bilgilerinizi kaydetmeyiz; yalnızca önerinizi görürsünüz.",
   disclaimer: "Bu araç tanı koymaz ve tıbbi tavsiye vermez.",
+  requestFor: "Request a consultation for {service}",
+  requestGeneric: "Request a consultation",
 };

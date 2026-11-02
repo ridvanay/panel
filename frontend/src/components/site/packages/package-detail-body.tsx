@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import { Check, Clock, X } from "lucide-react";
 import { SafeImage } from "@/components/site/safe-image";
 import type { PackagesStrings } from "@/lib/i18n/site-dictionaries/en/packages";
@@ -92,7 +93,8 @@ export function PackageDetailBody({
         </section>
       )}
 
-      {pkg.relatedDoctors.length > 0 && (
+      {/* Paket AH — hekim listesi ziyaretçi tarafında gösterilmez. */}
+      {DOCTORS_VISIBLE_TO_VISITORS && pkg.relatedDoctors.length > 0 && (
         <section aria-labelledby="package-doctors-title">
           <h3 id="package-doctors-title" className="mb-2 text-sm font-semibold text-foreground">
             {t.relatedDoctorsTitle}

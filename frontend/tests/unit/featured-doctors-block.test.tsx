@@ -8,6 +8,14 @@ import { createBlock } from "@/lib/page-builder/registry";
 /**
  * Paket A3 (2026-10-18) — "Öne Çıkan Doktorlar" bloğu + metin hizalama + görsel/başlık bağlantısı.
  */
+const visibility = vi.hoisted(() => ({ visible: true }));
+vi.mock("@/lib/intermediary", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/intermediary")>()),
+  // Paket AH — bayrak varsayılan KAPALI; eski görünüm testleri bayrağı açarak çalışır.
+  get DOCTORS_VISIBLE_TO_VISITORS() {
+    return visibility.visible;
+  },
+}));
 const fetchDoctorsServer = vi.fn<() => Promise<DoctorProfile[]>>();
 vi.mock("@/lib/api/server-telehealth", () => ({ fetchAllDoctorsServer: () => fetchDoctorsServer() }));
 const listAdminDoctors = vi.fn();
@@ -74,6 +82,21 @@ describe("pickFeaturedDoctors", () => {
   it("seçim sırasını korur, listede olmayan (pasif/silinmiş) ve pasif doktorları atar", () => {
     const list = [doctor({ id: ID_A }), doctor({ id: ID_B, isActive: false })];
     expect(pickFeaturedDoctors(list, [ID_B, ID_C, ID_A]).map((d) => d.id)).toEqual([ID_A]);
+  });
+});
+
+describe("FeaturedDoctorsBlockView — Paket AH ziyaretçi kapısı", () => {
+  it("bayrak kapalıyken (ziyaretçi varsayılanı) hiçbir doktor render edilmez ve doktor listesi çekilmez", async () => {
+    visibility.visible = false;
+    fetchDoctorsServer.mockClear();
+    try {
+      const block = createBlock("featured-doctors") as FeaturedDoctorsBlock;
+      const ui = await FeaturedDoctorsBlockView({ block: { ...block, data: { ...block.data, source: "all" } }, chrome: "page" });
+      expect(ui).toBeNull();
+      expect(fetchDoctorsServer).not.toHaveBeenCalled();
+    } finally {
+      visibility.visible = true;
+    }
   });
 });
 

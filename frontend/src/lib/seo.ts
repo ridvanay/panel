@@ -48,10 +48,12 @@ export interface BuildContentMetadataOptions {
    * DEĞİŞMEDEN uygulanmaya devam eder.
    */
   isHomepage?: boolean;
+  /** Paket AH — içeriğin kendi meta açıklaması yoksa kullanılacak aracı kuruluş açıklaması (aktif dilde). */
+  fallbackDescription?: string;
 }
 
 export function buildContentMetadata(fields: SeoContentFields, options: BuildContentMetadataOptions): Metadata {
-  const description = fields.description ?? undefined;
+  const description = fields.description || options.fallbackDescription || undefined;
   const ogTitle = fields.ogTitle || fields.title;
   const imageUrl = fields.ogImageUrl || options.fallbackImageUrl || null;
   const images = imageUrl ? [ogCompatibleImageUrl(imageUrl)] : undefined;

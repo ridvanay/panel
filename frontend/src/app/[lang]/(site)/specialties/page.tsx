@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
+import { IntermediaryNotice } from "@/components/site/intermediary-notice";
 
 /**
  * Görev (2026-09-16) — uzmanlık (branş) ızgarası. `doctors/page.tsx` İLE AYNI desen: veri sunucu
@@ -60,7 +61,12 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
 
 export default async function SpecialtiesIndexPage({ params }: SpecialtiesPageProps) {
   const { lang } = await params;
-  const [specialties, locales, dict] = await Promise.all([fetchSpecialtiesServer(lang).then(topLevelSpecialties), fetchLocalesServer(), getSiteDictionary(lang)]);
+  const [specialties, locales, dict, settings] = await Promise.all([
+    fetchSpecialtiesServer(lang).then(topLevelSpecialties),
+    fetchLocalesServer(),
+    getSiteDictionary(lang),
+    fetchSiteSettingsServer(),
+  ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
 
   return (
@@ -87,6 +93,7 @@ export default async function SpecialtiesIndexPage({ params }: SpecialtiesPagePr
           ))}
         </div>
       )}
+      <IntermediaryNotice strings={dict.intermediary} certificateNo={settings.healthTourismCertificateNo} className="mt-10" />
     </div>
   );
 }

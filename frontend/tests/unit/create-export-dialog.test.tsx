@@ -122,7 +122,7 @@ describe("CreateExportDialog — zod doğrulaması", () => {
     mutationState.error = new Error("ağ hatası");
     try {
       renderDialog();
-      expect(screen.getByText("Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.")).toBeInTheDocument();
+      expect(screen.getByText("An unexpected error occurred. Please try again.")).toBeInTheDocument();
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     } finally {
       mutationState.isError = false;

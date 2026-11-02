@@ -22,6 +22,8 @@ import { AboutHero } from "@/components/site/about/about-hero";
 import { TreatmentAreas } from "@/components/site/about/treatment-areas";
 import { WhyWmHealth } from "@/components/site/about/why-wm-health";
 import { AboutDoctors } from "@/components/site/about/about-doctors";
+import { OurRole, WhoWeAre } from "@/components/site/about/intermediary-sections";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import { ClosingBand } from "@/components/site/about/closing-band";
 import { cn } from "@/lib/utils";
 import { fetchAccreditationsServer } from "@/lib/api/server-accreditations";
@@ -110,7 +112,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
     // Yalnızca YAYINDAKİ kaydı döner; yoksa/hata olursa `null` → sözlük metinleri.
     fetchPageBySlugServer(ABOUT_PAGE_SLUG),
     // `telehealth` modülü kapalıysa/backend erişilemezse `[]` döner → doktor bölümü gizlenir.
-    fetchDoctorsServer({ locale: lang }),
+    DOCTORS_VISIBLE_TO_VISITORS ? fetchDoctorsServer({ locale: lang }) : Promise.resolve([]),
     // Aynı şekilde `[]` döner → "Tedavi alanları" kutuları hiçbirinde bağlantı olmaz, sade kutu kalır.
     fetchSpecialtiesServer(lang),
     // Paket V — yetki belgeleri; boşsa liste hiç render edilmez.
@@ -126,7 +128,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
   const specialtyHrefByName: Record<string, string> = {};
   for (const specialty of specialties) specialtyHrefByName[specialty.name.trim().toLowerCase()] = href(`/specialties/${specialty.slug}`);
 
-  const { doctors, founderId } = content.doctors.enabled
+  const { doctors, founderId } = content.doctors.enabled && DOCTORS_VISIBLE_TO_VISITORS
     ? selectAboutDoctors(allDoctors, content.doctors.founderDoctorId, content.doctors.count)
     : { doctors: [], founderId: null };
   const showDoctors = doctors.length > 0;
@@ -145,8 +147,11 @@ export default async function AboutPage({ params }: AboutPageProps) {
         primaryHref={href(content.hero.primaryCta.href)}
         secondaryHref={secondaryHeroHref}
       />
+      {/* Paket AH — "Who we are" (üst şerit bağlantısının hedefi: #authorized-facilities). */}
+      <WhoWeAre t={dict.request} />
       {content.treatments.enabled && <TreatmentAreas treatments={content.treatments} specialtyHrefByName={specialtyHrefByName} />}
       {content.approach.enabled && <WhyWmHealth approach={content.approach} />}
+      <OurRole t={dict.request} />
       {showDoctors && (
         <AboutDoctors
           section={content.doctors}

@@ -60,7 +60,7 @@ describe("proxy — bakım modu (§10.12.5) + locale routing (§4.3)", () => {
     expect(body).toContain('name="robots" content="noindex"');
   });
 
-  it("maintenanceMessage null/boşsa sabit Türkçe varsayılan metin kullanılır", async () => {
+  it("maintenanceMessage null/boşsa sabit İngilizce varsayılan metin kullanılır (Paket AH — Türkçe kaldırıldı)", async () => {
     vi.stubGlobal("fetch", makeFetchMock({ maintenanceModeEnabled: true, maintenanceMessage: null }));
 
     const { proxy } = await import("@/proxy");
@@ -68,7 +68,7 @@ describe("proxy — bakım modu (§10.12.5) + locale routing (§4.3)", () => {
 
     expect(res.status).toBe(503);
     const body = await res.text();
-    expect(body).toContain("Sitemizde bakım çalışması yapıyoruz. Kısa süre içinde geri döneceğiz.");
+    expect(body).toContain("We are performing scheduled maintenance. We will be back shortly.");
   });
 
   it("bakım mesajındaki HTML özel karakterleri kaçırılır (statik sayfa React render ETMEZ, kendi kaçışını yapar)", async () => {

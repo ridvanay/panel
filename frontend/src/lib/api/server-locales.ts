@@ -5,12 +5,12 @@ import type { Locale } from "./types";
 
 /**
  * Tek başına içerik olmadığında bile site her zaman en az bir dilde çalışmalıdır — uç 404 veya boş
- * liste dönerse "tr" varsayılan dile düşülür (429/5xx/ağ hatası fırlatır, bkz. server-fetch.ts). Bu SADECE
+ * liste dönerse "en" varsayılan dile düşülür (429/5xx/ağ hatası fırlatır, bkz. server-fetch.ts). Bu SADECE
  * bir son çare fallback'idir; normal koşulda liste her zaman `GET /locales`'ten gelir (sabit dil
  * listesi KODA GÖMÜLMEZ — `.claude/architect-scope-i18n.md` §4.3).
  */
 const FALLBACK_LOCALES: Locale[] = [
-  { code: "tr", label: "Türkçe", nativeLabel: "Türkçe", isDefault: true, enabled: true, sortOrder: 0, hreflang: null },
+  { code: "en", label: "English", nativeLabel: "English", isDefault: true, enabled: true, sortOrder: 0, hreflang: null },
 ];
 
 /**

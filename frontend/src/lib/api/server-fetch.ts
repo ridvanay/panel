@@ -14,7 +14,7 @@ export class ServerFetchError extends Error {
     readonly status: number,
     readonly path: string
   ) {
-    super(`Backend ${status} döndü: ${path}`);
+    super(`Backend ${status} returned: ${path}`);
     this.name = "ServerFetchError";
   }
 }

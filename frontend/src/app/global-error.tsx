@@ -18,7 +18,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
   }, [error]);
 
   return (
-    <html lang="tr">
+    <html lang="en">
       <body>
         <main
           style={{
@@ -33,10 +33,9 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             fontFamily: "system-ui, sans-serif",
           }}
         >
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Beklenmeyen bir hata oluştu</h1>
+          <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>An unexpected error occurred</h1>
           <p style={{ color: "#666", maxWidth: "28rem" }}>
-            Sorun otomatik olarak bildirildi. Lütfen tekrar deneyin; sorun devam ederse bir süre sonra tekrar
-            ziyaret edin.
+            The problem has been reported automatically. Please try again; if it continues, visit again after a while.
           </p>
           <button
             onClick={reset}
@@ -49,7 +48,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
               cursor: "pointer",
             }}
           >
-            Tekrar dene
+            Try again
           </button>
         </main>
       </body>

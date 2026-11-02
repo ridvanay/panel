@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import Link from "next/link";
-import { ArrowRight, BookOpenCheck, FileSearch, PenLine, RefreshCw, ShieldAlert, ShieldCheck, Stethoscope, UserCheck, CalendarClock, Send } from "lucide-react";
+import { ArrowRight, BookOpenCheck, ClipboardCheck, FileSearch, PenLine, RefreshCw, ShieldAlert, ShieldCheck, CalendarClock, Send } from "lucide-react";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
@@ -11,10 +11,11 @@ import { formatBlogDate } from "@/lib/blog/format";
 import { TRUST_PAGES_UPDATED_ISO, TRUST_PAGE_PATH, buildTrustWebPageJsonLd } from "@/lib/blog/trust-pages";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
+import { IntermediaryNotice } from "@/components/site/intermediary-notice";
 import { TrustAlert, TrustCard, TrustHero, TrustLinkButton, TrustSectionTitle, TRUST_CONTAINER } from "./trust-parts";
 import { cn } from "@/lib/utils";
 
-const STEP_ICONS = [PenLine, FileSearch, Stethoscope, Send, CalendarClock] as const;
+const STEP_ICONS = [PenLine, FileSearch, ClipboardCheck, Send, CalendarClock] as const;
 
 /** Paket Z1-ek - `/[lang]/content-standards`: ilke kartlari, surec semasi, uyari kutusu, iki CTA. */
 export async function ContentStandardsPage({ lang }: { lang: string }) {
@@ -26,7 +27,7 @@ export async function ContentStandardsPage({ lang }: { lang: string }) {
 
   const cards = [
     { icon: PenLine, title: t.csWrittenTitle, text: t.csWrittenText },
-    { icon: UserCheck, title: t.csReviewTitle, text: t.csReviewText },
+    { icon: ClipboardCheck, title: t.csReviewTitle, text: t.csReviewText },
     { icon: BookOpenCheck, title: t.csSourcesTitle, text: t.csSourcesText },
     { icon: RefreshCw, title: t.csUpdatesTitle, text: t.csUpdatesText, contact: true },
     { icon: ShieldAlert, title: t.csNotTitle, text: t.csNotText },
@@ -117,6 +118,8 @@ export async function ContentStandardsPage({ lang }: { lang: string }) {
           </TrustLinkButton>
           <MatcherLaunchButton variant="outline" />
         </section>
+
+        <IntermediaryNotice strings={dict.intermediary} certificateNo={settings.healthTourismCertificateNo} />
       </div>
     </div>
   );

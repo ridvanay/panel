@@ -16,6 +16,7 @@ import { featuredDoctorsMax } from "@/lib/page-builder/types";
 import type { BlockSiteContext } from "./index";
 import { FeaturedDoctorsCarousel } from "./featured-doctors-carousel";
 import { publicDoctorName } from "@/lib/doctor-display-name";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 
 /** Mobil 1, tablet (sm) 2 SABİT; masaüstü (lg) blok ayarından. Tailwind tam sınıf adları (JIT). */
 const DESKTOP_COLUMNS_CLASS: Record<FeaturedDoctorsColumns, string> = {
@@ -103,6 +104,8 @@ export async function FeaturedDoctorsBlockView({
   chrome: BlockChrome;
   siteContext?: BlockSiteContext;
 }) {
+  // Paket AH — ziyaretçi tarafında hekim gösterilmez.
+  if (!DOCTORS_VISIBLE_TO_VISITORS) return null;
   const { data } = block;
   if (data.source !== "all" && (data.doctorIds ?? []).length === 0) return null;
   const doctors = resolveFeaturedDoctors(await fetchAllDoctorsServer(10, siteContext?.lang), data);

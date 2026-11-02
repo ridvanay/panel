@@ -32,4 +32,16 @@ export const navStrings: NavStrings = {
   languageButtonAria: "Schimbați limba, curentă: {language}",
   /** Paket AG — açılır menüde üst uzmanlık kartı altındaki alt uzmanlık satırı etiketi. */
   specialtyProceduresTitle: "Proceduri",
+  /** Paket AH — masaüstü açılır menü altındaki 'tüm hizmetler' bağlantısı. */
+  allServices: "Toate serviciile",
+  /** Paket AH — header'daki 'Request a consultation' düğmesi (talep formuna gider). */
+  requestConsultation: "Solicită o consultație",
+  /** Paket AH — footer telif satırı sonu. */
+  footerAllRightsReserved: "Toate drepturile rezervate.",
+  /** Paket AH — footer'da hizmetler sütunu başlığı. */
+  footerServicesHeading: "Servicii de turism medical",
+  /** Paket AH — footer'da yasal sayfalar sütunu başlığı. */
+  footerLegalHeading: "Informații legale",
+  /** Paket AH — footer landmark etiketi. */
+  footerNavAria: "Subsol",
 };

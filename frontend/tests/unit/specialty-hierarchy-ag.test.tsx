@@ -97,7 +97,7 @@ describe("Alt uzmanlık sayfası", () => {
     render(await SpecialtyDetailPage({ params: Promise.resolve({ lang: "en", slug }) }));
   }
 
-  it("kırıntı, BreadcrumbList ve MedicalSpecialty JSON-LD; kendi hekimi yoksa üst hekimleri başlıkla listelenir", async () => {
+  it("kırıntı, BreadcrumbList ve MedicalSpecialty JSON-LD; hekim listesi yerine talep çağrısı (Paket AH)", async () => {
     fetchSpecialtyBySlugServer.mockResolvedValue(
       spec({ slug: "esd", name: "ESD", parentId: "g", parentSlug: "gastroenterology", parent: { slug: "gastroenterology", name: "Gastroenterology" } })
     );
@@ -106,36 +106,38 @@ describe("Alt uzmanlık sayfası", () => {
 
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["Specialties", "Gastroenterology"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Health Tourism Services", "Gastroenterology"]);
     expect(links[0]).toHaveAttribute("href", "/specialties");
     expect(links[1]).toHaveAttribute("href", "/specialties/gastroenterology");
     expect(within(nav).getByText("ESD")).toHaveAttribute("aria-current", "page");
 
-    expect(screen.getByRole("heading", { level: 2, name: "Physicians performing this procedure" })).toBeInTheDocument();
-    expect(screen.getAllByTestId("doctor-card")).toHaveLength(2);
-    expect(screen.queryByTestId("specialty-coordinator-box")).toBeNull();
-    // Üst uzmanlığın hekimleri gösterilirken kendi sayısı ("0 physicians") gizlenir.
-    expect(screen.queryByText("0 physicians")).toBeNull();
+    // Hekim listesi/sayısı/başlığı yok; hekim listesi hiç çekilmez.
+    expect(screen.queryByRole("heading", { name: "Physicians performing this procedure" })).toBeNull();
+    expect(screen.queryAllByTestId("doctor-card")).toHaveLength(0);
+    expect(screen.queryByText(/\d+ physicians?/)).toBeNull();
+    expect(fetchDoctorsServer).not.toHaveBeenCalled();
+    expect(screen.getByTestId("specialty-request-cta")).toHaveTextContent("Request a consultation for ESD");
+    expect(screen.getByTestId("specialty-request-cta")).toHaveAttribute("href", "/request?service=esd");
+    expect(screen.getByTestId("intermediary-notice")).toHaveTextContent("International Health Tourism Intermediary");
 
     const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).map((s) => JSON.parse(s.textContent ?? "{}"));
     expect(scripts.map((s) => s["@type"])).toEqual(["MedicalSpecialty", "BreadcrumbList"]);
-    expect(scripts[1].itemListElement.map((i: { name: string }) => i.name)).toEqual(["Specialties", "Gastroenterology", "ESD"]);
+    expect(scripts[1].itemListElement.map((i: { name: string }) => i.name)).toEqual(["Health Tourism Services", "Gastroenterology", "ESD"]);
     expect(scripts[1].itemListElement[2].position).toBe(3);
   });
 
-  it("kendi hekimi varsa üst hekimleri çekilmez ve 'Physicians performing' başlığı yok", async () => {
+  it("kendi hekimi olsa bile hekim kartı/sayısı gösterilmez (hekim verisi ziyaretçiye gitmez)", async () => {
     fetchSpecialtyBySlugServer.mockResolvedValue(
-      spec({ slug: "esd", name: "ESD", parentId: "g", parent: { slug: "gastroenterology", name: "Gastroenterology" } })
+      spec({ slug: "esd", name: "ESD", parentId: "g", doctorCount: 3, parent: { slug: "gastroenterology", name: "Gastroenterology" } })
     );
     fetchDoctorsServer.mockResolvedValue([doctor("own")]);
     await renderPage("esd");
-    expect(screen.getAllByTestId("doctor-card")).toHaveLength(1);
-    expect(screen.queryByRole("heading", { name: "Physicians performing this procedure" })).toBeNull();
-    expect(screen.getByText("0 physicians")).toBeInTheDocument();
-    expect(fetchDoctorsServer).toHaveBeenCalledTimes(1);
+    expect(screen.queryAllByTestId("doctor-card")).toHaveLength(0);
+    expect(screen.queryByText(/physicians?/i)).toBeNull();
+    expect(fetchDoctorsServer).not.toHaveBeenCalled();
   });
 
-  it("alt uzmanlığın hiçbir hekimi (üstte de) yoksa koordinatör kutusu görünür", async () => {
+  it("koordinatör kutusu ve talep düğmesi her zaman görünür", async () => {
     fetchSpecialtyBySlugServer.mockResolvedValue(
       spec({ slug: "esd", name: "ESD", parentId: "g", parent: { slug: "gastroenterology", name: "Gastroenterology" } })
     );

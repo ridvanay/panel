@@ -102,7 +102,7 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
       eyebrow: dict.heroEyebrow,
       title: dict.heroTitle,
       body: dict.heroBody,
-      primaryCta: { label: dict.heroPrimaryCta, href: "/physicians" },
+      primaryCta: { label: dict.heroPrimaryCta, href: "/request" },
       secondaryCta: { label: dict.heroSecondaryCta, href: HOME_HOW_ANCHOR },
       imageUrl: "",
       imageAlt: "",
@@ -130,8 +130,8 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
       title: dict.howTitle,
       steps: [
         { id: "step-1", icon: "Search", title: dict.step1Title, text: dict.step1Text },
-        { id: "step-2", icon: "Calendar", title: dict.step2Title, text: dict.step2Text },
-        { id: "step-3", icon: "Video", title: dict.step3Title, text: dict.step3Text },
+        { id: "step-2", icon: "ClipboardCheck", title: dict.step2Title, text: dict.step2Text },
+        { id: "step-3", icon: "MessageCircle", title: dict.step3Title, text: dict.step3Text },
       ],
     },
     journey: {
@@ -143,7 +143,7 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
         { id: "journey-1", icon: "ClipboardCheck", title: dict.journeyStep1Title, text: dict.journeyStep1Text },
         { id: "journey-2", icon: "Plane", title: dict.journeyStep2Title, text: dict.journeyStep2Text },
         { id: "journey-3", icon: "Stethoscope", title: dict.journeyStep3Title, text: dict.journeyStep3Text },
-        { id: "journey-4", icon: "Video", title: dict.journeyStep4Title, text: dict.journeyStep4Text },
+        { id: "journey-4", icon: "MessageCircle", title: dict.journeyStep4Title, text: dict.journeyStep4Text },
       ],
       countries: [
         { id: "country-1", label: dict.journeyCountry1 },
@@ -164,7 +164,7 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
     closing: {
       enabled: true,
       title: dict.closingTitle,
-      primaryCta: { label: dict.closingPrimaryCta, href: "/physicians" },
+      primaryCta: { label: dict.closingPrimaryCta, href: "/request" },
       secondaryCta: { label: dict.closingSecondaryCta, href: "/contact" },
     },
   };

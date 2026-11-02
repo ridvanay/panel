@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "No se ha guardado nada",
   notStoredText: "Como no ha dado permiso para que nos pongamos en contacto con usted, no hemos guardado su solicitud ni sus datos. Para enviar una solicitud, marque el permiso de contacto y envíela de nuevo.",
   editAgain: "Editar y volver a enviar",
+  requestPackage: "Solicitar este paquete",
 };

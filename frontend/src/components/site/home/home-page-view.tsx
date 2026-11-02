@@ -5,6 +5,7 @@ import { Eyebrow } from "@/components/site/about/eyebrow";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { MatcherHeroSearch } from "@/components/site/matcher/matcher-modal";
 import { ABOUT_ICONS } from "@/components/site/about/about-icons";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import { AboutDoctors } from "@/components/site/about/about-doctors";
 import { SpecialtyCardsGrid } from "@/components/site/blocks/specialty-cards-block";
 import type { BlockSiteContext } from "@/components/site/blocks/index";
@@ -72,7 +73,7 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
   const [specialties, allDoctors, telehealthSettings] = telehealthEnabled
     ? await Promise.all([
         content.specialties.enabled ? fetchSpecialtiesServer(lang).then(topLevelSpecialties) : Promise.resolve([]),
-        content.doctors.enabled ? fetchDoctorsServer({ locale: lang }) : Promise.resolve([]),
+        content.doctors.enabled && DOCTORS_VISIBLE_TO_VISITORS ? fetchDoctorsServer({ locale: lang }) : Promise.resolve([]),
         fetchTelehealthThemeServer(),
       ])
     : [[], [], null];

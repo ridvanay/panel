@@ -9,6 +9,14 @@ import { createBlock } from "@/lib/page-builder/registry";
  * bio'nun ilk cümlesi), ince ayraç, diğerleri altında ortalanmış; kurucu yoksa ızgara gibi. Arşivli ve
  * pasif doktorlar hiç görünmez. Rozet 6 dilde (Arapça dahil).
  */
+const visibility = vi.hoisted(() => ({ visible: true }));
+vi.mock("@/lib/intermediary", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/intermediary")>()),
+  // Paket AH — bayrak varsayılan KAPALI; eski görünüm testleri bayrağı açarak çalışır.
+  get DOCTORS_VISIBLE_TO_VISITORS() {
+    return visibility.visible;
+  },
+}));
 const fetchDoctorsServer = vi.fn<() => Promise<DoctorProfile[]>>();
 vi.mock("@/lib/api/server-telehealth", () => ({ fetchAllDoctorsServer: () => fetchDoctorsServer() }));
 

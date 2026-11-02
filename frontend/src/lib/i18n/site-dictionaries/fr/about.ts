@@ -3,16 +3,16 @@ import type { AboutStrings } from "../en/about";
 export const aboutStrings: AboutStrings = {
   metaTitle: "À propos | WM Health",
   metaDescription:
-    "WM Health accueille à Istanbul des patients venus de différents pays. Découvrez nos domaines de traitement, notre approche et nos médecins.",
+    "WM Health est un intermédiaire international de tourisme de santé qui aide des patients de différents pays à organiser leur traitement en Türkiye. Découvrez notre rôle, nos domaines de traitement et notre approche.",
 
   // --- Hero ---
   breadcrumbCurrent: "À propos",
   heroEyebrow: "À propos de WM Health",
   heroTitle: "Des soins de qualité, plus accessibles au-delà des frontières.",
   heroBody:
-    "Fondé sous la direction du Dr Vahit Mutlu, WM Health accueille à Istanbul des patients venus de différents pays. Nous associons des standards de soins élevés, une communication claire et une coordination rigoureuse pour accompagner un parcours de traitement sûr et bien informé. De la première consultation à la planification des étapes suivantes, notre objectif est de rendre des soins de qualité plus accessibles au-delà des frontières.",
-  bookConsultationCta: "Prendre rendez-vous pour une consultation",
-  meetDoctorsCta: "Découvrir nos médecins",
+    "WM Health accueille à Istanbul des patients de différents pays. Une communication claire et une coordination attentive permettent un parcours de traitement sûr et bien informé auprès d'établissements de santé autorisés. De la première demande à la planification des prochaines étapes, nous voulons rendre les soins de qualité plus accessibles au-delà des frontières.",
+  bookConsultationCta: "Demander une consultation",
+  meetDoctorsCta: "Qui sommes-nous",
   locationTitle: "Istanbul, Türkiye",
   locationSubtitle: "Accueillant des patients venus de différents pays",
 

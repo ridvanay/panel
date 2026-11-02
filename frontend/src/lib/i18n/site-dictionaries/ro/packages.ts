@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "Nu s-a salvat nimic",
   notStoredText: "Nu v-ați dat permisiunea de a fi contactat, așa că nu am salvat cererea sau datele dumneavoastră. Pentru a trimite o cerere, bifați permisiunea de contact și trimiteți-o din nou.",
   editAgain: "Modifică și trimite din nou",
+  requestPackage: "Solicită acest pachet",
 };

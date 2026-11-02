@@ -9,9 +9,9 @@ describe("friendlyErrorMessage", () => {
   });
 
   it("returns a generic fallback for non-ApiClientError values", () => {
-    expect(friendlyErrorMessage(new Error("boom"))).toBe("Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.");
-    expect(friendlyErrorMessage("plain string")).toBe("Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.");
-    expect(friendlyErrorMessage(undefined)).toBe("Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.");
+    expect(friendlyErrorMessage(new Error("boom"))).toBe("An unexpected error occurred. Please try again.");
+    expect(friendlyErrorMessage("plain string")).toBe("An unexpected error occurred. Please try again.");
+    expect(friendlyErrorMessage(undefined)).toBe("An unexpected error occurred. Please try again.");
   });
 });
 

@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "Ništa nije sačuvano",
   notStoredText: "Niste dali dozvolu da vas kontaktiramo, pa nismo sačuvali ni vaš zahtev ni vaše podatke. Da biste poslali zahtev, označite dozvolu za kontakt i pošaljite ga ponovo.",
   editAgain: "Izmeni i pošalji ponovo",
+  requestPackage: "Zatražite ovaj paket",
 };

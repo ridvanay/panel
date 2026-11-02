@@ -273,7 +273,7 @@ describe("fiyat gösterimi", () => {
     expect(screen.getByTestId("package-price")).toHaveTextContent("Starting from €1,200");
     expect(screen.getByTestId("package-price-note")).toHaveTextContent("Final price is confirmed after medical evaluation.");
   });
-  it("ilgili hekim bağlantıları /physicians/<slug> ve HTML'de backend:4000 / localhost yok (canlı benzeri medya kökü)", async () => {
+  it("ilgili hekimler ziyaretçiye gösterilmez (Paket AH); HTML'de backend:4000 / localhost yok", async () => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_API_URL", "https://site.example/api/v1");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://site.example");
@@ -288,9 +288,10 @@ describe("fiyat gösterimi", () => {
         localize={(p) => p}
       />
     );
-    const link = screen.getByRole("link", { name: /Ayse Demir/ });
-    expect(link).toHaveAttribute("href", "/physicians/dr-a");
-    expect(container.querySelector("img")).not.toBeNull();
+    expect(screen.queryByRole("link", { name: /Ayse Demir/ })).toBeNull();
+    expect(screen.queryByTestId("package-related-doctors")).toBeNull();
+    expect(container.textContent).not.toContain("Ayse Demir");
+    expect(container.querySelector('a[href*="/physicians"]')).toBeNull();
     expect(container.innerHTML).not.toMatch(/backend:4000|localhost|127.0.0.1/);
     vi.unstubAllEnvs();
   });

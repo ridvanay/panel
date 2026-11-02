@@ -112,14 +112,14 @@ export const telehealthStrings = {
   availabilityAndBookingTitle: "Availability and Booking",
 
   // --- /specialties (madde 10) ---
-  specialtiesPageTitle: "Our Areas of Expertise",
+  specialtiesPageTitle: "Health Tourism Services",
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
   doctorsMetaDescription: "Book an online consultation with our physicians in specialties such as {specialties}.",
   doctorsMetaDescriptionDefault: "Book an online consultation with our physicians.",
-  specialtiesMetaDescription: "Explore our physicians in specialties such as {specialties}.",
-  specialtiesMetaDescriptionDefault: "Explore our specialties and book an online consultation.",
-  specialtyMetaDescription: "Book an online consultation with our physicians in {specialty}.",
-  specialtiesPageSubtitle: "Discover our physicians by specialty and book your online appointment.",
+  specialtiesMetaDescription: "Explore our health tourism services in areas such as {specialties}.",
+  specialtiesMetaDescriptionDefault: "Explore our health tourism services and request a consultation.",
+  specialtyMetaDescription: "Request a consultation for {specialty}. A patient coordinator arranges treatment at authorized healthcare facilities.",
+  specialtiesPageSubtitle: "Choose a service and send a consultation request. Treatment is performed at authorized healthcare facilities.",
   specialtiesEmptyTitle: "No specialty found",
   specialtiesEmptyDescription: "There are currently no specialties to list.",
   /** `{count}` yer tutucusu — tekil (1 doctor). */
@@ -129,8 +129,8 @@ export const telehealthStrings = {
   specialtyDoctorsEmptyTitle: "No physicians found in this specialty",
   specialtyDoctorsEmptyDescription: "There are currently no published physicians in this specialty.",
   /** Paket V — hekimi olmayan uzmanlık sayfasında doktor listesinin yerine. */
-  specialtyCoordinatorTitle: "Let our coordinator find the right physician for you",
-  specialtyCoordinatorText: "Tell us about your situation and a patient coordinator will match you with a suitable physician in this field.",
+  specialtyCoordinatorTitle: "Let our coordinator guide you",
+  specialtyCoordinatorText: "Tell us about your situation and a patient coordinator will help you plan treatment at an authorized healthcare facility.",
 
   // --- Öne Çıkan Doktorlar carousel'i (Paket D) ---
   featuredDoctorsCarouselLabel: "Featured physicians",
@@ -170,7 +170,7 @@ export const telehealthStrings = {
   /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
   physiciansPerformingProcedure: "Physicians performing this procedure",
   /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
-  breadcrumbSpecialties: "Specialties",
+  breadcrumbSpecialties: "Health Tourism Services",
 } as const;
 
 export type TelehealthStrings = Record<keyof typeof telehealthStrings, string>;

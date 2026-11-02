@@ -1,34 +1,34 @@
 import type { HomeStrings } from "../en/home";
 
 export const homeStrings: HomeStrings = {
-  heroEyebrow: "Telemedicinska konsultacija",
-  heroTitle: "Zakažite video konsultaciju sa vrhunskim specijalistima",
+  heroEyebrow: "Međunarodni zdravstveni turizam",
+  heroTitle: "Isplanirajte lečenje u Turskoj uz posvećenog koordinatora pacijenata",
   heroBody:
-    "Zakažite u nekoliko klikova i razgovarajte sa svojim lekarom putem bezbedne video konsultacije — bez izlaska iz kuće.",
-  heroPrimaryCta: "Konsultujte lekara",
+    "Recite nam koja vam je usluga potrebna. Koordinator pacijenata organizuje lečenje u ovlašćenoj zdravstvenoj ustanovi, vaše putovanje i boravak.",
+  heroPrimaryCta: "Zatražite konsultaciju",
   heroSecondaryCta: "Kako funkcioniše",
-  heroCardTitle: "Bezbedna video konsultacija",
-  heroCardText: "Pridružite se iz svog pregledača",
+  heroCardTitle: "Koordinator pacijenata",
+  heroCardText: "Odgovor u roku od 1 radnog dana",
 
-  trust1Title: "Pristup 24/7",
-  trust1Text: "Pronađite dostupnog lekara i zakažite termin u vreme koje Vam odgovara.",
-  trust2Title: "Šifrovane konsultacije",
-  trust2Text: "Video konsultacije se odvijaju preko šifrovane veze.",
-  trust3Title: "Provereni profili",
-  trust3Text: "Objavljeni profili lekara prolaze proveru identiteta i diplome.",
+  trust1Title: "Posvećeni koordinator",
+  trust1Text: "Koordinator pacijenata vas podržava pre, tokom i posle posete.",
+  trust2Title: "Bezbedno rukovanje vašim podacima",
+  trust2Text: "Vaš zahtev se šalje šifrovanom vezom i obrađuje pažljivo.",
+  trust3Title: "Ovlašćene ustanove",
+  trust3Text: "Lečenje obavljaju ustanove koje poseduju Sertifikat o ovlašćenju za međunarodni zdravstveni turizam.",
 
-  specialtiesEyebrow: "Specijalnosti",
-  specialtiesTitle: "Pronađite negu prema specijalnosti",
-  specialtiesViewAll: "Prikaži sve specijalnosti",
+  specialtiesEyebrow: "Usluge zdravstvenog turizma",
+  specialtiesTitle: "Pronađite pravu uslugu",
+  specialtiesViewAll: "Pogledajte sve usluge",
 
   howEyebrow: "Kako funkcioniše",
   howTitle: "Tri koraka do Vaše konsultacije",
-  step1Title: "Izaberite lekara",
-  step1Text: "Filtrirajte prema specijalnosti i jeziku i pregledajte profile lekara.",
-  step2Title: "Zakažite termin",
-  step2Text: "Izaberite slobodan termin i završite zakazivanje onlajn.",
-  step3Title: "Pridružite se video pozivu",
-  step3Text: "U vreme svog termina pridružite se konsultaciji iz svog pregledača.",
+  step1Title: "Izaberite uslugu",
+  step1Text: "Pregledajte naše usluge zdravstvenog turizma i izaberite onu koja vam treba.",
+  step2Title: "Pošaljite zahtev",
+  step2Text: "Recite nam o svojim planovima. Traje nekoliko minuta i besplatno je.",
+  step3Title: "Razgovarajte sa koordinatorom",
+  step3Text: "Koordinator pacijenata će vas kontaktirati u roku od 1 radnog dana i s vama isplanirati sledeće korake.",
   stepLabel: "Korak {number}",
 
   journeyEyebrow: "Put pacijenta iz celog sveta",
@@ -41,7 +41,7 @@ export const homeStrings: HomeStrings = {
   journeyStep2Title: "Dolazak u Istanbul",
   journeyStep2Text: "Naš tim Vas dočekuje, organizuje Vaš smeštaj i potvrđuje raspored Vaših termina.",
   journeyStep3Title: "Pregled i lečenje",
-  journeyStep3Text: "Vaš ordinirajući lekar obavlja sve potrebne preglede i sprovodi Vaš plan lečenja.",
+  journeyStep3Text: "Pregledi i lečenje odvijaju se u ovlašćenoj zdravstvenoj ustanovi, uz vašeg koordinatora pored vas.",
   journeyStep4Title: "Praćenje nakon povratka",
   journeyStep4Text:
     "Ostajemo u kontaktu i nakon što se vratite kući kako bismo podržali Vaš oporavak i odgovorili na sva Vaša pitanja.",
@@ -58,6 +58,6 @@ export const homeStrings: HomeStrings = {
   doctorsCta: "Prikaži sve lekare",
 
   closingTitle: "Počnite konsultacijom",
-  closingPrimaryCta: "Konsultujte lekara",
+  closingPrimaryCta: "Zatražite konsultaciju",
   closingSecondaryCta: "Kontaktirajte nas",
 };

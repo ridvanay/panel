@@ -20,7 +20,7 @@ import { normalizePageNodes } from "@/lib/page-builder/normalize";
 import {
   buildFaqPageJsonLd,
   buildMapPlaceJsonLd,
-  buildMedicalOrganizationJsonLd,
+  buildOrganizationJsonLd,
   buildWebSiteJsonLd,
 } from "@/lib/page-builder/structured-data";
 import { JsonLdScript } from "@/components/site/json-ld-script";
@@ -30,6 +30,7 @@ import { resolveLanguageSupport } from "@/lib/language-support";
 import { SupportLanguagesBand } from "@/components/site/support/support-languages-band";
 import { AccreditationStrip } from "@/components/site/accreditations/accreditation-strip";
 import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
+import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { HomeReviewsSection } from "@/components/site/reviews/home-reviews-section";
 import { DestinationsSection } from "@/components/site/destinations/destinations-section";
 
@@ -70,6 +71,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       locales,
       activeLocale: lang,
       pathPrefix: "",
+      fallbackDescription: intermediaryMetaDescription((await getSiteDictionary(lang)).intermediary.description),
       // Ana sayfanın kaydı bir `Page` (`slug: "anasayfa"`) olsa da PREFİX'SİZ kanonik URL'i HER
       // ZAMAN `/` / `/tr`'dir, kaydın kendi slug'ı DEĞİL — `buildLanguageAlternates` bu bayrakla
       // `pathPrefix + slug` yerine kök path kullanır (bkz. `lib/seo.ts::isHomepage`).
@@ -98,7 +100,7 @@ export default async function RootPage({ params }: PageProps) {
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
     fetchNavigationConfigServer(lang),
-    // Görev (2026-09-16) — `MedicalOrganization` yalnızca `telehealth` modülü açıkken render
+    // Görev (2026-09-16) — kurum JSON-LD'si (Paket AH: `Organization`/`TravelAgency`) yalnızca `telehealth` modülü açıkken render
     // edilir (bu site şablonu/tema-nötr bir iskelet, HER kurulum bir sağlık kuruluşu DEĞİL —
     // `doctors/layout.tsx`'teki AYNI `isModuleEnabledServer("telehealth")` kapı deseni).
     isModuleEnabledServer("telehealth"),
@@ -198,7 +200,7 @@ export default async function RootPage({ params }: PageProps) {
               <JsonLdScript json={buildMapPlaceJsonLd(normalizedNodes)} />
               <JsonLdScript json={buildWebSiteJsonLd(settings, SITE_URL)} />
               {telehealthModuleEnabled && (
-                <JsonLdScript json={buildMedicalOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL, accreditations)} />
+                <JsonLdScript json={buildOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL, accreditations, dict.intermediary.description)} />
               )}
             </>
           )}

@@ -116,6 +116,8 @@ interface GeneralSettingsSnapshot {
   /** Paket AG — `true` = kayıtlı değer `null` (varsayılan alıcı). */
   recipientsUseDefault: boolean;
   recipientsText: string;
+  certificateNo: string;
+  blogMedicalReviewRequired: boolean;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -199,6 +201,9 @@ export default function AdminSettingsPage() {
   const [recipientsUseDefault, setRecipientsUseDefault] = useState(true);
   const [recipientsText, setRecipientsText] = useState("");
   const [recipientsError, setRecipientsError] = useState<string | undefined>(undefined);
+  // Paket AH — aracı kuruluş kimliği: yetki belgesi numarası (boşsa sitede belge satırı görünmez) ve blog tıbbi onay şartı.
+  const [certificateNo, setCertificateNo] = useState("");
+  const [blogMedicalReviewRequired, setBlogMedicalReviewRequired] = useState(false);
 
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -234,6 +239,8 @@ export default function AdminSettingsPage() {
       setRecipientsUseDefault(storedRecipients === null);
       setRecipientsText(storedRecipients ?? "");
       setRecipientsError(undefined);
+      setCertificateNo(settings.healthTourismCertificateNo ?? "");
+      setBlogMedicalReviewRequired(settings.blogMedicalReviewRequired ?? false);
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
@@ -250,6 +257,8 @@ export default function AdminSettingsPage() {
         liveChatPosition: settings.liveChatPosition ?? "BOTTOM_RIGHT",
         recipientsUseDefault: storedRecipients === null,
         recipientsText: storedRecipients ?? "",
+        certificateNo: settings.healthTourismCertificateNo ?? "",
+        blogMedicalReviewRequired: settings.blogMedicalReviewRequired ?? false,
       });
       setLoaded(true);
     } catch (err) {
@@ -280,7 +289,9 @@ export default function AdminSettingsPage() {
       liveChatRequireEmail !== snapshot.liveChatRequireEmail ||
       liveChatPosition !== snapshot.liveChatPosition ||
       recipientsUseDefault !== snapshot.recipientsUseDefault ||
-      recipientsText !== snapshot.recipientsText
+      recipientsText !== snapshot.recipientsText ||
+      certificateNo !== snapshot.certificateNo ||
+      blogMedicalReviewRequired !== snapshot.blogMedicalReviewRequired
     );
   }, [
     siteName,
@@ -298,6 +309,8 @@ export default function AdminSettingsPage() {
     liveChatPosition,
     recipientsUseDefault,
     recipientsText,
+    certificateNo,
+    blogMedicalReviewRequired,
     snapshot,
   ]);
 
@@ -381,6 +394,7 @@ export default function AdminSettingsPage() {
         liveChatRequireEmail,
         liveChatPosition,
         ...(isAdmin ? { bookingNotificationRecipients: recipientsUseDefault ? null : recipientsText.trim() } : {}),
+        ...(isAdmin ? { healthTourismCertificateNo: certificateNo.trim() ? certificateNo.trim() : null, blogMedicalReviewRequired } : {}),
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
@@ -409,7 +423,10 @@ export default function AdminSettingsPage() {
         liveChatPosition,
         recipientsUseDefault,
         recipientsText: recipientsUseDefault ? "" : recipientsText.trim(),
+        certificateNo: certificateNo.trim(),
+        blogMedicalReviewRequired,
       });
+      setCertificateNo(certificateNo.trim());
       if (!recipientsUseDefault) setRecipientsText(recipientsText.trim());
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
@@ -811,6 +828,46 @@ export default function AdminSettingsPage() {
                 )}
               </Card>
             </motion.div>
+            {/* Paket AH — aracı kuruluş kimliği: yetki belgesi numarası + blog tıbbi onay şartı (`Kaydet` ile birlikte). */}
+            {isAdmin && (
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={Briefcase}
+                  title="Aracı Kuruluş Kimliği"
+                  description="Sitede gösterilen sağlık turizmi aracı kuruluş bilgileri ve blog yayın kuralı."
+                />
+                <Field
+                  id="healthTourismCertificateNo"
+                  label="Health Tourism Authorization Certificate No"
+                  hint="Uluslararası Sağlık Turizmi Yetki Belgesi numarası. Boş bırakılırsa sitede (footer, bilgi kutuları) belge satırı gösterilmez. En fazla 64 karakter."
+                >
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={certificateNo}
+                      maxLength={64}
+                      onChange={(e) => setCertificateNo(e.target.value)}
+                    />
+                  )}
+                </Field>
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Blog: tıbbi onay şartı</p>
+                    <p className="text-xs text-foreground/60">
+                      Kapalıyken (varsayılan) blog yazısı yayınlamak için hekim onayı aranmaz; editoryal yayın yeterlidir. Açıkken
+                      eski kural geçerlidir. Yayındaki yazılar bu ayardan etkilenmez.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={blogMedicalReviewRequired}
+                    onCheckedChange={(checked) => setBlogMedicalReviewRequired(Boolean(checked))}
+                    aria-label="Blog: tıbbi onay şartı"
+                  />
+                </div>
+              </Card>
+            </motion.div>
+            )}
             {/* Paket AG — randevu bildirimi alıcıları (kayıt `Kaydet` ile birlikte yapılır). */}
             {isAdmin && (
             <motion.div variants={cardVariants} className="lg:col-span-3">

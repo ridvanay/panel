@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, CalendarCheck, Check, Clock, ExternalLink, Eye, Hourglass, UserRound } from "lucide-react";
+import { CalendarCheck, Check, Clock, ExternalLink, Eye, UserRound } from "lucide-react";
 import { SafeImage } from "@/components/site/safe-image";
 import type { PublicBlogDetail, PublicBlogPreviewDetail } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
@@ -16,33 +16,11 @@ export function BlogAvatar({ src, size }: { src: string | null; size: number }) 
 }
 
 /**
- * Paket Z1 / Z1-ek — yazar (kurum) + "Medically reviewed by" satırı (foto, unvan, ad, uzmanlık, inceleme tarihi,
- * profil bağlantısı) + okuma süresi. Hekim satırı yalnızca onaylı hekim varken; "Last reviewed" yalnızca tarih
- * doluyken çizilir (hekim varsa hekim satırında, yoksa meta satırında). Tarihler sunucuda biçimlenir (hidrasyon güvenli).
+ * Paket AH — yazar (kurum: "WM Health Editorial Team") + yayın tarihi + okuma süresi. Hekim/inceleyen
+ * satırı (Medically reviewed by / Review pending) ziyaretçi görünümünde YOKTUR. Tarihler sunucuda biçimlenir.
  */
-export function BlogByline({
-  post,
-  t,
-  lang,
-  physicianHref,
-  pendingReviewer,
-}: {
-  post: PublicBlogDetail;
-  t: BlogStrings;
-  lang: string;
-  physicianHref: (slug: string) => string;
-  /** Yalnızca taslak önizlemede: onay VERMEMİŞ atanan hekim ("Review pending"). */
-  pendingReviewer?: PublicBlogPreviewDetail["pendingReviewer"];
-}) {
-  const reviewed = formatBlogDate(post.lastReviewedAt, lang);
-  const reviewer = post.reviewer;
-  const reviewedDate = reviewed ? (
-    <span className="inline-flex items-center gap-1.5" data-testid="blog-last-reviewed">
-      <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <time dateTime={post.lastReviewedAt ?? undefined}>{fillBlogString(t.lastReviewed, { date: reviewed })}</time>
-    </span>
-  ) : null;
-  const titleLine = reviewer && reviewer.title && !reviewer.name.toLowerCase().includes(reviewer.title.toLowerCase()) ? reviewer.title : null;
+export function BlogByline({ post, t, lang }: { post: PublicBlogDetail; t: BlogStrings; lang: string }) {
+  const published = formatBlogDate(post.publishedAt, lang);
   return (
     <div className="mt-5 space-y-4" data-testid="blog-byline">
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
@@ -54,62 +32,35 @@ export function BlogByline({
           </p>
         </div>
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground/70">
-          {!reviewer ? reviewedDate : null}
+          {published ? (
+            <span className="inline-flex items-center gap-1.5" data-testid="blog-published-date">
+              <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <time dateTime={post.publishedAt ?? undefined}>{published}</time>
+            </span>
+          ) : null}
           <span className="inline-flex items-center gap-1.5">
             <Clock className="h-4 w-4" aria-hidden="true" />
             {fillBlogString(t.minRead, { n: post.readingMinutes })}
           </span>
         </p>
       </div>
-      {reviewer ? (
-        <div className="flex w-full items-center gap-4 rounded-[var(--site-radius)] border border-[var(--site-primary)]/25 bg-[var(--site-primary)]/5 p-3 sm:w-fit sm:pe-6" data-testid="blog-byline-reviewer">
-          <BlogAvatar src={reviewer.avatarUrl} size={56} />
-          <p className="min-w-0 text-sm">
-            <span className="flex items-center gap-1 font-medium text-[var(--site-primary)]">
-              <BadgeCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {t.medicallyReviewedBy}
-            </span>
-            {titleLine ? <span className="block text-xs text-foreground/70">{titleLine}</span> : null}
-            <Link href={physicianHref(reviewer.slug)} aria-label={fillBlogString(t.profileAria, { name: reviewer.name })} className="inline-flex min-h-6 items-center font-semibold text-foreground hover:text-[var(--site-primary)] hover:underline">
-              {reviewer.name}
-            </Link>
-            {reviewer.specialty ? <span className="block text-foreground/70">{reviewer.specialty.name}</span> : null}
-            {reviewedDate ? <span className="mt-0.5 block text-foreground/70">{reviewedDate}</span> : null}
-          </p>
-        </div>
-      ) : pendingReviewer ? (
-        <div className="flex w-full items-center gap-4 rounded-[var(--site-radius)] border border-dashed border-border bg-surface p-3 sm:w-fit sm:pe-6" data-testid="blog-byline-pending-reviewer">
-          <BlogAvatar src={pendingReviewer.avatarUrl} size={56} />
-          <p className="min-w-0 text-sm">
-            <span className="flex items-center gap-1 font-medium text-foreground/80">
-              <Hourglass className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {fillBlogString(t.reviewPendingBy, { name: pendingDisplayName(pendingReviewer) })}
-            </span>
-          </p>
-        </div>
-      ) : null}
     </div>
   );
 }
 
-/** Unvan ad içinde zaten geçiyorsa yinelenmez ("Prof. Dr. H. Sofu"). */
-function pendingDisplayName(r: NonNullable<PublicBlogPreviewDetail["pendingReviewer"]>): string {
-  return r.title && !r.name.toLowerCase().includes(r.title.toLowerCase()) ? `${r.title} ${r.name}` : r.name;
-}
-
-/** Taslak önizleme şeridi: onaylı ama yayınlanmamışsa "yayın bekliyor", aksi halde "hekim onayı bekliyor". */
-export function BlogPreviewBanner({ t, approved, status }: { t: BlogStrings; approved: boolean; status?: PublicBlogPreviewDetail["status"] }) {
-  const live = approved && status === "PUBLISHED";
+/** Taslak önizleme şeridi (admin): yayında ise "Preview", değilse "yayın bekliyor" (Paket AH — hekim onayı ifadesi yok). */
+export function BlogPreviewBanner({ t, status }: { t: BlogStrings; status?: PublicBlogPreviewDetail["status"] }) {
+  const live = status === "PUBLISHED";
   return (
     <div role="status" className="mb-6 flex items-center gap-2 rounded-[var(--site-radius)] border border-warning/40 bg-warning/10 px-4 py-3 text-sm font-medium text-foreground" data-testid="blog-preview-banner">
       <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {live ? t.previewBannerLive : approved ? t.previewBannerPublish : t.previewBannerPending}
+      {live ? t.previewBannerLive : t.previewBannerPublish}
     </div>
   );
 }
 
-/** Paket Z1-ek — yazı sonu yazar kutusu: Editorial Team + "Content standards" / "Authors & medical reviewers" bağlantıları. */
-export function BlogAuthorBox({ t, standardsHref, reviewersHref }: { t: BlogStrings; standardsHref: string; reviewersHref: string }) {
+/** Paket Z1-ek — yazı sonu yazar kutusu: Editorial Team + "Content standards" bağlantısı. */
+export function BlogAuthorBox({ t, standardsHref }: { t: BlogStrings; standardsHref: string }) {
   const linkClass = "inline-flex min-h-11 items-center text-sm font-semibold text-[var(--site-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]";
   return (
     <aside className="mt-10 flex gap-4 rounded-[var(--site-radius)] border border-border bg-surface p-5" data-testid="blog-author-box" aria-labelledby="blog-author-box-title">
@@ -123,9 +74,6 @@ export function BlogAuthorBox({ t, standardsHref, reviewersHref }: { t: BlogStri
         <p className="mt-1 flex flex-wrap gap-x-5">
           <Link href={standardsHref} className={linkClass}>
             {t.contentStandards}
-          </Link>
-          <Link href={reviewersHref} className={linkClass}>
-            {t.authorsReviewers}
           </Link>
         </p>
       </div>
@@ -153,43 +101,21 @@ export function BlogKeyTakeaways({ items, title }: { items: string[]; title: str
   );
 }
 
-/** Paket Z1 — "Consult a physician" kartı (yazının ortasında ve sonunda): ilgili uzmanlığın 2 hekimi + "Book" → profil #randevu. */
-export function BlogConsultCard({
-  doctors,
-  t,
-  physicianHref,
-  className,
-}: {
-  doctors: PublicBlogDetail["consultDoctors"];
-  t: BlogStrings;
-  physicianHref: (slug: string) => string;
-  className?: string;
-}) {
-  if (doctors.length === 0) return null;
+/** Paket AH — yazı sonu "Talk to a patient coordinator" kartı → talep formu (hekim kartlarının yerine). */
+export function BlogCoordinatorCard({ t, requestHref, className }: { t: BlogStrings; requestHref: string; className?: string }) {
   return (
-    <aside className={cn("my-8 rounded-[var(--site-radius)] border border-border bg-surface p-5", className)} data-testid="blog-consult-card" aria-label={t.consultTitle}>
-      <p className="font-heading text-lg font-semibold text-foreground">{t.consultTitle}</p>
-      <p className="mt-1 text-sm text-foreground/70">{t.consultText}</p>
-      <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-        {doctors.map((doctor) => (
-          <li key={doctor.slug} className="flex items-center gap-3 rounded-[var(--site-radius)] border border-border bg-background p-3">
-            <BlogAvatar src={doctor.avatarUrl} size={48} />
-            <div className="min-w-0 flex-1">
-              <Link href={physicianHref(doctor.slug)} aria-label={fillBlogString(t.profileAria, { name: doctor.name })} className="block truncate text-sm font-semibold text-foreground hover:underline">
-                {doctor.name}
-              </Link>
-              {doctor.specialty ? <p className="truncate text-xs text-foreground/70">{doctor.specialty.name}</p> : null}
-            </div>
-            <Link
-              href={`${physicianHref(doctor.slug)}#randevu`}
-              aria-label={fillBlogString(t.bookAria, { name: doctor.name })}
-              className="inline-flex min-h-10 shrink-0 items-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-sm font-semibold text-white transition-opacity duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]"
-            >
-              {t.bookButton}
-            </Link>
-          </li>
-        ))}
-      </ul>
+    <aside className={cn("my-8 rounded-[var(--site-radius)] border border-border bg-surface p-5 sm:flex sm:items-center sm:justify-between sm:gap-6", className)} data-testid="blog-coordinator-card" aria-label={t.coordinatorTitle}>
+      <div>
+        <p className="font-heading text-lg font-semibold text-foreground">{t.coordinatorTitle}</p>
+        <p className="mt-1 text-sm text-foreground/70">{t.coordinatorText}</p>
+      </div>
+      <Link
+        href={requestHref}
+        data-testid="blog-coordinator-cta"
+        className="mt-4 inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-5 text-sm font-semibold text-white transition-opacity duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)] sm:mt-0 sm:w-auto"
+      >
+        {t.coordinatorButton}
+      </Link>
     </aside>
   );
 }

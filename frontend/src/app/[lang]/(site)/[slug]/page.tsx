@@ -17,6 +17,7 @@ import { ABOUT_PAGE_SLUG, isAboutTemplatePage } from "@/lib/about-page";
 import { isHomeTemplatePage } from "@/lib/home-page";
 import { aboutSerif } from "@/components/site/about/about-fonts";
 import { buildContentMetadata } from "@/lib/seo";
+import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { SITE_URL } from "@/lib/env";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
@@ -64,6 +65,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     {
       fallbackCanonicalUrl,
       siteName: settings.siteName,
+      fallbackDescription: intermediaryMetaDescription((await getSiteDictionary(lang)).intermediary.description),
       type: "website",
       localizations: page.localizations,
       locales,

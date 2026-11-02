@@ -18,6 +18,7 @@ import { consultationStrings } from "./consultation";
 import { blogStrings } from "./blog";
 import { trustPagesStrings } from "./trust-pages";
 import { intermediaryStrings } from "./intermediary";
+import { requestStrings } from "./request";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -39,4 +40,5 @@ export const siteDictionary: SiteDictionary = {
   blog: blogStrings,
   trustPages: trustPagesStrings,
   intermediary: intermediaryStrings,
+  request: requestStrings,
 };

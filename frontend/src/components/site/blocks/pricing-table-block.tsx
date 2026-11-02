@@ -11,8 +11,8 @@ function gridColsClass(count: number): string {
 
 /** `billingInterval` — YENİ, SALT GÖRSEL bir rozet (mimar §2.4); yoksa hiç render EDİLMEZ. */
 const BILLING_INTERVAL_LABEL: Record<"monthly" | "yearly", string> = {
-  monthly: "Aylık",
-  yearly: "Yıllık",
+  monthly: "Monthly",
+  yearly: "Yearly",
 };
 
 export function PricingTableBlockView({ block, chrome }: { block: PricingTableBlock; chrome: BlockChrome }) {

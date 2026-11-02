@@ -4,7 +4,6 @@ import type { PublicBlogCard } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
 import { fillBlogString, formatBlogDate } from "@/lib/blog/format";
 import { BlogCover } from "./blog-cover";
-import { BlogAvatar } from "./blog-article-parts";
 import { BlogSpecialtyChip } from "./blog-specialty-chip";
 
 /**
@@ -25,7 +24,7 @@ export function BlogPostCard({
   lang: string;
   priority?: boolean;
 }) {
-  const date = formatBlogDate(post.lastReviewedAt ?? post.publishedAt, lang);
+  const date = formatBlogDate(post.publishedAt, lang);
   return (
     <article
       className="group relative flex flex-col overflow-hidden rounded-[var(--site-radius)] border border-border bg-background transition-colors duration-300 focus-within:border-[var(--site-primary)] hover:border-[var(--site-primary)]"
@@ -45,14 +44,8 @@ export function BlogPostCard({
         </h3>
         {post.excerpt ? <p className="mt-2 line-clamp-3 text-sm text-foreground/70">{post.excerpt}</p> : null}
         <div className="mt-auto space-y-1.5 pt-4 text-xs text-foreground/70">
-          {post.reviewer ? (
-            <p className="flex items-center gap-1.5 font-medium text-foreground/80" data-testid="blog-card-reviewer">
-              <BlogAvatar src={post.reviewer.avatarUrl} size={24} />
-              <span>{fillBlogString(t.reviewedBy, { name: post.reviewer.name })}</span>
-            </p>
-          ) : null}
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {date ? <time dateTime={(post.lastReviewedAt ?? post.publishedAt) ?? undefined}>{date}</time> : null}
+            {date ? <time dateTime={post.publishedAt ?? undefined}>{date}</time> : null}
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               {fillBlogString(t.minRead, { n: post.readingMinutes })}

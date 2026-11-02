@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { SOCIAL_PLATFORM_ICONS, SOCIAL_PLATFORM_LABELS } from "@/lib/social-platform-icons";
 import type { BlockChrome, TeamBlock } from "@/lib/page-builder/types";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 
 /** `testimonial`in avatarsız-fallback deseniyle AYNI — baş harf rozeti, yeni ağ isteği açmaz. */
 function initials(name: string): string {
@@ -20,6 +21,8 @@ function gridColsClass(count: number): string {
 }
 
 export function TeamBlockView({ block, chrome }: { block: TeamBlock; chrome: BlockChrome }) {
+  // Paket AH — ekip/hekim blokları ziyaretçi tarafında render edilmez.
+  if (!DOCTORS_VISIBLE_TO_VISITORS) return null;
   const members = block.data.members;
 
   return (

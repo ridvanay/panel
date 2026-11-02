@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "Es wurde nichts gespeichert",
   notStoredText: "Sie haben der Kontaktaufnahme nicht zugestimmt, daher haben wir weder Ihre Anfrage noch Ihre Angaben gespeichert. Um eine Anfrage zu senden, setzen Sie den Haken bei der Kontakterlaubnis und senden Sie sie erneut.",
   editAgain: "Bearbeiten und erneut senden",
+  requestPackage: "Dieses Paket anfragen",
 };

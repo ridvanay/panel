@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { IntermediaryNotice } from "@/components/site/intermediary-notice";
+import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { notFound } from "next/navigation";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
@@ -52,11 +54,12 @@ export default async function PackagesPage({ params, searchParams }: PageProps) 
   const { lang } = await params;
   if (!(await isModuleEnabledServer("telehealth"))) notFound();
   const category = parseCategory((await searchParams).category);
-  const [locales, dict, all, filtered] = await Promise.all([
+  const [locales, dict, all, filtered, settings] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchPackagesServer(lang),
     category ? fetchPackagesServer(lang, { category }) : Promise.resolve(null),
+    fetchSiteSettingsServer(),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const categories = all.categories.length > 0 ? all.categories : Array.from(new Set(all.items.map((p) => p.category)));
@@ -73,6 +76,9 @@ export default async function PackagesPage({ params, searchParams }: PageProps) 
       localize={(path) => withLocalePrefix(path, lang, defaultLocaleCode)}
       dir={localeDirection(lang)}
     />
+      <div dir={localeDirection(lang)} className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
+        <IntermediaryNotice strings={dict.intermediary} certificateNo={settings.healthTourismCertificateNo} />
+      </div>
     </>
   );
 }

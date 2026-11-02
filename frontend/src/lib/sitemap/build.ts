@@ -12,9 +12,9 @@ import type { SitemapEntry, SitemapIndexItem } from "./xml";
  *    `publishedAt`; doktor ve uzmanlıkta `updatedAt` (sayaçları yok); güvenilir tarih yoksa yazılmaz.
  *  - Hariç: taslak/yayınlanmamış (public uçlar zaten döndürmez), `noIndex`, ana sayfa kopyası/test
  *    sayfaları (ana sayfa olmayan ama `home-page` bloğu taşıyan sayfa — canlıdaki `/home1`),
- *    arşivlenmiş/pasif doktorlar, portal/admin/giriş sayfaları (hiç eklenmez).
+ *    portal/admin/giriş sayfaları (hiç eklenmez). Paket AH: hekim sayfaları (`/physicians*`) sitemap'te YOKTUR.
  */
-export const SITEMAP_SECTIONS = ["pages", "physicians", "specialties", "blog", "products", "portfolio", "packages"] as const;
+export const SITEMAP_SECTIONS = ["pages", "specialties", "blog", "products", "portfolio", "packages"] as const;
 export type SitemapSection = (typeof SITEMAP_SECTIONS)[number];
 
 interface LocalizedContent {
@@ -63,7 +63,7 @@ function absolute(siteUrl: string, path: string): string {
 
 function enabledLocales(data: SitemapData): { list: Locale[]; defaultCode: string } {
   const list = data.locales.filter((l) => l.enabled);
-  const defaultCode = (list.find((l) => l.isDefault) ?? list[0])?.code ?? "tr";
+  const defaultCode = (list.find((l) => l.isDefault) ?? list[0])?.code ?? "en";
   return { list, defaultCode };
 }
 
@@ -100,12 +100,6 @@ function expand(data: SitemapData, variants: Variant[], lastmod?: string | null,
   return variants.map((v) => ({ loc: absolute(data.siteUrl, v.path), lastmod: lastmod ?? null, alternates, images }));
 }
 
-function mediaUrl(data: SitemapData, url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  return url.startsWith("/") ? `${data.siteUrl}${url}` : null;
-}
-
 /** Ana sayfa olmayan ama şablon ana sayfa bloğunu taşıyan sayfa (ör. canlıdaki `/home1`) — kopya/test. */
 export function isHomepageDuplicate(page: SitePage, homePageId: string | null): boolean {
   if (page.id === homePageId) return false;
@@ -121,6 +115,8 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
         ...expand(data, home ? contentVariants(data, home, "", true) : allLocaleVariants(data, "/"), home?.publishedAt),
         ...expand(data, allLocaleVariants(data, `/${ABOUT_PAGE_SLUG}`), about?.publishedAt),
         ...expand(data, allLocaleVariants(data, "/contact")),
+        ...expand(data, allLocaleVariants(data, "/request")),
+        ...expand(data, allLocaleVariants(data, "/vip-accommodation-transfer")),
       ];
       for (const page of data.pages) {
         if (page.id === data.homePageId || page.slug === ABOUT_PAGE_SLUG) continue;
@@ -129,31 +125,14 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       }
       return entries;
     }
-    case "physicians": {
-      const doctors = data.doctors.filter((d) => d.isActive !== false && !d.archivedAt);
-      if (doctors.length === 0) return [];
-      const entries = expand(data, allLocaleVariants(data, "/physicians"));
-      // Paket AE — "Tüm yorumlar" sayfası hekim modülüyle birlikte yayında (modül kapalıyken hekim listesi boştur).
-      entries.push(...expand(data, allLocaleVariants(data, "/reviews")));
-      for (const doctor of doctors) {
-        const avatar = mediaUrl(data, doctor.avatarMedia?.url);
-        entries.push(...expand(data, allLocaleVariants(data, `/physicians/${doctor.slug}`), doctor.updatedAt, avatar ? [avatar] : undefined));
-      }
-      return entries;
-    }
     case "specialties": {
-      // Paket V — hekimi olmayan uzmanlık sayfası `noindex`; hekim (birincil ya da ek uzmanlık) atanınca
-      // sitemap'e girer. Sayım, aynı veride yüklenen yayındaki doktorlardan yapılır.
-      const staffed = new Set<string>();
-      for (const d of data.doctors) {
-        if (d.isActive === false || d.archivedAt) continue;
-        if (d.specialty?.slug) staffed.add(d.specialty.slug);
-        for (const extra of d.additionalSpecialties ?? []) staffed.add(extra.slug);
-      }
-      const specialties = data.specialties.filter((s) => s.isActive !== false && staffed.has(s.slug));
+      // Paket AH — hekim bilgisi kullanılmaz: tüm aktif bölümler (üst + alt) girer.
+      const specialties = data.specialties.filter((s) => s.isActive !== false);
       if (specialties.length === 0) return [];
       const entries = expand(data, allLocaleVariants(data, "/specialties"));
       for (const s of specialties) entries.push(...expand(data, allLocaleVariants(data, `/specialties/${s.slug}`), (s as { updatedAt?: string }).updatedAt));
+      // "Tüm yorumlar" sayfası hizmet bölümleriyle birlikte yayında.
+      entries.push(...expand(data, allLocaleVariants(data, "/reviews")));
       return entries;
     }
     case "packages": {

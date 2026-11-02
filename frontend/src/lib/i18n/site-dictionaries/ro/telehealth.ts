@@ -75,7 +75,7 @@ export const telehealthStrings: TelehealthStrings = {
 
   availabilityAndBookingTitle: "Disponibilitate și programare",
 
-  specialtiesPageTitle: "Domeniile noastre de competență",
+  specialtiesPageTitle: "Servicii de turism medical",
 
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
 
@@ -83,20 +83,20 @@ export const telehealthStrings: TelehealthStrings = {
 
   doctorsMetaDescriptionDefault: "Programați o consultație online cu medicii noștri.",
 
-  specialtiesMetaDescription: "Descoperiți medicii noștri în specialități precum {specialties}.",
+  specialtiesMetaDescription: "Descoperă serviciile noastre de turism medical, de exemplu {specialties}.",
 
-  specialtiesMetaDescriptionDefault: "Descoperiți specialitățile noastre și programați o consultație online.",
+  specialtiesMetaDescriptionDefault: "Descoperă serviciile noastre de turism medical și solicită o consultație.",
 
-  specialtyMetaDescription: "Programați o consultație online cu medicii noștri din domeniul {specialty}.",
-  specialtiesPageSubtitle: "Descoperiți medicii noștri după specialitate și faceți-vă programarea online.",
+  specialtyMetaDescription: "Solicită o consultație pentru {specialty}. Un coordonator de pacienți organizează tratamentul în unități medicale autorizate.",
+  specialtiesPageSubtitle: "Alege un serviciu și trimite o solicitare de consultație. Tratamentul se desfășoară în unități medicale autorizate.",
   specialtiesEmptyTitle: "Nu a fost găsită nicio specialitate",
   specialtiesEmptyDescription: "Momentan nu există specialități de afișat.",
   doctorCountOne: "{count} medic",
   doctorCountOther: "{count} medici",
   specialtyDoctorsEmptyTitle: "Nu au fost găsiți medici în această specialitate",
   specialtyDoctorsEmptyDescription: "Momentan nu există medici publicați în această specialitate.",
-  specialtyCoordinatorTitle: "Lăsați coordonatorul nostru să găsească medicul potrivit pentru dumneavoastră",
-  specialtyCoordinatorText: "Spuneți-ne despre situația dumneavoastră, iar un coordonator de pacienți vă va pune în legătură cu un medic potrivit din acest domeniu.",
+  specialtyCoordinatorTitle: "Lasă-te îndrumat de coordonatorul nostru",
+  specialtyCoordinatorText: "Spune-ne care este situația ta, iar un coordonator de pacienți te va ajuta să planifici tratamentul într-o unitate medicală autorizată.",
 
   featuredDoctorsCarouselLabel: "Medici recomandați",
   featuredDoctorsPrevious: "Medicii anteriori",
@@ -134,5 +134,5 @@ export const telehealthStrings: TelehealthStrings = {
   /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
   physiciansPerformingProcedure: "Medici care efectuează această procedură",
   /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
-  breadcrumbSpecialties: "Specialități",
+  breadcrumbSpecialties: "Servicii de turism medical",
 };

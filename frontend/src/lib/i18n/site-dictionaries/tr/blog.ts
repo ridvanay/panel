@@ -102,4 +102,5 @@ export const blogStrings: BlogStrings = {
   reviewPendingBy: "İnceleme bekliyor: {name}",
   previewOpen: "Önizle",
   previewOpenError: "Önizleme açılamadı. Lütfen tekrar deneyin.",
+  coordinatorButton: "Request a consultation",
 };

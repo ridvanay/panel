@@ -24,5 +24,5 @@ export const SOCIAL_PLATFORM_LABELS: Record<SocialPlatform, string> = {
   INSTAGRAM: "Instagram",
   FACEBOOK: "Facebook",
   YOUTUBE: "YouTube",
-  OTHER: "Diğer",
+  OTHER: "Other",
 };

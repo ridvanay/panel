@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { Globe } from "lucide-react";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { formatSiteString } from "@/lib/i18n/site-dictionaries";
+import type { IntermediaryStrings } from "@/lib/i18n/site-dictionaries/types";
+import { legacyFooterTitleKey, looksTurkish } from "@/lib/legacy-turkish-text";
 import { isPhysiciansListHref } from "@/lib/i18n/physicians-path";
 import { SOCIAL_PLATFORM_ICONS, SOCIAL_PLATFORM_LABELS } from "@/lib/social-platform-icons";
 import type { FooterColumnDto, PublicAccreditation, SocialLinkDto } from "@/lib/api/types";
@@ -29,6 +32,17 @@ interface SiteFooterProps {
   accreditations?: PublicAccreditation[];
   accreditationsHref?: string;
   accreditationsLabel?: string;
+  /** Paket AH — kurumsal kimlik ibaresi (logo altı): kısa ibare + açıklama (+ yetki belgesi satırı, numara doluysa). */
+  intermediary?: IntermediaryStrings;
+  certificateNo?: string | null;
+  /** Paket AH — sabit footer metinleri (`dict.nav.footer*`); eski Türkçe DB başlıkları/telif satırı bunlarla değiştirilir. */
+  labels?: { allRightsReserved: string; servicesHeading: string; legalHeading: string; navAria: string };
+}
+
+function columnTitle(title: string, labels: SiteFooterProps["labels"]): string {
+  const key = legacyFooterTitleKey(title);
+  if (key && labels) return labels[key];
+  return title;
 }
 
 export function SiteFooter({
@@ -47,6 +61,9 @@ export function SiteFooter({
   accreditations = [],
   accreditationsHref,
   accreditationsLabel,
+  intermediary,
+  certificateNo,
+  labels,
 }: SiteFooterProps) {
   const localize = (path: string) =>
     activeLocaleCode ? withLocalePrefix(path, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode) : path;
@@ -54,14 +71,18 @@ export function SiteFooter({
   const hasColumns = Boolean(footerColumns && footerColumns.length > 0);
   const year = new Date().getFullYear();
   const displayName = siteName?.trim() || "Site";
+  const defaultCopyright = labels ? `© ${year} ${displayName}. ${labels.allRightsReserved}` : `© ${year} ${displayName}`;
+  // Paket AH — DB'deki eski Türkçe telif satırı ("Tüm hakları saklıdır") ziyaretçiye gösterilmez.
   const copyrightLine =
-    copyrightText && copyrightText.trim().length > 0 ? copyrightText : `© ${year} ${displayName}`;
+    copyrightText && copyrightText.trim().length > 0 && !looksTurkish(copyrightText) ? copyrightText : defaultCopyright;
+  const certificate = certificateNo?.trim();
+  const visibleTagline = tagline && tagline.trim().length > 0 && !looksTurkish(tagline) ? tagline : null;
 
   return (
-    <footer className="border-t border-border">
+    <footer className="border-t border-border" aria-label={labels?.navAria}>
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-col gap-8 sm:flex-row sm:flex-wrap sm:justify-between">
-          <div className="max-w-xs space-y-3">
+          <div className="max-w-sm space-y-3">
             {logoUrl ? (
               // 28 = eski varsayılan `h-7`; çağıran taraf (`getFooterLogoHeight`) zaten header
               // yüksekliğinden orantılayıp `logoHeight` prop'unu geçirdiği için burada sadece
@@ -78,7 +99,18 @@ export function SiteFooter({
             ) : (
               <p className="text-sm font-semibold text-foreground">{displayName}</p>
             )}
-            {tagline && tagline.trim().length > 0 && <p className="text-xs text-foreground/50">{tagline}</p>}
+            {visibleTagline && <p className="text-xs text-foreground/50">{visibleTagline}</p>}
+            {intermediary && (
+              <div className="space-y-1.5 text-xs text-foreground/60" data-testid="footer-intermediary">
+                <p className="text-sm font-semibold text-foreground">{intermediary.shortLabel}</p>
+                <p className="leading-relaxed">{intermediary.description}</p>
+                {certificate && (
+                  <p className="font-medium text-foreground/80" data-testid="footer-certificate">
+                    {formatSiteString(intermediary.certificateLine, { no: certificate })}
+                  </p>
+                )}
+              </div>
+            )}
             {hasSocial && (
               <div className="flex flex-wrap items-center gap-2">
                 {socialLinks!.map((link) => {
@@ -105,7 +137,7 @@ export function SiteFooter({
             <div className="flex flex-1 flex-wrap gap-8 sm:justify-end">
               {footerColumns!.map((column) => (
                 <div key={column.id} className="min-w-[140px] space-y-2">
-                  <p className="text-sm font-medium text-foreground">{column.title}</p>
+                  <p className="text-sm font-medium text-foreground">{columnTitle(column.title, labels)}</p>
                   <ul className="space-y-1.5">
                     {column.links.map((link) => (
                       <li key={link.id}>

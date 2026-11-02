@@ -8,6 +8,7 @@ import { CACHE_TAGS } from "@/lib/cache-tags";
 import { SITE_LOCALE_COOKIE, SITE_LOCALE_COOKIE_MAX_AGE, resolveAuthLocale } from "@/lib/i18n/auth-locale";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 import { legacyPhysiciansPath } from "@/lib/i18n/physicians-path";
+import { removedLocaleRedirectPath } from "@/lib/i18n/removed-locale-path";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
@@ -99,7 +100,7 @@ function maintenanceHtml(message: string, lang: string): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>Bakım Çalışması</title>
+    <title>Maintenance</title>
     <style>
       body { font-family: ui-sans-serif, system-ui, sans-serif; display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; background: #f8fafc; color: #111827; padding: 1.5rem; }
       main { max-width: 28rem; text-align: center; }
@@ -109,15 +110,16 @@ function maintenanceHtml(message: string, lang: string): string {
   </head>
   <body>
     <main>
-      <h1>Bakım Çalışması</h1>
+      <h1>Maintenance</h1>
       <p>${safeMessage}</p>
     </main>
   </body>
 </html>`;
 }
 
-const DEFAULT_MAINTENANCE_MESSAGE = "Sitemizde bakım çalışması yapıyoruz. Kısa süre içinde geri döneceğiz.";
-const FALLBACK_LOCALE_CODE = "tr";
+const DEFAULT_MAINTENANCE_MESSAGE = "We are performing scheduled maintenance. We will be back shortly.";
+// Paket AH — Türkçe kaldırıldı; locale servisi yanıt vermezse son çare dil İngilizce.
+const FALLBACK_LOCALE_CODE = "en";
 
 /** `lib/api/server-locales.ts`'teki AYNI önbellek politikası (`revalidate: 60`) — proxy Edge
  *  runtime'ında paylaşılan modül state'ine güvenilemez, bu yüzden burada TEKRAR fetch edilir
@@ -131,7 +133,7 @@ async function fetchEnabledLocales(): Promise<Locale[]> {
     return json.data;
   } catch {
     return [
-      { code: FALLBACK_LOCALE_CODE, label: "Türkçe", nativeLabel: "Türkçe", isDefault: true, enabled: true, sortOrder: 0, hreflang: null },
+      { code: FALLBACK_LOCALE_CODE, label: "English", nativeLabel: "English", isDefault: true, enabled: true, sortOrder: 0, hreflang: null },
     ];
   }
 }
@@ -261,6 +263,15 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
   if (physiciansPath) {
     const url = request.nextUrl.clone();
     url.pathname = physiciansPath;
+    return NextResponse.redirect(url, 301);
+  }
+
+  // Paket AH (FE1) — kapatılan Türkçe: `/tr` ve `/tr/*` → varsayılan dildeki karşılığına 301 (sorgu dizesi korunur).
+  // Türkçe yasal sayfa adresleri de buradan EN karşılığına gider (slug çözümü sayfada, `redirectToCanonicalSlug`).
+  const removedLocalePath = removedLocaleRedirectPath(pathname, localeCodes);
+  if (removedLocalePath) {
+    const url = request.nextUrl.clone();
+    url.pathname = removedLocalePath;
     return NextResponse.redirect(url, 301);
   }
 

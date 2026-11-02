@@ -32,4 +32,16 @@ export const navStrings: NavStrings = {
   languageButtonAria: "Dili değiştir, şu an: {language}",
   /** Paket AG — açılır menüde üst uzmanlık kartı altındaki alt uzmanlık satırı etiketi. */
   specialtyProceduresTitle: "İşlemler",
+  /** Paket AH — masaüstü açılır menü altındaki 'tüm hizmetler' bağlantısı. */
+  allServices: "All services",
+  /** Paket AH — header'daki 'Request a consultation' düğmesi (talep formuna gider). */
+  requestConsultation: "Request a consultation",
+  /** Paket AH — footer telif satırı sonu. */
+  footerAllRightsReserved: "All rights reserved.",
+  /** Paket AH — footer'da hizmetler sütunu başlığı. */
+  footerServicesHeading: "Health Tourism Services",
+  /** Paket AH — footer'da yasal sayfalar sütunu başlığı. */
+  footerLegalHeading: "Legal",
+  /** Paket AH — footer landmark etiketi. */
+  footerNavAria: "Footer",
 };

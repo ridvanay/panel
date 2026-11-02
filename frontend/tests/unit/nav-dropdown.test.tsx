@@ -16,7 +16,6 @@ function renderDropdown(link: NavDropdownLink) {
       active={false}
       specialties={SPECIALTIES}
       viewAllLabel={`View all ${link.label}`}
-      findDoctorLabel="Find a doctor"
       triggerClassName="text-foreground"
       activeTriggerClassName="text-primary"
     />
@@ -78,9 +77,9 @@ describe("NavDropdown", () => {
 
     // 4 veya daha az öğe → tek kolon
     expect(menu.querySelector(".grid-cols-2")).toBeNull();
-    // Alt bölüm: kendi linki var → View all; uzmanlık menüsü ve üst öğe /doctors değil → Find a doctor
+    // Alt bölüm: kendi linki var → View all; Paket AH — "Find a doctor" bağlantısı kaldırıldı (hekim görünmez)
     expect(within(menu).getByRole("menuitem", { name: "View all Specialties" })).toHaveAttribute("href", "/en/specialties");
-    expect(within(menu).getByRole("menuitem", { name: "Find a doctor" })).toHaveAttribute("href", "/en/physicians");
+    expect(within(menu).queryByRole("menuitem", { name: "Find a doctor" })).toBeNull();
   });
 
   it("4'ten fazla öğede 2 kolon; üst öğe /doctors ise 'Find a doctor' tekrar edilmez; '#' linkte 'View all' yok", async () => {
@@ -190,7 +189,6 @@ function renderDropdownWith(link: NavDropdownLink, specialties: NavSpecialty[]) 
       active={false}
       specialties={specialties}
       viewAllLabel="View all"
-      findDoctorLabel="Find a doctor"
       proceduresLabel="Procedures"
       triggerClassName="text-foreground"
       activeTriggerClassName="text-primary"

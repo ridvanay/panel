@@ -90,26 +90,27 @@ describe("Taslak önizleme sayfası — meta", () => {
 });
 
 describe("Taslak önizleme sayfası — görünüm", () => {
-  it("hekim onayı bekliyorken şerit görünür", async () => {
+  it("yayınlanmamış taslakta şerit 'yayın bekliyor' der (hekim onayı ifadesi yok)", async () => {
     await renderPreview();
-    expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("Preview — awaiting physician approval");
+    expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("Preview — awaiting publication");
+    expect(screen.getByTestId("blog-preview-banner")).not.toHaveTextContent(/physician/i);
     expect(screen.getByRole("status")).toBe(screen.getByTestId("blog-preview-banner"));
   });
 
-  it("onaylı ama yayınlanmamışsa şerit 'yayın bekliyor' der", async () => {
+  it("hekim onayı bayrağı şeridi değiştirmez (Paket AH: yalnızca yayın durumuna bakılır)", async () => {
     await renderPreview("en", { reviewApproved: true });
     expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("Preview — awaiting publication");
   });
 
-  it("yayındaki + onaylı yazıda şerit yalnızca 'Preview'; 'awaiting' yok; hekim satırı yayındaki gibi", async () => {
+  it("yayındaki yazıda şerit yalnızca 'Preview'; 'awaiting' yok; hekim satırı hiç yok", async () => {
     const reviewer = { name: "H. Sofu", title: "Prof. Dr.", slug: "hakan-sofu", avatarUrl: null, specialty: null };
     const { container } = await renderPreview("en", { status: "PUBLISHED", reviewApproved: true, pendingReviewer: null, reviewer, lastReviewedAt: "2026-10-01T10:00:00.000Z" });
     const banner = screen.getByTestId("blog-preview-banner");
     expect(banner).toHaveTextContent(/^Preview$/);
     expect(banner).not.toHaveTextContent(/awaiting/);
-    expect(screen.getByText("Medically reviewed by")).toBeInTheDocument();
-    expect(screen.getByTestId("blog-last-reviewed")).toBeInTheDocument();
-    expect(screen.queryByTestId("blog-byline-pending-reviewer")).toBeNull();
+    expect(screen.queryByText("Medically reviewed by")).toBeNull();
+    expect(screen.queryByTestId("blog-byline-reviewer")).toBeNull();
+    expect(screen.queryByTestId("blog-last-reviewed")).toBeNull();
     expect(container.querySelector('script[type="application/ld+json"]')).toBeNull();
     expect(screen.queryByTestId("blog-share")).toBeNull();
   });
@@ -128,22 +129,14 @@ describe("Taslak önizleme sayfası — görünüm", () => {
     }
   });
 
-  it("'Medically reviewed by' yok; 'Review pending: <unvan + ad>' var", async () => {
+  it("ziyaretçi görünümünde 'Medically reviewed by' ve 'Review pending' yok; yazar 'WM Health Editorial Team'", async () => {
     await renderPreview();
     expect(screen.queryByText("Medically reviewed by")).toBeNull();
     expect(screen.queryByTestId("blog-byline-reviewer")).toBeNull();
-    expect(screen.getByTestId("blog-byline-pending-reviewer")).toHaveTextContent("Review pending: Prof. Dr. H. Sofu");
-  });
-
-  it("unvan ad içinde zaten varsa yinelenmez", async () => {
-    await renderPreview("en", { pendingReviewer: { name: "Prof. Dr. H. Sofu", title: "Prof. Dr.", slug: "x", avatarUrl: null } });
-    expect(screen.getByTestId("blog-byline-pending-reviewer")).toHaveTextContent(/^Review pending: Prof\. Dr\. H\. Sofu$/);
-  });
-
-  it("pendingReviewer yoksa hekim satırı hiç çizilmez", async () => {
-    await renderPreview("en", { pendingReviewer: null });
     expect(screen.queryByTestId("blog-byline-pending-reviewer")).toBeNull();
     expect(screen.queryByText(/Review pending/)).toBeNull();
+    expect(screen.queryByText(/H\. Sofu/)).toBeNull();
+    expect(screen.getByTestId("blog-byline")).toHaveTextContent("WM Health Editorial Team");
   });
 
   it("JSON-LD script'i basılmaz (yayındaki sayfada basılır)", async () => {
@@ -170,24 +163,18 @@ describe("Taslak önizleme sayfası — görünüm", () => {
     expect(screen.getByTestId("blog-disclaimer")).toBeInTheDocument();
   });
 
-  it("yayındaki sayfada şerit ve 'Review pending' çıkmaz (regresyon)", async () => {
+  it("yayındaki sayfada şerit ve hekim satırı çıkmaz (regresyon)", async () => {
     render(await BlogPostPage({ lang: "en", slug: "knee-pain-guide" }));
     expect(screen.queryByTestId("blog-preview-banner")).toBeNull();
     expect(screen.queryByTestId("blog-byline-pending-reviewer")).toBeNull();
-    expect(within(screen.getByTestId("blog-byline-reviewer")).getByRole("link")).toHaveTextContent("Prof. Dr. H. Sofu");
+    expect(screen.queryByTestId("blog-byline-reviewer")).toBeNull();
+    expect(within(screen.getByTestId("blog-byline")).queryAllByRole("link")).toHaveLength(0);
   });
 
-  it("RTL (ar): sayfa dir=rtl, şerit ve hekim satırı Arapça", async () => {
+  it("RTL (ar): sayfa dir=rtl ve şerit Arapça", async () => {
     await renderPreview("ar");
     expect(screen.getByTestId("blog-post")).toHaveAttribute("dir", "rtl");
-    expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("معاينة — بانتظار موافقة الطبيب");
-    expect(screen.getByTestId("blog-byline-pending-reviewer")).toHaveTextContent("المراجعة قيد الانتظار: Prof. Dr. H. Sofu");
-  });
-
-  it("tr: şerit Türkçe", async () => {
-    await renderPreview("tr");
-    expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("Önizleme — hekim onayı bekliyor");
-    expect(screen.getByTestId("blog-byline-pending-reviewer")).toHaveTextContent("İnceleme bekliyor:");
+    expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("معاينة — بانتظار النشر");
   });
 });
 

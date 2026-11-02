@@ -6,7 +6,6 @@ import { ExternalLink } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContactCta } from "@/components/site/contact/contact-cta";
-import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
 import { useActiveLocaleCode, useLocalizePath } from "@/context/locale-alternates-context";
 import { getPackage } from "@/lib/api/packages";
 import type { PackageCardData, PackageDetailData } from "@/lib/api/types";
@@ -93,11 +92,14 @@ function DetailLoader({ card, onClose, onRetry }: { card: PackageCardData; onClo
   return (
     <>
       <PackageDetailBody pkg={state.pkg} t={t} intlLocale={intlLocale} localize={localize} />
-      <div className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-4">
-        <p className="text-sm font-semibold text-foreground">{t.findPhysicianText}</p>
-        <div onClickCapture={onClose}>
-          <MatcherLaunchButton />
-        </div>
+      <div onClickCapture={onClose}>
+        <Link
+          href={`${localize("/request")}?package=${encodeURIComponent(card.slug)}`}
+          data-testid="package-request-cta"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-5 text-sm font-semibold text-white transition-all duration-300 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)]"
+        >
+          {t.requestPackage}
+        </Link>
       </div>
       <div className="space-y-3">
         <p className="text-sm font-semibold text-foreground">{t.contactTitle}</p>

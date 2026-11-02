@@ -165,23 +165,25 @@ describe("HomePageView", () => {
     expect(screen.getByRole("heading", { level: 1, name: en.heroTitle })).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull(); // görsel yok → dekoratif alan
     expect(screen.getByRole("link", { name: en.heroSecondaryCta })).toHaveAttribute("href", "#how");
-    expect(screen.getAllByRole("link", { name: en.heroPrimaryCta })[0]).toHaveAttribute("href", "/en/physicians");
+    expect(screen.getAllByRole("link", { name: en.heroPrimaryCta })[0]).toHaveAttribute("href", "/en/request");
     expect(container.querySelector("#how")).not.toBeNull();
     expect(screen.getByText(en.trust2Title)).toBeInTheDocument();
     // Masaüstü (başlık yanında) + mobil (ızgara altında) kopyası — ikisi de aynı hedefe gider.
-    const viewAll = screen.getAllByRole("link", { name: /View all specialties/ });
+    const viewAll = screen.getAllByRole("link", { name: en.specialtiesViewAll });
     expect(viewAll).toHaveLength(2);
     for (const link of viewAll) expect(link).toHaveAttribute("href", "/en/specialties");
     expect(screen.getAllByText("Step 1").length).toBeGreaterThan(0); // "Nasıl çalışır" VE "journey" bölümlerinde ortak etiket
     expect(screen.getByRole("heading", { level: 2, name: en.journeyTitle })).toBeInTheDocument();
     expect(screen.getByText(en.journeyStep1Title)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "kardiyoloji" })).toHaveAttribute("href", "/en/specialties/kardiyoloji");
-    expect(screen.getByTestId("doctor-count")).toHaveTextContent("3");
+    // Paket AH — ana sayfada hekim/ekip bölümü render edilmez, hekim listesi de çekilmez.
+    expect(screen.queryByTestId("doctors-section")).toBeNull();
+    expect(fetchDoctorsServer).not.toHaveBeenCalled();
     // Şerit anahtarı kapalı olsa bile kapanış bandında acil durum özeti her zaman.
     expect(within(screen.getByRole("note")).getByText(enTelehealth.emergencyNoticeSummary)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual([en.journeyTitle, en.specialtiesTitle, en.howTitle, en.doctorsTitle, en.closingTitle]);
+    expect(headings).toEqual([en.journeyTitle, en.specialtiesTitle, en.howTitle, en.closingTitle]);
   });
 
   it("gizlenen bölümler render edilmez; how gizliyse hero'daki #how butonu da gösterilmez; görsel priority ile yüklenir", async () => {

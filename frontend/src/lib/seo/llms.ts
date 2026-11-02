@@ -1,15 +1,17 @@
-import type { DoctorProfile, Locale, SitePage, Specialty } from "@/lib/api/types";
+import type { Locale, SitePage, Specialty } from "@/lib/api/types";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { isHomepageDuplicate, type SitemapData } from "@/lib/sitemap/build";
-import { publicDoctorName } from "@/lib/doctor-display-name";
 
 /**
  * Paket S — `/llms.txt` ve `/llms-full.txt` (llmstxt.org biçimi, Markdown, kanonik dil EN). Yapay zekâ
- * asistanlarının siteyi doğru anlaması için: uzmanlıklar, doktorlar (kurucu en üstte), işleyiş, diller,
+ * asistanlarının siteyi doğru anlaması için: hizmetler (bölümler), işleyiş, diller,
  * yasal metinler, iletişim ve ZORUNLU acil durum notu. Yalnızca yayımlanmış/aktif/arşivlenmemiş içerik.
  * Kişisel iletişim bilgisi, fiyat ve hasta verisi YOKTUR.
  */
 export const LLMS_CONTACT_EMAIL = "info@wmhealthistanbul.com";
+/** Paket AH — kurumsal kimlik ibaresi (aracı kuruluş; sağlık kuruluşu değil). Hekim adı/sayısı llms çıktısında YOKTUR. */
+export const LLMS_INTERMEDIARY_NOTE =
+  "WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.";
 export const LLMS_EMERGENCY_NOTE = "Not for medical emergencies. Information on this site does not replace an in-person examination.";
 
 export type LlmsData = SitemapData & { siteName: string };
@@ -53,19 +55,6 @@ function firstSentence(text: string | null | undefined): string {
   return (match ? match[0] : clean).trim();
 }
 
-/** Klinik rakam içeren biyografiye çekince eklenir (rakamlar doktorun kendi beyanıdır). */
-function bioWithCaveat(bio: string): string {
-  const clean = sanitizePublicText(bio);
-  if (!clean) return "";
-  return /\d/.test(clean) ? `${clean} (Figures as stated in the doctor's professional biography.)` : clean;
-}
-
-function activeDoctors(data: LlmsData): DoctorProfile[] {
-  return data.doctors
-    .filter((d) => d.isActive !== false && !d.archivedAt)
-    .sort((a, b) => Number(Boolean(b.isFounder)) - Number(Boolean(a.isFounder)) || (a.order ?? 0) - (b.order ?? 0) || a.fullName.localeCompare(b.fullName));
-}
-
 function activeSpecialties(data: LlmsData): Specialty[] {
   return data.specialties.filter((s) => s.isActive !== false).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
@@ -76,16 +65,8 @@ function legalPages(data: LlmsData): SitePage[] {
   );
 }
 
-function doctorLine(data: LlmsData, d: DoctorProfile): string {
-  const name = `${d.title} ${publicDoctorName(d)}`.trim();
-  const parts = [d.specialty?.name, d.subSpecialty].filter(Boolean).join(" — ");
-  return `- [${name}](${url(data, `/physicians/${d.slug}`)})${d.isFounder ? " (founder)" : ""}${parts ? `: ${parts}` : ""}`;
-}
-
 export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean } = {}): string {
-  const doctors = activeDoctors(data);
   const specialties = activeSpecialties(data);
-  const founder = doctors.find((d) => d.isFounder);
   const enabled = data.locales.filter((l) => l.enabled);
   const defaultCode = defaultLocaleCode(data.locales);
   const languages = enabled.map((l) => languageName(l.code));
@@ -93,14 +74,12 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
   const out: string[] = [];
   out.push(`# ${data.siteName || "WM Health Istanbul"}`, "");
   out.push(
-    `> Istanbul-based platform for online video consultations with specialist doctors, built for international patients. ` +
-      `Consultations and the website are available in ${languages.join(", ")}.` +
-      (founder ? ` Founded by ${`${founder.title} ${publicDoctorName(founder)}`.trim()}.` : "") +
-      ` ${LLMS_EMERGENCY_NOTE}`,
+    `> ${LLMS_INTERMEDIARY_NOTE} ` +
+      `The website is available in ${languages.join(", ")}. ${LLMS_EMERGENCY_NOTE}`,
     ""
   );
 
-  out.push("## Specialties", "");
+  out.push("## Health tourism services", "", `- [All services](${url(data, "/specialties")})`);
   for (const s of specialties) {
     const sentence = firstSentence(s.description);
     out.push(`- [${s.name}](${url(data, `/specialties/${s.slug}`)})${sentence ? `: ${sentence}` : ""}`);
@@ -111,26 +90,16 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
   }
   out.push("");
 
-  out.push("## Physicians", "");
-  for (const d of doctors) {
-    out.push(doctorLine(data, d));
-    if (full) {
-      const bio = bioWithCaveat(d.bio ?? "");
-      if (bio) out.push(`  ${bio}`);
-    }
-  }
-  out.push("");
-
   out.push(
     "## How it works",
     "",
-    `1. Choose a specialty or a physician: [Consult Physicians](${url(data, "/physicians")}), [Specialties](${url(data, "/specialties")}).`,
-    "2. Pick an available time on the physician's page. Times are shown in your own time zone and in Istanbul time.",
-    "3. Confirm your details and identity, then pay securely online.",
-    "4. At the appointment time, join the private video consultation from the link in your confirmation email or patient portal.",
+    `1. Choose a service: [Health Tourism Services](${url(data, "/specialties")}).`,
+    `2. Send a consultation request: [Request a consultation](${url(data, "/request")}).`,
+    "3. A patient coordinator contacts you within 1 business day and plans your treatment, travel and stay.",
+    "4. Treatment is performed at an authorized healthcare facility; the coordinator supports you before, during and after your visit.",
     "",
     `- [Home page](${url(data, "/")})`,
-    `- [Book an appointment](${url(data, "/physicians")}): open a physician's page and use the booking section.`,
+    `- [VIP accommodation and transfer](${url(data, "/vip-accommodation-transfer")})`,
     ""
   );
 
@@ -149,7 +118,7 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
     .filter((p) => !p.noIndex && p.title)
     .sort((a, b) => Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? "") || 0);
   if (posts.length > 0) {
-    out.push("## Health guides", "", `- [All health guides](${url(data, "/blog")}): patient guides written by the editorial team and reviewed by physicians.`);
+    out.push("## Health guides", "", `- [All health guides](${url(data, "/blog")}): patient guides written by the editorial team from reliable public health sources.`);
     for (const post of full ? posts : posts.slice(0, 20)) {
       const sentence = firstSentence(post.excerpt);
       out.push(`- [${post.title}](${url(data, `/blog/${post.slug}`)})${sentence ? `: ${sentence}` : ""}`);

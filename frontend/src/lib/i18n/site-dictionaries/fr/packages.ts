@@ -75,4 +75,5 @@ export const packagesStrings: PackagesStrings = {
   notStoredTitle: "Rien n’a été enregistré",
   notStoredText: "Vous n’avez pas autorisé qu’on vous contacte ; nous n’avons donc enregistré ni votre demande ni vos informations. Pour envoyer une demande, cochez l’autorisation de contact puis renvoyez-la.",
   editAgain: "Modifier et renvoyer",
+  requestPackage: "Demander ce forfait",
 };

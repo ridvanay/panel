@@ -82,22 +82,22 @@ export const telehealthStrings: TelehealthStrings = {
   availabilityAndBookingTitle: "Disponibilités et réservation",
 
   // --- /specialties ---
-  specialtiesPageTitle: "Nos domaines d’expertise",
+  specialtiesPageTitle: "Services de tourisme de santé",
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
   doctorsMetaDescription: "Réservez une consultation en ligne avec nos médecins dans des spécialités telles que {specialties}.",
   doctorsMetaDescriptionDefault: "Réservez une consultation en ligne avec nos médecins.",
-  specialtiesMetaDescription: "Découvrez nos médecins dans des spécialités telles que {specialties}.",
-  specialtiesMetaDescriptionDefault: "Découvrez nos spécialités et réservez une consultation en ligne.",
-  specialtyMetaDescription: "Réservez une consultation en ligne avec nos médecins en {specialty}.",
-  specialtiesPageSubtitle: "Découvrez nos médecins par spécialité et réservez votre rendez-vous en ligne.",
+  specialtiesMetaDescription: "Découvrez nos services de tourisme de santé, par exemple {specialties}.",
+  specialtiesMetaDescriptionDefault: "Découvrez nos services de tourisme de santé et demandez une consultation.",
+  specialtyMetaDescription: "Demandez une consultation pour {specialty}. Un coordinateur patient organise le traitement dans des établissements de santé autorisés.",
+  specialtiesPageSubtitle: "Choisissez un service et envoyez une demande de consultation. Le traitement est réalisé dans des établissements de santé autorisés.",
   specialtiesEmptyTitle: "Aucune spécialité trouvée",
   specialtiesEmptyDescription: "Aucune spécialité à afficher pour le moment.",
   doctorCountOne: "{count} médecin",
   doctorCountOther: "{count} médecins",
   specialtyDoctorsEmptyTitle: "Aucun médecin trouvé dans cette spécialité",
   specialtyDoctorsEmptyDescription: "Aucun médecin n’est actuellement publié dans cette spécialité.",
-  specialtyCoordinatorTitle: "Laissez notre coordinateur trouver le médecin qui vous convient",
-  specialtyCoordinatorText: "Expliquez-nous votre situation : un coordinateur patients vous orientera vers un médecin adapté dans cette spécialité.",
+  specialtyCoordinatorTitle: "Laissez notre coordinateur vous guider",
+  specialtyCoordinatorText: "Parlez-nous de votre situation : un coordinateur patient vous aidera à organiser le traitement dans un établissement de santé autorisé.",
 
   // --- Öne Çıkan Doktorlar carousel'i (Paket D) ---
   featuredDoctorsCarouselLabel: "Médecins à la une",
@@ -136,5 +136,5 @@ export const telehealthStrings: TelehealthStrings = {
   /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
   physiciansPerformingProcedure: "Médecins réalisant cette intervention",
   /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
-  breadcrumbSpecialties: "Spécialités",
+  breadcrumbSpecialties: "Services de tourisme de santé",
 };

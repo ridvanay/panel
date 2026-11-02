@@ -75,7 +75,7 @@ export const telehealthStrings: TelehealthStrings = {
 
   availabilityAndBookingTitle: "المواعيد المتاحة والحجز",
 
-  specialtiesPageTitle: "مجالات خبرتنا",
+  specialtiesPageTitle: "خدمات السياحة العلاجية",
 
   // Paket U (B4) — sayfa meta açıklamaları (önceden tüm dillerde Türkçe sabit metindi).
 
@@ -83,20 +83,20 @@ export const telehealthStrings: TelehealthStrings = {
 
   doctorsMetaDescriptionDefault: "احجز استشارة عبر الإنترنت مع أطبائنا.",
 
-  specialtiesMetaDescription: "تعرّف على أطبائنا في تخصصات مثل {specialties}.",
+  specialtiesMetaDescription: "اكتشف خدمات السياحة العلاجية لدينا، مثل {specialties}.",
 
-  specialtiesMetaDescriptionDefault: "اكتشف تخصصاتنا واحجز استشارة عبر الإنترنت.",
+  specialtiesMetaDescriptionDefault: "اكتشف خدمات السياحة العلاجية لدينا واطلب استشارة.",
 
-  specialtyMetaDescription: "احجز استشارة عبر الإنترنت مع أطبائنا في تخصص {specialty}.",
-  specialtiesPageSubtitle: "اكتشف أطباءنا حسب التخصص واحجز موعدك عبر الإنترنت.",
+  specialtyMetaDescription: "اطلب استشارة بخصوص {specialty}. ينظّم منسق المرضى العلاج في منشآت صحية مرخّصة.",
+  specialtiesPageSubtitle: "اختر خدمة وأرسل طلب استشارة. يُجرى العلاج في منشآت صحية مرخّصة.",
   specialtiesEmptyTitle: "لم يُعثر على أي تخصص",
   specialtiesEmptyDescription: "لا توجد تخصصات لعرضها حاليًا.",
   doctorCountOne: "عدد الأطباء: {count}",
   doctorCountOther: "عدد الأطباء: {count}",
   specialtyDoctorsEmptyTitle: "لا يوجد أطباء في هذا التخصص",
   specialtyDoctorsEmptyDescription: "لا يوجد حاليًا أطباء منشورون في هذا التخصص.",
-  specialtyCoordinatorTitle: "دع منسقنا يحدد الطبيب المناسب لك",
-  specialtyCoordinatorText: "أخبرنا عن حالتك وسيقوم منسق المرضى بربطك بطبيب مناسب في هذا التخصص.",
+  specialtyCoordinatorTitle: "دع منسقنا يرشدك",
+  specialtyCoordinatorText: "أخبرنا بحالتك وسيساعدك منسق المرضى على تخطيط العلاج في منشأة صحية مرخّصة.",
 
   featuredDoctorsCarouselLabel: "أطباء مميزون",
   featuredDoctorsPrevious: "الأطباء السابقون",
@@ -134,5 +134,5 @@ export const telehealthStrings: TelehealthStrings = {
   /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
   physiciansPerformingProcedure: "الأطباء الذين يجرون هذا الإجراء",
   /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
-  breadcrumbSpecialties: "التخصصات",
+  breadcrumbSpecialties: "خدمات السياحة العلاجية",
 };

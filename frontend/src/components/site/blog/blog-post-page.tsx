@@ -23,7 +23,8 @@ import { BlogToc } from "./blog-toc";
 import { BlogFaq } from "./blog-faq";
 import { BlogShareButtons } from "./blog-share-buttons";
 import { BlogPostCard } from "./blog-post-card";
-import { BlogAuthorBox, BlogByline, BlogConsultCard, BlogKeyTakeaways, BlogPreviewBanner, BlogReferences } from "./blog-article-parts";
+import { BlogAuthorBox, BlogByline, BlogCoordinatorCard, BlogKeyTakeaways, BlogPreviewBanner, BlogReferences } from "./blog-article-parts";
+import { IntermediaryNotice } from "@/components/site/intermediary-notice";
 import { BlogReadingProgress } from "./blog-reading-progress";
 
 type PostPageProps = { lang: string; slug: string };
@@ -78,7 +79,7 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
   if (!post) notFound();
 
   redirectToCanonicalSlug({ requestedSlug: slug, activeLocale: lang, localizations: toContentLocalizations(post), locales, pathPrefix: "/blog" });
-  return <BlogPostView post={post} lang={lang} slug={slug} locales={locales} dict={dict} siteName={settings.siteName} />;
+  return <BlogPostView post={post} lang={lang} slug={slug} locales={locales} dict={dict} siteName={settings.siteName} certificateNo={settings.healthTourismCertificateNo} />;
 }
 
 type BlogDict = Awaited<ReturnType<typeof getSiteDictionary>>;
@@ -94,6 +95,7 @@ export function BlogPostView({
   locales,
   dict,
   siteName,
+  certificateNo,
   preview,
 }: {
   post: PublicBlogDetail;
@@ -102,13 +104,15 @@ export function BlogPostView({
   locales: Locale[];
   dict: BlogDict;
   siteName: string;
+  /** Paket AH — yetki belgesi numarası (yalnız doluysa belge satırı çizilir). */
+  certificateNo?: string | null;
   preview?: Pick<PublicBlogPreviewDetail, "pendingReviewer" | "reviewApproved" | "status">;
 }) {
   const localizations = toContentLocalizations(post);
   const t = dict.blog;
   const defaultLocale = locales.find((l) => l.isDefault)?.code ?? lang;
   const localize = (path: string) => withLocalePrefix(path, lang, defaultLocale);
-  const physicianHref = (doctorSlug: string) => localize(`/physicians/${doctorSlug}`);
+  const requestHref = localize("/request");
   const url = `${SITE_URL}${localize(`/blog/${slug}`)}`;
   const trackedSlug = post.localizations.find((l) => l.locale === defaultLocale)?.slug ?? slug;
 
@@ -119,7 +123,6 @@ export function BlogPostView({
         url,
         siteUrl: SITE_URL,
         siteName,
-        physicianUrl: (doctorSlug) => `${SITE_URL}${physicianHref(doctorSlug)}`,
         imageUrl: toPublicMediaUrl(post.coverCompatUrl ?? post.coverUrl),
         inLanguage: lang,
       });
@@ -134,7 +137,7 @@ export function BlogPostView({
 
   return (
     <div dir={localeDirection(lang)} className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12" data-testid="blog-post">
-      {preview ? <BlogPreviewBanner t={t} approved={preview.reviewApproved} status={preview.status} /> : null}
+      {preview ? <BlogPreviewBanner t={t} status={preview.status} /> : null}
       {preview ? null : <SyncLocaleAlternates kind="blog" items={localizations} />}
       {preview ? null : <ViewTracker kind="blog" slug={trackedSlug} />}
       {jsonLd.map((json, index) => (
@@ -151,7 +154,7 @@ export function BlogPostView({
           </p>
         ) : null}
         <h1 className="mt-3 font-heading text-3xl font-semibold leading-tight text-foreground sm:text-4xl">{post.title}</h1>
-        <BlogByline post={post} t={t} lang={lang} physicianHref={physicianHref} pendingReviewer={preview?.pendingReviewer ?? null} />
+        <BlogByline post={post} t={t} lang={lang} />
       </header>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-12">
@@ -168,7 +171,6 @@ export function BlogPostView({
             {split ? (
               <>
                 <RichContentWithShortcodes html={split[0]} className={PROSE_CLASS} locale={lang} />
-                <BlogConsultCard doctors={post.consultDoctors} t={t} physicianHref={physicianHref} />
                 <RichContentWithShortcodes html={split[1]} className={PROSE_CLASS} locale={lang} />
               </>
             ) : (
@@ -177,13 +179,14 @@ export function BlogPostView({
           </div>
 
           <div>
-            <BlogConsultCard doctors={post.consultDoctors} t={t} physicianHref={physicianHref} className="mt-10" />
+            <BlogCoordinatorCard t={t} requestHref={requestHref} className="mt-10" />
             <BlogFaq items={post.faq} title={t.faqTitle} />
             <BlogReferences items={post.references} t={t} lang={lang} />
-            <BlogAuthorBox t={t} standardsHref={localize("/content-standards")} reviewersHref={localize("/medical-reviewers")} />
+            <BlogAuthorBox t={t} standardsHref={localize("/content-standards")} />
             <p className="mt-10 rounded-[var(--site-radius)] border border-border bg-surface p-4 text-sm text-foreground/80" data-testid="blog-disclaimer">
               {t.disclaimer}
             </p>
+            <IntermediaryNotice strings={dict.intermediary} certificateNo={certificateNo} className="mt-6" />
             {preview ? null : (
               <BlogShareButtons
                 url={url}

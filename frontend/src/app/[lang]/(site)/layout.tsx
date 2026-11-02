@@ -119,6 +119,8 @@ export default async function SiteLayout({
             dict={dict.nav}
             // Paket AB — üst şerit: "Support in N languages · Free interpreter" (Paket V ayarı).
             support={support ? { count: support.languages.length, interpreterIncluded: support.interpreterIncluded } : null}
+            // Paket AH — üst şerit: kısa ibare + "Treatments by authorized healthcare facilities" (Hakkımızda #authorized-facilities).
+            intermediary={{ shortLabel: dict.intermediary.shortLabel, facilitiesLink: dict.intermediary.facilitiesLink }}
           />
           <main className="flex-1">{children}</main>
           <SiteFooter
@@ -137,6 +139,15 @@ export default async function SiteLayout({
             accreditations={accreditations}
             accreditationsHref={`${withLocalePrefix(`/${ABOUT_PAGE_SLUG}`, lang, defaultLocaleCode)}#accreditations`}
             accreditationsLabel={dict.common.accreditationListTitle}
+            // Paket AH — kimlik ibaresi + (doluysa) yetki belgesi numarası; eski Türkçe DB metinleri sözlükle değiştirilir.
+            intermediary={dict.intermediary}
+            certificateNo={settings.healthTourismCertificateNo ?? null}
+            labels={{
+              allRightsReserved: dict.nav.footerAllRightsReserved,
+              servicesHeading: dict.nav.footerServicesHeading,
+              legalHeading: dict.nav.footerLegalHeading,
+              navAria: dict.nav.footerNavAria,
+            }}
           />
           {appearance.backToTopEnabled && <BackToTopButton />}
           {/* Paket N — açık rızaya dayalı onay bandı (Kabul / Reddet / Tercihler). Bant kapalıysa onay

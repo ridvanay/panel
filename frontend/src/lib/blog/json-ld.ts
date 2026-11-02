@@ -10,8 +10,6 @@ export interface BlogJsonLdInput {
   url: string;
   siteUrl: string;
   siteName: string;
-  /** hekim profili mutlak adresi için (`/physicians/<slug>` dile göre öneklenmiş). */
-  physicianUrl: (slug: string) => string;
   imageUrl?: string | null;
   inLanguage?: string;
 }
@@ -19,23 +17,15 @@ export interface BlogJsonLdInput {
 type JsonObject = Record<string, unknown>;
 
 /**
- * `MedicalWebPage` + `Article` (tek `@graph`) ve FAQ varsa ayrı `FAQPage`. `reviewedBy` yalnızca onaylı
- * hekim varken, `lastReviewed` yalnızca `lastReviewedAt` doluyken yazılır; yazarlar hiçbir zaman kişi değil
- * kurumdur (`Organization`). Metinler düz metindir (keyTakeaways/faq sunucuda etiketten arındırılmıştır).
+ * Paket AH — `Article` ve FAQ varsa ayrı `FAQPage`. `MedicalWebPage`, `reviewedBy` ve `Physician`
+ * YOKTUR (aracı kuruluş; ziyaretçi tarafında hekim görünmez); yazarlar hiçbir zaman kişi değil kurumdur
+ * (`Organization`). Metinler düz metindir (keyTakeaways/faq sunucuda etiketten arındırılmıştır).
  */
 export function buildBlogJsonLd(input: BlogJsonLdInput): JsonObject[] {
   const { post, url, siteUrl, siteName } = input;
   const author: JsonObject = { "@type": "Organization", name: BLOG_AUTHOR_NAME, url: siteUrl };
   const publisher: JsonObject = { "@type": "Organization", name: siteName, url: siteUrl };
-  const about: JsonObject | undefined = post.specialty ? { "@type": "MedicalSpecialty", name: post.specialty.name } : undefined;
-  const reviewedBy: JsonObject | undefined = post.reviewer
-    ? {
-        "@type": "Physician",
-        name: post.reviewer.name,
-        url: input.physicianUrl(post.reviewer.slug),
-        ...(post.reviewer.specialty ? { medicalSpecialty: post.reviewer.specialty.name } : {}),
-      }
-    : undefined;
+  const about: JsonObject | undefined = post.specialty ? { "@type": "Thing", name: post.specialty.name } : undefined;
   const common: JsonObject = {
     headline: post.title,
     name: post.title,
@@ -43,23 +33,21 @@ export function buildBlogJsonLd(input: BlogJsonLdInput): JsonObject[] {
     ...(input.imageUrl ? { image: [input.imageUrl] } : {}),
     ...(input.inLanguage ? { inLanguage: input.inLanguage } : {}),
     ...(post.publishedAt ? { datePublished: post.publishedAt } : {}),
-    dateModified: post.lastReviewedAt ?? post.updatedAt,
+    dateModified: post.updatedAt,
     author,
     publisher,
     mainEntityOfPage: url,
   };
 
-  const medicalWebPage: JsonObject = {
+  const article: JsonObject = {
     "@context": "https://schema.org",
-    "@type": ["MedicalWebPage", "Article"],
+    "@type": "Article",
     ...common,
     url,
-    ...(post.lastReviewedAt ? { lastReviewed: post.lastReviewedAt } : {}),
-    ...(reviewedBy ? { reviewedBy } : {}),
     ...(about ? { about } : {}),
   };
 
-  const out: JsonObject[] = [medicalWebPage];
+  const out: JsonObject[] = [article];
   if (post.faq.length > 0) {
     out.push({
       "@context": "https://schema.org",

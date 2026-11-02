@@ -20,7 +20,6 @@ import {
   Flower2,
   Heart,
   HeartPulse,
-  Languages,
   MessageCircle,
   PersonStanding,
   Phone,
@@ -37,12 +36,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DualSlotLabel } from "@/components/site/telehealth/dual-time";
 import { usePatientTimeZoneState } from "@/components/site/telehealth/use-patient-time-zone";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import { fmt } from "@/lib/i18n/use-portal-strings";
-import { countryForTimeZone, countryName, formatLongDate } from "@/lib/country-display";
+import { countryForTimeZone, countryName } from "@/lib/country-display";
 import { COUNTRY_DIAL_CODES } from "@/lib/country-codes";
 import { fetchLegalPagesClient, resolveExplicitConsentPage, resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { ApiClientError } from "@/lib/api/error";
@@ -65,7 +63,7 @@ import {
   type MatcherSearchHit,
   type MatcherTopic,
 } from "@/lib/api/matcher";
-import { MATCHER_FREE_TEXT_MAX, MATCHER_MAX_TOPICS, bookingHref, emergencyNumberFor, prepareTopicIndex, searchTopics, topicsInText, trackMatcher } from "./matcher-helpers";
+import { MATCHER_FREE_TEXT_MAX, MATCHER_MAX_TOPICS, emergencyNumberFor, prepareTopicIndex, searchTopics, topicsInText, trackMatcher } from "./matcher-helpers";
 import { cn } from "@/lib/utils";
 
 /**
@@ -367,7 +365,7 @@ export function PhysicianMatcher({
     }
     const rec = await recommendPhysicians({ topicIds: recommendTopicIds, preferredLanguage, locale: lang, preference: preference ?? undefined });
     setRecommendation(rec);
-    trackMatcher("matcher_result", { doctors: rec.doctors.length, coordinator: rec.coordinator });
+    trackMatcher("matcher_result", { specialties: rec.specialties.length, coordinator: rec.coordinator });
     if (rec.coordinator) reportMatcherProgress("no_match");
     return rec;
   }
@@ -1030,7 +1028,28 @@ export function PhysicianMatcher({
             </h2>
             {submission && submission.number > 0 && <p className="text-sm text-foreground/70">{fmt(m.requestNumber, { number: submission.number })}</p>}
 
-            {recommendation.coordinator || recommendation.doctors.length === 0 ? (
+            {/* Paket AH — sonuç hekim değil BÖLÜM önerir; her bölüm talep formunu bölüm dolu açar. */}
+            {recommendation.specialties.length > 0 ? (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">{m.specialtiesTitle}</h3>
+                <ul className="grid gap-3 sm:grid-cols-2" data-testid="matcher-specialty-list">
+                  {recommendation.specialties.map((s, index) => (
+                    <li key={s.id} className="flex flex-col rounded-[var(--site-radius)] border border-border bg-surface p-4" data-testid="matcher-specialty-card">
+                      <p className="font-semibold text-foreground">{s.name}</p>
+                      {s.description && <p className="mt-1 line-clamp-3 text-xs text-foreground/70">{s.description}</p>}
+                      <Link
+                        href={`${localize("/request")}?service=${encodeURIComponent(s.slug)}`}
+                        onClick={() => trackMatcher("matcher_request_click", { position: index + 1 })}
+                        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
+                        data-testid="matcher-request"
+                      >
+                        {fmt(m.requestFor, { service: s.name })}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
               <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5" data-testid="matcher-no-match">
                 <h3 className="font-heading text-lg font-semibold text-foreground">{m.noMatchTitle}</h3>
                 <p className="mt-1 text-sm text-foreground/70">{submission ? m.noMatchText : m.noMatchNeedContact}</p>
@@ -1039,81 +1058,14 @@ export function PhysicianMatcher({
                     {m.coordinatorCall}
                   </Button>
                 )}
+                <Link
+                  href={localize("/request")}
+                  className="mt-3 inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-muted"
+                  data-testid="matcher-request-generic"
+                >
+                  {m.requestGeneric}
+                </Link>
               </div>
-            ) : (
-              <>
-                <div>
-                  <h3 className="mb-2 text-sm font-semibold text-foreground">{m.specialtiesTitle}</h3>
-                  <ul className="grid gap-2 sm:grid-cols-2">
-                    {recommendation.specialties.map((s) => (
-                      <li key={s.id} className="rounded-[var(--site-radius)] border border-border bg-surface p-3">
-                        <p className="font-medium text-foreground">{s.name}</p>
-                        {s.description && <p className="mt-1 line-clamp-3 text-xs text-foreground/70">{s.description}</p>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <h3 className="mb-2 text-sm font-semibold text-foreground">{m.physiciansTitle}</h3>
-                  <ul className="grid gap-4 lg:grid-cols-3">
-                    {recommendation.doctors.map((d, index) => (
-                      <li key={d.id} className="flex flex-col rounded-[var(--site-radius)] border border-border bg-surface p-4 shadow-sm" data-testid="matcher-doctor-card">
-                        <div className="flex items-center gap-3">
-                          {d.avatarUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- harici medya URL'si (avatar), boyut sabit
-                            <img src={d.avatarUrl} alt="" width={56} height={56} className="h-14 w-14 shrink-0 rounded-full object-cover" />
-                          ) : (
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-surface-muted text-lg font-semibold text-foreground/60" aria-hidden="true">
-                              {d.displayName.charAt(0)}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="font-semibold text-foreground">
-                              {d.title} {d.displayName}
-                            </p>
-                            {d.specialtyName && <p className="text-xs text-foreground/70">{d.specialtyName}</p>}
-                          </div>
-                        </div>
-                        <p className="mt-2 text-xs text-foreground/70">{fmt(m.speaks, { languages: d.languages.map(languageName).join(", ") })}</p>
-                        {recommendation.interpreterIncluded && (
-                          <span className="mt-2 inline-flex w-fit items-center gap-1 rounded-full bg-[var(--site-primary)]/10 px-2.5 py-1 text-xs font-medium text-[var(--site-primary)]" data-testid="matcher-interpreter-badge">
-                            <Languages className="h-3.5 w-3.5" aria-hidden="true" />
-                            {m.interpreterBadge}
-                          </span>
-                        )}
-                        <div className="mt-3">
-                          <p className="mb-1 text-xs font-semibold text-foreground">{m.nextSlots}</p>
-                          {d.slots.length === 0 ? (
-                            <p className="text-xs text-foreground/60">{m.noSlots}</p>
-                          ) : (
-                            <ul className="space-y-1">
-                              {d.slots.map((slot) => (
-                                <li key={slot.startsAt} className="flex items-center justify-between gap-2 rounded-md bg-background px-2 py-1 text-xs">
-                                  <span className="text-foreground/70">{formatLongDate(slot.startsAt, tz.timeZone ?? "Europe/Istanbul", intlLocale)}</span>
-                                  <DualSlotLabel iso={slot.startsAt} timeZone={tz.timeZone ?? "Europe/Istanbul"} intlLocale={intlLocale} />
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                        <div className="mt-4 flex flex-col gap-2">
-                          <Link
-                            href={bookingHref(localize, d.slug, d.matchedSpecialtySlug)}
-                            onClick={() => trackMatcher("matcher_book_click", { position: index + 1 })}
-                            className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
-                            data-testid="matcher-book"
-                          >
-                            {fmt(m.book, { name: d.displayName })}
-                          </Link>
-                          <Link href={localize(`/physicians/${encodeURIComponent(d.slug)}`)} className="text-center text-sm font-medium text-[var(--site-link,var(--site-primary))] hover:underline">
-                            {m.viewProfile}
-                          </Link>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </>
             )}
 
             <div className="flex flex-wrap gap-2">

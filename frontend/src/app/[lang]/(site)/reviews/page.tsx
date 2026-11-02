@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 import { notFound } from "next/navigation";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
@@ -59,7 +60,7 @@ export default async function ReviewsPage({ params, searchParams }: PageProps) {
   const [locales, dict, data] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
-    fetchReviewsListServer({ locale: lang, doctor: query.doctor, language: query.language, minRating: query.minRating, page: query.page }),
+    fetchReviewsListServer({ locale: lang, doctor: DOCTORS_VISIBLE_TO_VISITORS ? query.doctor : undefined, language: query.language, minRating: query.minRating, page: query.page }),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
 
