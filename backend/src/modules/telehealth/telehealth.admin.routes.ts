@@ -269,7 +269,7 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       schema: { body: CreateSpecialtyRequestSchema, response: { 201: ApiSuccessSchema(SpecialtySchema) } },
     },
     async (request, reply) => {
-      const { name, slug, icon, description, order, isActive, imageMediaId, translations, parentId } = request.body;
+      const { name, slug, icon, description, order, isActive, imageMediaId, translations, parentId, serviceGroup, shortDescription } = request.body;
       if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
       const specialty = await runSerializable(app, async (tx) => {
         if (parentId) await assertValidSpecialtyParent(tx, parentId, undefined);
@@ -283,6 +283,8 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
             isActive: isActive ?? true,
             imageMediaId: imageMediaId ?? null,
             parentId: parentId ?? null,
+            serviceGroup: serviceGroup ?? null,
+            shortDescription: shortDescription ?? null,
             translations: translations ?? {},
           },
           include: WITH_SPECIALTY_IMAGE,

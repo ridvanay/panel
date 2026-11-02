@@ -1723,6 +1723,8 @@ export function toSpecialtyDto(specialty: Specialty & { imageMedia?: Media | nul
     translations: readTranslations(specialty.translations),
     parentId: specialty.parentId,
     parentSlug: specialty.parent?.slug ?? null,
+    serviceGroup: specialty.serviceGroup,
+    shortDescription: specialty.shortDescription,
     createdAt: specialty.createdAt.toISOString(),
     updatedAt: specialty.updatedAt.toISOString(),
   };

@@ -21179,7 +21179,7 @@ components:
     Specialty:
       type: object
       description: "Tıbbi uzmanlık alanı (ör. Kardiyoloji) — `icon-box` bloğuyla AYNI lucide-react ikon sözlüğü."
-      required: [id, name, slug, icon, order, isActive, imageMediaId, imageUrl, parentId, parentSlug, createdAt, updatedAt]
+      required: [id, name, slug, icon, order, isActive, imageMediaId, imageUrl, parentId, parentSlug, serviceGroup, shortDescription, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -21209,6 +21209,16 @@ components:
           type: string
           nullable: true
           description: "Paket AG — üst uzmanlığın slug'ı. Yalnızca uzmanlık uçlarında dolar; doktor yanıtındaki gömülü `specialty` nesnesinde null."
+        serviceGroup:
+          type: string
+          nullable: true
+          enum: [surgery-oncology, digestive-interventional, aesthetic-dental-hair, fertility]
+          description: "Paket AI — hizmet grubu anahtarı (mega menü / hizmet sayfası); null = \"Other\". Grup adları ve sırası frontend sözlüğündedir. Alt uzmanlıklar grubu üst uzmanlıktan miras alır (alt kayıtlarda null)."
+        shortDescription:
+          type: string
+          nullable: true
+          maxLength: 120
+          description: "Paket AI — tek satır kısa açıklama. Public uçlarda `?locale=` ile yerelleştirilir (`translations[dil].shortDescription`); çeviri yoksa kanonik (EN)."
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -22411,7 +22421,17 @@ components:
           description: "Kart görseli — yalnızca PNG/JPG/WebP medya (aksi 422); null görseli kaldırır."
         translations:
           allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
-          description: "Paket O — `{ <dil>: { name (≤80), description (≤500) } }`; gönderilirse harita tamamen yazılır."
+          description: "Paket O — `{ <dil>: { name (≤80), description (≤500), shortDescription (≤120, Paket AI) } }`; gönderilirse harita tamamen yazılır."
+        serviceGroup:
+          type: string
+          nullable: true
+          enum: [surgery-oncology, digestive-interventional, aesthetic-dental-hair, fertility]
+          description: "Paket AI — hizmet grubu; null = Other. Geçersiz anahtar 422 (`serviceGroup`)."
+        shortDescription:
+          type: string
+          nullable: true
+          maxLength: 120
+          description: "Paket AI — tek satır kısa açıklama (kırpılır; boş metin null olur). 120 karakteri aşarsa 422 (`shortDescription`)."
         parentId:
           type: string
           format: uuid

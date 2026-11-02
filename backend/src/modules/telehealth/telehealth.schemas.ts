@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DoctorCvEntrySchema, DoctorFaqItemSchema, DoctorPublicationSchema, DoctorSocialLinkSchema } from "../../schemas/entities";
 import { textTranslationsSchema } from "../../lib/entity-translations";
 import { TimeZoneSchema } from "../../lib/dual-time";
+import { SERVICE_GROUP_KEYS, SHORT_DESCRIPTION_MAX } from "../../lib/service-groups";
 
 /** `.claude/architect-scope-telehealth-template.md` §3.2/§4.1 — Zod istek/param şemaları. */
 
@@ -287,7 +288,17 @@ export const CreateSpecialtyRequestSchema = z.object({
   /** Paket AG — üst uzmanlık id'si (alt uzmanlık yapar); `null` üst seviyeye alır. Kurallar rotada (422). */
   parentId: z.string().uuid().nullable().optional(),
   /** Paket O — dil başına ad/açıklama; gönderilirse haritanın TAMAMI yazılır (boş dil → kanonik EN). */
-  translations: textTranslationsSchema({ name: 80, description: 500 }).optional(),
+  translations: textTranslationsSchema({ name: 80, description: 500, shortDescription: SHORT_DESCRIPTION_MAX }).optional(),
+  /** Paket AI — hizmet grubu (izinli anahtar ya da null = "Other"); geçersiz değer 422 `serviceGroup`. */
+  serviceGroup: z.enum(SERVICE_GROUP_KEYS).nullable().optional(),
+  /** Paket AI — tek satır kısa açıklama (≤120, kırpılır); boş metin null olur. */
+  shortDescription: z
+    .string()
+    .trim()
+    .max(SHORT_DESCRIPTION_MAX)
+    .transform((value) => (value === "" ? null : value))
+    .nullable()
+    .optional(),
 });
 export type CreateSpecialtyRequest = z.infer<typeof CreateSpecialtyRequestSchema>;
 

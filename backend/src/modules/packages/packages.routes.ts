@@ -94,10 +94,10 @@ export async function packagesPublicRoutes(app: FastifyInstance) {
         row.relatedDoctorIds.length
           ? app.prisma.doctorProfile.findMany({
               where: { id: { in: row.relatedDoctorIds }, ...PUBLIC_DOCTOR_WHERE },
-              select: { id: true, slug: true, title: true, translations: true, fullName: true, publicName: true, isFounder: true, avatarMedia: true, specialty: { select: { name: true, description: true, translations: true } } },
+              select: { id: true, slug: true, title: true, translations: true, fullName: true, publicName: true, isFounder: true, avatarMedia: true, specialty: { select: { name: true, description: true, shortDescription: true, translations: true } } },
             })
           : Promise.resolve([]),
-        row.relatedSpecialtyIds.length ? app.prisma.specialty.findMany({ where: { id: { in: row.relatedSpecialtyIds } }, select: { id: true, slug: true, name: true, description: true, translations: true } }) : Promise.resolve([]),
+        row.relatedSpecialtyIds.length ? app.prisma.specialty.findMany({ where: { id: { in: row.relatedSpecialtyIds } }, select: { id: true, slug: true, name: true, description: true, shortDescription: true, translations: true } }) : Promise.resolve([]),
       ]);
       // Yönetici sırası korunur.
       const order = new Map(row.relatedDoctorIds.map((id, i) => [id, i]));

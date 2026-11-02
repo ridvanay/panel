@@ -2415,6 +2415,10 @@ export const SpecialtySchema = z.object({
   parentId: z.string().nullable(),
   /** Üst uzmanlığın slug'ı — yalnızca uzmanlık uçları (`/specialties*`, admin) yükler; gömülü doktor DTO'sunda null. */
   parentSlug: z.string().nullable(),
+  /** Paket AI — hizmet grubu anahtarı (`surgery-oncology` | `digestive-interventional` | `aesthetic-dental-hair` | `fertility`); null = "Other". */
+  serviceGroup: z.string().nullable(),
+  /** Paket AI — tek satır kısa açıklama (≤120); public uçlarda yerelleştirilmiş. */
+  shortDescription: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

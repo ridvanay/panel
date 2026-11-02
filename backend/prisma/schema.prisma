@@ -2290,6 +2290,11 @@ model Specialty {
   /// Alt uzmanlık: üst uzmanlığın id'si (ör. esd/ercp/poem -> gastroenterology). Tek seviye ve döngü
   /// kuralı DB'de değil API'de zorlanır (`NavigationItem.parentId` deseni). Üst silinirse alt üst seviyeye düşer.
   parentId     String?
+  /// Paket AI — mega menü / hizmet sayfası grubu: `surgery-oncology` | `digestive-interventional` | `aesthetic-dental-hair` | `fertility`
+  /// (null = "Other"). İzinli anahtar listesi API'de zorlanır (`src/lib/service-groups.ts`); grup adları/sırası frontend sözlüğündedir.
+  serviceGroup     String?
+  /// Paket AI — tek satır kısa açıklama (en çok 120 karakter); dil çevirileri `translations[dil].shortDescription`.
+  shortDescription String?
 
   parent            Specialty?                  @relation("SpecialtyParent", fields: [parentId], references: [id], onDelete: SetNull)
   children          Specialty[]                 @relation("SpecialtyParent")

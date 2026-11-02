@@ -3,15 +3,15 @@ import { sanitizeRichHtml } from "../../../lib/html-sanitize";
 import { localizeFields } from "../../../lib/entity-translations";
 
 /** Paket O — uzmanlık adı/açıklaması aktif dilde (çeviri yoksa kanonik EN). */
-export function localizeSpecialty<T extends { translations: unknown; name: string; description: string | null }>(specialty: T, contentLocale: string | undefined): T {
-  return localizeFields(specialty, contentLocale, ["name", "description"]);
+export function localizeSpecialty<T extends { translations: unknown; name: string; description: string | null; shortDescription: string | null }>(specialty: T, contentLocale: string | undefined): T {
+  return localizeFields(specialty, contentLocale, ["name", "description", "shortDescription"]);
 }
 
 type DoctorSpecialtyRelations<S> = { specialty: S | null; additionalSpecialties?: Array<{ specialty: S }> };
 
 /** Doktorun birincil ve ek uzmanlık adları aktif dilde (varsayılan dil dahil — bkz. `resolveContentLocaleCode`). */
 export function localizeDoctorSpecialties<
-  S extends { translations: unknown; name: string; description: string | null },
+  S extends { translations: unknown; name: string; description: string | null; shortDescription: string | null },
   T extends DoctorSpecialtyRelations<S>,
 >(doctor: T, contentLocale: string | undefined): T {
   if (!contentLocale) return doctor;
