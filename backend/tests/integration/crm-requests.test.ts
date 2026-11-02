@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase } from "../helpers/reset-db";
+import { istanbulDate } from "../../src/modules/crm/crm.rollup";
 
 /**
  * Paket AJ-4 - admin CRM "Talepler" uclari (/admin/crm/requests*): liste/filtre/durum esleme, atama, ic not,
@@ -116,7 +117,8 @@ describe("Paket AJ-4 - CRM Talepler", () => {
     expect(bySpec.map((r) => r.id)).toEqual([leadIds.second]);
     const none = (await app.inject({ method: "GET", url: `${BASE}?status=converted`, headers: auth(admin.token) })).json().data;
     expect(none).toHaveLength(0);
-    const today = new Date().toISOString().slice(0, 10);
+    // Filtre günleri İstanbul takvimine göredir (UTC tarihi gece 00:00-03:00 arasında bir önceki gündür).
+    const today = istanbulDate();
     const inRange = (await app.inject({ method: "GET", url: `${BASE}?from=${today}&to=${today}`, headers: auth(admin.token) })).json().data;
     expect(inRange).toHaveLength(2);
     const past = (await app.inject({ method: "GET", url: `${BASE}?from=2020-01-01&to=2020-01-02`, headers: auth(admin.token) })).json().data;
