@@ -259,40 +259,39 @@ describe("alt uzmanlık (Paket AG)", () => {
   });
 
   describe("sihirbaz", () => {
-    it("alt uzmanlık önerilirse üst uzmanlığın hekimleri aday olur; hekimsiz alt uzmanlık staffed sayılır; matchedSpecialtySlug üst olabilir", async () => {
+    // Paket AH: sihirbaz doktor değil BÖLÜM önerir — hekim varlığından bağımsız; yanıtta hekim verisi yok.
+    it("alt uzmanlık önerilir (hekim olsun olmasın); yanıtta hekim yok (Paket AH)", async () => {
       const { recommend } = await import("../../src/modules/matcher/matcher.service");
       const topic = await app.prisma.careTopic.create({
         data: { slug: "ag-esd-topic", bodyArea: "digestive", translations: { en: { label: "ESD topic" } }, specialties: { create: [{ specialtyId: esdId, weight: 100 }] } },
       });
-      // gas-doc (gastro hekimi) zaten var; ayrıca ESD'nin kendi hekimi.
       await seedDoctor("esd-doc", esdId);
 
       const res = await recommend(app, { topicIds: [topic.id], preferredLanguage: "tr", locale: "en" });
       expect(res.redFlag).toBe(false);
       expect(res.specialties.map((s) => s.slug)).toEqual(["esd"]);
-      const bySlug = Object.fromEntries(res.doctors.map((d) => [d.slug, d]));
-      expect(Object.keys(bySlug).sort()).toEqual(["esd-doc", "gas-doc"]);
-      expect(bySlug["esd-doc"]!.matchedSpecialtySlug).toBe("esd");
-      expect(bySlug["gas-doc"]!.matchedSpecialtySlug).toBe("gastroenterology");
+      expect(res.doctors).toEqual([]);
 
-      // ESD'nin kendi hekimi silinse bile (hekimsiz alt uzmanlık) üst hekim sayesinde uzmanlık önerilir.
       await app.prisma.doctorProfile.delete({ where: { slug: "esd-doc" } });
       const only = await recommend(app, { topicIds: [topic.id], preferredLanguage: "tr", locale: "en" });
       expect(only.specialties.map((s) => s.slug)).toEqual(["esd"]);
-      expect(only.doctors.map((d) => d.slug)).toEqual(["gas-doc"]);
+      expect(only.doctors).toEqual([]);
       expect(only.coordinator).toBe(false);
     });
 
-    it("üst uzmanlıkta da hekim yoksa alt uzmanlık hâlâ düşülür (koordinatör)", async () => {
-      const { recommend } = await import("../../src/modules/matcher/matcher.service");
+    it("hiç hekim yokken de alt uzmanlık önerilir (Paket AH)", async () => {
+      const { recommend, invalidateMatcherTopicCache } = await import("../../src/modules/matcher/matcher.service");
       const poemId = (await app.prisma.specialty.findUniqueOrThrow({ where: { slug: "poem" } })).id;
       await app.prisma.doctorProfile.deleteMany({});
       const topic = await app.prisma.careTopic.create({
         data: { slug: "ag-poem-topic", bodyArea: "digestive", translations: { en: { label: "POEM topic" } }, specialties: { create: [{ specialtyId: poemId, weight: 100 }] } },
       });
+      // Konu önbelleği önceki testte doldu; yeni konu görünsün.
+      invalidateMatcherTopicCache();
       const res = await recommend(app, { topicIds: [topic.id], preferredLanguage: "tr", locale: "en" });
-      expect(res.specialties).toEqual([]);
-      expect(res.coordinator).toBe(true);
+      expect(res.specialties.map((s) => s.slug)).toEqual(["poem"]);
+      expect(res.doctors).toEqual([]);
+      expect(res.coordinator).toBe(false);
     });
   });
 });
