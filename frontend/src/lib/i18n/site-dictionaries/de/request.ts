@@ -133,4 +133,10 @@ export const requestStrings: RequestStrings = {
   waitGuidesTitle: "Gesundheitsratgeber",
   waitGuidesText: "Praktische Ratgeber für internationale Patienten lesen.",
   waitWhatsapp: "Schreiben Sie uns auf WhatsApp",
+  topicVipTransfer: "Ich interessiere mich für: VIP-Abholung am Flughafen und privater Transfer.",
+  topicVipAccommodation: "Ich interessiere mich für: Unterkunft in der Nähe meiner Behandlungseinrichtung.",
+  topicVipCoordinator: "Ich interessiere mich für: Dolmetscher und Patientenkoordinator (24/7).",
+  topicVipCityTransport: "Ich interessiere mich für: Transport in der Stadt zu Terminen.",
+  topicVipCompanion: "Ich interessiere mich für: Begleit- und Familienunterstützung.",
+  topicVipRecovery: "Ich interessiere mich für: erholsamer Aufenthalt und Nachsorge.",
 };

@@ -172,6 +172,7 @@ export function RequestForm({
   groups,
   groupTitles,
   initialService,
+  initialMessage = null,
   pkg,
   privacyHref,
   consentHref,
@@ -188,6 +189,8 @@ export function RequestForm({
   groups: RequestServiceGroup[];
   groupTitles: Record<ServiceGroupId, string>;
   initialService: string | null;
+  /** VIP sayfasından gelen `?topic=` notu; mesaj alanını ön-doldurur. */
+  initialMessage?: string | null;
   pkg: { slug: string; title: string } | null;
   privacyHref: string | null;
   consentHref: string | null;
@@ -236,7 +239,7 @@ export function RequestForm({
       dial: "",
       phone: "",
       channel: "email",
-      message: "",
+      message: initialMessage ?? "",
       contactConsent: false,
       healthDataConsent: false,
     },

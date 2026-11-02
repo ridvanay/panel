@@ -403,3 +403,13 @@ describe("Talep formu — sözlük (8 dil)", () => {
     expect(tr).toEqual(en);
   });
 });
+
+describe("Talep formu — VIP topic ön-doldurma", () => {
+  it("initialMessage mesaj alanına yazılır; sağlık rızası uyarısı mevcut kuralla çalışır", async () => {
+    const user = userEvent.setup();
+    renderForm({ initialMessage: dict.request.topicVipTransfer });
+    await fillService(user);
+    await fillTiming(user);
+    expect(screen.getByLabelText(dict.request.messageLabel)).toHaveValue(dict.request.topicVipTransfer);
+  });
+});

@@ -81,6 +81,7 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
   const query = await searchParams;
   const serviceParam = firstParam(query.service);
   const packageParam = firstParam(query.package);
+  const topicParam = firstParam(query.topic);
 
   const [locales, dict, settings, specialties, pages, pkg, channels, contactPage] = await Promise.all([
     fetchLocalesServer(),
@@ -106,6 +107,16 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
   const consent = resolveExplicitConsentPage(pages);
 
   const t = dict.request;
+  // VIP sayfası "Request" bağlantıları: ?topic=<vip-...> mesaj alanını kısa hizmet notuyla ön-doldurur; bilinmeyen topic yok sayılır.
+  const topicNotes: Record<string, string> = {
+    "vip-transfer": t.topicVipTransfer,
+    "vip-accommodation": t.topicVipAccommodation,
+    "vip-coordinator": t.topicVipCoordinator,
+    "vip-city-transport": t.topicVipCityTransport,
+    "vip-companion": t.topicVipCompanion,
+    "vip-recovery": t.topicVipRecovery,
+  };
+  const topicNote = Object.hasOwn(topicNotes, topicParam) ? topicNotes[topicParam]! : null;
   const badges = [
     { icon: ShieldCheck, label: t.badgeFree },
     { icon: Clock, label: t.badgeReply },
@@ -140,6 +151,7 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
             groupTitles={groupTitles}
             initialService={initialService}
             pkg={selectedPackage}
+            initialMessage={topicNote}
             privacyHref={notice ? localize(`/${notice.slug}`) : null}
             consentHref={consent ? localize(`/${consent.slug}`) : null}
             homeHref={localize("/")}

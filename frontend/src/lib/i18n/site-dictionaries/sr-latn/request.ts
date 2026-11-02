@@ -133,4 +133,10 @@ export const requestStrings: RequestStrings = {
   waitGuidesTitle: "Zdravstveni vodiči",
   waitGuidesText: "Pročitajte praktične vodiče za strane pacijente.",
   waitWhatsapp: "Pišite nam na WhatsApp",
+  topicVipTransfer: "Zanima me: VIP doček na aerodromu i privatni transfer.",
+  topicVipAccommodation: "Zanima me: smeštaj blizu ustanove u kojoj ću se lečiti.",
+  topicVipCoordinator: "Zanima me: prevodilac i koordinator pacijenata (24/7).",
+  topicVipCityTransport: "Zanima me: prevoz po gradu do termina.",
+  topicVipCompanion: "Zanima me: podrška pratiocima i porodici.",
+  topicVipRecovery: "Zanima me: boravak prilagođen oporavku i praćenje nakon tretmana.",
 };

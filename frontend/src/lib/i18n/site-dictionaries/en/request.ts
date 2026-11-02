@@ -136,6 +136,12 @@ export const requestStrings = {
   waitGuidesTitle: "Health Guides",
   waitGuidesText: "Read practical guides for international patients.",
   waitWhatsapp: "Message us on WhatsApp",
+  topicVipTransfer: "I am interested in: VIP airport meet & greet and private transfer.",
+  topicVipAccommodation: "I am interested in: accommodation near my treatment facility.",
+  topicVipCoordinator: "I am interested in: interpreter and patient coordinator support (24/7).",
+  topicVipCityTransport: "I am interested in: in-city transport for appointments.",
+  topicVipCompanion: "I am interested in: companion & family support.",
+  topicVipRecovery: "I am interested in: recovery-friendly stay and aftercare follow-up.",
 } as const;
 
 export type RequestStrings = Record<keyof typeof requestStrings, string>;
