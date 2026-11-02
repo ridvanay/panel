@@ -174,10 +174,13 @@ describe("splitGuests", () => {
       guest({ id: "i", waiting: false, admittedAt: new Date().toISOString() }),
       guest({ id: "r", waiting: false, admittedAt: new Date().toISOString(), removedAt: new Date().toISOString() }),
       guest({ id: "n", waiting: false, admittedAt: null }),
+      guest({ id: "l", waiting: false, admittedAt: new Date().toISOString(), inRoom: false }),
+      guest({ id: "u", waiting: false, admittedAt: new Date().toISOString(), inRoom: null }),
     ];
     const { waiting, inRoom } = splitGuests(rows);
     expect(waiting.map((g) => g.id)).toEqual(["w"]);
-    expect(inRoom.map((g) => g.id)).toEqual(["i"]);
+    // `inRoom: false` = odadan ayrılmış (listeden düşer); `null` = bilinmiyor (gösterilir).
+    expect(inRoom.map((g) => g.id)).toEqual(["i", "u"]);
   });
 });
 
@@ -249,7 +252,7 @@ describe("MeetingParticipantsPanel", () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Yeni bağlantı üret" }));
     });
-    expect(api.regenerateGuestLink).toHaveBeenCalledWith("m1");
+    expect(api.regenerateGuestLink).toHaveBeenCalledWith("m1", "en");
     expect(within(await screen.findByTestId("meeting-link-card")).getByLabelText("Misafir bağlantısı")).toHaveValue("https://site.test/tr/meet/join#mg_new");
   });
 

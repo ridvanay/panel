@@ -12,12 +12,12 @@ import type { FastifyInstance } from "fastify";
 const sendMailMock = vi.hoisted(() => vi.fn(async () => ({ messageId: "id-1" })));
 vi.mock("../../src/lib/mail", () => ({ sendMail: sendMailMock }));
 
-import { renderBrandedEmail, type EmailBrandContext } from "../../src/lib/branded-email";
+import { escapeHtml, renderBrandedEmail, type EmailBrandContext } from "../../src/lib/branded-email";
 import { loadEmailBrandContext, sendBrandedMail } from "../../src/lib/branded-mail";
 import { SYSTEM_EMAILS, renderSystemEmailSample } from "../../src/modules/email-templates/system-email-catalog";
 import { getSystemVariablesForPurpose } from "../../src/lib/email-variables";
 import { env } from "../../src/config/env";
-import { INTERMEDIARY_LOCALES } from "../../src/lib/intermediary-identity";
+import { INTERMEDIARY_LOCALES, intermediaryIdentityFor } from "../../src/lib/intermediary-identity";
 
 const CTX: EmailBrandContext = {
   siteName: "WM Health Istanbul",
@@ -277,7 +277,21 @@ describe("toplantı daveti (Paket AG İş 3) — PII yok, kurumsal kabuk", () =>
         expect(body.replaceAll("info@example.com", "")).not.toMatch(/@[a-z0-9-]+\.[a-z]{2,}/i);
       }
       expect(sample.html).toContain("/meet/join#mg_sample");
+      // Kurumsal kabuk: aracı kuruluş ibaresi (müşteri e-postası) ve ev sahibi adında unvan yok.
+      expect(sample.html).toContain(escapeHtml(intermediaryIdentityFor(locale === "tr" ? "en" : locale).shortLabel));
+      expect(sample.html).not.toMatch(/Op\. Dr\.|Prof\./);
     }
+  });
+
+  it("tr -> en: Türkçe ziyaretçi/müşteriye Türkçe e-posta gitmez (konu, gövde, düğme, alt bilgi)", async () => {
+    const tr = await renderSystemEmailSample(fakeApp(), entry, "tr");
+    const en = await renderSystemEmailSample(fakeApp(), entry, "en");
+    expect(tr.subject).toBe(en.subject);
+    expect(tr.html).toBe(en.html);
+    expect(tr.html).toContain('<html lang="en"');
+    expect(tr.html).not.toMatch(/[ğĞıİşŞ]/);
+    expect(tr.html).toContain("/en/meet/join#");
+    expect(tr.html).not.toContain("/tr/meet/join");
   });
 });
 

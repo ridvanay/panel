@@ -661,14 +661,15 @@ export class MeetingNotFoundError extends ApiError {
 /** Paket AG (İş 3) — misafir bağlantısı geçersiz (bozuk, bilinmeyen, iptal, bitmiş, çıkarılmış). Mesaj SABİT. 404. */
 export class MeetingLinkInvalidError extends ApiError {
   constructor() {
-    super(404, "MEETING_LINK_INVALID", "Bu bağlantı geçersiz veya süresi dolmuş.");
+    // Ziyaretçiye dönen yanıt: Türkçe olmaz (müşteri tarafı kuralı); mesaj SABİT ve tek tiptir.
+    super(404, "MEETING_LINK_INVALID", "This link is invalid or has expired.");
   }
 }
 
 /** Paket AG (İş 3) — katılım penceresi dışında. `details.reason` = not_yet_open | ended | cancelled; `details.opensAt` yalnız not_yet_open. 409. */
 export class MeetingNotOpenError extends ApiError {
-  constructor(reason: "not_yet_open" | "ended" | "cancelled", opensAt?: Date) {
-    super(409, "MEETING_NOT_OPEN", "Toplantı şu anda katılıma açık değil.", {
+  constructor(reason: "not_yet_open" | "ended" | "cancelled", opensAt?: Date, message = "Toplantı şu anda katılıma açık değil.") {
+    super(409, "MEETING_NOT_OPEN", message, {
       reason: [reason],
       ...(opensAt ? { opensAt: [opensAt.toISOString()] } : {}),
     });

@@ -18,7 +18,7 @@ import {
 import { logAudit } from "../../lib/audit";
 import { runSerializable } from "../../lib/serializable-tx";
 import { sendBrandedMail } from "../../lib/branded-mail";
-import { toBrandLocale } from "../../lib/branded-email";
+import { toCustomerEmailLocale } from "../../lib/branded-email";
 import { isLiveKitConfigured } from "../telehealth/lib/livekit";
 import {
   buildMeetingGuestIdentity,
@@ -448,7 +448,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
           bodyHtml: mail.bodyHtml,
           cta: mail.cta,
           afterCtaHtml: mail.afterCtaHtml,
-          locale: toBrandLocale(request.body.locale),
+          locale: toCustomerEmailLocale(request.body.locale),
           audience: "user",
         });
         sent = true;

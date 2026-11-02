@@ -10,6 +10,7 @@ import {
   type Meeting,
   type MeetingGuestRow,
 } from "@/lib/api/meetings";
+import { defaultGuestLocale } from "@/components/meetings/guest-locales";
 import { fmt, useMeetingErrorMessage, useMeetingStrings } from "@/lib/i18n/use-meeting-strings";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,8 @@ const HIDDEN_POLL_MS = 15_000;
 export function splitGuests(rows: readonly MeetingGuestRow[]): { waiting: MeetingGuestRow[]; inRoom: MeetingGuestRow[] } {
   return {
     waiting: rows.filter((g) => g.waiting && !g.removedAt),
-    inRoom: rows.filter((g) => !g.waiting && g.admittedAt && !g.removedAt),
+    // `inRoom === false`: kabul edilmiş ama odadan ayrılmış misafir listede kalmasın (`null`/yok = bilinmiyor → göster).
+    inRoom: rows.filter((g) => !g.waiting && g.admittedAt && !g.removedAt && g.inRoom !== false),
   };
 }
 
@@ -41,7 +43,7 @@ export function MeetingParticipantsPanel({
   meeting: Pick<Meeting, "id" | "title" | "startsAt" | "autoAdmitGuests">;
   onMeetingChange: (patch: Partial<Meeting>) => void;
 }) {
-  const { t } = useMeetingStrings();
+  const { t, lang } = useMeetingStrings();
   const errorMessage = useMeetingErrorMessage();
   const [rows, setRows] = useState<MeetingGuestRow[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -108,7 +110,7 @@ export function MeetingParticipantsPanel({
   async function confirmRegen() {
     setRegenLoading(true);
     try {
-      const res = await regenerateGuestLink(meetingId);
+      const res = await regenerateGuestLink(meetingId, defaultGuestLocale(lang));
       setLink(res.guestLink);
       setPendingRegen(false);
     } catch (err) {

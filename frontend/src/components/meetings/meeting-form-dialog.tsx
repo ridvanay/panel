@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { defaultGuestLocale, GUEST_LOCALES } from "./guest-locales";
 
 export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120] as const;
 export const CAPACITY_OPTIONS = [2, 3, 4, 5, 6, 7, 8] as const;
@@ -28,6 +29,8 @@ export interface MeetingFormValues {
   maxParticipants: number;
   note: string;
   autoAdmitGuests: boolean;
+  /** Yalnızca oluşturmada: misafir bağlantısının dili. */
+  guestLocale: string;
 }
 
 export type MeetingFormErrors = Partial<Record<"title" | "when", "title" | "when" | "past">>;
@@ -45,7 +48,7 @@ function toTimeInput(d: Date): string {
 }
 
 /** Yeni toplantı için varsayılan: bir sonraki tam saat. */
-export function defaultFormValues(now: Date = new Date()): MeetingFormValues {
+export function defaultFormValues(now: Date = new Date(), uiLang = "en"): MeetingFormValues {
   const next = new Date(now);
   next.setMinutes(0, 0, 0);
   next.setHours(next.getHours() + 1);
@@ -57,6 +60,7 @@ export function defaultFormValues(now: Date = new Date()): MeetingFormValues {
     maxParticipants: DEFAULT_CAPACITY,
     note: "",
     autoAdmitGuests: false,
+    guestLocale: defaultGuestLocale(uiLang),
   };
 }
 
@@ -70,6 +74,7 @@ export function valuesFromMeeting(m: Meeting): MeetingFormValues {
     maxParticipants: m.maxParticipants,
     note: m.note ?? "",
     autoAdmitGuests: m.autoAdmitGuests,
+    guestLocale: "en",
   };
 }
 
@@ -101,12 +106,12 @@ export function MeetingFormDialog({
   onOpenChange: (open: boolean) => void;
   /** Verilirse düzenleme; yoksa oluşturma. */
   meeting?: Meeting | null;
-  onSaved: (result: { meeting: Meeting; guestLink?: string }) => void;
+  onSaved: (result: { meeting: Meeting; guestLink?: string; locale?: string }) => void;
 }) {
-  const { t } = useMeetingStrings();
+  const { t, lang } = useMeetingStrings();
   const errorMessage = useMeetingErrorMessage();
   const editing = Boolean(meeting);
-  const [values, setValues] = useState<MeetingFormValues>(() => (meeting ? valuesFromMeeting(meeting) : defaultFormValues()));
+  const [values, setValues] = useState<MeetingFormValues>(() => (meeting ? valuesFromMeeting(meeting) : defaultFormValues(new Date(), lang)));
   const [errors, setErrors] = useState<MeetingFormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -117,12 +122,12 @@ export function MeetingFormDialog({
   useEffect(() => {
     if (!open) return;
     /* eslint-disable react-hooks/set-state-in-effect */
-    setValues(meeting ? valuesFromMeeting(meeting) : defaultFormValues());
+    setValues(meeting ? valuesFromMeeting(meeting) : defaultFormValues(new Date(), lang));
     setErrors({});
     setServerError(null);
     setTimeLocked(Boolean(meeting && new Date(meeting.startsAt).getTime() <= Date.now()));
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [open, meeting]);
+  }, [open, meeting, lang]);
 
   function patch(next: Partial<MeetingFormValues>) {
     setValues((prev) => ({ ...prev, ...next }));
@@ -153,9 +158,10 @@ export function MeetingFormDialog({
           durationMin: values.durationMin,
           maxParticipants: values.maxParticipants,
           autoAdmitGuests: values.autoAdmitGuests,
+          locale: values.guestLocale,
           ...(values.note.trim() ? { note: values.note.trim() } : {}),
         });
-        onSaved({ meeting: created.meeting, guestLink: created.guestLink });
+        onSaved({ meeting: created.meeting, guestLink: created.guestLink, locale: values.guestLocale });
       }
     } catch (err) {
       // Sunucu alan hatalarını forma yansıt (başlık / zaman); diğerleri çevrilmiş genel mesaj.
@@ -242,6 +248,20 @@ export function MeetingFormDialog({
               )}
             </Field>
           </div>
+
+          {!editing && (
+            <Field id="meeting-guest-locale" label={t.guestLanguageLabel} hint={t.guestLanguageHint}>
+              {(inputProps) => (
+                <Select {...inputProps} value={values.guestLocale} onChange={(e) => patch({ guestLocale: e.target.value })}>
+                  {GUEST_LOCALES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
 
           <Field id="meeting-note" label={t.fieldNote} hint={t.noteHint}>
             {(inputProps) => <Textarea {...inputProps} rows={3} maxLength={1000} value={values.note} onChange={(e) => patch({ note: e.target.value })} />}

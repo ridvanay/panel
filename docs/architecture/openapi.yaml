@@ -14096,7 +14096,7 @@ paths:
                         type: object
                         properties:
                           meeting: { $ref: "#/components/schemas/Meeting" }
-                          guestLink: { type: string, description: "https://<site>/{locale}/meet/join#mg_… (yalnızca burada düz döner)" }
+                          guestLink: { type: string, description: "https://<site>/{locale}/meet/join#mg_… (yalnızca burada düz döner). Dış misafir bağlantısıdır: `locale` tr/bilinmeyen ise `en`e düşer (Türkçe ziyaretçiye kapalı)." }
                           host:
                             type: object
                             properties:
@@ -14197,7 +14197,7 @@ paths:
       summary: Misafir bağlantısını yeniden üret (ev sahibi)
       description: >
         Yeni belirteç üretilir ve eski özetin üzerine yazılır (eski bağlantı anında geçersiz). Gövde isteğe bağlıdır
-        (`locale`, varsayılan `en`). Düz bağlantı YALNIZCA bu yanıtta döner. İptal edilmiş / bitmiş toplantı → 409.
+        (`locale`, varsayılan `en`; `tr`/bilinmeyen dil `en`e düşer). Düz bağlantı YALNIZCA bu yanıtta döner. İptal edilmiş / bitmiş toplantı → 409.
         Audit: `meeting.guest_link.created` (`regenerated: true`). **Hız sınırı:** 10 / dakika.
       requestBody:
         required: false
@@ -14303,7 +14303,7 @@ paths:
         (`error.details.reason`: `not_yet_open` | `ended` | `cancelled`; `not_yet_open` ise `details.opensAt`).
 
 
-        Kimlik `meet-host:<userId>`; görünen ad kullanıcı adı (doktorsa `unvan + kısaltılmış ad`). Grant: kamera,
+        Kimlik `meet-host:<userId>`; görünen ad kullanıcı adı (doktorsa UNVANSIZ kısaltılmış ad — ziyaretçi tarafında unvan gösterilmez). Grant: kamera,
         mikrofon, ekran paylaşımı (+ses); `canPublishData=false`, `canUpdateOwnMetadata=false`; yönetici/kayıt
         grant'ı YOK. TTL = `min(endsAt + 10 dk − şimdi, LIVEKIT_TOKEN_TTL_MIN)`, en az 60 sn.
 
@@ -14416,7 +14416,7 @@ paths:
         istekte geri gönderir. Belirtecin SHA-256 özeti mevcut `guestTokenHash` ile eşleşmezse (yenilenmiş / iptal
         edilmiş) → `409 CONFLICT`, e-posta GİTMEZ. Bağlantı e-postaya SUNUCUDA yeniden kurulur. Kurumsal şablon
         (audience `user`): başlık, ev sahibinin görünen adı, zaman ve bağlantı; not, ev sahibi e-postası ve PII YOK.
-        Alıcı adresi saklanmaz ve audit'e yazılmaz. Gönderim hatası 202'yi bozmaz (`sent: false`).
+        E-posta dili müşteri kuralına uyar: `tr` -> `en` (Türkçe e-posta gitmez), aracı kuruluş ibareli kurumsal alt bilgi. Alıcı adresi saklanmaz ve audit'e yazılmaz. Gönderim hatası 202'yi bozmaz (`sent: false`).
         Toplantı başına en çok 10 davet (`409 MEETING_LIMIT_REACHED`). Audit: `meeting.invite.sent` (`{count:1}`,
         yalnız başarıda). **Hız sınırı:** 5 / dakika.
       requestBody:

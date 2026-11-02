@@ -232,9 +232,15 @@ describe("yetki verme / geri alma (PATCH /admin/users/:id/meeting-host)", () => 
     const past = await seedMeeting(editor.id, { startsInMin: -120, durationMin: 30 });
     const otherHost = await grantHost(await mkUser("EDITOR"));
     const others = await seedMeeting(otherHost.id, { startsInMin: 120 });
+    // Açık odadaki ev sahibi + misafir ve başka toplantının odası (dokunulmamalı)
+    lk.rooms.set(open.meeting.roomName, [`meet-host:${editor.id}`, "meet-guest:g1", "patient:p1"]);
+    lk.rooms.set(others.meeting.roomName, [`meet-host:${otherHost.id}`]);
 
     const res = await call("PATCH", `/admin/users/${editor.id}/meeting-host`, admin, { enabled: false });
     expect(res.statusCode).toBe(200);
+    // Açık oda hemen boşaltılır (yalnızca meet-* kimlikleri), başkasının odasına dokunulmaz
+    expect(lk.removed.filter(([room]) => room === open.meeting.roomName).map(([, id]) => id).sort()).toEqual([`meet-guest:g1`, `meet-host:${editor.id}`].sort());
+    expect(lk.removed.some(([room]) => room === others.meeting.roomName)).toBe(false);
 
     const rows = await app.prisma.externalMeeting.findMany({ where: { id: { in: [future.meeting.id, open.meeting.id, past.meeting.id, others.meeting.id] } } });
     const byId = new Map(rows.map((r) => [r.id, r]));
@@ -307,7 +313,8 @@ describe("toplantı oluşturma", () => {
     expect(meeting).toMatchObject({ title: "Haftalık koordinasyon", note: "gizli", maxParticipants: 4, autoAdmitGuests: false, status: "SCHEDULED", phase: "upcoming", guestLinkActive: true, durationMin: 30 });
     expect(Date.parse(meeting.endsAt) - Date.parse(meeting.startsAt)).toBe(30 * 60_000);
     expect(JSON.stringify(res.json())).not.toMatch(/guestTokenHash|roomName|meet_/);
-    expect(guestLink).toMatch(/\/tr\/meet\/join#mg_[A-Za-z0-9_-]{43}$/);
+    // locale: "tr" gönderilse bile bağlantı en'e düşer (Türkçe ziyaretçiye kapalı)
+    expect(guestLink).toMatch(/\/en\/meet\/join#mg_[A-Za-z0-9_-]{43}$/);
 
     const token = guestLink.slice(guestLink.indexOf("#") + 1);
     const row = await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: meeting.id } });
@@ -507,7 +514,7 @@ describe("host-token", () => {
     expect(cancelledRes.json().error.details.reason).toEqual(["cancelled"]);
   });
 
-  it("token: ev sahibi grant'ları, meet-host kimliği, doktorda unvan + kısaltılmış ad, hostJoinedAt ve audit (token yok)", async () => {
+  it("token: ev sahibi grant'ları, meet-host kimliği, doktorda unvansız kısaltılmış ad, hostJoinedAt ve audit (token yok)", async () => {
     const doctorUser = await grantHost(await mkUser("USER", { name: "Gerçek Hesap Adı" }));
     await mkDoctorProfile(doctorUser.id);
     const { meeting } = await seedMeeting(doctorUser.id, { startsInMin: 0 });
@@ -518,7 +525,7 @@ describe("host-token", () => {
     expect(data.roomName).toBe(meeting.roomName);
     const claims = await new TokenVerifier(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET).verify(data.token);
     expect(claims.sub).toBe(`meet-host:${doctorUser.id}`);
-    expect(claims.name).toBe("Op. Dr. M. Demir");
+    expect(claims.name).toBe("M. Demir");
     const video = claims.video as Record<string, unknown>;
     expect(video.room).toBe(meeting.roomName);
     expect([...(video.canPublishSources as string[])].sort()).toEqual(["camera", "microphone", "screen_share", "screen_share_audio"]);

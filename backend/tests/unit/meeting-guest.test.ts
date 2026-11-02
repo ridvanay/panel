@@ -71,8 +71,11 @@ describe("misafir bağlantısı ve oturum belirteçleri", () => {
 
   it("bağlantı belirteci URL parçasında (#) taşınır; extractGuestToken parçayı veya çıplak belirteci okur", () => {
     const { token } = generateGuestToken();
-    const link = buildGuestLink(token, "tr");
-    expect(link).toMatch(/\/tr\/meet\/join#mg_/);
+    const link = buildGuestLink(token, "de");
+    expect(link).toMatch(/\/de\/meet\/join#mg_/);
+    // Türkçe ziyaretçiye kapalı: tr / bilinmeyen dil -> en
+    expect(buildGuestLink(token, "tr")).toMatch(/\/en\/meet\/join#mg_/);
+    expect(buildGuestLink(token, "xx")).toMatch(/\/en\/meet\/join#mg_/);
     expect(new URL(link).search).toBe("");
     expect(extractGuestToken(link)).toBe(token);
     expect(extractGuestToken(token)).toBe(token);
@@ -119,6 +122,12 @@ describe("davet e-postası içeriği (PII yok)", () => {
     endsAt: new Date("2026-11-12T11:00:00Z"),
     joinUrl: "https://example.com/en/meet/join#mg_sample",
   };
+  it("tr -> en: Türkçe metin üretilmez", () => {
+    const tr = buildMeetingInviteEmail({ ...data, locale: "tr" });
+    const en = buildMeetingInviteEmail({ ...data, locale: "en" });
+    expect(tr).toEqual(en);
+    expect(JSON.stringify(tr)).not.toMatch(/[ğĞıİşŞ]/);
+  });
   it.each(["en", "tr", "de", "es", "fr", "ar", "ru", "ro", "sr-latn"])("%s: başlık kaçırılır, bağlantı düğmede, saat yer alır", (locale) => {
     const mail = buildMeetingInviteEmail({ ...data, locale });
     expect(mail.bodyHtml).toContain("Weekly &lt;call&gt;");

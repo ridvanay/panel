@@ -14,12 +14,12 @@ export type GuestNameResult = { ok: true; name: string } | { ok: false; reason: 
 
 export function normalizeGuestName(input: string): GuestNameResult {
   const nfc = input.normalize("NFC");
-  if (FORBIDDEN_CODE_POINTS.test(nfc)) return { ok: false, reason: "Ad görünmez veya kontrol karakteri içeremez." };
+  if (FORBIDDEN_CODE_POINTS.test(nfc)) return { ok: false, reason: "The name cannot contain invisible or control characters." };
   const name = nfc.trim().replace(/\s+/g, " ");
   const length = [...name].length;
-  if (length < 2 || length > 40) return { ok: false, reason: "Ad 2 ile 40 karakter arasında olmalıdır." };
-  if (!ALLOWED.test(name)) return { ok: false, reason: "Ad yalnızca harf, rakam, boşluk, nokta, kesme işareti ve tire içerebilir." };
+  if (length < 2 || length > 40) return { ok: false, reason: "The name must be between 2 and 40 characters." };
+  if (!ALLOWED.test(name)) return { ok: false, reason: "The name can only contain letters, digits, spaces, dots, apostrophes and hyphens." };
   const lower = name.toLocaleLowerCase("en");
-  if (RESERVED_PREFIXES.some((prefix) => lower.startsWith(prefix))) return { ok: false, reason: "Bu ad kullanılamaz." };
+  if (RESERVED_PREFIXES.some((prefix) => lower.startsWith(prefix))) return { ok: false, reason: "This name cannot be used." };
   return { ok: true, name };
 }

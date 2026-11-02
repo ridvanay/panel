@@ -190,13 +190,13 @@ describe("preflight", () => {
     expect(await app.prisma.externalMeetingGuest.count()).toBe(0);
   });
 
-  it("doktor ev sahibinde unvan + kısaltılmış ad", async () => {
+  it("doktor ev sahibinde unvansız kısaltılmış ad", async () => {
     const specialty = await app.prisma.specialty.create({ data: { name: `U ${crypto.randomUUID()}`, slug: `u-${crypto.randomUUID()}`, icon: "heart-pulse" } });
     await app.prisma.doctorProfile.create({
       data: { title: "Op. Dr.", fullName: "Mehmet DEMİR", slug: `d-${crypto.randomUUID()}`, bio: "t", languages: ["tr"], timeZone: "Europe/Istanbul", specialtyId: specialty.id, sessionDurationMin: 30, sessionPriceCents: 1, currency: "TRY", isActive: true, userId: host.id },
     });
     const live = await seed({ startsInMin: 0 });
-    expect((await post("preflight", { t: live.token })).json().data.hostName).toBe("Op. Dr. M. Demir");
+    expect((await post("preflight", { t: live.token })).json().data.hostName).toBe("M. Demir");
   });
 });
 
@@ -350,6 +350,28 @@ describe("join — pencere, bekleme, kapasite, token", () => {
     const again = await join(token, { guestSession: first.json().data.guestSession });
     expect(again.statusCode).toBe(404);
     expect(again.json().error.code).toBe("MEETING_LINK_INVALID");
+  });
+});
+
+describe("ziyaretçiye dönen hata mesajları Türkçe değil", () => {
+  it("geçersiz bağlantı, pencere öncesi, dolu, ad doğrulaması: mesajlar İngilizce (Türkçe harf yok)", async () => {
+    const TURKISH = /[ğĞıİşŞçÇöÖüÜ]/;
+    const bodies: string[] = [];
+    bodies.push((await join("mg_" + "x".repeat(43), { name: "Ada" })).body);
+    const early = await seed({ startsInMin: 120 });
+    bodies.push((await join(early.token, { name: "Ada" })).body);
+    const open = await seed({ startsInMin: 0, max: 2, autoAdmit: true });
+    lk.rooms.set(open.meeting.roomName, [`meet-host:${host.id}`]);
+    bodies.push((await join(open.token)).body);
+    bodies.push((await join(open.token, { name: "A" })).body);
+    bodies.push((await join(open.token, { name: "<b>" })).body);
+    bodies.push((await join(open.token, { name: "Ali​X" })).body);
+    bodies.push((await join(open.token, { name: "meet-x" })).body);
+    lk.rooms.set(open.meeting.roomName, [`meet-host:${host.id}`, "meet-guest:other"]);
+    const full = await join(open.token, { name: "Bob" });
+    expect(full.statusCode).toBe(409);
+    bodies.push(full.body);
+    for (const body of bodies) expect(body).not.toMatch(TURKISH);
   });
 });
 

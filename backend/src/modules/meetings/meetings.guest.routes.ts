@@ -51,7 +51,7 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
           select: {
             name: true,
             status: true,
-            doctorProfile: { select: { title: true, fullName: true, publicName: true, isFounder: true } },
+            doctorProfile: { select: { fullName: true, publicName: true, isFounder: true } },
           },
         },
       },
@@ -103,7 +103,7 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       // 3) pencere: başlangıçtan 15 dk önce açılır
       const now = new Date();
       const opensAt = meetingOpensAt(meeting);
-      if (now.getTime() < opensAt.getTime()) throw new MeetingNotOpenError("not_yet_open", opensAt);
+      if (now.getTime() < opensAt.getTime()) throw new MeetingNotOpenError("not_yet_open", opensAt, "The meeting is not open yet.");
 
       // 4) misafir oturumu
       let guestId: string;
@@ -119,11 +119,11 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
         displayName = guest.displayName;
         session = guestSession;
       } else {
-        if (name === undefined) throw new ValidationError("Ad zorunludur.", { name: ["Ad zorunludur."] });
+        if (name === undefined) throw new ValidationError("Name is required.", { name: ["Name is required."] });
         const normalized = normalizeGuestName(name);
         if (!normalized.ok) throw new ValidationError(normalized.reason, { name: [normalized.reason] });
         const sessions = await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } });
-        if (sessions >= MAX_GUEST_SESSIONS_PER_MEETING) throw new MeetingFullError();
+        if (sessions >= MAX_GUEST_SESSIONS_PER_MEETING) throw new MeetingFullError("The meeting is full.");
         const created = await app.prisma.externalMeetingGuest.create({
           data: { meetingId: meeting.id, displayName: normalized.name, lastSeenAt: now },
           select: { id: true },
@@ -153,7 +153,7 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       if (present !== null) {
         const ownIdentity = buildMeetingGuestIdentity(guestId);
         const guestsInRoom = present.filter((id) => id.startsWith(MEETING_GUEST_IDENTITY_PREFIX) && id !== ownIdentity).length;
-        if (guestsInRoom >= meeting.maxParticipants - 1) throw new MeetingFullError();
+        if (guestsInRoom >= meeting.maxParticipants - 1) throw new MeetingFullError("The meeting is full.");
       }
 
       // 7) token

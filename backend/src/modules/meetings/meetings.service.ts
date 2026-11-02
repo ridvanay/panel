@@ -114,7 +114,7 @@ export async function requireMeetingHost(app: FastifyInstance, userId: string): 
       status: true,
       twoFactorEnabled: true,
       meetingHostGrantedAt: true,
-      doctorProfile: { select: { id: true, title: true, fullName: true, publicName: true, isFounder: true } },
+      doctorProfile: { select: { id: true, fullName: true, publicName: true, isFounder: true } },
     },
   });
   if (!user || user.status !== "ACTIVE" || !canHostMeetings(user)) throw new MeetingHostForbiddenError();
@@ -128,12 +128,16 @@ export async function requireMeetingHost(app: FastifyInstance, userId: string): 
   };
 }
 
-/** Doktorsa `unvan + görünen ad` (Paket U kısaltma kuralı), değilse kullanıcı adı. PII yok (e-posta ASLA). */
+/**
+ * Misafirin gördüğü ev sahibi adı (ön ekran + oda etiketi): doktorsa kısaltılmış görünen ad (Paket U kuralı),
+ * değilse kullanıcı adı. Unvan (Dr./Prof.) EKLENMEZ (ziyaretçi tarafında doktor unvanı gösterilmez kuralı).
+ * PII yok (e-posta ASLA).
+ */
 export function hostDisplayName(user: {
   name: string;
-  doctorProfile?: { title: string; fullName: string; publicName: string | null; isFounder: boolean } | null;
+  doctorProfile?: { fullName: string; publicName: string | null; isFounder: boolean } | null;
 }): string {
-  if (user.doctorProfile) return `${user.doctorProfile.title} ${doctorDisplayName(user.doctorProfile)}`.trim();
+  if (user.doctorProfile) return doctorDisplayName(user.doctorProfile).trim() || user.name;
   return user.name;
 }
 

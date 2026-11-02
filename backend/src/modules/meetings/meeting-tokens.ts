@@ -3,6 +3,7 @@ import { jwtPrivateKey } from "../../lib/keys";
 import { timingSafeEqualHex } from "../../lib/api-key";
 import { hashToken } from "../../lib/tokens";
 import { env } from "../../config/env";
+import { toCustomerEmailLocale } from "../../lib/branded-email";
 import { MEETING_END_GRACE_MS } from "../telehealth/lib/meeting-livekit";
 
 /**
@@ -40,9 +41,12 @@ export function verifyGuestToken(token: string, storedHash: string | null): bool
   return ok && storedHash !== null;
 }
 
-/** `https://<site>/{lang}/meet/join#mg_…` — belirteç URL PARÇASINDA (sunucuya/loglara/Referer'a gitmez). */
+/**
+ * `https://<site>/{lang}/meet/join#mg_…` — belirteç URL PARÇASINDA (sunucuya/loglara/Referer'a gitmez).
+ * Bağlantıyı alan kişi dış misafirdir: Türkçe ziyaretçiye kapalı olduğundan `tr`/bilinmeyen dil `en`'e düşer (Paket AH).
+ */
 export function buildGuestLink(token: string, locale: string): string {
-  return `${env.FRONTEND_URL.replace(/\/$/, "")}/${locale}/meet/join#${token}`;
+  return `${env.FRONTEND_URL.replace(/\/$/, "")}/${toCustomerEmailLocale(locale)}/meet/join#${token}`;
 }
 
 /** İstemcinin gönderdiği bağlantıdan (veya çıplak belirteçten) `mg_…` belirtecini çıkarır; biçim uymuyorsa null. */

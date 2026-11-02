@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { EmailTemplatePurpose } from "@prisma/client";
 import { renderBrandedPreview } from "../../lib/branded-mail";
-import { BRAND_LOCALES, type BrandLocale, type EmailAudience } from "../../lib/branded-email";
+import { BRAND_LOCALES, toCustomerEmailLocale, type BrandLocale, type EmailAudience } from "../../lib/branded-email";
 import { renderTemplate } from "../../lib/template-render";
 import type { EmailCustomVariable } from "../../lib/email-variables";
 import { env } from "../../config/env";
@@ -80,7 +80,7 @@ const CODE_ENTRIES: SystemEmailEntry[] = [
   { id: "code:booking-admin-rescheduled", label: "Randevu saat değişikliği bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
   { id: "code:consultation-request-confirmation", label: "Danışma talebi alındı (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
   { id: "code:consultation-request-admin", label: "Yeni danışma talebi bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
-  { id: "code:meeting-invite", label: "Görüntülü toplantı daveti (dış katılımcı)", audience: "user", source: "code", languages: "9" },
+  { id: "code:meeting-invite", label: "Görüntülü toplantı daveti (dış katılımcı)", audience: "user", source: "code", languages: "8" },
   { id: "code:smtp-test", label: "SMTP yapılandırma testi", audience: "staff", source: "code", languages: "tr" },
 ];
 
@@ -210,10 +210,10 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
       const mail = buildMeetingInviteEmail({
         locale,
         title: "Weekly coordination call",
-        hostName: "Op. Dr. M. Demir",
+        hostName: "M. Demir",
         startsAt: SAMPLE_DATE,
         endsAt: new Date(SAMPLE_DATE.getTime() + 30 * 60_000),
-        joinUrl: `${base}/${locale}/meet/join#mg_sample`,
+        joinUrl: `${base}/${toCustomerEmailLocale(locale)}/meet/join#mg_sample`,
       });
       return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, afterCtaHtml: mail.afterCtaHtml };
     }

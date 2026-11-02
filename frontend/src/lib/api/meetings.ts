@@ -42,9 +42,11 @@ export interface CreateMeetingInput {
   maxParticipants?: number;
   note?: string;
   autoAdmitGuests?: boolean;
+  /** Misafir bağlantısındaki dil öneki (`/{locale}/meet/join#…`); verilmezse sunucu `en` kullanır. */
+  locale?: string;
 }
 
-export type UpdateMeetingInput = Partial<CreateMeetingInput>;
+export type UpdateMeetingInput = Partial<Omit<CreateMeetingInput, "locale">>;
 
 export interface CreateMeetingResponse {
   meeting: Meeting;
@@ -59,6 +61,8 @@ export interface MeetingGuestRow {
   admittedAt: string | null;
   removedAt: string | null;
   waiting: boolean;
+  /** Odada mı? `null` = LiveKit Server API yapılandırılmamış (bilinmiyor); alan yoksa eski sunucu. */
+  inRoom?: boolean | null;
 }
 
 export type HostTokenResponse = MeetingTokenResponse;
@@ -94,8 +98,11 @@ export function updateMeeting(id: string, input: UpdateMeetingInput): Promise<Me
 }
 
 /** Yeni belirteç üretir; ESKİ bağlantıyı anında geçersiz kılar. */
-export function regenerateGuestLink(id: string): Promise<{ guestLink: string }> {
-  return apiFetch<{ guestLink: string }>(`/meetings/${encodeURIComponent(id)}/guest-link`, { method: "POST" });
+export function regenerateGuestLink(id: string, locale?: string): Promise<{ guestLink: string }> {
+  return apiFetch<{ guestLink: string }>(`/meetings/${encodeURIComponent(id)}/guest-link`, {
+    method: "POST",
+    body: locale ? { locale } : {},
+  });
 }
 
 export function revokeGuestLink(id: string): Promise<void> {
@@ -123,9 +130,13 @@ export function removeMeetingGuest(id: string, guestId: string): Promise<void> {
   return apiFetch<void>(`/meetings/${encodeURIComponent(id)}/guests/${encodeURIComponent(guestId)}/remove`, { method: "POST" });
 }
 
-/** Davet e-postası — bağlantı yalnızca oluşturma/yeniden üretme anında bellekte olduğu için istemci gönderir (S5). */
-export function sendMeetingInviteEmail(id: string, input: { link: string; to: string }): Promise<void> {
-  return apiFetch<void>(`/meetings/${encodeURIComponent(id)}/invite-email`, { method: "POST", body: input });
+/**
+ * Davet e-postası (`POST /meetings/:id/invite-email`, 202 `{ sent }`) — düz belirteç sunucuda saklanmadığı için istemci,
+ * oluşturma/yeniden üretme yanıtındaki bağlantıyı geri gönderir (S5). Sunucu bağlantıyı kendisi yeniden kurar; yenilenmiş
+ * (eski) bağlantı 409 alır. `sent: false` = posta sağlayıcısı reddetti (best-effort).
+ */
+export function sendMeetingInviteEmail(id: string, input: { guestLink: string; email: string; locale: string }): Promise<{ sent: boolean }> {
+  return apiFetch<{ sent: boolean }>(`/meetings/${encodeURIComponent(id)}/invite-email`, { method: "POST", body: input });
 }
 
 /** `PATCH /admin/users/:userId/meeting-host` (yalnızca ADMIN). */

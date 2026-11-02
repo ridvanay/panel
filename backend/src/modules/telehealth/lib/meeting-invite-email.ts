@@ -1,4 +1,4 @@
-import { toBrandLocale, type BrandLocale } from "../../../lib/branded-email";
+import { toCustomerEmailLocale, type BrandLocale } from "../../../lib/branded-email";
 import { formatIstanbulStamp } from "./booking-notification-email";
 
 /**
@@ -25,7 +25,8 @@ interface Strings {
   after: string;
 }
 
-const STRINGS: Record<BrandLocale, Strings> = {
+/** Müşteriye giden e-posta Türkçe olmaz (Paket AH): `tr` -> `en` (`toCustomerEmailLocale`), bu yüzden `tr` metni YOK. */
+const STRINGS: Record<Exclude<BrandLocale, "tr">, Strings> = {
   en: {
     subject: (t) => `Video meeting invitation: ${t}`,
     intro: (h) => `${h} has invited you to a video meeting.`,
@@ -33,14 +34,6 @@ const STRINGS: Record<BrandLocale, Strings> = {
     when: "Time",
     cta: "Join the meeting",
     after: "The room opens 15 minutes before the start time. No account is needed; you will be asked for your name. The meeting is not recorded. This link is personal, please do not forward it.",
-  },
-  tr: {
-    subject: (t) => `Görüntülü toplantı daveti: ${t}`,
-    intro: (h) => `${h} sizi bir görüntülü toplantıya davet etti.`,
-    topic: "Konu",
-    when: "Zaman",
-    cta: "Toplantıya katıl",
-    after: "Oda, başlangıçtan 15 dakika önce açılır. Hesap gerekmez; katılırken adınız sorulur. Toplantı kaydedilmez. Bu bağlantı size özeldir, lütfen başkalarına iletmeyin.",
   },
   de: {
     subject: (t) => `Einladung zum Videomeeting: ${t}`,
@@ -116,7 +109,8 @@ export interface MeetingInviteEmail {
 }
 
 export function buildMeetingInviteEmail(data: MeetingInviteEmailData): MeetingInviteEmail {
-  const s = STRINGS[toBrandLocale(data.locale)];
+  const locale = toCustomerEmailLocale(data.locale) as Exclude<BrandLocale, "tr">;
+  const s = STRINGS[locale];
   const time = `${formatIstanbulStamp(data.startsAt)} – ${formatIstanbulStamp(data.endsAt).slice(11)} (Europe/Istanbul) · ${utcClock(data.startsAt)} – ${utcClock(data.endsAt)} UTC`;
   const bodyHtml =
     `<p>${escapeHtml(s.intro(data.hostName))}</p>` +

@@ -8,7 +8,9 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { formatMeetingWhen } from "@/components/site/meeting/meeting-time";
+import { defaultGuestLocale, GUEST_LOCALES } from "./guest-locales";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -21,17 +23,21 @@ export function MeetingLinkCard({
   meeting,
   link,
   heading,
+  locale,
   onDone,
 }: {
   meeting: { id: string; title: string; startsAt: string };
   link: string;
   heading: "created" | "regenerated";
+  /** Bağlantının dil öneki (davet e-postasının varsayılan dili). */
+  locale?: string;
   onDone: () => void;
 }) {
   const { t, fmt: format, lang } = useMeetingStrings();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [copied, setCopied] = useState<"idle" | "ok" | "failed">("idle");
   const [email, setEmail] = useState("");
+  const [emailLocale, setEmailLocale] = useState(() => locale ?? defaultGuestLocale(lang));
   const [emailError, setEmailError] = useState<string | undefined>();
   const [emailState, setEmailState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
 
@@ -53,8 +59,8 @@ export function MeetingLinkCard({
     setEmailError(undefined);
     setEmailState("sending");
     try {
-      await sendMeetingInviteEmail(meeting.id, { link, to: email.trim() });
-      setEmailState("sent");
+      const res = await sendMeetingInviteEmail(meeting.id, { guestLink: link, email: email.trim(), locale: emailLocale });
+      setEmailState(res.sent ? "sent" : "failed");
     } catch {
       // Gönderim hatası (ör. 429) kısa, çevrilmiş mesajla bildirilir; bağlantıyı kendisi paylaşabilir.
       setEmailState("failed");
@@ -119,6 +125,17 @@ export function MeetingLinkCard({
                 {t.emailSend}
               </Button>
             </div>
+          )}
+        </Field>
+        <Field id="meeting-invite-locale" label={t.guestLanguageLabel}>
+          {(inputProps) => (
+            <Select {...inputProps} value={emailLocale} onChange={(e) => setEmailLocale(e.target.value)}>
+              {GUEST_LOCALES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </Select>
           )}
         </Field>
         {emailState === "sent" && (

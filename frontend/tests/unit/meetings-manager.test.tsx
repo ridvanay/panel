@@ -185,6 +185,23 @@ describe("oluşturma formu", () => {
     expect([...duration.options].map((o) => o.value)).toEqual(["15", "30", "45", "60", "90", "120"]);
   });
 
+  it("misafir dili seçilir (varsayılan en, Türkçe seçeneği yok) ve oluşturma isteğine locale olarak gider", async () => {
+    api.createMeeting.mockResolvedValue({ meeting: meeting({ id: "new2" }), guestLink: "https://site.test/de/meet/join#mg_secret" });
+    const dialog = await openForm();
+    const lang = within(dialog).getByLabelText("Misafir dili") as HTMLSelectElement;
+    expect(lang.value).toBe("en");
+    expect([...lang.options].map((o) => o.value)).not.toContain("tr");
+    fireEvent.change(lang, { target: { value: "de" } });
+    fireEvent.change(within(dialog).getByLabelText(/Başlık/), { target: { value: "Geçerli başlık" } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByTestId("meeting-form-submit"));
+    });
+    expect(api.createMeeting.mock.calls[0]![0]).toMatchObject({ locale: "de" });
+    // Davet e-postasının varsayılan dili de aynı seçimden gelir.
+    const card = await screen.findByTestId("meeting-link-card");
+    expect((within(card).getByLabelText("Misafir dili") as HTMLSelectElement).value).toBe("de");
+  });
+
   it("kısa başlıkta alan hatası gösterir ve API'yi çağırmaz", async () => {
     const dialog = await openForm();
     fireEvent.change(within(dialog).getByLabelText(/Başlık/), { target: { value: "ab" } });
@@ -217,7 +234,7 @@ describe("oluşturma formu", () => {
     });
     expect(api.createMeeting).toHaveBeenCalledTimes(1);
     const payload = api.createMeeting.mock.calls[0]![0] as Record<string, unknown>;
-    expect(payload).toMatchObject({ title: "Yeni toplantı", durationMin: 30, maxParticipants: 4, autoAdmitGuests: false, note: "iç not" });
+    expect(payload).toMatchObject({ title: "Yeni toplantı", durationMin: 30, maxParticipants: 4, autoAdmitGuests: false, note: "iç not", locale: "en" });
     expect(typeof payload.startsAt).toBe("string");
     expect(String(payload.startsAt)).toMatch(/Z$/);
 
@@ -269,13 +286,42 @@ describe("bağlantı kartı: e-postayla gönder (yalnızca oluşturma anında)",
     expect(within(card).getByText("Geçerli bir e-posta adresi girin.")).toBeInTheDocument();
     expect(api.sendMeetingInviteEmail).not.toHaveBeenCalled();
 
-    api.sendMeetingInviteEmail.mockResolvedValue(undefined);
+    api.sendMeetingInviteEmail.mockResolvedValue({ sent: true });
     fireEvent.change(within(card).getByLabelText("Misafirin e-posta adresi"), { target: { value: "misafir@example.com" } });
     await act(async () => {
       fireEvent.click(within(card).getByTestId("meeting-send-invite"));
     });
-    expect(api.sendMeetingInviteEmail).toHaveBeenCalledWith("new1", { link: "https://site.test/tr/meet/join#mg_secret", to: "misafir@example.com" });
+    // Sözleşme (backend InviteEmailRequestSchema): { guestLink, email, locale }; Türkçe arayüzde varsayılan dil "en".
+    expect(api.sendMeetingInviteEmail).toHaveBeenCalledWith("new1", {
+      guestLink: "https://site.test/tr/meet/join#mg_secret",
+      email: "misafir@example.com",
+      locale: "en",
+    });
     expect(within(card).getByTestId("meeting-invite-sent")).toBeInTheDocument();
+  });
+
+  it("davet dili seçilebilir (yalnızca 8 ziyaretçi dili; Türkçe yok)", async () => {
+    const card = await createAndGetCard();
+    const select = within(card).getByLabelText("Misafir dili") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["en", "es", "de", "fr", "ru", "ro", "sr-latn", "ar"]);
+    api.sendMeetingInviteEmail.mockResolvedValue({ sent: true });
+    fireEvent.change(select, { target: { value: "de" } });
+    fireEvent.change(within(card).getByLabelText("Misafirin e-posta adresi"), { target: { value: "gast@example.com" } });
+    await act(async () => {
+      fireEvent.click(within(card).getByTestId("meeting-send-invite"));
+    });
+    expect(api.sendMeetingInviteEmail).toHaveBeenCalledWith("new1", expect.objectContaining({ email: "gast@example.com", locale: "de" }));
+  });
+
+  it("sunucu { sent: false } dönerse (posta sağlayıcısı reddetti) başarısız mesajı gösterilir", async () => {
+    const card = await createAndGetCard();
+    api.sendMeetingInviteEmail.mockResolvedValue({ sent: false });
+    fireEvent.change(within(card).getByLabelText("Misafirin e-posta adresi"), { target: { value: "misafir@example.com" } });
+    await act(async () => {
+      fireEvent.click(within(card).getByTestId("meeting-send-invite"));
+    });
+    expect(within(card).getByTestId("meeting-invite-failed")).toBeInTheDocument();
+    expect(screen.queryByTestId("meeting-invite-sent")).not.toBeInTheDocument();
   });
 
   it("gönderim başarısız olursa bağlantıyı kendisi paylaşması söylenir", async () => {
@@ -309,7 +355,7 @@ describe("yeni misafir bağlantısı", () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Yeni bağlantı üret" }));
     });
-    expect(api.regenerateGuestLink).toHaveBeenCalledWith("m1");
+    expect(api.regenerateGuestLink).toHaveBeenCalledWith("m1", "en");
     const card = await screen.findByTestId("meeting-link-card");
     expect(within(card).getByLabelText("Misafir bağlantısı")).toHaveValue("https://site.test/tr/meet/join#mg_new");
   });

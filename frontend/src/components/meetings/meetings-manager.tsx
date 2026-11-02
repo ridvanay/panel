@@ -28,6 +28,7 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { formatMeetingIstanbul, formatMeetingWhen, isInJoinWindow } from "@/components/site/meeting/meeting-time";
 import { MeetingFormDialog } from "./meeting-form-dialog";
 import { MeetingLinkCard } from "./meeting-link-card";
+import { defaultGuestLocale } from "./guest-locales";
 
 type Tab = "upcoming" | "past";
 type View = "mine" | "all";
@@ -43,6 +44,7 @@ interface LinkState {
   meeting: Pick<Meeting, "id" | "title" | "startsAt">;
   link: string;
   heading: "created" | "regenerated";
+  locale: string;
 }
 
 /**
@@ -109,12 +111,12 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
     }
   }
 
-  function handleSaved(result: { meeting: Meeting; guestLink?: string }) {
+  function handleSaved(result: { meeting: Meeting; guestLink?: string; locale?: string }) {
     setFormOpen(false);
     setEditing(null);
     setNotice(t.savedToast);
     if (result.guestLink) {
-      setLinkState({ meeting: result.meeting, link: result.guestLink, heading: "created" });
+      setLinkState({ meeting: result.meeting, link: result.guestLink, heading: "created", locale: result.locale ?? defaultGuestLocale(lang) });
     }
     void load();
   }
@@ -124,8 +126,9 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
     setRegenLoading(true);
     setActionError(null);
     try {
-      const res = await regenerateGuestLink(pendingRegen.id);
-      setLinkState({ meeting: pendingRegen, link: res.guestLink, heading: "regenerated" });
+      const locale = defaultGuestLocale(lang);
+      const res = await regenerateGuestLink(pendingRegen.id, locale);
+      setLinkState({ meeting: pendingRegen, link: res.guestLink, heading: "regenerated", locale });
       setPendingRegen(null);
       void load();
     } catch (err) {
@@ -369,7 +372,7 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
             <DialogTitle>{linkState?.heading === "regenerated" ? t.linkCardTitleRegenerated : t.linkCardTitleCreated}</DialogTitle>
             <DialogDescription>{t.linkOnceWarning}</DialogDescription>
           </DialogHeader>
-          {linkState && <MeetingLinkCard meeting={linkState.meeting} link={linkState.link} heading={linkState.heading} onDone={() => setLinkState(null)} />}
+          {linkState && <MeetingLinkCard meeting={linkState.meeting} link={linkState.link} heading={linkState.heading} locale={linkState.locale} onDone={() => setLinkState(null)} />}
         </DialogContent>
       </Dialog>
 
