@@ -6,6 +6,7 @@ import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
 import { runScheduledPublishSweep } from "../../src/lib/scheduled-publish";
 import { computeReadingMinutes } from "../../src/modules/blog/lib/medical-review";
+import { blogDoctorVisibility } from "../../src/modules/blog/lib/blog-public";
 
 /**
  * Paket Z1 — profesyonel blog: yayın kuralı, hekim inceleme kuyruğu, public liste/topics/detay, readingMinutes.
@@ -375,6 +376,14 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
     let cardioIds: string[];
     let derm: { id: string };
     let enOnly: { id: string; slug: string };
+
+    // Paket AH: public blog yanıtlarında hekim varsayılan GİZLİ; bu blok eski Z1 hekim gösterimini sınar.
+    beforeAll(() => {
+      blogDoctorVisibility.visible = true;
+    });
+    afterAll(() => {
+      blogDoctorVisibility.visible = false;
+    });
 
     beforeAll(async () => {
       // Önceki testlerde oluşan kayıtlar listeyi etkilemesin.
@@ -759,6 +768,23 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
       const res = await adminPost({ title: "AH Z1 Editör", status: "PUBLISHED", categoryId: medicalCategoryId }, editor);
       expect(res.statusCode).toBe(422);
       expect((await adminPost({ title: "AH Z1 NR", categoryId: travelCategoryId, medicalReviewStatus: "not_required" }, editor)).statusCode).toBe(403);
+    });
+
+    it("public blog yanıtlarında hekim verisi YOK (varsayılan): reviewer null, consultDoctors [], pendingReviewer null, /blog/reviewers boş; admin uçları etkilenmez", async () => {
+      expect(blogDoctorVisibility.visible).toBe(false);
+      const post = await seedPublished({ medicalReviewStatus: "approved", reviewerDoctorId: reviewerId, lastReviewedAt: new Date(), specialtyId });
+      const detail = (await app.inject({ method: "GET", url: `/api/v1/blog/posts/${post.slug}` })).json().data;
+      expect(detail.reviewer).toBeNull();
+      expect(detail.consultDoctors).toEqual([]);
+      const list = (await app.inject({ method: "GET", url: "/api/v1/blog/posts?limit=50" })).json().data;
+      expect(list.items.length).toBeGreaterThan(0);
+      for (const card of list.items) expect(card.reviewer).toBeNull();
+      expect((await app.inject({ method: "GET", url: `/api/v1/blog/posts?q=${encodeURIComponent(post.title)}` })).body).not.toContain("Sofu");
+      expect((await app.inject({ method: "GET", url: "/api/v1/blog/reviewers" })).json().data.items).toEqual([]);
+      for (const related of detail.relatedPosts) expect(related.reviewer).toBeNull();
+      // Admin ucu hekimi bilmeye devam eder.
+      const adminGet = await app.inject({ method: "GET", url: `/api/v1/admin/blog/${post.id}`, headers: admin });
+      expect(adminGet.json().data.reviewerDoctorId).toBe(reviewerId);
     });
 
     it("mevcut yayındaki yazılar bayrak değişiminden etkilenmez", async () => {

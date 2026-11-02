@@ -3,6 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { beforeAll as __ahBefore, afterAll as __ahAfter } from "vitest";
+import { blogDoctorVisibility } from "../../src/modules/blog/lib/blog-public";
+// Paket AH: public blog yanitlarinda hekim varsayilan GIZLI; bu dosya eski Z1 hekim gosterimini sinar.
+__ahBefore(() => { blogDoctorVisibility.visible = true; });
+__ahAfter(() => { blogDoctorVisibility.visible = false; });
 
 /** Paket Z1-ek — GET /api/v1/blog/reviewers (onaylı yazısı olan, herkese açık hekimler). */
 describe("GET /blog/reviewers", () => {

@@ -115,7 +115,8 @@ async function turkishLegalSlugs(): Promise<Set<string>> {
 }
 
 const slugOf = (href: string) => href.trim().replace(/^\/(?:[a-z]{2}(?:-[a-z]{4})?\/)?/, "").replace(/[/?#].*$/, "");
-const REMOVED_PATHS = /^\/(?:[a-z]{2}(?:-[a-z]{4})?\/)?(?:physicians|doctors)(?:\/|$)/;
+// Yol oneki eslesmesi: /physicians, /doctors, /doctors/<slug>, /physicians?specialty=..., /{dil}/physicians... (sorgu ve capa dahil).
+const REMOVED_PATHS = /^(?:https?:\/\/[^/]+)?\/(?:[a-z]{2}(?:-[a-z]{4})?\/)?(?:physicians|doctors)(?:[/?#]|$)/i;
 
 interface Plan {
   columns: { id: string; title: string; key: keyof typeof DICT }[];
@@ -158,7 +159,12 @@ function describe(plan: Plan) {
   for (const r of plan.removeLinks) console.log(`[plan] bağlantı ÇIKARILIR: "${r.label}" ${r.href} (${r.reason})`);
   if (plan.tagline) console.log("[plan] slogan Türkçe -> null (site varsayılanı)");
   if (plan.copyright) console.log("[plan] telif metni Türkçe -> null (site varsayılanı: © yıl ad. All rights reserved)");
-  for (const u of plan.untranslated) console.log(`[uyarı] sözlükte yok, DEĞİŞTİRİLMEDİ: ${u}`);
+  if (plan.untranslated.length > 0) {
+    console.log("");
+    console.log("=== ELLE ÇEVİR: sözlükte olmayan Türkçe footer metinleri (DEĞİŞTİRİLMEDİ) ===");
+    for (const u of plan.untranslated) console.log(`[ELLE ÇEVİR] ${u}`);
+    console.log("=====================================================================");
+  }
 }
 
 /** Footer'da (cikarilacaklar haric) EN gizlilik/aydinlatma baglantisi kaliyor mu? Plan ceviriyle yeni "Privacy" etiketi de sayilir. */

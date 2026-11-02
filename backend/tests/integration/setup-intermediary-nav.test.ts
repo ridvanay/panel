@@ -127,6 +127,26 @@ describe("scripts/setup-intermediary-nav.ts", () => {
     expect(await prisma.auditLog.count({ where: { action: "navigation.setup_intermediary_nav" } })).toBe(1);
   });
 
+  it("hedefle birebir ayniyken ikinci kuru calisma SILINECEK listelemez, ikinci gercek calisma kimlikleri DEGISTIRMEZ; yalniz CTA farkliysa menu kimlikleri korunur", async () => {
+    runScript([...CONFIRM, `--backup-dir=${backupDir}`]);
+    const ids = async () => (await prisma.navigationItem.findMany({ orderBy: { order: "asc" } })).map((i) => i.id);
+    const before = await ids();
+    const dry = runScript();
+    expect(dry.stdout).toContain("Yapılacak değişiklik yok");
+    expect(dry.stdout).not.toContain("SİLİNECEK");
+    expect(runScript([...CONFIRM, `--backup-dir=${backupDir}`]).status).toBe(0);
+    expect(await ids()).toEqual(before);
+    // Eski `tr` anahtari gibi hedef 8 dil disindaki ceviriler menuyu "farkli" yapmaz.
+    await prisma.navigationItem.updateMany({ where: { href: "/about" }, data: { translations: { tr: { label: "Hakkımızda" }, ...(((await prisma.navigationItem.findFirstOrThrow({ where: { href: "/about" } })).translations as object) ?? {}) } } });
+    expect(runScript().stdout).toContain("Yapılacak değişiklik yok");
+    // Yalniz CTA farkli: menu yeniden uretilmez.
+    await prisma.siteSettings.update({ where: { id: "singleton" }, data: { headerCtaLabel: "Book now" } });
+    const cta = runScript([...CONFIRM, `--backup-dir=${backupDir}`]);
+    expect(cta.status, cta.stderr).toBe(0);
+    expect(await ids()).toEqual(before);
+    expect((await prisma.siteSettings.findUniqueOrThrow({ where: { id: "singleton" } })).headerCtaLabel).toBe("Appointment");
+  });
+
   it("footer'da /blog yoksa uyari verir", async () => {
     await prisma.footerLink.deleteMany({ where: { href: "/blog" } });
     expect(runScript().stdout).toContain("[uyarı] footer");

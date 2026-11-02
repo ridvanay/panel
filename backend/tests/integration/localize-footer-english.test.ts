@@ -68,7 +68,7 @@ describe("scripts/localize-footer-english.ts", () => {
     expect(res.status, res.stderr).toBe(0);
     expect(res.stdout).toContain('sütun "Branşlar" -> "Services"');
     expect(res.stdout).toContain("ÇIKARILIR");
-    expect(res.stdout).toContain("[uyarı] sözlükte yok");
+    expect(res.stdout).toContain("[ELLE ÇEVİR]");
     expect(res.stdout).toContain("[kuru]");
     expect(res.stdout).toMatch(/\[hedef DB\] [^\s]+:\d+\/saas_test/);
     expect(res.stdout).toContain("[kontrol] footer'da EN gizlilik/aydınlatma bağlantısı mevcut.");
@@ -117,6 +117,23 @@ describe("scripts/localize-footer-english.ts", () => {
     expect(blocked.stderr).toContain("--i-know-this-is-prod");
     expect((await columns())[0]![0]).toBe("Branşlar");
     expect(run(["--i-know-this-is-prod"]).status).toBe(0);
+  });
+
+  it("tum hekim yollari cikarilir (sorgu, alt yol, dil oneki dahil); benzer adli yollar kalir; ELLE CEVIR basligi", async () => {
+    const column = await prisma.footerColumn.findFirstOrThrow({ where: { title: "Branşlar" } });
+    await prisma.footerLink.createMany({
+      data: [
+        "/doctors", "/doctors?specialty=cardiology", "/doctors/ayse-demir", "/physicians?x=1", "/en/physicians", "/de/physicians/ali-veli", "/physicians#top",
+      ].map((href, i) => ({ columnId: column.id, label: `Hekim ${i}`, href, order: 10 + i })),
+    });
+    await prisma.footerLink.createMany({ data: [{ columnId: column.id, label: "Doctorate Guide", href: "/doctorate-guide", order: 30 }, { columnId: column.id, label: "Physician Notes", href: "/physician-notes", order: 31 }] });
+    const dry = runScript();
+    expect(dry.stdout).toContain("ELLE ÇEVİR");
+    expect(dry.stdout).toContain("[ELLE ÇEVİR] bağlantı: Bilinmeyen Türkçe Bağlantı (/x)");
+    expect(runScript([...CONFIRM, `--backup-dir=${backupDir}`]).status).toBe(0);
+    const hrefs = (await prisma.footerLink.findMany()).map((l) => l.href);
+    for (const gone of ["/doctors", "/doctors?specialty=cardiology", "/doctors/ayse-demir", "/physicians?x=1", "/en/physicians", "/de/physicians/ali-veli", "/physicians#top", "/physicians"]) expect(hrefs).not.toContain(gone);
+    expect(hrefs).toEqual(expect.arrayContaining(["/doctorate-guide", "/physician-notes", "/blog"]));
   });
 
   it("gecersiz confirm / operatorsuz yazma reddedilir", () => {

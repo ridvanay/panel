@@ -93,8 +93,8 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
     automated: "This email was sent automatically.",
     emergency: "In an emergency, call 112 (or your local emergency number).",
     staffNote: "Internal notification — for authorised staff only.",
-    kvkk: "Privacy notice",
-    privacy: "Privacy policy",
+    kvkk: "Privacy Notice",
+    privacy: "Privacy Policy",
   },
   tr: {
     contact: "Bize ulaşın",
@@ -204,11 +204,10 @@ function renderFooter(ctx: EmailBrandContext, locale: BrandLocale, audience: Ema
     const contact = [ctx.phone ? escapeHtml(ctx.phone) : null, ctx.infoEmail ? link(ctx.infoEmail, `mailto:${ctx.infoEmail}`) : null, link(t.contact, ctx.contactUrl)].filter(Boolean);
     parts.push(line(contact.join(" &middot; ")));
     if (ctx.supportLanguages && ctx.supportLanguages.length > 0) parts.push(line(escapeHtml(t.support.replace("{languages}", ctx.supportLanguages.join(", ")))));
-    // Sayfa TR/EN yayımlanır: TR ve EN alıcıda sayfanın kendi başlığı, diğer dillerde alıcının dilinde etiket (bağlantı EN sayfaya).
-    const pageTitle = (title: string, fallback: string) => ((locale === "tr" || locale === "en") && title ? title : fallback);
+    // Paket AH - bağlantı ETİKETİ e-posta sözlüğünden (alıcının dilinde); DB'deki yasal sayfa başlığı kullanılmaz (EN e-postada Türkçe başlık çıkmasın). Bağlantı adresi yine yasal sayfaya gider.
     const legal = [
-      ctx.kvkk ? link(pageTitle(ctx.kvkk.title, t.kvkk), ctx.kvkk.url) : null,
-      ctx.privacy ? link(pageTitle(ctx.privacy.title, t.privacy), ctx.privacy.url) : null,
+      ctx.kvkk ? link(t.kvkk, ctx.kvkk.url) : null,
+      ctx.privacy ? link(t.privacy, ctx.privacy.url) : null,
     ].filter(Boolean);
     if (legal.length > 0) parts.push(line(legal.join(" &middot; ")));
     if (audience === "patient") parts.push(line(`<strong style="color:#b91c1c;">${escapeHtml(t.emergency)}</strong>`));

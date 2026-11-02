@@ -17,6 +17,7 @@ import { loadEmailBrandContext, sendBrandedMail } from "../../src/lib/branded-ma
 import { SYSTEM_EMAILS, renderSystemEmailSample } from "../../src/modules/email-templates/system-email-catalog";
 import { getSystemVariablesForPurpose } from "../../src/lib/email-variables";
 import { env } from "../../src/config/env";
+import { INTERMEDIARY_LOCALES } from "../../src/lib/intermediary-identity";
 
 const CTX: EmailBrandContext = {
   siteName: "WM Health Istanbul",
@@ -123,13 +124,19 @@ describe("renderBrandedEmail (saf kabuk)", () => {
     expect(html).toMatch(/<td dir="rtl" align="right"[^>]*border-top/);
   });
 
-  it("KVKK bağlantı metni: TR/EN'de sayfa başlığı, diğer dillerde alıcının dilinde etiket", () => {
-    const ctx = { ...CTX, kvkk: { title: "Privacy Notice", url: "https://example.com/en/privacy-notice" } };
-    expect(renderBrandedEmail(ctx, { locale: "en", audience: "patient", bodyHtml: "" }).html).toContain(">Privacy Notice</a>");
-    const de = renderBrandedEmail(ctx, { locale: "de", audience: "patient", bodyHtml: "" }).html;
+  it("KVKK/gizlilik bağlantı ETİKETİ e-posta sözlüğünden (alıcının dilinde); DB'deki Türkçe sayfa başlığı kullanılmaz, adres yasal sayfaya gider", () => {
+    const ctx = { ...CTX, kvkk: { title: "KVKK Aydınlatma Metni", url: "https://example.com/en/privacy-notice" }, privacy: { title: "Gizlilik Politikası", url: "https://example.com/en/privacy-policy" } };
+    for (const locale of ["en", "tr"] as const) {
+      const html = renderBrandedEmail(ctx, { locale, audience: "patient", bodyHtml: "" }).html;
+      expect(html).toContain(">Privacy Notice</a>");
+      expect(html).toContain(">Privacy Policy</a>");
+      expect(html).not.toMatch(/KVKK|Gizlilik|Aydınlatma/);
+    }
+    const de = renderBrandedEmail(ctx, { locale: "de", audience: "user", bodyHtml: "" }).html;
     expect(de).toContain('<a href="https://example.com/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Datenschutzhinweise</a>');
-    const enNoTitle = renderBrandedEmail({ ...ctx, kvkk: { title: "", url: ctx.kvkk.url } }, { locale: "en", audience: "patient", bodyHtml: "" }).html;
-    expect(enNoTitle).toContain(">Privacy notice</a>");
+    expect(de).toContain(">Datenschutzerklärung</a>");
+    const labels = new Set(INTERMEDIARY_LOCALES.map((l) => renderBrandedEmail(ctx, { locale: l, audience: "patient", bodyHtml: "" }).html.match(/underline;">([^<]+)<\/a> &middot; <a[^>]*>([^<]+)<\/a><\/p><p style="margin:0 0 6px;"><strong style="color:#b91c1c/)?.[1]));
+    expect(labels.size).toBe(8);
   });
 
   it("hasta footer'ı 112 notu içerir; personel footer'ı sade (iletişim/KVKK/112 yok)", () => {

@@ -104,7 +104,10 @@ function signatureOfDesired(items: DesiredItem[]): string {
 
 function sortedTranslations(value: unknown): unknown {
   if (!value || typeof value !== "object") return {};
-  const entries = Object.entries(value as Record<string, { label?: string }>).map(([code, v]) => [code, v?.label ?? ""] as const);
+  // Hedef 8 dil disindaki anahtarlar (ornegin eski `tr`) karsilastirmaya girmez - menu "birebir ayni" sayilir.
+  const entries = Object.entries(value as Record<string, { label?: string }>)
+    .filter(([code]) => (LANGS as readonly string[]).includes(code))
+    .map(([code, v]) => [code, v?.label ?? ""] as const);
   return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
 }
 
@@ -159,24 +162,25 @@ async function ctaNeedsChange(): Promise<boolean> {
   return LANGS.some((code) => t[code]?.headerCtaLabel !== LABELS.appointment[code]);
 }
 
-async function applyDesired(items: DesiredItem[], audit: { operator: string; backup: string }): Promise<number> {
+async function applyDesired(items: DesiredItem[], audit: { operator: string; backup: string }, parts: { nav: boolean; cta: boolean }): Promise<number> {
   const translationsOf = (i: DesiredItem) => i.translations as unknown as Prisma.InputJsonValue;
   return prisma.$transaction(async (tx) => {
-    const deleted = (await tx.navigationItem.deleteMany({})).count;
+    // Menu hedefle ayniysa YAZILMAZ (kimlikler korunur); yalniz CTA farkliysa yalniz CTA guncellenir.
+    const deleted = parts.nav ? (await tx.navigationItem.deleteMany({})).count : 0;
     const ids = new Map<string, string>();
     let rootOrder = 0;
-    for (const item of items.filter((i) => !i.parentKey)) {
+    for (const item of parts.nav ? items.filter((i) => !i.parentKey) : []) {
       const created = await tx.navigationItem.create({ data: { label: item.label, href: item.href, order: rootOrder++, parentId: null, translations: translationsOf(item) } });
       ids.set(item.key, created.id);
     }
     const childOrder = new Map<string, number>();
-    for (const item of items.filter((i) => i.parentKey)) {
+    for (const item of parts.nav ? items.filter((i) => i.parentKey) : []) {
       const order = childOrder.get(item.parentKey!) ?? 0;
       childOrder.set(item.parentKey!, order + 1);
       await tx.navigationItem.create({ data: { label: item.label, href: item.href, order, parentId: ids.get(item.parentKey!)!, translations: translationsOf(item) } });
     }
     const existing = await tx.siteSettings.findUnique({ where: { id: "singleton" }, select: { translations: true } });
-    if (existing) {
+    if (existing && parts.cta) {
       await tx.siteSettings.update({
         where: { id: "singleton" },
         data: { headerCtaLabel: LABELS.appointment.en, headerCtaHref: CTA_HREF, translations: ctaTranslations(existing.translations) },
@@ -187,7 +191,7 @@ async function applyDesired(items: DesiredItem[], audit: { operator: string; bac
         actorEmail: `script:${audit.operator}`,
         action: "navigation.setup_intermediary_nav",
         targetType: "Navigation",
-        metadata: { script: "setup-intermediary-nav", written: items.length, deleted, cta: Boolean(existing), backup: audit.backup },
+        metadata: { script: "setup-intermediary-nav", written: parts.nav ? items.length : 0, deleted, cta: Boolean(existing) && parts.cta, backup: audit.backup },
       },
     });
     return deleted;
@@ -272,7 +276,7 @@ async function main() {
   fs.writeFileSync(file, JSON.stringify(await readSnapshot(), null, 2), "utf8");
   console.log(`[yedek] ${file}`);
 
-  const deleted = await applyDesired(desired, { operator: operator!.trim(), backup: path.basename(file) });
+  const deleted = await applyDesired(desired, { operator: operator!.trim(), backup: path.basename(file) }, { nav: !navSame, cta: ctaChange && Boolean(settingsRow) });
   console.log(`[fix] header menüsü yazıldı (${desired.length} öğe yazıldı, ${deleted} eski öğe SİLİNDİ), CTA ${settingsRow ? "güncellendi" : "atlandı"}.`);
   console.log(`[geri al] npx tsx scripts/setup-intermediary-nav.ts --restore=${file} --confirm=${CONFIRM_TOKEN} --operator=<ad>`);
 }

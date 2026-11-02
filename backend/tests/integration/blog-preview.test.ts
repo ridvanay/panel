@@ -7,6 +7,11 @@ import { registerTestUser } from "../helpers/auth";
 import { reviewerDisplayName } from "../../src/modules/blog/lib/blog-public";
 import { issueSessionToken, PREVIEW_SESSION_TTL_SEC } from "../../src/modules/blog/lib/preview-token";
 import { hashToken } from "../../src/lib/tokens";
+import { beforeAll as __ahBefore, afterAll as __ahAfter } from "vitest";
+import { blogDoctorVisibility } from "../../src/modules/blog/lib/blog-public";
+// Paket AH: public blog yanitlarinda hekim varsayilan GIZLI; bu dosya eski Z1 hekim gosterimini sinar.
+__ahBefore(() => { blogDoctorVisibility.visible = true; });
+__ahAfter(() => { blogDoctorVisibility.visible = false; });
 
 /** Blog taslak önizleme: paylaşım belirteci (7 gün, iptal edilebilir), oturum belirteci (30 dk), yetkiler, sızıntı yok. */
 describe("blog taslak önizleme", () => {

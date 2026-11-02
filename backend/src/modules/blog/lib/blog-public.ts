@@ -98,9 +98,16 @@ export function localizedCategoryName(category: { name: string; translations?: u
   return typeof value === "string" && value.trim() ? value.trim() : category.name;
 }
 
+/**
+ * Paket AH - sitede doktor GORUNMEZ: public blog yanitlarinda hekim verisi (reviewer, pendingReviewer, consultDoctors,
+ * /blog/reviewers) donmez. Alanlar sema geregi kalir (null / []). Admin uclari bu dosyayi kullanmaz.
+ * Z1 hekim onay akisi kodda duruyor; hekimleri yeniden gostermek icin bu `visible` true yapilir (testler bunu eski Z1 davranisini sinamak icin kullanir).
+ */
+export const blogDoctorVisibility = { visible: false };
+
 function buildCard(post: CardPost, locale: string | undefined, slugOf: (locale: string | undefined) => string): PublicBlogCard {
   const localized = locale ? applyFieldLocalization(post, locale, ["title", "excerpt"]) : post;
-  const approved = post.medicalReviewStatus === "approved" && post.reviewerDoctor;
+  const approved = blogDoctorVisibility.visible && post.medicalReviewStatus === "approved" && post.reviewerDoctor;
   return {
     id: post.id,
     slug: slugOf(locale),
@@ -252,7 +259,7 @@ export async function listPublicReviewers(app: FastifyInstance, localeRaw: strin
     where: { medicalReviewStatus: "approved", deletedAt: null, reviewerDoctorId: { not: null } },
     _count: { _all: true },
   });
-  if (groups.length === 0) return { items: [] };
+  if (!blogDoctorVisibility.visible || groups.length === 0) return { items: [] };
   const countById = new Map(groups.map((g) => [g.reviewerDoctorId!, g._count._all]));
 
   const doctors = await app.prisma.doctorProfile.findMany({
@@ -375,7 +382,7 @@ async function buildPostDetail(app: FastifyInstance, post: DetailPost, locale: s
     post.careTopicIds.length > 0 ? await app.prisma.careTopic.findMany({ where: { id: { in: post.careTopicIds }, isActive: true } }) : [];
   const localizationsAll = (await attachLocalizations(app, "BLOG_POST", [post], localeSet)).get(post.id) ?? [];
 
-  const doctor = !preview && post.medicalReviewStatus === "approved" ? post.reviewerDoctor : null;
+  const doctor = blogDoctorVisibility.visible && !preview && post.medicalReviewStatus === "approved" ? post.reviewerDoctor : null;
   const reviewerSpecialty = doctor?.specialtyId
     ? (post.specialty && post.specialty.id === doctor.specialtyId
         ? post.specialty
@@ -384,7 +391,7 @@ async function buildPostDetail(app: FastifyInstance, post: DetailPost, locale: s
 
   const [relatedPosts, consultDoctors, coverCompatUrl] = await Promise.all([
     findRelated(app, post, locale, localeSet),
-    findConsultDoctors(app, post.specialtyId, locale),
+    blogDoctorVisibility.visible ? findConsultDoctors(app, post.specialtyId, locale) : Promise.resolve([]),
     resolveCoverCompatUrl(app, post.coverImageUrl),
   ]);
 
@@ -434,7 +441,7 @@ export async function getPreviewPostDetail(app: FastifyInstance, postId: string,
   // Yayındaki VE hekim onaylı yazıda hekim bilgisi yayındaki detayla aynı doldurulur; diğer durumlarda gizlenir.
   const livePublished = post.status === "PUBLISHED" && post.medicalReviewStatus === "approved";
   const detail = await buildPostDetail(app, post, locale, localeSet, !livePublished);
-  const doctor = livePublished ? null : post.reviewerDoctor;
+  const doctor = blogDoctorVisibility.visible && !livePublished ? post.reviewerDoctor : null;
   return {
     ...detail,
     preview: true as const,
