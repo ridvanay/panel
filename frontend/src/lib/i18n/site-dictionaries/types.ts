@@ -18,6 +18,7 @@ import type { BlogStrings } from "./en/blog";
 import type { TrustPagesStrings } from "./en/trust-pages";
 import type { IntermediaryStrings } from "./en/intermediary";
 import type { RequestStrings } from "./en/request";
+import type { ServiceBookingStrings } from "./en/service-booking";
 import type { ServicesStrings } from "./en/services";
 import type { VipStrings } from "./en/vip";
 
@@ -62,6 +63,9 @@ export type SiteDictionary = {
   services: ServicesStrings;
   /** Paket AJ (AJ-3) - VIP Accommodation & Transfer sayfasi (zengin icerik). */
   vip: VipStrings;
+  /** AI İş 3 — ziyaretçi hizmet görüşmesi rezervasyonu ve yönetim sayfası. */
+  serviceBooking: ServiceBookingStrings;
 };
 
+export type { ServiceBookingStrings };
 export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings, BlogStrings, TrustPagesStrings, IntermediaryStrings, RequestStrings, ServicesStrings, VipStrings };

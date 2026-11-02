@@ -21,6 +21,7 @@ import { intermediaryStrings } from "./intermediary";
 import { requestStrings } from "./request";
 import { servicesStrings } from "./services";
 import { vipStrings } from "./vip";
+import { serviceBookingStrings } from "./service-booking";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -45,4 +46,5 @@ export const siteDictionary: SiteDictionary = {
   request: requestStrings,
   services: servicesStrings,
   vip: vipStrings,
+  serviceBooking: serviceBookingStrings,
 };

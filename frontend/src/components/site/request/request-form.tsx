@@ -29,8 +29,8 @@ export type { RequestServiceGroup } from "./request-service-picker";
 
 /** Talep formu mesaj üst sınırı. */
 export const REQUEST_MESSAGE_MAX = 1000;
-const PHONE_PATTERN = /^[+0-9 ()-]{6,20}$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const PHONE_PATTERN = /^[+0-9 ()-]{6,20}$/;
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TOTAL_STEPS = 4;
 
 interface FormValues {

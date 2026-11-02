@@ -5,6 +5,7 @@ import { Check, ChevronLeft, ChevronRight, CloudSun, Moon, ShieldAlert, Sun } fr
 import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 import type { AvailabilitySlot } from "@/lib/api/types";
 import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
@@ -46,7 +47,9 @@ import { cn } from "@/lib/utils";
  */
 
 interface AvailabilityCalendarProps {
-  doctorSlug: string;
+  /** Doktor akışında zorunlu; `fetchSlots` verilirse (hizmet görüşmesi) gerekmez. */
+  doctorSlug?: string;
+  /** Takvimin "kaynak" dilimi (doktor akışında doktorun, hizmet görüşmesinde masanın dilimi). */
   doctorTimeZone: string;
   initialSlots: AvailabilitySlot[];
   /** `booking-wizard.tsx`'ten gelen 409 (slot çakışması) bildirimi — bu bileşenin KENDİ ay-getirme hatasından AYRI. */
@@ -55,6 +58,15 @@ interface AvailabilityCalendarProps {
   weeklyRules?: WeeklyRule[];
   /** Paket P — yakın tarihte hiç slot yoksa "talep bırakın" butonunun hedefi (iletişim formu, doktor bilgisiyle). */
   requestHref?: string;
+  /**
+   * AI İş 3 (opsiyonel, geriye uyumlu) — slot kaynağını dışarıdan verir (hizmet görüşmesi masası). Verilmezse
+   * `telehealthApi.getDoctorSlots(doctorSlug, …)` kullanılır (doktor akışı DEĞİŞMEZ).
+   */
+  fetchSlots?: (from: string, to: string) => Promise<AvailabilitySlot[]>;
+  /** AI İş 3 (opsiyonel) — tek slot seçimi: yeni slot seçilince öncekinin yerini alır (varsayılan: çoklu, doktor akışı). */
+  singleSelect?: boolean;
+  /** AI İş 3 (opsiyonel) — doktor sözcüğü geçen metinleri değiştirmek için `schedule`/`calendar` sözlüğü üzerine yazma. */
+  stringOverrides?: { schedule?: Partial<PortalStrings["schedule"]>; calendar?: Partial<PortalStrings["calendar"]> };
 }
 
 /**
@@ -188,7 +200,7 @@ function mergeSlots(prev: AvailabilitySlot[], fetched: AvailabilitySlot[]): Avai
   return merged;
 }
 
-export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice, weeklyRules, requestHref }: AvailabilityCalendarProps) {
+export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice, weeklyRules, requestHref, fetchSlots, singleSelect = false, stringOverrides }: AvailabilityCalendarProps) {
   // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
   const auth = useAuthOptional();
@@ -196,6 +208,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   const {
     selectedSlots,
     toggleSlot,
+    clearAllSlots,
     displayTimeZone,
     visitorTimeZone,
     detectedTimeZone,
@@ -208,7 +221,14 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   const hour12 = usePatientHour12(visitorTimeZone);
   // Görev (2026-09-16) — takvim gün/ay isimleri denetimi: sabit `"tr-TR"` yerine aktif site dili.
   const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
-  const { t } = usePortalStrings();
+  const { t: baseStrings } = usePortalStrings();
+  const t = useMemo(
+    () =>
+      stringOverrides
+        ? { ...baseStrings, schedule: { ...baseStrings.schedule, ...stringOverrides.schedule }, calendar: { ...baseStrings.calendar, ...stringOverrides.calendar } }
+        : baseStrings,
+    [baseStrings, stringOverrides]
+  );
   const friendlyErrorMessage = useFriendlyError();
   // Pazartesi'den başlayan kısa gün adları — aktif dilde `Intl` ile (2024-01-01 bir Pazartesi).
   const weekdayLabels = useMemo(() => {
@@ -339,7 +359,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
     const from = `${year}-${pad2(month0 + 1)}-01`;
     const to = `${year}-${pad2(month0 + 1)}-${pad2(daysInMonthUTC(year, month0))}`;
     try {
-      const fetched = await telehealthApi.getDoctorSlots(doctorSlug, from, to);
+      const fetched = fetchSlots ? await fetchSlots(from, to) : await telehealthApi.getDoctorSlots(doctorSlug ?? "", from, to);
       setSlots((prev) => mergeSlots(prev, fetched));
     } catch (err) {
       setMonthFetchError(friendlyErrorMessage(err));
@@ -366,6 +386,12 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
 
   function handleSlotClick(slot: AvailabilitySlot) {
     if (!slot.available || isDoctorSession) return;
+    if (singleSelect) {
+      // Tek seçim: seçili slota tekrar tıklamak kaldırır; başka slot öncekinin yerini alır.
+      if (!selectedSlots.some((s) => s.startsAt === slot.startsAt)) clearAllSlots();
+      toggleSlot(slot, displayTimeZone);
+      return;
+    }
     const { dayChanged } = toggleSlot(slot, displayTimeZone);
     setDayChangedNotice(dayChanged);
   }

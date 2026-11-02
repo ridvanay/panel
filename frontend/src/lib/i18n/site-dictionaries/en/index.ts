@@ -21,6 +21,7 @@ import { intermediaryStrings } from "./intermediary";
 import { requestStrings } from "./request";
 import { servicesStrings } from "./services";
 import { vipStrings } from "./vip";
+import { serviceBookingStrings } from "./service-booking";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -46,4 +47,5 @@ export const siteDictionary: SiteDictionary = {
   request: requestStrings,
   services: servicesStrings,
   vip: vipStrings,
+  serviceBooking: serviceBookingStrings,
 };
