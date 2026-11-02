@@ -129,4 +129,10 @@ export const telehealthStrings: TelehealthStrings = {
   videoUnsupported: "لا يستطيع متصفحك تشغيل هذا الفيديو.",
   bookingPanelHint: "اختر التاريخ والوقت ثم أكمل حجزك هنا.",
   bookingPanelHide: "إخفاء نموذج الحجز",
+  /** Paket AG — üst uzmanlık sayfasındaki alt uzmanlıklar bölümü başlığı. */
+  specialtyProceduresTitle: "الإجراءات",
+  /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
+  physiciansPerformingProcedure: "الأطباء الذين يجرون هذا الإجراء",
+  /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
+  breadcrumbSpecialties: "التخصصات",
 };

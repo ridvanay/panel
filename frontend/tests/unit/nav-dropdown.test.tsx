@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { NavDropdown, specialtySlugFromHref, type NavDropdownLink, type NavSpecialty } from "@/components/site/nav-dropdown";
+import { NavDropdown, groupSpecialtyNavChildren, specialtySlugFromHref, type NavDropdownLink, type NavSpecialty } from "@/components/site/nav-dropdown";
 
 const SPECIALTIES: NavSpecialty[] = [
   { slug: "kardiyoloji", name: "Kardiyoloji", icon: "HeartPulse", imageUrl: "/uploads/k.png" },
@@ -124,3 +124,76 @@ describe("NavDropdown", () => {
     expect(trigger).toHaveFocus();
   });
 });
+
+describe("Paket AG — alt uzmanlık gruplama", () => {
+  const SPECS: NavSpecialty[] = [
+    { slug: "gastroenterology", name: "Gastroenterology", icon: "Stethoscope", imageUrl: null, parentSlug: null },
+    { slug: "esd", name: "ESD", icon: "Stethoscope", imageUrl: null, parentSlug: "gastroenterology" },
+    { slug: "ercp", name: "ERCP", icon: "Stethoscope", imageUrl: null, parentSlug: "gastroenterology" },
+    { slug: "cardiology", name: "Cardiology", icon: "HeartPulse", imageUrl: null },
+  ];
+  const link = (children: NavDropdownLink["children"]): NavDropdownLink => ({ id: "spec", label: "Specialties", href: "/specialties", children });
+
+  it("üst uzmanlık menüdeyse alt öğeler ayrı kart olmaz, 'Procedures' satırında bağlantı olur", async () => {
+    renderDropdownWith(
+      link([
+        { id: "g", label: "Gastroenterology", href: "/specialties/gastroenterology" },
+        { id: "e", label: "ESD", href: "/specialties/esd" },
+        { id: "r", label: "ERCP", href: "/physicians?specialty=ercp" },
+        { id: "c", label: "Cardiology", href: "/specialties/cardiology" },
+      ]),
+      SPECS
+    );
+    await open("Specialties");
+    const menu = await screen.findByRole("menu");
+    const procedures = within(menu).getByTestId("nav-procedures");
+    expect(procedures).toHaveTextContent("Procedures:");
+    expect(within(procedures).getByRole("menuitem", { name: "ESD" })).toHaveAttribute("href", "/en/specialties/esd");
+    expect(within(procedures).getByRole("menuitem", { name: "ERCP" })).toHaveAttribute("href", "/en/physicians?specialty=ercp");
+    // Ayrı kart olarak yalnızca iki üst uzmanlık (min-h-[60px] kartlar).
+    const cards = within(menu).getAllByRole("menuitem").filter((el) => el.className.includes("min-h-[60px]"));
+    expect(cards.map((c) => c.textContent)).toEqual(["Gastroenterology", "Cardiology"]);
+  });
+
+  it("üst uzmanlık menüde yoksa alt öğe olduğu gibi kalır (veri kaybı yok)", () => {
+    const grouped = groupSpecialtyNavChildren(
+      [
+        { id: "e", label: "ESD", href: "/specialties/esd" },
+        { id: "c", label: "Cardiology", href: "/specialties/cardiology" },
+      ],
+      SPECS
+    );
+    expect(grouped.map((g) => g.label)).toEqual(["ESD", "Cardiology"]);
+    expect(grouped.every((g) => g.procedures.length === 0)).toBe(true);
+  });
+
+  it("parentSlug alanı olmayan (eski API) uzmanlıklarda gruplama yapılmaz", () => {
+    const grouped = groupSpecialtyNavChildren(
+      [
+        { id: "g", label: "Gastroenterology", href: "/specialties/gastroenterology" },
+        { id: "e", label: "ESD", href: "/specialties/esd" },
+      ],
+      [
+        { slug: "gastroenterology", name: "G", icon: "Stethoscope", imageUrl: null },
+        { slug: "esd", name: "ESD", icon: "Stethoscope", imageUrl: null },
+      ]
+    );
+    expect(grouped).toHaveLength(2);
+  });
+});
+
+function renderDropdownWith(link: NavDropdownLink, specialties: NavSpecialty[]) {
+  return render(
+    <NavDropdown
+      link={link}
+      localize={(href) => (href.startsWith("/") ? `/en${href === "/" ? "" : href}` : href)}
+      active={false}
+      specialties={specialties}
+      viewAllLabel="View all"
+      findDoctorLabel="Find a doctor"
+      proceduresLabel="Procedures"
+      triggerClassName="text-foreground"
+      activeTriggerClassName="text-primary"
+    />
+  );
+}

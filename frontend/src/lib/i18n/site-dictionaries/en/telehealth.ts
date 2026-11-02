@@ -165,6 +165,12 @@ export const telehealthStrings = {
   videoUnsupported: "Your browser cannot play this video.",
   bookingPanelHint: "Choose a date and time, then complete your booking here.",
   bookingPanelHide: "Hide booking form",
+  /** Paket AG — üst uzmanlık sayfasındaki alt uzmanlıklar bölümü başlığı. */
+  specialtyProceduresTitle: "Procedures",
+  /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
+  physiciansPerformingProcedure: "Physicians performing this procedure",
+  /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
+  breadcrumbSpecialties: "Specialties",
 } as const;
 
 export type TelehealthStrings = Record<keyof typeof telehealthStrings, string>;

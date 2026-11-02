@@ -4,6 +4,7 @@ import { fetchBlogListServer, fetchBlogTopicsServer } from "@/lib/api/server-blo
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchPackagesServer } from "@/lib/api/server-packages";
 import { fetchAllDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
+import { topLevelSpecialties } from "@/lib/specialty-hierarchy";
 import { specialtiesWithActiveDoctors } from "@/lib/blog/specialties-with-doctors";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
@@ -89,7 +90,7 @@ export async function BlogIndexPage({ lang, page, searchParams }: { lang: string
   const overallTotal = filtered ? (await fetchBlogListServer({ locale: lang, page: 1, pageSize: 1 })).total : list.total;
 
   const trustLinks = BLOG_TRUST_PAGES.map((entry) => ({ label: t[entry.key], href: localize(`/${entry.slug}`) }));
-  const activeSpecialties = specialtiesWithActiveDoctors(specialties, doctors);
+  const activeSpecialties = specialtiesWithActiveDoctors(topLevelSpecialties(specialties), doctors);
 
   const featured = page === 1 && !q ? list.featured : null;
   const cards = list.items.filter((post) => post.id !== featured?.id);

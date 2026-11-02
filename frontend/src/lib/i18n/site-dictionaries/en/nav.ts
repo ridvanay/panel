@@ -44,6 +44,8 @@ export const navStrings = {
   languageSheetClose: "Close language selection",
   /** Paket V — dil düğmesinin erişilebilir adı; `{language}` aktif dilin yerel adı. */
   languageButtonAria: "Change language, current: {language}",
+  /** Paket AG — açılır menüde üst uzmanlık kartı altındaki alt uzmanlık satırı etiketi. */
+  specialtyProceduresTitle: "Procedures",
 } as const;
 
 export type NavStrings = Record<keyof typeof navStrings, string>;

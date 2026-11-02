@@ -115,7 +115,7 @@ export default async function SiteLayout({
             headerStickyBlurEnabled={appearance.headerStickyBlurEnabled}
             telehealthModuleEnabled={telehealthModuleEnabled}
             // Açılır menüde uzmanlık görseli/ikonu — yalnızca menünün kullandığı alanlar.
-            navSpecialties={navSpecialties.map(({ slug, name, icon, imageUrl }) => ({ slug, name, icon, imageUrl }))}
+            navSpecialties={navSpecialties.map(({ slug, name, icon, imageUrl, parentSlug }) => ({ slug, name, icon, imageUrl, parentSlug: parentSlug ?? null }))}
             dict={dict.nav}
             // Paket AB — üst şerit: "Support in N languages · Free interpreter" (Paket V ayarı).
             support={support ? { count: support.languages.length, interpreterIncluded: support.interpreterIncluded } : null}

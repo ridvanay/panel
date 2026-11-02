@@ -129,4 +129,10 @@ export const telehealthStrings: TelehealthStrings = {
   videoUnsupported: "Browserul dvs. nu poate reda acest videoclip.",
   bookingPanelHint: "Alegeți data și ora, apoi finalizați rezervarea aici.",
   bookingPanelHide: "Ascunde formularul de rezervare",
+  /** Paket AG — üst uzmanlık sayfasındaki alt uzmanlıklar bölümü başlığı. */
+  specialtyProceduresTitle: "Proceduri",
+  /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
+  physiciansPerformingProcedure: "Medici care efectuează această procedură",
+  /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
+  breadcrumbSpecialties: "Specialități",
 };

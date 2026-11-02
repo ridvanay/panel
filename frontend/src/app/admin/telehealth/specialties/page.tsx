@@ -31,7 +31,8 @@ import {
 } from "@/components/admin/translation-locale-tabs";
 import type { TextTranslations } from "@/lib/api/types";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { Select } from "@/components/ui/select";
 import { AlertCircle, Pencil, Stethoscope, X } from "lucide-react";
 
 /**
@@ -47,6 +48,8 @@ const specialtyFormSchema = z.object({
   description: z.string().max(500).optional(),
   order: z.coerce.number().int().min(0).optional(),
   isActive: z.boolean(),
+  /** Paket AG — üst uzmanlık id'si; boş = üst seviye. */
+  parentId: z.string().optional(),
 });
 
 type SpecialtyFormValues = z.infer<typeof specialtyFormSchema>;
@@ -72,7 +75,19 @@ function specialtyImageAsMedia(specialty: Specialty): Media | null {
   } as Media;
 }
 
-const EMPTY_FORM: SpecialtyFormValues = { name: "", slug: "", icon: "", description: "", order: 0, isActive: true };
+const EMPTY_FORM: SpecialtyFormValues = { name: "", slug: "", icon: "", description: "", order: 0, isActive: true, parentId: "" };
+
+/** Paket AG — üst uzmanlıklar, her birinin altında alt uzmanlıkları (listede girintili gösterim için). */
+export function orderSpecialtiesWithChildren(list: Specialty[]): Specialty[] {
+  const ids = new Set(list.map((s) => s.id));
+  const isChild = (s: Specialty) => Boolean(s.parentId) && ids.has(s.parentId as string);
+  const result: Specialty[] = [];
+  for (const top of list.filter((s) => !isChild(s))) {
+    result.push(top);
+    result.push(...list.filter((s) => s.parentId === top.id));
+  }
+  return result;
+}
 
 export default function AdminTelehealthSpecialtiesPage() {
   const [specialties, setSpecialties] = useState<Specialty[] | null>(null);
@@ -88,12 +103,16 @@ export default function AdminTelehealthSpecialtiesPage() {
   const [contentLocale, setContentLocale] = useState(CANONICAL_LOCALE_CODE);
   const [translations, setTranslations] = useState<TextTranslations>({});
   const canonicalLocale = isCanonicalLocale(contentLocale);
+  const editingHasChildren = editingId !== null && (specialties ?? []).some((s) => s.parentId === editingId);
+  const parentOptions = (specialties ?? []).filter((s) => s.id !== editingId && !s.parentId);
+  const specialtyNameById = new Map((specialties ?? []).map((s) => [s.id, s.name]));
 
   const {
     register,
     handleSubmit,
     reset,
     control,
+    setError: setFormError,
     formState: { errors },
   } = useForm<SpecialtyFormValues>({ resolver: zodResolver(specialtyFormSchema), defaultValues: EMPTY_FORM });
   // Dil sekmelerinde EN metni yer tutucu olarak gösterilir.
@@ -133,6 +152,7 @@ export default function AdminTelehealthSpecialtiesPage() {
       description: specialty.description ?? "",
       order: specialty.order,
       isActive: specialty.isActive,
+      parentId: specialty.parentId ?? "",
     });
     setImage(specialtyImageAsMedia(specialty));
     setTranslations(specialty.translations ?? {});
@@ -155,6 +175,7 @@ export default function AdminTelehealthSpecialtiesPage() {
         description: values.description || null,
         order: values.order ?? 0,
         isActive: values.isActive,
+        parentId: values.parentId ? values.parentId : null,
         imageMediaId: image?.id ?? null,
         translations,
       };
@@ -168,7 +189,13 @@ export default function AdminTelehealthSpecialtiesPage() {
       closeForm();
       await load();
     } catch (err) {
-      toast.error(friendlyErrorMessage(err));
+      const fieldErrors = fieldErrorsFrom(err);
+      if (fieldErrors.parentId) {
+        // Paket AG — backend 422 mesajı "Üst uzmanlık" alanında gösterilir.
+        setFormError("parentId", { type: "server", message: fieldErrors.parentId });
+      } else {
+        toast.error(friendlyErrorMessage(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -242,7 +269,8 @@ export default function AdminTelehealthSpecialtiesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {specialties.map((specialty) => {
+            {orderSpecialtiesWithChildren(specialties).map((specialty) => {
+              const isChild = Boolean(specialty.parentId);
               const Icon = resolveIcon(specialty.icon);
               return (
                 <TableRow key={specialty.id}>
@@ -257,8 +285,15 @@ export default function AdminTelehealthSpecialtiesPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className="font-medium text-foreground">{specialty.name}</span>
-                    <p className="text-xs text-foreground/50">/{specialty.slug}</p>
+                    <div className={isChild ? "ps-6" : undefined} data-testid={isChild ? "specialty-child-row" : undefined}>
+                      <span className="font-medium text-foreground">{specialty.name}</span>
+                      {isChild && (
+                        <span className="ms-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                          Üst: {specialtyNameById.get(specialty.parentId as string) ?? specialty.parentSlug ?? "—"}
+                        </span>
+                      )}
+                      <p className="text-xs text-foreground/50">/{specialty.slug}</p>
+                    </div>
                   </TableCell>
                   <TableCell>
                     {specialty.isActive ? (
@@ -335,6 +370,30 @@ export default function AdminTelehealthSpecialtiesPage() {
             <Field id="specialty-order" label="Sıra">
               {(inputProps) => <Input {...inputProps} type="number" min={0} {...register("order")} />}
             </Field>
+
+            <div className="sm:col-span-2">
+            <Field
+              id="specialty-parent"
+              label="Üst uzmanlık"
+              error={errors.parentId?.message}
+              hint={
+                editingHasChildren
+                  ? "Bu uzmanlığın alt uzmanlıkları var; başka bir uzmanlığın altına taşınamaz."
+                  : "Boş bırakılırsa üst seviye uzmanlık olur. Yalnızca tek seviye desteklenir."
+              }
+            >
+              {(inputProps) => (
+                <Select {...inputProps} {...register("parentId")} disabled={editingHasChildren}>
+                  <option value="">— Yok (üst seviye) —</option>
+                  {parentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            </div>
 
             <div className="sm:col-span-2">
               <Controller

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
+import { topLevelSpecialties } from "@/lib/specialty-hierarchy";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import type { Specialty } from "@/lib/api/types";
@@ -52,7 +53,7 @@ export async function SpecialtyCardsBlockView({
   chrome: BlockChrome;
   siteContext?: BlockSiteContext;
 }) {
-  const specialties = await fetchSpecialtiesServer(siteContext?.lang);
+  const specialties = topLevelSpecialties(await fetchSpecialtiesServer(siteContext?.lang));
   if (specialties.length === 0) return null;
 
   const { title, subtitle } = resolveContent(block, siteContext);

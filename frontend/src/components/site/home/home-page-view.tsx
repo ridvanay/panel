@@ -10,6 +10,7 @@ import { SpecialtyCardsGrid } from "@/components/site/blocks/specialty-cards-blo
 import type { BlockSiteContext } from "@/components/site/blocks/index";
 import { buttonVariants } from "@/components/ui/button";
 import { fetchDoctorsServer, fetchSpecialtiesServer, fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
+import { topLevelSpecialties } from "@/lib/specialty-hierarchy";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
@@ -70,7 +71,7 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
   const telehealthEnabled = await isModuleEnabledServer("telehealth");
   const [specialties, allDoctors, telehealthSettings] = telehealthEnabled
     ? await Promise.all([
-        content.specialties.enabled ? fetchSpecialtiesServer(lang) : Promise.resolve([]),
+        content.specialties.enabled ? fetchSpecialtiesServer(lang).then(topLevelSpecialties) : Promise.resolve([]),
         content.doctors.enabled ? fetchDoctorsServer({ locale: lang }) : Promise.resolve([]),
         fetchTelehealthThemeServer(),
       ])

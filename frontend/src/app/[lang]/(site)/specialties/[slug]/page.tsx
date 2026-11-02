@@ -11,7 +11,9 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
-import { buildSpecialtyJsonLd } from "@/lib/specialty-json-ld";
+import { buildSpecialtyBreadcrumbJsonLd, buildSpecialtyJsonLd } from "@/lib/specialty-json-ld";
+import { BlogBreadcrumb } from "@/components/site/blog/blog-breadcrumb";
+import Link from "next/link";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL } from "@/lib/env";
 import type { Locale } from "@/lib/api/types";
@@ -116,6 +118,15 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
   ]);
   if (!specialty) notFound();
 
+  // Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri gösterilir (index/noindex
+  // mantığı `generateMetadata`'da kendi hekimlerine bakmaya devam eder).
+  const parent = specialty.parent ?? null;
+  const parentDoctors =
+    doctors.length === 0 && parent ? await fetchDoctorsServer({ specialtySlug: parent.slug, locale: lang }) : [];
+  const shownDoctors = doctors.length > 0 ? doctors : parentDoctors;
+  const usingParentDoctors = doctors.length === 0 && parentDoctors.length > 0;
+  const children = specialty.children ?? [];
+
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const canonicalUrl = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
   const doctorCountLabel = formatSiteString(
@@ -123,8 +134,26 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
     { count: specialty.doctorCount },
   );
 
+  const specialtiesListHref = withLocalePrefix("/specialties", lang, defaultLocaleCode);
+  const breadcrumbItems = parent
+    ? [
+        { label: dict.telehealth.breadcrumbSpecialties, href: specialtiesListHref, url: `${SITE_URL}${specialtiesListHref}` },
+        {
+          label: parent.name,
+          href: withLocalePrefix(`/specialties/${parent.slug}`, lang, defaultLocaleCode),
+          url: resolveCanonicalUrl(lang, defaultLocaleCode, parent.slug),
+        },
+        { label: specialty.name, href: undefined, url: canonicalUrl },
+      ]
+    : null;
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+      {breadcrumbItems && (
+        <div className="mb-6">
+          <BlogBreadcrumb items={breadcrumbItems.map(({ label, href }) => ({ label, href }))} ariaLabel={dict.ui.breadcrumb} />
+        </div>
+      )}
       <div className="flex items-start gap-4">
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           {iconGlyph(specialty.icon, "h-7 w-7")}
@@ -136,7 +165,30 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
         </div>
       </div>
 
-      {doctors.length === 0 ? (
+      {children.length > 0 && (
+        <section data-testid="specialty-procedures" aria-labelledby="specialty-procedures-title" className="mt-8">
+          <h2 id="specialty-procedures-title" className="font-heading text-lg font-semibold text-foreground">
+            {dict.telehealth.specialtyProceduresTitle}
+          </h2>
+          <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {children.map((child) => (
+              <li key={child.slug}>
+                <Link
+                  href={withLocalePrefix(`/specialties/${child.slug}`, lang, defaultLocaleCode)}
+                  className="flex min-h-14 items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface px-4 py-3 text-foreground transition-colors duration-150 hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    {iconGlyph(child.icon, "h-5 w-5")}
+                  </span>
+                  <span className="min-w-0 flex-1 font-semibold">{child.name}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {shownDoctors.length === 0 ? (
         // Paket V — hekimi olmayan uzmanlıkta liste yerine koordinatöre yönlendirme (eşleştirme sihirbazı
         // kartı aşağıda — Paket W).
         <section
@@ -161,8 +213,14 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
           />
         </section>
       ) : (
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {doctors.map((doctor) => (
+        <section className="mt-8" aria-labelledby={usingParentDoctors ? "specialty-parent-doctors-title" : undefined}>
+          {usingParentDoctors && (
+            <h2 id="specialty-parent-doctors-title" className="mb-4 font-heading text-lg font-semibold text-foreground">
+              {dict.telehealth.physiciansPerformingProcedure}
+            </h2>
+          )}
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {shownDoctors.map((doctor) => (
             <DoctorCard
               key={doctor.id}
               doctor={doctor}
@@ -173,11 +231,15 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
             />
           ))}
         </div>
+        </section>
       )}
       {/* Paket W — eşleştirme sihirbazı. */}
       <MatcherCtaCard className="mt-10" />
 
       <JsonLdScript json={buildSpecialtyJsonLd(specialty, canonicalUrl)} />
+      {breadcrumbItems && (
+        <JsonLdScript json={buildSpecialtyBreadcrumbJsonLd(breadcrumbItems.map(({ label, url }) => ({ name: label, url })))} />
+      )}
     </div>
   );
 }

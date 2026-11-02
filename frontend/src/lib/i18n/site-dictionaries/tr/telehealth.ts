@@ -131,4 +131,10 @@ export const telehealthStrings: TelehealthStrings = {
   videoUnsupported: "Tarayıcınız bu videoyu oynatamıyor.",
   bookingPanelHint: "Tarih ve saat seçin, randevunuzu burada tamamlayın.",
   bookingPanelHide: "Randevu formunu gizle",
+  /** Paket AG — üst uzmanlık sayfasındaki alt uzmanlıklar bölümü başlığı. */
+  specialtyProceduresTitle: "İşlemler",
+  /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
+  physiciansPerformingProcedure: "Bu işlemi yapan hekimler",
+  /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
+  breadcrumbSpecialties: "Uzmanlıklar",
 };

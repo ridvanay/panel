@@ -129,4 +129,10 @@ export const telehealthStrings: TelehealthStrings = {
   videoUnsupported: "Ваш браузер не может воспроизвести это видео.",
   bookingPanelHint: "Выберите дату и время и завершите запись здесь.",
   bookingPanelHide: "Скрыть форму записи",
+  /** Paket AG — üst uzmanlık sayfasındaki alt uzmanlıklar bölümü başlığı. */
+  specialtyProceduresTitle: "Процедуры",
+  /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
+  physiciansPerformingProcedure: "Врачи, выполняющие эту процедуру",
+  /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
+  breadcrumbSpecialties: "Специализации",
 };

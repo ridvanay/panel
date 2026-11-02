@@ -53,6 +53,15 @@ describe("SpecialtyCardsBlockView", () => {
     expect(links[1]!.querySelector("svg")).not.toBeNull();
   });
 
+  it("Paket AG — alt uzmanlıklar (parentId dolu) kartlarda gösterilmez", async () => {
+    fetchSpecialtiesServer.mockResolvedValue([
+      specialty({ slug: "gastroenterology", name: "Gastroenterology", parentId: null }),
+      specialty({ slug: "esd", name: "ESD", parentId: "gastroenterology", parentSlug: "gastroenterology" }),
+    ]);
+    render(await SpecialtyCardsBlockView({ block: block(), chrome: "page", siteContext: { lang: "en", defaultLocaleCode: "tr" } }));
+    expect(screen.getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/en/specialties/gastroenterology"]);
+  });
+
   it("varsayılan dilde önek yok; eşit yükseklik için auto-rows-fr ve 2 satır sınırı", async () => {
     fetchSpecialtiesServer.mockResolvedValue([specialty({})]);
     const { container } = render(

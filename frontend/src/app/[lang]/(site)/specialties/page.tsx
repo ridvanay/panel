@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Tag } from "lucide-react";
 import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
+import { topLevelSpecialties } from "@/lib/specialty-hierarchy";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { SpecialtyCard } from "@/components/site/telehealth/specialty-card";
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
   const [locales, settings, specialties, dict] = await Promise.all([
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
-    fetchSpecialtiesServer(lang),
+    fetchSpecialtiesServer(lang).then(topLevelSpecialties),
     getSiteDictionary(lang),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
@@ -59,7 +60,7 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
 
 export default async function SpecialtiesIndexPage({ params }: SpecialtiesPageProps) {
   const { lang } = await params;
-  const [specialties, locales, dict] = await Promise.all([fetchSpecialtiesServer(lang), fetchLocalesServer(), getSiteDictionary(lang)]);
+  const [specialties, locales, dict] = await Promise.all([fetchSpecialtiesServer(lang).then(topLevelSpecialties), fetchLocalesServer(), getSiteDictionary(lang)]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
 
   return (

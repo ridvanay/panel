@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { ArrowRight, ChevronDown } from "lucide-react";
@@ -15,6 +15,8 @@ export interface NavSpecialty {
   name: string;
   icon: string;
   imageUrl: string | null;
+  /** Paket AG — alt uzmanlıkta üst uzmanlığın slug'ı; üst seviyede/eski API'de `null`/`undefined`. */
+  parentSlug?: string | null;
 }
 
 export interface NavDropdownLink {
@@ -47,6 +49,46 @@ export function specialtySlugFromHref(href: string): string | null {
   return null;
 }
 
+export interface GroupedNavChild {
+  id: string;
+  href: string;
+  label: string;
+  slug: string | null;
+  specialty: NavSpecialty | null;
+  /** Paket AG — aynı menüde üst uzmanlığı bulunan alt uzmanlıklar (kendi kartı yerine bu satırda görünür). */
+  procedures: { id: string; href: string; label: string }[];
+}
+
+/**
+ * Paket AG — href'i bir alt uzmanlığa işaret eden öğe, AYNI menüde üst uzmanlığın öğesi varsa ayrı
+ * kart olmaz; üst kartın `procedures` satırına eklenir. Üst öğe menüde yoksa alt öğe olduğu gibi kalır.
+ */
+export function groupSpecialtyNavChildren(
+  children: { id: string; href: string; label: string }[],
+  specialties: NavSpecialty[]
+): GroupedNavChild[] {
+  const bySlug = new Map(specialties.map((s) => [s.slug, s]));
+  const all: GroupedNavChild[] = children.map((child) => {
+    const slug = specialtySlugFromHref(child.href);
+    return { ...child, slug, specialty: slug ? bySlug.get(slug) ?? null : null, procedures: [] };
+  });
+  const parentCards = new Map<string, GroupedNavChild>();
+  for (const item of all) {
+    if (item.slug && !item.specialty?.parentSlug && !parentCards.has(item.slug)) parentCards.set(item.slug, item);
+  }
+  const result: GroupedNavChild[] = [];
+  for (const item of all) {
+    const parentSlug = item.specialty?.parentSlug;
+    const parent = parentSlug ? parentCards.get(parentSlug) : undefined;
+    if (parent && parent !== item) {
+      parent.procedures.push({ id: item.id, href: item.href, label: item.label });
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 /** Header'ın alt kenarı ile panel arasındaki boşluk. */
 const PANEL_GAP_PX = 12;
 
@@ -75,6 +117,8 @@ export interface NavDropdownProps {
   specialties: NavSpecialty[];
   viewAllLabel: string;
   findDoctorLabel: string;
+  /** Paket AG — "Procedures" etiketi (üst uzmanlık kartı altındaki alt uzmanlık satırı). */
+  proceduresLabel?: string;
   triggerClassName: string;
   activeTriggerClassName: string;
 }
@@ -95,14 +139,11 @@ export function NavDropdown({
   specialties,
   viewAllLabel,
   findDoctorLabel,
+  proceduresLabel = "Procedures",
   triggerClassName,
   activeTriggerClassName,
 }: NavDropdownProps) {
-  const bySlug = new Map(specialties.map((s) => [s.slug, s]));
-  const items = link.children.map((child) => {
-    const slug = specialtySlugFromHref(child.href);
-    return { ...child, slug, specialty: slug ? bySlug.get(slug) ?? null : null };
-  });
+  const items = groupSpecialtyNavChildren(link.children, specialties);
   const isSpecialtyMenu = items.some((item) => item.slug !== null);
   const twoColumns = items.length > 4;
   const showViewAll = hasOwnLink(link.href);
@@ -170,25 +211,51 @@ export function NavDropdown({
                 {link.label}
               </Menu.GroupLabel>
               <div className={cn("grid auto-rows-fr gap-0.5", twoColumns && "grid-cols-2")}>
-                {items.map((item) => (
-                  <Menu.Item
-                    key={item.id}
-                    render={<Link href={localize(item.href)} />}
-                    className="flex min-h-[60px] items-center gap-3.5 rounded-xl px-3 py-2.5 text-[15px] leading-snug font-semibold text-foreground outline-none transition-colors duration-150 hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] motion-reduce:transition-none"
-                  >
-                    {item.slug !== null && (
-                      <span className="flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--site-accent)_18%,var(--site-surface))] text-[var(--site-primary)]">
-                        {item.specialty?.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- 42 px küçük görsel, medya kütüphanesi URL'i
-                          <img src={item.specialty.imageUrl} alt="" width={42} height={42} loading="lazy" className="size-full object-cover" />
-                        ) : (
-                          iconGlyph(item.specialty?.icon ?? "Stethoscope")
-                        )}
-                      </span>
-                    )}
-                    <span className="line-clamp-2 text-pretty">{item.label}</span>
-                  </Menu.Item>
-                ))}
+                {items.map((item) => {
+                  const card = (
+                    <Menu.Item
+                      render={<Link href={localize(item.href)} />}
+                      className="flex min-h-[60px] items-center gap-3.5 rounded-xl px-3 py-2.5 text-[15px] leading-snug font-semibold text-foreground outline-none transition-colors duration-150 hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] motion-reduce:transition-none"
+                    >
+                      {item.slug !== null && (
+                        <span className="flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--site-accent)_18%,var(--site-surface))] text-[var(--site-primary)]">
+                          {item.specialty?.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- 42 px küçük görsel, medya kütüphanesi URL'i
+                            <img src={item.specialty.imageUrl} alt="" width={42} height={42} loading="lazy" className="size-full object-cover" />
+                          ) : (
+                            iconGlyph(item.specialty?.icon ?? "Stethoscope")
+                          )}
+                        </span>
+                      )}
+                      <span className="line-clamp-2 text-pretty">{item.label}</span>
+                    </Menu.Item>
+                  );
+                  if (item.procedures.length === 0) return <Fragment key={item.id}>{card}</Fragment>;
+                  return (
+                    <div key={item.id} className="flex flex-col">
+                      {card}
+                      {item.procedures.length > 0 && (
+                        <div
+                          data-testid="nav-procedures"
+                          className="flex flex-wrap items-center gap-x-1 gap-y-0.5 pb-1.5 ps-[4.5rem] pe-3 text-[13px] text-[var(--site-muted-text,currentColor)]"
+                        >
+                          <span className="font-medium">{proceduresLabel}:</span>
+                          {item.procedures.map((proc, index) => (
+                            <span key={proc.id} className="inline-flex items-center gap-1">
+                              {index > 0 && <span aria-hidden="true">·</span>}
+                              <Menu.Item
+                                render={<Link href={localize(proc.href)} />}
+                                className="inline-flex min-h-8 items-center rounded-md px-1 font-semibold text-[var(--site-primary)] outline-none hover:underline data-[highlighted]:underline"
+                              >
+                                {proc.label}
+                              </Menu.Item>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </Menu.Group>
             {hasFooter && (

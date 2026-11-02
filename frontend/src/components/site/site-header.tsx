@@ -40,7 +40,7 @@ import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/co
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { LanguageSheet } from "@/components/site/language-sheet";
 import { LocaleFlag } from "@/components/site/locale-flag";
-import { NavDropdown, type NavSpecialty } from "@/components/site/nav-dropdown";
+import { NavDropdown, groupSpecialtyNavChildren, type NavSpecialty } from "@/components/site/nav-dropdown";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -591,6 +591,7 @@ export function SiteHeader({
                   specialties={navSpecialties}
                   viewAllLabel={formatSiteString(dict.dropdownViewAll, { label: link.label.toLocaleLowerCase(activeLocale?.code ?? "en") })}
                   findDoctorLabel={dict.dropdownFindDoctor}
+                  proceduresLabel={dict.specialtyProceduresTitle}
                   triggerClassName={NAV_LINK_TEXT_CLASSES}
                   activeTriggerClassName={NAV_LINK_ACTIVE_TEXT_CLASS}
                 />
@@ -756,7 +757,7 @@ export function SiteHeader({
                               </AccordionTrigger>
                               <AccordionPanel>
                                 <ul className="flex flex-col gap-0.5 pb-1 ps-3">
-                                  {link.children.map((child) => {
+                                  {groupSpecialtyNavChildren(link.children, navSpecialties).map((child) => {
                                     const href = localize(child.href);
                                     const active = isNavLinkActive(pathname, href);
                                     return (
@@ -772,6 +773,26 @@ export function SiteHeader({
                                         >
                                           {child.label}
                                         </Link>
+                                        {child.procedures.length > 0 && (
+                                          <div
+                                            data-testid="mobile-nav-procedures"
+                                            className="flex flex-wrap items-center gap-x-1 pb-1 ps-6 pe-3 text-[13px] text-foreground/60"
+                                          >
+                                            <span className="font-medium">{dict.specialtyProceduresTitle}:</span>
+                                            {child.procedures.map((proc, index) => (
+                                              <span key={proc.id} className="inline-flex items-center gap-1">
+                                                {index > 0 && <span aria-hidden="true">·</span>}
+                                                <Link
+                                                  href={localize(proc.href)}
+                                                  onClick={closeMobileMenu}
+                                                  className="inline-flex min-h-11 items-center px-1 font-semibold text-[var(--site-primary)] hover:underline"
+                                                >
+                                                  {proc.label}
+                                                </Link>
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
                                       </li>
                                     );
                                   })}

@@ -129,4 +129,10 @@ export const telehealthStrings: TelehealthStrings = {
   videoUnsupported: "Vaš pregledač ne može da reprodukuje ovaj video.",
   bookingPanelHint: "Izaberite datum i vreme, pa ovde završite rezervaciju.",
   bookingPanelHide: "Sakrij formu za rezervaciju",
+  /** Paket AG — üst uzmanlık sayfasındaki alt uzmanlıklar bölümü başlığı. */
+  specialtyProceduresTitle: "Procedure",
+  /** Paket AG — alt uzmanlığın kendi hekimi yoksa üst uzmanlığın hekimleri için başlık. */
+  physiciansPerformingProcedure: "Lekari koji izvode ovu proceduru",
+  /** Paket AG — alt uzmanlık sayfası kırıntısının ilk halkası. */
+  breadcrumbSpecialties: "Specijalnosti",
 };

@@ -30,4 +30,6 @@ export const navStrings: NavStrings = {
   languageSheetTitle: "Jezik / Language",
   languageSheetClose: "Zatvori izbor jezika",
   languageButtonAria: "Promeni jezik, trenutno: {language}",
+  /** Paket AG — açılır menüde üst uzmanlık kartı altındaki alt uzmanlık satırı etiketi. */
+  specialtyProceduresTitle: "Procedure",
 };

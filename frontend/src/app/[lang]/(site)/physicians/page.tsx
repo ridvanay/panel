@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Stethoscope } from "lucide-react";
-import { fetchDoctorsServer } from "@/lib/api/server-telehealth";
+import { fetchDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { DoctorCard } from "@/components/site/telehealth/doctor-card";
@@ -10,6 +10,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
+import { isTopLevelSpecialty } from "@/lib/specialty-hierarchy";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2/§9.5 — doktor ızgarası + uzmanlık/dil
@@ -89,7 +90,7 @@ export default async function DoctorsIndexPage({
   const { lang } = await params;
   const { specialty, language, q } = await searchParams;
 
-  const [doctors, unfilteredDoctors, locales, dict] = await Promise.all([
+  const [doctors, unfilteredDoctors, allSpecialties, locales, dict] = await Promise.all([
     fetchDoctorsServer({
       specialtySlug: specialty,
       language,
@@ -99,6 +100,8 @@ export default async function DoctorsIndexPage({
     // Filtre seçeneklerini (uzmanlık listesi) oluşturmak için — public bir `/specialties` ucu
     // YOKTUR (§3.2 — tek FK, ayrı bir uç açılmadı), bu yüzden mevcut doktorlardan türetilir.
     fetchDoctorsServer({ locale: lang }),
+    // Paket AG — alt uzmanlıklar filtre seçeneği olmaz; liste alınamazsa hepsi gösterilir (geri düşüş).
+    fetchSpecialtiesServer(lang).catch(() => []),
     fetchLocalesServer(),
     getSiteDictionary(lang),
   ]);
@@ -106,10 +109,11 @@ export default async function DoctorsIndexPage({
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const intlLocale = contentLocaleToIntl(lang);
 
+  const childSpecialtySlugs = new Set(allSpecialties.filter((s) => !isTopLevelSpecialty(s)).map((s) => s.slug));
   const specialtyOptions = Array.from(
     new Map(
       unfilteredDoctors
-        .filter((d) => d.specialty)
+        .filter((d) => d.specialty && !childSpecialtySlugs.has(d.specialty.slug))
         .map((d) => [
           d.specialty!.slug,
           { slug: d.specialty!.slug, name: d.specialty!.name },

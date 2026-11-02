@@ -3891,6 +3891,9 @@ export interface Specialty {
   imageUrl: string | null;
   /** Paket O — dil başına `name`/`description` (EN kanonik; TR dahil diğer diller burada). */
   translations?: TextTranslations;
+  /** Paket AG — üst uzmanlık (tek seviye). Eski API'de alan yoksa `undefined` → üst seviye sayılır. */
+  parentId?: string | null;
+  parentSlug?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3906,6 +3909,8 @@ export interface CreateSpecialtyRequest {
   imageMediaId?: string | null;
   /** Paket O — gönderilirse haritanın tamamı yazılır. */
   translations?: TextTranslations;
+  /** Paket AG — üst uzmanlık id'si; `null`/boş = üst seviye. Hata: 422 alan `parentId`. */
+  parentId?: string | null;
 }
 
 export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;
@@ -3917,6 +3922,10 @@ export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;
  */
 export interface SpecialtyWithDoctorCount extends Specialty {
   doctorCount: number;
+  /** Paket AG — alt uzmanlıkta üst uzmanlık (yerelleştirilmiş ad); yoksa/eski API'de `null`/`undefined`. */
+  parent?: { slug: string; name: string } | null;
+  /** Paket AG — aktif alt uzmanlıklar (`order asc`, yerelleştirilmiş). */
+  children?: { slug: string; name: string; icon: string }[];
 }
 
 export interface DoctorAvailabilityRule {
