@@ -26,7 +26,9 @@ export type BookingNotificationEvent =
   | { kind: "cancelled"; bookingId: string; appointmentId?: string | null }
   | { kind: "rescheduled"; appointmentId: string; oldStartsAt: Date; oldEndsAt: Date; newStartsAt: Date }
   // Paket AH - danisma talebi (ayni altyapi: idempotent eventKey, yeniden deneme, alici basina gonderim). PII YOK.
-  | { kind: "consultation_request"; requestId: string };
+  | { kind: "consultation_request"; requestId: string }
+  // Paket AH - saatlik tekil bildirim tavani asildi: alicilara saatte EN FAZLA 1 uyari (eventKey saat kovasi). PII YOK.
+  | { kind: "consultation_cap_reached"; hourBucket: string };
 
 export const ADMIN_NOTIFICATION_MAX_ATTEMPTS = 4;
 /** attempts (az once tamamlanan deneme sayisi) -> sonraki denemeye kadar bekleme. */
@@ -44,6 +46,8 @@ interface NotificationPayload {
   newStartsAt?: string;
   /** Yalniz consultation_request: ConsultationRequest.id. */
   requestId?: string;
+  /** Yalniz consultation_cap_reached: `YYYY-MM-DDTHH` (UTC). */
+  hourBucket?: string;
   /** Basariyla gonderilmis alici adresleri (kucuk harf) - retry'da tekrar gonderilmez. */
   deliveredTo?: string[];
 }
@@ -56,6 +60,8 @@ export function bookingEventKey(event: BookingNotificationEvent): string {
       return event.appointmentId ? `appointment:${event.appointmentId}:cancelled` : `booking:${event.bookingId}:cancelled`;
     case "consultation_request":
       return `consultation-request:${event.requestId}:created`;
+    case "consultation_cap_reached":
+      return `consultation-cap:${event.hourBucket}`;
     case "rescheduled":
       // Eski + yeni baslangic: A->B->C->B zincirinde ucuncu olay (C->B) onceki B olayiyla carpismaz.
       return `appointment:${event.appointmentId}:rescheduled:${event.oldStartsAt.toISOString()}:${event.newStartsAt.toISOString()}`;
@@ -165,6 +171,16 @@ interface AdminMail {
 
 /** Paket AH - danisma talebi bildirimi: yalniz PII'siz alanlar okunur (ad/e-posta/telefon/mesaj select'te YOK). */
 async function loadConsultationMail(app: FastifyInstance, row: NotificationRow): Promise<AdminMail> {
+  if (row.kind === "consultation_cap_reached") {
+    const subject = "Consultation request notification cap reached";
+    return {
+      subject,
+      preheader: subject,
+      title: subject,
+      bodyHtml: "<p>More than 30 consultation requests were received within the last hour. Individual notification emails are paused until the rate drops; every request remains visible in the admin panel.</p><p>This warning is sent at most once per hour.</p>",
+      cta: { label: "Open requests", url: `${env.FRONTEND_URL.replace(/\/$/, "")}/admin/crm/leads?channel=CONSULTATION_REQUEST` },
+    };
+  }
   const requestId = ((row.payload ?? {}) as NotificationPayload).requestId;
   if (!requestId) throw new MissingEntityError();
   const request = await app.prisma.consultationRequest.findUnique({
@@ -199,7 +215,7 @@ async function attemptDelivery(app: FastifyInstance, row: NotificationRow): Prom
     }
     const remaining = recipients.filter((a) => !delivered.has(a));
     if (remaining.length > 0) {
-      const mail: AdminMail = row.kind === "consultation_request" ? await loadConsultationMail(app, row) : buildBookingNotificationEmail(await loadEmailData(app, row));
+      const mail: AdminMail = row.kind === "consultation_request" || row.kind === "consultation_cap_reached" ? await loadConsultationMail(app, row) : buildBookingNotificationEmail(await loadEmailData(app, row));
       for (const to of remaining) {
         try {
           await sendBrandedMail(app, { to, subject: mail.subject, locale: "en", audience: "staff", preheader: mail.preheader, title: mail.title, bodyHtml: mail.bodyHtml, cta: mail.cta });
@@ -239,6 +255,12 @@ async function attemptDelivery(app: FastifyInstance, row: NotificationRow): Prom
 
 const inflight = new Set<Promise<unknown>>();
 
+/** Paket AH - baska modullerin (ornegin danisma talebi onay e-postasi) arka plan isi; `waitForAdminNotifications` bunu da bekler. */
+export function trackAdminBackgroundTask(promise: Promise<unknown>): void {
+  const task: Promise<unknown> = promise.catch(() => undefined).finally(() => inflight.delete(task));
+  inflight.add(task);
+}
+
 /** Arka planda calisan gonderim denemelerinin bitmesini bekler (testler ve kapanis icin). */
 export async function waitForAdminNotifications(): Promise<void> {
   while (inflight.size > 0) await Promise.allSettled([...inflight]);
@@ -251,14 +273,16 @@ export async function waitForAdminNotifications(): Promise<void> {
 export async function notifyAdminsOfBookingEvent(app: FastifyInstance, event: BookingNotificationEvent): Promise<"queued" | "duplicate" | "error"> {
   try {
     const eventKey = bookingEventKey(event);
-    const bookingId = event.kind === "rescheduled" || event.kind === "consultation_request" ? null : event.bookingId;
+    const bookingId = event.kind === "rescheduled" || event.kind === "consultation_request" || event.kind === "consultation_cap_reached" ? null : event.bookingId;
     const appointmentId = event.kind === "rescheduled" ? event.appointmentId : event.kind === "cancelled" ? (event.appointmentId ?? null) : null;
     const payload: NotificationPayload =
       event.kind === "rescheduled"
         ? { oldStartsAt: event.oldStartsAt.toISOString(), oldEndsAt: event.oldEndsAt.toISOString(), newStartsAt: event.newStartsAt.toISOString() }
         : event.kind === "consultation_request"
           ? { requestId: event.requestId }
-          : {};
+          : event.kind === "consultation_cap_reached"
+            ? { hourBucket: event.hourBucket }
+            : {};
 
     let row: NotificationRow;
     try {

@@ -3,6 +3,7 @@ import type { CrmLeadStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { ok } from "../../lib/envelope";
 import { logAudit } from "../../lib/audit";
+import { decryptSecret } from "../../lib/crypto";
 import { NotFoundError, ValidationError } from "../../lib/errors";
 import { toCsv } from "../reports/reports.format";
 import { readCrmSettings } from "./crm.settings";
@@ -231,6 +232,22 @@ export async function registerCrmLeadRoutes(app: FastifyInstance) {
     return reply.send(ok({ updated: changed }));
   });
 
+  /**
+   * Paket AH - danışma talebi mesajını çözer. Çözme hatası (anahtar değişimi/bozuk kayıt) PII'siz loglanır
+   * (`app.log.error`: yalnız lead/talep kimliği + hata adı) ve audit'e düşer; panelde yer tutucu görünür.
+   * (Planlı iyileştirme: AAD'ye lead id bağlama ve anahtar sürümü - şimdilik yapılmadı.)
+   */
+  async function readConsultationMessage(request: FastifyRequest, cr: { id: string; leadId: string; messageEncrypted: string | null }): Promise<string | null> {
+    if (!cr.messageEncrypted) return null;
+    try {
+      return decryptSecret(cr.messageEncrypted);
+    } catch (err) {
+      app.log.error({ leadId: cr.leadId, consultationRequestId: cr.id, error: err instanceof Error ? err.name : "unknown" }, "Danışma talebi mesajı çözülemedi.");
+      await logAudit(app, { actorId: actor(request).id, actorEmail: actor(request).email, action: "crm.consultation_request.decrypt_failed", targetType: "CrmLead", targetId: cr.leadId, ipAddress: request.ip }).catch(() => undefined);
+      return "[Mesaj çözülemedi]";
+    }
+  }
+
   app.get("/leads/:id", async (request, reply) => {
     const { id } = parseOr422(IdParam, request.params);
     const lead = await app.prisma.crmLead.findUnique({ where: { id }, include: { notes: { orderBy: { createdAt: "desc" } }, packageInquiry: true, consultationRequest: true } });
@@ -281,7 +298,7 @@ export async function registerCrmLeadRoutes(app: FastifyInstance) {
             }
           : null,
         // Paket AH — danışma talebi ayrıntısı (yalnızca yetkili CRM görüntüleyicisi; mesaj şifreli saklanır, burada çözülür).
-        consultationRequest: lead.consultationRequest ? toConsultationRequestDto(lead.consultationRequest) : null,
+        consultationRequest: lead.consultationRequest ? toConsultationRequestDto(lead.consultationRequest, await readConsultationMessage(request, lead.consultationRequest)) : null,
       })
     );
   });

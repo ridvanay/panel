@@ -13,6 +13,8 @@
  *  3) /physicians ve /doctors baglantilari (ziyaretciye kapandi, 301) CIKARILIR.
  *  4) Slogan / telif metni Turkce ise (ozel karakter ya da bilinen Turkce kelime) `null` yapilir (site varsayilani gosterir).
  *
+ * Sonunda footer'da EN gizlilik/aydinlatma (Privacy Notice/Policy) baglantisi kaldi mi kontrol edilir; yoksa uyarir.
+ * NODE_ENV=production iken yazma/geri yukleme ek --i-know-this-is-prod bayragi ister; her calismada hedef DB (host:port/db, parolasiz) yazdirilir.
  * Guvenlik: varsayilan KURU; yazmak icin --confirm=localize-footer-english --operator=<ad>; idempotent; yazmadan once footer +
  * slogan/telif/ceviri yedegi (storage/backups/footer-<tarih>.json); --restore=<yedek.json> ile geri yukleme; audit log.
  *
@@ -25,6 +27,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient, Prisma } from "@prisma/client";
+import { assertProdWriteAllowed, printTargetDb } from "./_script-guard";
 
 const prisma = new PrismaClient();
 
@@ -158,6 +161,16 @@ function describe(plan: Plan) {
   for (const u of plan.untranslated) console.log(`[uyarı] sözlükte yok, DEĞİŞTİRİLMEDİ: ${u}`);
 }
 
+/** Footer'da (cikarilacaklar haric) EN gizlilik/aydinlatma baglantisi kaliyor mu? Plan ceviriyle yeni "Privacy" etiketi de sayilir. */
+async function warnIfNoPrivacyLink(plan: Plan) {
+  const removed = new Set(plan.removeLinks.map((r) => r.id));
+  const translatedPrivacy = new Set(plan.links.filter((l) => l.key === "privacy" || l.key === "notice").map((l) => l.id));
+  const links = await prisma.footerLink.findMany({ select: { id: true, label: true, href: true } });
+  const has = links.some((l) => !removed.has(l.id) && (translatedPrivacy.has(l.id) || /privacy|data-protection|notice/i.test(l.href) || /^privacy (policy|notice)$/i.test(l.label.trim())));
+  if (!has) console.log("[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.");
+  else console.log("[kontrol] footer'da EN gizlilik/aydınlatma bağlantısı mevcut.");
+}
+
 const empty = (plan: Plan) => plan.columns.length + plan.links.length + plan.removeLinks.length === 0 && !plan.tagline && !plan.copyright;
 
 async function apply(plan: Plan) {
@@ -216,6 +229,8 @@ async function main() {
   if (confirm !== undefined && !write) throw new Error(`Geçersiz --confirm değeri. Beklenen: --confirm=${CONFIRM_TOKEN}`);
   if (write && !operator?.trim()) throw new Error("--operator=<ad> zorunludur (audit log için).");
   console.log(`[localize-footer-english] mod=${restore ? (write ? "GERİ YÜKLE" : "KURU (restore)") : write ? "YAZ" : "KURU ÇALIŞTIRMA"}`);
+  printTargetDb();
+  assertProdWriteAllowed(write, process.argv.slice(2));
 
   if (restore) {
     const file = path.resolve(restore);
@@ -230,6 +245,7 @@ async function main() {
 
   const plan = await buildPlan();
   describe(plan);
+  await warnIfNoPrivacyLink(plan);
   if (empty(plan)) {
     console.log("[bilgi] Yapılacak değişiklik yok (idempotent).");
     return;
@@ -244,6 +260,7 @@ async function main() {
   fs.writeFileSync(file, JSON.stringify(await readSnapshot(), null, 2), "utf8");
   console.log(`[yedek] ${file}`);
   await apply(plan);
+  await warnIfNoPrivacyLink({ ...plan, removeLinks: [], links: [] });
   await prisma.auditLog.create({
     data: {
       actorEmail: `script:${operator!.trim()}`,

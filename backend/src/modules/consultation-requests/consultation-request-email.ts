@@ -6,7 +6,7 @@ import { toIntermediaryLocale, type IntermediaryLocale } from "../../lib/interme
  *
  * 1) Yonetici bildirimi (EN, `audience: "staff"`): GIZLILIK - ad, e-posta, telefon ve MESAJ bu e-postada YOKTUR; girdi tipi
  *    bunlari zaten tasimaz. Yalnizca bolum/paket adi, ulke, iletisim dili, tercuman, tarih araligi ve "Open request" baglantisi.
- * 2) Ziyaretciye onay (8 dil; `tr` -> `en`, musteriye Turkce e-posta gitmez): talep no + "koordinator 1 is gunu icinde
+ * 2) Ziyaretciye onay (8 dil; `tr` -> `en`, musteriye Turkce e-posta gitmez; hizmet adi YOK): talep no + "koordinator 1 is gunu icinde
  *    donecek". Kurulus kimligi ibaresi + aciklamasi kurumsal kabugun footer'inda (`lib/branded-email.ts`) alicinin dilinde gelir.
  */
 
@@ -99,63 +99,63 @@ interface ConfirmationStrings {
 export const CONSULTATION_CONFIRMATION: Record<IntermediaryLocale, ConfirmationStrings> = {
   en: {
     subject: "We received your request {no}",
-    intro: "Thank you. We have received your consultation request {no} for {service}.",
+    intro: "Thank you. We have received your consultation request {no}.",
     contactLine: "A patient coordinator will contact you within 1 business day.",
     safetyLine: "Please do not reply to this email with detailed medical information; your coordinator will guide you securely.",
   },
   de: {
     subject: "Wir haben Ihre Anfrage {no} erhalten",
-    intro: "Vielen Dank. Wir haben Ihre Beratungsanfrage {no} für {service} erhalten.",
+    intro: "Vielen Dank. Wir haben Ihre Beratungsanfrage {no} erhalten.",
     contactLine: "Unsere Patientenkoordination meldet sich innerhalb von einem Werktag bei Ihnen.",
     safetyLine: "Bitte senden Sie keine detaillierten medizinischen Informationen per Antwort auf diese E-Mail; Ihre Koordinatorin bzw. Ihr Koordinator führt Sie sicher durch den Prozess.",
   },
   ar: {
     subject: "تلقّينا طلبك {no}",
-    intro: "شكرًا لك. تلقّينا طلب الاستشارة {no} الخاص بـ {service}.",
+    intro: "شكرًا لك. تلقّينا طلب الاستشارة {no} الخاص بك.",
     contactLine: "سيتواصل معك منسّق المرضى لدينا خلال يوم عمل واحد.",
     safetyLine: "يُرجى عدم الرد على هذا البريد بمعلومات طبية تفصيلية؛ سيرشدك المنسّق بطريقة آمنة.",
   },
   ru: {
     subject: "Мы получили вашу заявку {no}",
-    intro: "Спасибо. Мы получили вашу заявку на консультацию {no}: {service}.",
+    intro: "Спасибо. Мы получили вашу заявку на консультацию {no}.",
     contactLine: "Наш координатор пациентов свяжется с вами в течение 1 рабочего дня.",
     safetyLine: "Пожалуйста, не отправляйте подробную медицинскую информацию в ответ на это письмо; координатор подскажет, как сделать это безопасно.",
   },
   fr: {
     subject: "Nous avons bien reçu votre demande {no}",
-    intro: "Merci. Nous avons bien reçu votre demande de consultation {no} pour {service}.",
+    intro: "Merci. Nous avons bien reçu votre demande de consultation {no}.",
     contactLine: "Notre coordinateur patients vous contactera sous 1 jour ouvré.",
     safetyLine: "Merci de ne pas répondre à cet e-mail avec des informations médicales détaillées ; votre coordinateur vous guidera en toute sécurité.",
   },
   es: {
     subject: "Hemos recibido su solicitud {no}",
-    intro: "Gracias. Hemos recibido su solicitud de consulta {no} para {service}.",
+    intro: "Gracias. Hemos recibido su solicitud de consulta {no}.",
     contactLine: "Nuestro coordinador de pacientes se pondrá en contacto con usted en un plazo de 1 día hábil.",
     safetyLine: "Le rogamos que no responda a este correo con información médica detallada; su coordinador le guiará de forma segura.",
   },
   ro: {
     subject: "Am primit solicitarea dumneavoastră {no}",
-    intro: "Vă mulțumim. Am primit solicitarea dumneavoastră de consultație {no} pentru {service}.",
+    intro: "Vă mulțumim. Am primit solicitarea dumneavoastră de consultație {no}.",
     contactLine: "Coordonatorul nostru de pacienți vă va contacta în cel mult 1 zi lucrătoare.",
     safetyLine: "Vă rugăm să nu răspundeți la acest e-mail cu informații medicale detaliate; coordonatorul vă va îndruma în siguranță.",
   },
   "sr-latn": {
     subject: "Primili smo vaš zahtev {no}",
-    intro: "Hvala vam. Primili smo vaš zahtev za konsultaciju {no} za {service}.",
+    intro: "Hvala vam. Primili smo vaš zahtev za konsultaciju {no}.",
     contactLine: "Naš koordinator za pacijente javiće vam se u roku od 1 radnog dana.",
     safetyLine: "Molimo vas da ne odgovarate na ovu poruku detaljnim medicinskim informacijama; koordinator će vas bezbedno voditi kroz proces.",
   },
 };
 
-export function buildConsultationConfirmationEmail(input: { locale: string | null | undefined; requestNumber: string; serviceName: string }): {
+export function buildConsultationConfirmationEmail(input: { locale: string | null | undefined; requestNumber: string }): {
   locale: IntermediaryLocale;
   subject: string;
   html: string;
 } {
   const locale = toIntermediaryLocale(input.locale);
   const t = CONSULTATION_CONFIRMATION[locale];
-  // Fonksiyon bicimi: ad icinde `$&` gibi kaliplar yorumlanmasin.
-  const fill = (s: string) => s.replaceAll("{no}", () => input.requestNumber).replaceAll("{service}", () => input.serviceName);
+  // Fonksiyon bicimi: `$&` gibi kaliplar yorumlanmasin. Hizmet/bolum adi bilerek YOK (yalniz talep no).
+  const fill = (s: string) => s.replaceAll("{no}", () => input.requestNumber);
   const dir = locale === "ar" ? "rtl" : "ltr";
   const rows = [fill(t.intro), t.contactLine, t.safetyLine].map((line) => `<p>${escapeHtml(line)}</p>`);
   return { locale, subject: fill(t.subject), html: `<div dir="${dir}" lang="${locale}">${rows.join("")}</div>` };

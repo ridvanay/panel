@@ -84,6 +84,47 @@ describe("scripts/disable-site-locale.ts", () => {
     expect(res.stdout).toContain("kayıtlı değil");
   });
 
+  it("her calismada hedef DB (host:port/db) yazdirilir, parola YAZILMAZ", () => {
+    const res = runScript();
+    expect(res.stdout).toMatch(/\[hedef DB\] [^\s]+:\d+\/saas_test/);
+    expect(res.stdout).not.toContain("postgres:postgres");
+  });
+
+  it("NODE_ENV=production iken yazma --i-know-this-is-prod ister; kuru calisma gerektirmez", async () => {
+    const env = { ...process.env, NODE_ENV: "production" };
+    const blocked = spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH, ...CONFIRM, `--backup-dir=${backupDir}`], { cwd: path.resolve(__dirname, "../.."), env, encoding: "utf8" });
+    expect(blocked.status).not.toBe(0);
+    expect(blocked.stderr).toContain("--i-know-this-is-prod");
+    expect((await state()).tr!.enabled).toBe(true);
+    const dry = spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH], { cwd: path.resolve(__dirname, "../.."), env, encoding: "utf8" });
+    expect(dry.status).toBe(0);
+    const ok = spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH, ...CONFIRM, "--i-know-this-is-prod", `--backup-dir=${backupDir}`], { cwd: path.resolve(__dirname, "../.."), env, encoding: "utf8" });
+    expect(ok.status, ok.stderr).toBe(0);
+    expect((await state()).tr!.enabled).toBe(false);
+  });
+
+  it("restore: mevcut varsayilan dil yedektekinden farkliysa DURUR (kuru ve gercek), yedek bicimi kuru restore'da dogrulanir", async () => {
+    runScript([...CONFIRM, `--backup-dir=${backupDir}`]);
+    const file = path.join(backupDir, fs.readdirSync(backupDir)[0]!);
+    await prisma.locale.update({ where: { code: "en" }, data: { isDefault: false } });
+    await prisma.locale.update({ where: { code: "de" }, data: { isDefault: true } });
+    for (const extra of [[], CONFIRM]) {
+      const res = runScript([`--restore=${file}`, ...extra]);
+      expect(res.status).not.toBe(0);
+      expect(res.stderr).toContain("Geri yükleme DURDURULDU");
+      expect(res.stderr).toContain('"de"');
+    }
+    expect((await state()).tr!.enabled).toBe(false);
+    // Bozuk yedek: kuru restore da hata verir.
+    const broken = path.join(backupDir, "broken.json");
+    fs.writeFileSync(broken, JSON.stringify({ version: 1, locales: [{ code: "tr" }] }));
+    const bad = runScript([`--restore=${broken}`]);
+    expect(bad.status).not.toBe(0);
+    expect(bad.stderr).toContain("Geçersiz yedek dosyası biçimi");
+    fs.writeFileSync(broken, "{ bozuk json");
+    expect(runScript([`--restore=${broken}`]).status).not.toBe(0);
+  });
+
   it("--restore yedekten enabled/isDefault degerlerini geri yukler", async () => {
     runScript([...CONFIRM, `--backup-dir=${backupDir}`]);
     expect((await state()).tr!.enabled).toBe(false);

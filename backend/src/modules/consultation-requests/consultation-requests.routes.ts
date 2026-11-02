@@ -12,7 +12,7 @@ import { sendBrandedMail } from "../../lib/branded-mail";
 import { normalizeEmail, normalizePhone } from "../crm/crm.leads";
 import { sanitizeText } from "../crm/crm.privacy";
 import { pickLocale, type PackageText } from "../packages/packages.shared";
-import { notifyAdminsOfBookingEvent } from "../telehealth/lib/admin-booking-notifications";
+import { notifyAdminsOfBookingEvent, trackAdminBackgroundTask } from "../telehealth/lib/admin-booking-notifications";
 import { buildConsultationConfirmationEmail, formatRequestNumber } from "./consultation-request-email";
 
 /**
@@ -24,6 +24,8 @@ export const CONTACT_LANGUAGES = ["en", "de", "ar", "ru", "fr", "es", "ro", "sr-
 export const CONSULTATION_MESSAGE_MAX = 1000;
 /** Rıza kutularindaki metnin surumu (on yuz metni degisince artirilir; ispat icin talepte saklanir). */
 export const CONSULTATION_CONSENT_TEXT_VERSION = "consultation-v1";
+/** Sunucu tarafi izin listesi: istemcinin gonderdigi surum bunlardan biri degilse varsayilana dusurulur (422 DEGIL). */
+export const CONSULTATION_CONSENT_TEXT_VERSIONS: readonly string[] = [CONSULTATION_CONSENT_TEXT_VERSION];
 /** Ayni kisi + ayni hizmet icin bu sure icindeki tekrar gonderim yeni talep acmaz. */
 const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
 /** Posta bombasina karsi: adres basina saatte 3, site genelinde saatte en cok 50 onay e-postasi. */
@@ -61,7 +63,7 @@ export const ConsultationRequestBodySchema = z
     locale: z.string().trim().toLowerCase().regex(LOCALE_CODE_PATTERN),
     /** Honeypot - doluysa bot; basari gibi gorunur, hicbir sey yazilmaz. */
     website: z.string().max(200).optional(),
-    consentTextVersion: z.string().trim().max(40).regex(/^[a-z0-9._-]+$/i).optional(),
+    consentTextVersion: z.string().max(200).optional().catch(undefined),
   })
   .superRefine((body, ctx) => {
     const message = cleanMessage(body.message);
@@ -184,7 +186,7 @@ export async function consultationRequestsPublicRoutes(app: FastifyInstance) {
             contactConsentAt: now,
             // Veri minimizasyonu: saglik rizasi yalnizca mesaj yazildiysa kayda gecer.
             healthDataConsentAt: message && body.healthDataConsent ? now : null,
-            consentTextVersion: body.consentTextVersion ?? CONSULTATION_CONSENT_TEXT_VERSION,
+            consentTextVersion: body.consentTextVersion && CONSULTATION_CONSENT_TEXT_VERSIONS.includes(body.consentTextVersion) ? body.consentTextVersion : CONSULTATION_CONSENT_TEXT_VERSION,
             locale: body.locale,
             ipAddress: request.ip ?? null,
             userAgent: sanitizeText(request.headers["user-agent"], 300) || null,
@@ -195,28 +197,33 @@ export async function consultationRequestsPublicRoutes(app: FastifyInstance) {
       });
       const requestNumber = formatRequestNumber(created.seq);
 
-      // Yonetici bildirimi (PII'siz; idempotent, yeniden denemeli). Saatlik tavan asilirsa e-posta gitmez, talep panelde gorunur.
+      // Bildirimler istegin DISINDA (arka planda) calisir; hata yutulur, yanit SMTP'yi/sayaclari beklemez.
+      // Sayaclar yalniz KAYITLI talepleri sayar (honeypot hicbir sey yazmadigi icin sayaca girmez).
       const hourAgo = new Date(now.getTime() - 3_600_000);
-      const lastHour = await app.prisma.consultationRequest.count({ where: { createdAt: { gte: hourAgo } } });
-      if (lastHour <= ADMIN_NOTICES_PER_HOUR) {
-        await notifyAdminsOfBookingEvent(app, { kind: "consultation_request", requestId: created.id });
-      } else {
-        app.log.warn({ lastHour }, "consultation_request: saatlik bildirim sınırı aşıldı; talep panelde, yönetici e-postası gönderilmedi.");
-      }
+      trackAdminBackgroundTask(
+        (async () => {
+          // Yonetici bildirimi (PII'siz; idempotent, yeniden denemeli). Saatlik tavan asilirsa tekil e-posta gitmez, talep panelde gorunur;
+          // alicilara saatte EN FAZLA 1 "tavan asildi" uyarisi gider (eventKey saat kovasina baglidir).
+          const lastHour = await app.prisma.consultationRequest.count({ where: { createdAt: { gte: hourAgo } } });
+          if (lastHour <= ADMIN_NOTICES_PER_HOUR) {
+            await notifyAdminsOfBookingEvent(app, { kind: "consultation_request", requestId: created.id });
+          } else {
+            app.log.warn({ lastHour }, "consultation_request: saatlik bildirim sınırı aşıldı; talep panelde, tekil yönetici e-postası gönderilmedi.");
+            await notifyAdminsOfBookingEvent(app, { kind: "consultation_cap_reached", hourBucket: now.toISOString().slice(0, 13) });
+          }
 
-      // Ziyaretciye onay (kendi dilinde; tr -> en). Posta bombasina karsi adres ve site basina saatlik tavan.
-      const [perAddress, global] = await Promise.all([
-        app.prisma.consultationRequest.count({ where: { email, createdAt: { gte: hourAgo } } }),
-        app.prisma.consultationRequest.count({ where: { createdAt: { gte: hourAgo } } }),
-      ]);
-      if (perAddress <= CONFIRMATIONS_PER_ADDRESS_PER_HOUR && global <= CONFIRMATIONS_PER_HOUR_GLOBAL) {
-        const mail = buildConsultationConfirmationEmail({ locale: body.locale, requestNumber, serviceName });
-        try {
-          await sendBrandedMail(app, { to: email, subject: mail.subject, preheader: mail.subject, bodyHtml: mail.html, locale: mail.locale, audience: "patient" });
-        } catch (err) {
-          app.log.warn({ err: (err as Error).message }, "Danışma talebi onay e-postası gönderilemedi (best-effort).");
-        }
-      }
+          // Ziyaretciye onay (kendi dilinde; tr -> en). Posta bombasina karsi adres ve site basina saatlik tavan.
+          const [perAddress, global] = await Promise.all([
+            app.prisma.consultationRequest.count({ where: { email, createdAt: { gte: hourAgo } } }),
+            app.prisma.consultationRequest.count({ where: { createdAt: { gte: hourAgo } } }),
+          ]);
+          if (perAddress <= CONFIRMATIONS_PER_ADDRESS_PER_HOUR && global <= CONFIRMATIONS_PER_HOUR_GLOBAL) {
+            // Hizmet adi onay e-postasinda YOK (yalniz talep no).
+            const mail = buildConsultationConfirmationEmail({ locale: body.locale, requestNumber });
+            await sendBrandedMail(app, { to: email, subject: mail.subject, preheader: mail.subject, bodyHtml: mail.html, locale: mail.locale, audience: "patient" });
+          }
+        })().catch((err) => app.log.warn({ err: (err as Error).message }, "Danışma talebi bildirimi/onay e-postası gönderilemedi (best-effort).")),
+      );
 
       return reply.status(201).send(ok({ requestNumber }));
     }

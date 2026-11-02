@@ -297,6 +297,8 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         },
         previousStatus: null,
         settingNotRequired: medicalReviewStatus === "not_required",
+        settingApproved: (medicalReviewStatus as string | undefined) === "approved",
+        settingReviewer: Boolean(reviewerDoctorId),
         touchesReviewOrCategory: true,
         actorRole: request.user!.role,
       });
@@ -453,6 +455,8 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         },
         previousStatus: existing.status,
         settingNotRequired: medicalReviewStatus === "not_required" && existing.medicalReviewStatus !== "not_required",
+        settingApproved: (medicalReviewStatus as string | undefined) === "approved",
+        settingReviewer: reviewerChanged,
         touchesReviewOrCategory: medicalReviewStatus !== undefined || rest.categoryId !== undefined,
         actorRole: request.user!.role,
       });
@@ -673,7 +677,17 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       const blockedByReview: string[] = [];
       let bulkIds = request.body.ids;
       // Paket AH - bayrak kapaliyken (varsayilan) hekim onayi sarti aranmaz.
-      if (request.body.action === "publish" && (await isBlogMedicalReviewRequired(app))) {
+      if (request.body.action === "publish" && !(await isBlogMedicalReviewRequired(app))) {
+        // Bayrak kapali: tibbi/kategorisiz yazilari yalniz ADMIN toplu yayinlayabilir (digerleri icin atlanir).
+        if (request.user!.role !== "ADMIN") {
+          const rows = await app.prisma.blogPost.findMany({
+            where: { id: { in: request.body.ids }, deletedAt: null, status: { not: "PUBLISHED" } },
+            include: { category: { select: { isMedical: true } } },
+          });
+          for (const row of rows) if (!row.category || row.category.isMedical) blockedByReview.push(row.id);
+          bulkIds = request.body.ids.filter((id) => !blockedByReview.includes(id));
+        }
+      } else if (request.body.action === "publish") {
         const rows = await app.prisma.blogPost.findMany({
           where: { id: { in: request.body.ids }, deletedAt: null, status: { not: "PUBLISHED" } },
           include: { category: { select: { isMedical: true } } },

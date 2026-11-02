@@ -13,6 +13,8 @@
  *  - Yazmadan once TUM `locales` satirlarinin JSON yedegi alinir (varsayilan storage/backups/locales-<tarih>.json).
  *  - Geri yukleme: --restore=<yedek.json> --confirm=disable-site-locale --operator=<ad>
  *    (yedekteki `enabled/isDefault/sortOrder` degerlerini ayni kodlara yazar; yedekte olmayan diller degismez).
+ *  - Geri yuklemede mevcut VARSAYILAN dil yedektekinden farkliysa script DURUR (hata); kuru restore yedek bicimini dogrular.
+ *  - NODE_ENV=production iken yazma/geri yukleme ek --i-know-this-is-prod bayragi ister; her calismada hedef DB (host:port/db, parolasiz) yazdirilir.
  *  - Islem audit log'a yazilir. Public dil listesi onbellekli olabilir: site birkac dk icinde yansir.
  *
  * Calistirma (backend/ dizininden; DATABASE_URL'i ACIKCA export edin - bkz. proje notu):
@@ -25,6 +27,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
+import { assertProdWriteAllowed, printTargetDb } from "./_script-guard";
 
 const prisma = new PrismaClient();
 
@@ -59,9 +62,33 @@ async function printState() {
   for (const row of rows) console.log(`  ${row.code}\t${row.enabled}\t${row.isDefault}`);
 }
 
+/** Yedek biçimi + "mevcut varsayılan dil yedektekiyle aynı mı" denetimi (kuru ve gerçek restore için). */
+async function loadAndValidateSnapshot(file: string): Promise<Snapshot> {
+  let snap: Snapshot;
+  try {
+    snap = JSON.parse(fs.readFileSync(file, "utf8")) as Snapshot;
+  } catch {
+    throw new Error("Yedek dosyası okunamadı ya da geçerli JSON değil.");
+  }
+  const valid =
+    snap.version === 1 &&
+    Array.isArray(snap.locales) &&
+    snap.locales.length > 0 &&
+    snap.locales.every((l) => typeof l?.code === "string" && typeof l.enabled === "boolean" && typeof l.isDefault === "boolean" && typeof l.sortOrder === "number");
+  if (!valid) throw new Error("Geçersiz yedek dosyası biçimi.");
+  const backupDefault = snap.locales.find((l) => l.isDefault)?.code ?? null;
+  const currentDefault = (await prisma.locale.findFirst({ where: { isDefault: true }, select: { code: true } }))?.code ?? null;
+  if (backupDefault !== currentDefault) {
+    throw new Error(
+      `Geri yükleme DURDURULDU: mevcut varsayılan dil "${currentDefault}", yedekteki "${backupDefault}". Yedek geri yüklenirse varsayılan dil değişir (URL uzayı kayar). ` +
+        "Önce varsayılan dili bilinçli olarak eşitleyin (switch-default-locale-to-en.ts) ya da yalnızca ilgili dili panelden açın."
+    );
+  }
+  return snap;
+}
+
 async function restoreSnapshot(file: string, operator: string) {
-  const snap = JSON.parse(fs.readFileSync(file, "utf8")) as Snapshot;
-  if (snap.version !== 1 || !Array.isArray(snap.locales)) throw new Error("Geçersiz yedek dosyası biçimi.");
+  const snap = await loadAndValidateSnapshot(file);
   await prisma.$transaction(async (tx) => {
     // `locales_single_default` kısmi unique indeksi: önce varsayılanı herkesten al, sonra yedekteki varsayılanı ver.
     await tx.locale.updateMany({ where: { code: { in: snap.locales.map((l) => l.code) } }, data: { isDefault: false } });
@@ -83,12 +110,15 @@ async function main() {
   if (confirm !== undefined && !write) throw new Error(`Geçersiz --confirm değeri. Beklenen: --confirm=${CONFIRM_TOKEN}`);
   if (write && !operator?.trim()) throw new Error("--operator=<ad> zorunludur (audit log için).");
   console.log(`[disable-site-locale] mod=${restore ? (write ? "GERİ YÜKLE" : "KURU (restore)") : write ? "YAZ" : "KURU ÇALIŞTIRMA"} dil="${code}"`);
+  printTargetDb();
+  assertProdWriteAllowed(write, process.argv.slice(2));
 
   if (restore) {
     const file = path.resolve(restore);
     if (!fs.existsSync(file)) throw new Error(`Yedek dosyası bulunamadı: ${file}`);
     if (!write) {
-      console.log(`[kuru] ${file} yedeğinden diller geri yüklenecekti (hiçbir şey yazılmadı).`);
+      const snap = await loadAndValidateSnapshot(file);
+      console.log(`[kuru] ${file} yedeğinden ${snap.locales.length} dil satırı geri yüklenecekti (biçim ve varsayılan dil doğrulandı; hiçbir şey yazılmadı).`);
       return;
     }
     await restoreSnapshot(file, operator!.trim());

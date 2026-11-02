@@ -699,6 +699,68 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
       expect(get.json().data.blogMedicalReviewRequired).toBe(true);
     });
 
+    it("bayrak false: tıbbi/kategorisiz yazıyı yayınlamak, onay durumu ve gözden geçiren ataması yalnız ADMIN (EDITOR 403); tıbbi olmayan kategori serbest; taslak düzenlenebilir", async () => {
+      await setFlag(false);
+      try {
+        // Taslak: EDITOR oluşturur/düzenler.
+        const draft = await adminPost({ title: "AH Editör Taslak", categoryId: medicalCategoryId }, editor);
+        expect(draft.statusCode, draft.body).toBe(201);
+        const id = draft.json().data.id as string;
+        expect((await adminPatch(id, { title: "AH Editör Taslak 2" }, editor)).statusCode).toBe(200);
+
+        // Yayın/zamanlama: tıbbi kategori ve kategorisiz -> 403; ADMIN -> 200.
+        const future = new Date(Date.now() + 3600_000).toISOString();
+        expect((await adminPatch(id, { status: "PUBLISHED" }, editor)).statusCode).toBe(403);
+        expect((await adminPatch(id, { status: "SCHEDULED", scheduledAt: future }, editor)).statusCode).toBe(403);
+        expect((await adminPost({ title: "AH Editör Doğrudan", status: "PUBLISHED", categoryId: medicalCategoryId }, editor)).statusCode).toBe(403);
+        expect((await adminPost({ title: "AH Editör Kategorisiz", status: "PUBLISHED" }, editor)).statusCode).toBe(403);
+        expect((await app.prisma.blogPost.findUniqueOrThrow({ where: { id } })).status).toBe("DRAFT");
+        expect((await adminPatch(id, { status: "PUBLISHED" })).statusCode).toBe(200);
+
+        // Tıbbi olmayan kategori: EDITOR yayınlayabilir.
+        expect((await adminPost({ title: "AH Editör Seyahat", status: "PUBLISHED", categoryId: travelCategoryId }, editor)).statusCode).toBe(201);
+
+        // Hekim ataması / onay durumu yalnız ADMIN.
+        const d2 = (await adminPost({ title: "AH Atama", categoryId: medicalCategoryId })).json().data.id as string;
+        expect((await adminPatch(d2, { reviewerDoctorId: reviewerId }, editor)).statusCode).toBe(403);
+        expect((await adminPost({ title: "AH Atama 2", categoryId: medicalCategoryId, reviewerDoctorId: reviewerId }, editor)).statusCode).toBe(403);
+        expect((await adminPatch(d2, { medicalReviewStatus: "approved" }, editor)).statusCode).toBe(422); // şema: yalnız hekim kuyruğu
+        expect((await adminPatch(d2, { reviewerDoctorId: reviewerId })).statusCode).toBe(200);
+
+        // not_required yalnız ADMIN - bayraktan bağımsız.
+        expect((await adminPatch(d2, { medicalReviewStatus: "not_required", categoryId: travelCategoryId }, editor)).statusCode).toBe(403);
+      } finally {
+        await setFlag(true);
+      }
+    });
+
+    it("bayrak false: toplu yayında EDITOR için tıbbi/kategorisiz yazılar atlanır, tıbbi olmayan yayınlanır; ADMIN hepsini yayınlar", async () => {
+      await setFlag(false);
+      try {
+        const medical = (await adminPost({ title: "AH Toplu Tıbbi", categoryId: medicalCategoryId })).json().data.id as string;
+        const travel = (await adminPost({ title: "AH Toplu Seyahat", categoryId: travelCategoryId })).json().data.id as string;
+        const bulkAs = (headers: { authorization: string }, ids: string[]) =>
+          app.inject({ method: "POST", url: "/api/v1/admin/blog/bulk", headers, payload: { ids, action: "publish" } });
+        const asEditor = await bulkAs(editor, [medical, travel]);
+        expect(asEditor.statusCode).toBe(200);
+        expect(asEditor.json().data.skippedIds).toEqual([medical]);
+        expect((await app.prisma.blogPost.findUniqueOrThrow({ where: { id: medical } })).status).toBe("DRAFT");
+        expect((await app.prisma.blogPost.findUniqueOrThrow({ where: { id: travel } })).status).toBe("PUBLISHED");
+        const asAdmin = await bulkAs(admin, [medical]);
+        expect(asAdmin.json().data.skippedIds).toEqual([]);
+        expect((await app.prisma.blogPost.findUniqueOrThrow({ where: { id: medical } })).status).toBe("PUBLISHED");
+      } finally {
+        await setFlag(true);
+      }
+    });
+
+    it("bayrak true: EDITOR için Z1 davranışı aynen (onaysız 422, rol kuralı not_required 403)", async () => {
+      await setFlag(true);
+      const res = await adminPost({ title: "AH Z1 Editör", status: "PUBLISHED", categoryId: medicalCategoryId }, editor);
+      expect(res.statusCode).toBe(422);
+      expect((await adminPost({ title: "AH Z1 NR", categoryId: travelCategoryId, medicalReviewStatus: "not_required" }, editor)).statusCode).toBe(403);
+    });
+
     it("mevcut yayındaki yazılar bayrak değişiminden etkilenmez", async () => {
       const post = await seedPublished();
       await setFlag(false);

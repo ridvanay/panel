@@ -65,14 +65,14 @@ describe("danisma talebi - yonetici e-postasi", () => {
   });
 });
 
-describe("danisma talebi - ziyaretci onay e-postasi (8 dil)", () => {
+describe("danisma talebi - ziyaretci onay e-postasi (8 dil, hizmet adi yok)", () => {
   it("her dilde konu/govde dolu, yer tutucu kalmaz, talep no ve hizmet adi gecer; ar RTL", () => {
     for (const code of INTERMEDIARY_LOCALES) {
-      const mail = buildConsultationConfirmationEmail({ locale: code, requestNumber: "REQ-00012", serviceName: "Gastroenterology" });
+      const mail = buildConsultationConfirmationEmail({ locale: code, requestNumber: "REQ-00012" });
       expect(mail.locale).toBe(code);
       expect(mail.subject).toContain("REQ-00012");
       expect(mail.html).toContain("REQ-00012");
-      expect(mail.html).toContain("Gastroenterology");
+      expect(mail.html).not.toContain("Gastroenterology");
       expect(mail.subject + mail.html).not.toMatch(/\{no\}|\{service\}/);
       expect(mail.html).toContain(`lang="${code}"`);
       expect(mail.html.includes('dir="rtl"')).toBe(code === "ar");
@@ -81,14 +81,14 @@ describe("danisma talebi - ziyaretci onay e-postasi (8 dil)", () => {
 
   it("tr ve bilinmeyen dil -> en (musteriye Turkce gitmez)", () => {
     for (const code of ["tr", "TR", "xx", null, undefined, ""]) {
-      expect(buildConsultationConfirmationEmail({ locale: code, requestNumber: "REQ-1", serviceName: "S" }).locale).toBe("en");
+      expect(buildConsultationConfirmationEmail({ locale: code, requestNumber: "REQ-1" }).locale).toBe("en");
     }
     expect(CONSULTATION_CONFIRMATION).not.toHaveProperty("tr");
   });
 
-  it("hizmet adindaki '$&' kalibi yorumlanmaz; 1 is gunu cumlesi var", () => {
-    const mail = buildConsultationConfirmationEmail({ locale: "en", requestNumber: "REQ-1", serviceName: "A $& B" });
-    expect(mail.html).toContain("A $&amp; B");
+  it("hizmet/bolum adi onay e-postasinda yoktur (yalniz talep no); 1 is gunu cumlesi var", () => {
+    const mail = buildConsultationConfirmationEmail({ locale: "en", requestNumber: "REQ-1" });
+    expect(mail.html).toContain("consultation request REQ-1.");
     expect(mail.html).toContain("within 1 business day");
   });
 });

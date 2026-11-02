@@ -212,7 +212,7 @@ describe("Paket AH - danisma talebi", () => {
     expect(res.statusCode).toBe(201);
     const requestNumber = res.json().data.requestNumber as string;
     const row = await app.prisma.consultationRequest.findFirstOrThrow({ where: { email: String(payload.email) } });
-    const admins = sent().filter((m) => m.subject.startsWith("New consultation request"));
+    const admins = sent().filter((m) => m.subject.includes(`#${requestNumber} `));
     expect(admins.map((m) => m.to).sort()).toEqual(["koordinator@example.com", "ops@example.com"]);
     for (const mail of admins) {
       expect(mail.subject).toBe(`New consultation request #${requestNumber} — Gastroenterology`);
@@ -246,6 +246,8 @@ describe("Paket AH - danisma talebi", () => {
     expect(mail.text).toContain("Internationaler Vermittler für Gesundheitstourismus");
     expect(mail.text).toContain("kein Gesundheitsdienstleister");
     expect(mail.text).not.toContain("Geheime Beschwerde");
+    // Hizmet/bolum adi onay e-postasinda YOK (yalniz talep no).
+    expect(mail.subject + mail.html + mail.text).not.toContain("Gastroenterology");
 
     mailSpy.mockClear();
     const turkish = body({ locale: "tr", contactLanguage: "en" });
@@ -327,5 +329,59 @@ describe("Paket AH - danisma talebi", () => {
     expect(after).toMatchObject({ fullName: null, email: null, phone: null, messageEncrypted: null, ipAddress: null, userAgent: null });
     expect(after.anonymizedAt).toBeInstanceOf(Date);
     expect(after.serviceName).toBe("Gastroenterology");
+  });
+
+  it("consentTextVersion: bilinmeyen/yanlis tipli deger 422 DEGIL, sunucu surumune duser; bilinen surum korunur", async () => {
+    for (const version of ["evil-v9", "x".repeat(150), 12345, null]) {
+      const payload = body({ consentTextVersion: version });
+      const res = await post(payload);
+      expect(res.statusCode, String(version)).toBe(201);
+      const row = await app.prisma.consultationRequest.findFirstOrThrow({ where: { email: String(payload.email) } });
+      expect(row.consentTextVersion).toBe("consultation-v1");
+    }
+    const known = body({ consentTextVersion: "consultation-v1" });
+    await post(known);
+    expect((await app.prisma.consultationRequest.findFirstOrThrow({ where: { email: String(known.email) } })).consentTextVersion).toBe("consultation-v1");
+  });
+
+  it("saatlik bildirim tavani: tekil yonetici e-postasi gitmez, alicilara saatte EN FAZLA 1 'tavan asildi' uyarisi (PII'siz); honeypot sayaca girmez", async () => {
+    await app.prisma.siteSettings.upsert({ where: { id: "singleton" }, create: { id: "singleton", bookingNotificationRecipients: "ops@example.com" }, update: { bookingNotificationRecipients: "ops@example.com" } });
+    // Tavani (30/saat) asmak icin dogrudan kayit ekle.
+    for (let i = 0; i < 32; i++) {
+      const lead = await app.prisma.crmLead.create({ data: { channel: "CONSULTATION_REQUEST", name: "Kapasite Testi", email: `cap-${i}@example.com`, sourceRefId: `cap-${i}-${crypto.randomUUID()}` } });
+      await app.prisma.consultationRequest.create({
+        data: { leadId: lead.id, serviceName: "Gastroenterology", country: "DE", contactLanguage: "de", fullName: "Kapasite Testi", email: `cap-${i}@example.com`, contactConsentAt: new Date(), locale: "de", specialtyId: specialty.id },
+      });
+    }
+    const before = await app.prisma.consultationRequest.count();
+    await post(body({ website: "bot" }));
+    await drain();
+    expect(await app.prisma.consultationRequest.count()).toBe(before);
+
+    mailSpy.mockClear();
+    const first = body({ fullName: "Tavan Birinci Kisi" });
+    const second = body({ fullName: "Tavan Ikinci Kisi" });
+    expect((await post(first)).statusCode).toBe(201);
+    expect((await post(second)).statusCode).toBe(201);
+    await drain();
+    const toOps = sent().filter((m) => m.to === "ops@example.com");
+    expect(toOps.filter((m) => m.subject === "Consultation request notification cap reached")).toHaveLength(1);
+    expect(toOps.filter((m) => m.subject.startsWith("New consultation request"))).toHaveLength(0);
+    const cap = toOps.find((m) => m.subject === "Consultation request notification cap reached")!;
+    for (const secret of ["Tavan", String(first.email), String(second.email), "Gastroenterology"]) expect(`${cap.html}${cap.text}`).not.toContain(secret);
+    expect(cap.text).toContain("Open requests");
+    await app.prisma.siteSettings.update({ where: { id: "singleton" }, data: { bookingNotificationRecipients: null } });
+  });
+
+  it("CRM detayi: mesaj cozulemezse yer tutucu doner, audit'e crm.consultation_request.decrypt_failed duser, mesaj logda yok", async () => {
+    const payload = body({ message: "never logged text", healthDataConsent: true });
+    await post(payload);
+    await drain();
+    const row = await app.prisma.consultationRequest.findFirstOrThrow({ where: { email: String(payload.email) } });
+    await app.prisma.consultationRequest.update({ where: { id: row.id }, data: { messageEncrypted: "bozuk:kayit:deger" } });
+    const detail = await app.inject({ method: "GET", url: `/api/v1/admin/crm/leads/${row.leadId}`, headers: auth(admin.token) });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().data.consultationRequest.message).toBe("[Mesaj çözülemedi]");
+    expect(await app.prisma.auditLog.count({ where: { action: "crm.consultation_request.decrypt_failed", targetId: row.leadId } })).toBe(1);
   });
 });

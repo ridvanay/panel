@@ -58,6 +58,9 @@ describe("scripts/setup-intermediary-nav.ts", () => {
     expect(res.status, res.stderr).toBe(0);
     expect(res.stdout).toContain("[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)");
     expect(res.stdout).toContain("[kuru]");
+    expect(res.stdout).toMatch(/\[hedef DB\] [^\s]+:\d+\/saas_test/);
+    // Silinecek her mevcut oge listelenir.
+    for (const label of ["Home", "Physicians", "Health Guides", "About", "Contact"]) expect(res.stdout).toContain(`[SİLİNECEK] kök öğe: ${label}`);
     expect((await roots()).map((r) => r[0])).toEqual(["Home", "Physicians", "Health Guides", "About", "Contact"]);
     expect(fs.readdirSync(backupDir)).toHaveLength(0);
     expect(await prisma.auditLog.count({ where: { action: "navigation.setup_intermediary_nav" } })).toBe(0);
@@ -96,8 +99,21 @@ describe("scripts/setup-intermediary-nav.ts", () => {
     expect(t.de).toEqual({ tagline: "Slogan", headerCtaLabel: "Termin" });
     expect(Object.keys(t).sort()).toEqual(LANGS);
 
+    expect(res.stdout).toContain("5 eski öğe SİLİNDİ");
     expect(fs.readdirSync(backupDir)).toHaveLength(1);
     expect(await prisma.auditLog.count({ where: { action: "navigation.setup_intermediary_nav" } })).toBe(1);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "navigation.setup_intermediary_nav" } });
+    expect(audit.metadata).toMatchObject({ written: 5, deleted: 5 });
+  });
+
+  it("NODE_ENV=production iken yazma --i-know-this-is-prod ister", async () => {
+    const env = { ...process.env, NODE_ENV: "production" };
+    const run = (extra: string[]) => spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH, ...CONFIRM, `--backup-dir=${backupDir}`, ...extra], { cwd: path.resolve(__dirname, "../.."), env, encoding: "utf8" });
+    const blocked = run([]);
+    expect(blocked.status).not.toBe(0);
+    expect(blocked.stderr).toContain("--i-know-this-is-prod");
+    expect((await roots()).map((r) => r[0])).toEqual(["Home", "Physicians", "Health Guides", "About", "Contact"]);
+    expect(run(["--i-know-this-is-prod"]).status).toBe(0);
   });
 
   it("ikinci calistirma idempotent (yeni yedek/audit yok, menu ayni)", async () => {

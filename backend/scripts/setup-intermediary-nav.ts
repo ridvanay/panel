@@ -18,6 +18,8 @@
  *  - Yazmadan once header menusu + header CTA alanlarinin TAM JSON yedegi alinir (varsayilan storage/backups/intermediary-nav-<tarih>.json).
  *  - Geri yukleme: --restore=<yedek.json> --confirm=setup-intermediary-nav --operator=<ad>
  *    (UYARI: header menusunu yedekteki hale TAM DEGISTIRIR; yedekten sonra panelden yapilan menu degisiklikleri kaybolur.)
+ *  - Audit kaydi, menu degisikligiyle AYNI transaction'da yazilir. Kuru calismada silinecek her mevcut oge "SILINECEK" diye listelenir.
+ *  - NODE_ENV=production iken yazma/geri yukleme ek --i-know-this-is-prod bayragi ister; her calismada hedef DB (host:port/db, parolasiz) yazdirilir.
  *  - Islem audit log'a yazilir. Onbellek kendiliginden yenilenmez (navigation etiketi); site birkac dk icinde yansir.
  *
  * Calistirma (backend/ dizininden; DATABASE_URL'i ACIKCA export edin):
@@ -30,6 +32,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient, Prisma } from "@prisma/client";
+import { assertProdWriteAllowed, printTargetDb } from "./_script-guard";
 
 const prisma = new PrismaClient();
 
@@ -156,10 +159,10 @@ async function ctaNeedsChange(): Promise<boolean> {
   return LANGS.some((code) => t[code]?.headerCtaLabel !== LABELS.appointment[code]);
 }
 
-async function applyDesired(items: DesiredItem[]) {
+async function applyDesired(items: DesiredItem[], audit: { operator: string; backup: string }): Promise<number> {
   const translationsOf = (i: DesiredItem) => i.translations as unknown as Prisma.InputJsonValue;
-  await prisma.$transaction(async (tx) => {
-    await tx.navigationItem.deleteMany({});
+  return prisma.$transaction(async (tx) => {
+    const deleted = (await tx.navigationItem.deleteMany({})).count;
     const ids = new Map<string, string>();
     let rootOrder = 0;
     for (const item of items.filter((i) => !i.parentKey)) {
@@ -179,6 +182,15 @@ async function applyDesired(items: DesiredItem[]) {
         data: { headerCtaLabel: LABELS.appointment.en, headerCtaHref: CTA_HREF, translations: ctaTranslations(existing.translations) },
       });
     }
+    await tx.auditLog.create({
+      data: {
+        actorEmail: `script:${audit.operator}`,
+        action: "navigation.setup_intermediary_nav",
+        targetType: "Navigation",
+        metadata: { script: "setup-intermediary-nav", written: items.length, deleted, cta: Boolean(existing), backup: audit.backup },
+      },
+    });
+    return deleted;
   });
 }
 
@@ -216,6 +228,8 @@ async function main() {
   if (confirm !== undefined && !write) throw new Error(`Geçersiz --confirm değeri. Beklenen: --confirm=${CONFIRM_TOKEN}`);
   if (write && !operator?.trim()) throw new Error("--operator=<ad> zorunludur (audit log için).");
   console.log(`[setup-intermediary-nav] mod=${restore ? (write ? "GERİ YÜKLE" : "KURU (restore)") : write ? "YAZ" : "KURU ÇALIŞTIRMA"}`);
+  printTargetDb();
+  assertProdWriteAllowed(write, process.argv.slice(2));
 
   if (restore) {
     const file = path.resolve(restore);
@@ -235,6 +249,7 @@ async function main() {
   const current = await prisma.navigationItem.findMany({ orderBy: [{ order: "asc" }, { seq: "asc" }], select: { label: true, href: true, parentId: true } });
 
   console.log(`[mevcut] header: ${current.filter((c) => !c.parentId).map((c) => `${c.label} (${c.href})`).join(" | ") || "(boş)"}`);
+  if (!navSame) for (const c of current) console.log(`[SİLİNECEK] ${c.parentId ? "alt öğe" : "kök öğe"}: ${c.label} (${c.href})`);
   const roots = desired.filter((d) => !d.parentKey);
   console.log(`[plan] header kökleri: ${roots.map((r) => `${r.label} (${r.href})`).join(" | ")}`);
   console.log(`[plan] header CTA: "${LABELS.appointment.en}" -> ${CTA_HREF} ${settingsRow ? "" : "(site ayarı satırı yok: CTA atlanır)"}`);
@@ -257,16 +272,8 @@ async function main() {
   fs.writeFileSync(file, JSON.stringify(await readSnapshot(), null, 2), "utf8");
   console.log(`[yedek] ${file}`);
 
-  await applyDesired(desired);
-  await prisma.auditLog.create({
-    data: {
-      actorEmail: `script:${operator!.trim()}`,
-      action: "navigation.setup_intermediary_nav",
-      targetType: "Navigation",
-      metadata: { script: "setup-intermediary-nav", roots: roots.length, cta: Boolean(settingsRow), backup: path.basename(file) },
-    },
-  });
-  console.log(`[fix] header menüsü yazıldı (${desired.length} öğe), CTA ${settingsRow ? "güncellendi" : "atlandı"}.`);
+  const deleted = await applyDesired(desired, { operator: operator!.trim(), backup: path.basename(file) });
+  console.log(`[fix] header menüsü yazıldı (${desired.length} öğe yazıldı, ${deleted} eski öğe SİLİNDİ), CTA ${settingsRow ? "güncellendi" : "atlandı"}.`);
   console.log(`[geri al] npx tsx scripts/setup-intermediary-nav.ts --restore=${file} --confirm=${CONFIRM_TOKEN} --operator=<ad>`);
 }
 

@@ -171,41 +171,42 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
   });
 
   describe("öneri", () => {
-    it("reflü: gastroenteroloji önerilir; hekimler birincil > ek, dil, en yakın slot; 3 hekim × en çok 3 slot; kişisel veri almaz", async () => {
+    it("reflü: gastroenteroloji önerilir; hekim verisi DÖNMEZ (Paket AH: sihirbaz bölüm önerir); kişisel veri almaz", async () => {
       const res = await recommendReq([topic.reflux], "tr");
       expect(res.statusCode).toBe(200);
       const data = res.json().data;
       expect([data.redFlag, data.coordinator]).toEqual([false, false]);
       expect(data.specialties.map((s: { slug: string }) => s.slug)).toEqual(["gastroenterology", "obesity-and-metabolic-surgery"]);
-      const slugs = data.doctors.map((d: { slug: string }) => d.slug);
-      // Hepsi birincil eşleşme (GAS ve OBE önerilen); TR konuşan + slotlu önce, eşitlikte ad; slotsuz sonra; TR konuşmayan en sona.
-      expect(slugs).toEqual(["gas-tr", "obe-ek-gas", "gas-nosched"]);
-      expect(slugs).toHaveLength(3);
-      expect(slugs).not.toContain("onc-1");
-      for (const d of data.doctors) expect(d.slots.length).toBeLessThanOrEqual(3);
-      expect(data.doctors[0].slots).toHaveLength(3);
-      expect(data.doctors[0].displayName).toBe("A. Veli");
-      // Randevu bağlantısı ?specialty=: birincil uzmanlık önerilenlerdeyse o; ek uzmanlıkla eşleşen hekimde eşleşen ek uzmanlık.
-      expect(data.doctors.map((d: { matchedSpecialtySlug: string }) => d.matchedSpecialtySlug)).toEqual(["gastroenterology", "obesity-and-metabolic-surgery", "gastroenterology"]);
-      // Arapça konuşan hasta: dil eşleşmesi öne alır.
-      const ar = (await recommendReq([topic.reflux], "ar")).json().data;
-      expect(ar.doctors[0].slug).toBe("gas-ar");
+      // Ziyaretçiye hekim adayı/slot/hekim adı döndürülmez; alan geriye dönük uyum için boş dizi.
+      expect(data.doctors).toEqual([]);
+      expect(res.body).not.toMatch(/gas-tr|A\. Veli|obe-ek-gas|slots|avatarUrl/);
+      expect((await recommendReq([topic.reflux], "ar")).json().data.doctors).toEqual([]);
       expect(await app.prisma.matcherSubmission.count()).toBe(0);
       expect((await app.prisma.matcherStat.findMany({ where: { kind: "topic", key: "reflux-heartburn" } }))[0]!.count).toBeGreaterThanOrEqual(2);
     });
 
-    it("hekimi olmayan uzmanlık düşülür (diş apsesi → dentalcare hekimsiz → koordinatör); baş ağrısı koordinatör; eşik altı koordinatör", async () => {
+    it("öneri hekim varlığından bağımsız: hekimi olmayan (ya da tüm hekimleri pasif) bölümler de önerilir; eşik/sıralama aynı; ağırlığı olmayan/eşik altı konu koordinatör", async () => {
+      // Diş apsesi → dentalcare (hekimi yok ama aktif bölüm) artık önerilir.
       const abscess = (await recommendReq([topic.abscess])).json().data;
-      expect([abscess.coordinator, abscess.specialties.length]).toEqual([true, 0]);
-      expect((await recommendReq([topic.headache])).json().data.coordinator).toBe(true);
-      // Boyun ağrısı: yalnızca neurosurgery 70 ve hekimi yok → koordinatör.
-      expect((await recommendReq([topic.neck])).json().data.coordinator).toBe(true);
-      // Ortodonti konusu yalnızca orthodontist'e.
+      expect([abscess.coordinator, abscess.specialties.map((s: { slug: string }) => s.slug), abscess.doctors]).toEqual([false, ["dentalcare"], []]);
+      // Boyun ağrısı: neurosurgery hekimsiz de olsa önerilir.
+      expect((await recommendReq([topic.neck])).json().data.specialties.map((s: { slug: string }) => s.slug)).toEqual(["neurosurgery"]);
+      // Baş ağrısı: eşik altı / ağırlıksız → koordinatör.
+      const headache = (await recommendReq([topic.headache])).json().data;
+      expect([headache.coordinator, headache.specialties.length]).toEqual([true, 0]);
       const braces = (await recommendReq([topic.braces])).json().data;
       expect(braces.specialties.map((s: { slug: string }) => s.slug)).toEqual(["orthodontist"]);
-      // Miyom: ONC 70 > IR 50 (IVF 30 eşik altı ve hekimsiz) → en çok 2.
+      // Miyom: ONC 70 > IR 50 (IVF 30 eşik altı) → en çok 2.
       const fibroid = (await recommendReq([topic.fibroid])).json().data;
       expect(fibroid.specialties.map((s: { slug: string }) => s.slug)).toEqual(["surgical-oncology", "interventional-radiology-specialist"]);
+      // Pasif bölüm önerilmez.
+      await app.prisma.specialty.update({ where: { slug: "orthodontist" }, data: { isActive: false } });
+      (await import("../../src/modules/matcher/matcher.service")).clearRecommendCache();
+      try {
+        expect((await recommendReq([topic.braces])).json().data.coordinator).toBe(true);
+      } finally {
+        await app.prisma.specialty.update({ where: { slug: "orthodontist" }, data: { isActive: true } });
+      }
     });
 
     it("kırmızı bayrak seçilince öneri yok, redFlag=true; en çok 3 konu", async () => {
@@ -231,7 +232,8 @@ describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
       expect(sub.topicIds).toEqual([topic.reflux]);
       expect(sub.freeText).toBe("Yemekten sonra yanma oluyor");
       expect(sub.ageBand).toBe("30-44");
-      expect(sub.recommendedDoctorIds).toHaveLength(3);
+      expect(sub.recommendedDoctorIds).toEqual([]); // Paket AH: hekim önerilmez
+      expect(sub.recommendedSpecialtyIds.length).toBeGreaterThan(0);
       expect(sub.consentHealthAt).not.toBeNull();
       expect(sub.consentContactAt).not.toBeNull();
       expect(sub.accessTokenHash).not.toBe(token);

@@ -505,6 +505,13 @@ describe("settings - healthTourismCertificateNo + blogMedicalReviewRequired (Pak
     expect(long.statusCode).toBe(422);
     expect(long.json().error.details).toHaveProperty("healthTourismCertificateNo");
     expect((await patch(adminToken, { healthTourismCertificateNo: "A<script>1" })).statusCode).toBe(422);
+    // Izin listesi: harf/rakam/bosluk/. / _ - ; bidi ve gorunmez karakterler, ozel semboller reddedilir; unicode harfler serbest.
+    for (const bad of ["A\u200F1", "A\u202E1", "A\u200B1", "A\u00A0B", "A;B", "A'B", "A#1", "A\\B"]) {
+      expect((await patch(adminToken, { healthTourismCertificateNo: bad })).statusCode, bad).toBe(422);
+    }
+    for (const good of ["UST-2026/12345", "ÜST 2026_1.A", "رقم 123"]) {
+      expect((await patch(adminToken, { healthTourismCertificateNo: good })).statusCode, good).toBe(200);
+    }
     expect((await patch(adminToken, { healthTourismCertificateNo: "A\u0000B" })).statusCode).toBe(422);
     expect((await patch(editorToken, { healthTourismCertificateNo: "Z-1" })).statusCode).toBe(403);
   });

@@ -174,7 +174,7 @@ export function toLeadDto(lead: CrmLead, slaHours: number, assignees: Map<string
 }
 
 /** Paket AH — danışma talebi ayrıntısı (yalnız yetkili CRM görüntüleyicisi): mesaj burada çözülür. */
-export function toConsultationRequestDto(r: ConsultationRequest) {
+export function toConsultationRequestDto(r: ConsultationRequest, message: string | null) {
   return {
     number: formatRequestNumber(r.seq),
     serviceName: r.serviceName,
@@ -185,7 +185,7 @@ export function toConsultationRequestDto(r: ConsultationRequest) {
     country: r.country,
     contactLanguage: r.contactLanguage,
     needsInterpreter: r.needsInterpreter,
-    message: r.messageEncrypted ? decryptNoteBody(r.messageEncrypted) : null,
+    message,
     contactConsentAt: r.contactConsentAt.toISOString(),
     healthDataConsentAt: r.healthDataConsentAt?.toISOString() ?? null,
     consentTextVersion: r.consentTextVersion,

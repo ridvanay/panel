@@ -67,6 +67,10 @@ export interface ReviewRuleInput {
   /** Bu istek not_required/kategori ilişkisini değiştiriyor mu? (tıbbi kategori kontrolü yalnızca o zaman) */
   touchesReviewOrCategory: boolean;
   actorRole: SiteRole;
+  /** Paket AH - bu istek `approved` durumunu yaziyor mu? (bayrak kapaliyken yalniz ADMIN) */
+  settingApproved?: boolean;
+  /** Paket AH - bu istek gozden geciren hekim atamasini degistiriyor mu? (bayrak kapaliyken yalniz ADMIN) */
+  settingReviewer?: boolean;
 }
 
 /**
@@ -75,17 +79,31 @@ export interface ReviewRuleInput {
  *    Mevcut PUBLISHED kayıtlar geriye dönük düşürülmez; kural yalnızca geçişte çalışır.
  */
 export async function assertBlogReviewRules(app: FastifyInstance, input: ReviewRuleInput): Promise<void> {
-  // Paket AH - bayrak kapaliyken (varsayilan) hekim onayi sarti aranmaz.
-  if (!(await isBlogMedicalReviewRequired(app))) return;
   const { effective, previousStatus } = input;
+  // "Hekim onayi gerekmiyor" yalniz ADMIN - bayraktan BAGIMSIZ.
+  if (input.settingNotRequired && input.actorRole !== "ADMIN") {
+    throw new ForbiddenError("\"Hekim onayı gerekmiyor\" seçeneğini yalnızca yönetici seçebilir.");
+  }
   const category = effective.categoryId
     ? await app.prisma.blogCategory.findUnique({ where: { id: effective.categoryId }, select: { isMedical: true } })
     : null;
 
-  if (effective.medicalReviewStatus === "not_required") {
-    if (input.settingNotRequired && input.actorRole !== "ADMIN") {
-      throw new ForbiddenError("\"Hekim onayı gerekmiyor\" seçeneğini yalnızca yönetici seçebilir.");
+  // Paket AH - bayrak kapaliyken hekim onayi sarti aranmaz; yerine EDITORYAL YAYIN kurali: tibbi (ya da kategorisiz)
+  // yazinin yayina/zamanlamaya alinmasi, onay durumu ve gozden geciren hekim atamasi yalniz ADMIN'e aciktir.
+  if (!(await isBlogMedicalReviewRequired(app))) {
+    if (input.actorRole !== "ADMIN") {
+      if (input.settingApproved || input.settingReviewer) {
+        throw new ForbiddenError("Hekim onayı durumunu ve gözden geçiren hekim atamasını yalnızca yönetici değiştirebilir.");
+      }
+      const isMedical = category === null || category.isMedical;
+      if (isMedical && LIVE_STATUSES.includes(effective.status) && previousStatus !== effective.status) {
+        throw new ForbiddenError("Tıbbi içerikli yazıyı yalnızca yönetici yayınlayabilir.");
+      }
     }
+    return;
+  }
+
+  if (effective.medicalReviewStatus === "not_required") {
     if ((input.settingNotRequired || input.touchesReviewOrCategory) && !(category && category.isMedical === false)) {
       throw new ValidationError("Bu yazı için hekim onayı gerekiyor.", {
         medicalReviewStatus: ["Tıbbi kategoride veya kategorisiz yazıda hekim onayı gerekir; “gerekmiyor” seçilemez."],

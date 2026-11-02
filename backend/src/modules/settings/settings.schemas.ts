@@ -61,8 +61,7 @@ export const UpdateSiteSettingsRequestSchema = z
       .string()
       .trim()
       .max(64)
-      // eslint-disable-next-line no-control-regex
-      .refine((value) => !/[\u0000-\u001f\u007f<>]/.test(value), "Belge numarası geçersiz karakter içeriyor.")
+      .refine((value) => value === "" || /^[\p{L}\p{N} ./_-]{1,64}$/u.test(value), "Belge numarası yalnızca harf, rakam, boşluk ve . / _ - karakterlerini içerebilir.")
       .nullable()
       .optional(),
     // Paket AH - blog hekim onayı (Z1) şartı bayrağı.

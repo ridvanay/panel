@@ -187,7 +187,7 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
       return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
     }
     case "code:consultation-request-confirmation": {
-      const mail = buildConsultationConfirmationEmail({ locale, requestNumber: "REQ-01024", serviceName: "Gastroenterology" });
+      const mail = buildConsultationConfirmationEmail({ locale, requestNumber: "REQ-01024" });
       return { subject: mail.subject, bodyHtml: mail.html };
     }
     case "code:consultation-request-admin": {

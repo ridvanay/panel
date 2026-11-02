@@ -70,6 +70,8 @@ describe("scripts/localize-footer-english.ts", () => {
     expect(res.stdout).toContain("ÇIKARILIR");
     expect(res.stdout).toContain("[uyarı] sözlükte yok");
     expect(res.stdout).toContain("[kuru]");
+    expect(res.stdout).toMatch(/\[hedef DB\] [^\s]+:\d+\/saas_test/);
+    expect(res.stdout).toContain("[kontrol] footer'da EN gizlilik/aydınlatma bağlantısı mevcut.");
     expect((await columns())[0]![0]).toBe("Branşlar");
     expect(fs.readdirSync(backupDir)).toHaveLength(0);
   });
@@ -96,6 +98,25 @@ describe("scripts/localize-footer-english.ts", () => {
     expect(again.status).toBe(0);
     expect(again.stdout).toContain("Yapılacak değişiklik yok");
     expect(fs.readdirSync(backupDir)).toHaveLength(1);
+  });
+
+  it("EN gizlilik/aydinlatma baglantisi kalmazsa uyarir (kuru ve yazma)", async () => {
+    await prisma.footerLink.deleteMany({ where: { href: "/privacy-notice" } });
+    await prisma.footerLink.deleteMany({ where: { href: "/gizlilik" } });
+    expect(runScript().stdout).toContain("[uyarı] footer'da EN gizlilik/aydınlatma");
+    const write = runScript([...CONFIRM, `--backup-dir=${backupDir}`]);
+    expect(write.status, write.stderr).toBe(0);
+    expect(write.stdout).toContain("[uyarı] footer'da EN gizlilik/aydınlatma");
+  });
+
+  it("NODE_ENV=production iken yazma --i-know-this-is-prod ister", async () => {
+    const env = { ...process.env, NODE_ENV: "production" };
+    const run = (extra: string[]) => spawnSync(process.execPath, [TSX_CLI, SCRIPT_PATH, ...CONFIRM, `--backup-dir=${backupDir}`, ...extra], { cwd: path.resolve(__dirname, "../.."), env, encoding: "utf8" });
+    const blocked = run([]);
+    expect(blocked.status).not.toBe(0);
+    expect(blocked.stderr).toContain("--i-know-this-is-prod");
+    expect((await columns())[0]![0]).toBe("Branşlar");
+    expect(run(["--i-know-this-is-prod"]).status).toBe(0);
   });
 
   it("gecersiz confirm / operatorsuz yazma reddedilir", () => {
