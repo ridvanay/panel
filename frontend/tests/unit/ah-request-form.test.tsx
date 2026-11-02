@@ -202,6 +202,15 @@ describe("Talep formu — doğrulama ve rıza", () => {
     expect(screen.getByTestId("request-step-3")).toBeInTheDocument();
   });
 
+  it("inceleme adımına geçmek formu göndermez ve rıza hatası göstermez (AJ-9 kalite turu bulgusu)", async () => {
+    const user = userEvent.setup();
+    renderForm();
+    await reachReview(user);
+    expect(screen.getByTestId("request-submit")).toBeInTheDocument();
+    expect(screen.queryByTestId("request-consent-contact-error")).toBeNull();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("iletişim rızası olmadan gönderilmez", async () => {
     const user = userEvent.setup();
     renderForm();

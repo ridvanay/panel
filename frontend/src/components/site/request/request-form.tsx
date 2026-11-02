@@ -772,13 +772,14 @@ export function RequestForm({
           ) : (
             <span />
           )}
+          {/* Ayrı key: React aynı <button> düğümünü yeniden kullanırsa tıklama sırasında type="submit" olur ve son adıma geçer geçmez form gönderilir. */}
           {step < TOTAL_STEPS - 1 ? (
-            <button type="button" onClick={() => void goNext()} disabled={noServices} className={primaryButton} data-testid="request-next">
+            <button key="next" type="button" onClick={() => void goNext()} disabled={noServices} className={primaryButton} data-testid="request-next">
               {t.next}
               <ArrowRight className="size-4 rtl:rotate-180" aria-hidden="true" />
             </button>
           ) : (
-            <button type="submit" disabled={isSubmitting || noServices} className={primaryButton} data-testid="request-submit">
+            <button key="submit" type="submit" disabled={isSubmitting || noServices} className={primaryButton} data-testid="request-submit">
               {isSubmitting && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
               {isSubmitting ? t.submitting : t.submit}
             </button>
