@@ -1708,7 +1708,7 @@ export function toSliderUsageDto(entry: {
 // TeleHealth — `.claude/architect-scope-telehealth-template.md`.
 // -------------------------------------------------------------------------
 
-export function toSpecialtyDto(specialty: Specialty & { imageMedia?: Media | null }): SpecialtyDto {
+export function toSpecialtyDto(specialty: Specialty & { imageMedia?: Media | null; parent?: { slug: string } | null }): SpecialtyDto {
   return {
     id: specialty.id,
     name: specialty.name,
@@ -1720,14 +1720,20 @@ export function toSpecialtyDto(specialty: Specialty & { imageMedia?: Media | nul
     imageMediaId: specialty.imageMediaId,
     imageUrl: specialty.imageMedia ? absolutizeMediaUrl(specialty.imageMedia.url) : null,
     translations: readTranslations(specialty.translations),
+    parentId: specialty.parentId,
+    parentSlug: specialty.parent?.slug ?? null,
     createdAt: specialty.createdAt.toISOString(),
     updatedAt: specialty.updatedAt.toISOString(),
   };
 }
 
-/** `GET /specialties/{slug}` (public) — `toSpecialtyDto` + `doctorCount` (route katmanında ayrıca sorgulanır). */
-export function toSpecialtyWithDoctorCountDto(specialty: Specialty & { imageMedia?: Media | null }, doctorCount: number): SpecialtyWithDoctorCountDto {
-  return { ...toSpecialtyDto(specialty), doctorCount };
+/** `GET /specialties/{slug}` (public) — `toSpecialtyDto` + `doctorCount` + üst/alt uzmanlıklar (route katmanında sorgulanır, yerelleştirilmiş gelir). */
+export function toSpecialtyWithDoctorCountDto(
+  specialty: Specialty & { imageMedia?: Media | null; parent?: { slug: string } | null },
+  doctorCount: number,
+  relations: Pick<SpecialtyWithDoctorCountDto, "parent" | "children"> = { parent: null, children: [] }
+): SpecialtyWithDoctorCountDto {
+  return { ...toSpecialtyDto(specialty), doctorCount, ...relations };
 }
 
 export function toDoctorAvailabilityRuleDto(rule: DoctorAvailability): DoctorAvailabilityRuleDto {

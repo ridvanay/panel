@@ -284,6 +284,8 @@ export const CreateSpecialtyRequestSchema = z.object({
   isActive: z.boolean().optional(),
   /** Kart görseli — Media id (yalnızca PNG/JPG/WebP); `null` görseli kaldırır. */
   imageMediaId: z.string().uuid().nullable().optional(),
+  /** Paket AG — üst uzmanlık id'si (alt uzmanlık yapar); `null` üst seviyeye alır. Kurallar rotada (422). */
+  parentId: z.string().uuid().nullable().optional(),
   /** Paket O — dil başına ad/açıklama; gönderilirse haritanın TAMAMI yazılır (boş dil → kanonik EN). */
   translations: textTranslationsSchema({ name: 80, description: 500 }).optional(),
 });

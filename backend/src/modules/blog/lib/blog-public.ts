@@ -132,11 +132,12 @@ async function toCards(app: FastifyInstance, rows: CardPost[], locale: string | 
 
 async function resolveTopicFilter(app: FastifyInstance, topic: string): Promise<Prisma.BlogPostWhereInput> {
   const [specialty, careTopic] = await Promise.all([
-    app.prisma.specialty.findUnique({ where: { slug: topic }, select: { id: true } }),
+    app.prisma.specialty.findUnique({ where: { slug: topic }, select: { id: true, parentId: true, children: { select: { id: true } } } }),
     app.prisma.careTopic.findUnique({ where: { slug: topic }, select: { id: true } }),
   ]);
   const ors: Prisma.BlogPostWhereInput[] = [];
-  if (specialty) ors.push({ specialtyId: specialty.id });
+  // Paket AG — üst uzmanlık slug'ı alt uzmanlık yazılarını da kapsar; alt uzmanlık slug'ı yalnızca kendisini (geriye uyum).
+  if (specialty) ors.push({ specialtyId: { in: [specialty.id, ...(specialty.parentId ? [] : specialty.children.map((c) => c.id))] } });
   if (careTopic) ors.push({ careTopicIds: { has: careTopic.id } });
   // Bilinmeyen konu: boş sonuç (hata değil).
   return ors.length > 0 ? { OR: ors } : { id: { in: [] } };
@@ -209,15 +210,19 @@ export async function listPublicTopics(app: FastifyInstance, localeRaw: string |
   if (posts.length === 0) return [];
 
   const specialtyIds = Array.from(new Set(posts.map((p) => p.specialtyId!)));
+  // Paket AG — yalnızca üst uzmanlıklar grup olur; alt uzmanlığa bağlı yazılar üst uzmanlığın sayısına eklenir.
+  const linked = await app.prisma.specialty.findMany({ where: { id: { in: specialtyIds } }, select: { id: true, parentId: true } });
+  const rootOf = new Map(linked.map((row) => [row.id, row.parentId ?? row.id]));
+  const rootIds = Array.from(new Set(posts.map((p) => rootOf.get(p.specialtyId!) ?? p.specialtyId!)));
   const topicIds = Array.from(new Set(posts.flatMap((p) => p.careTopicIds)));
   const [specialties, topics] = await Promise.all([
-    app.prisma.specialty.findMany({ where: { id: { in: specialtyIds } }, orderBy: [{ order: "asc" }, { seq: "asc" }] }),
+    app.prisma.specialty.findMany({ where: { id: { in: rootIds } }, orderBy: [{ order: "asc" }, { seq: "asc" }] }),
     topicIds.length > 0 ? app.prisma.careTopic.findMany({ where: { id: { in: topicIds }, isActive: true } }) : Promise.resolve([]),
   ]);
   const topicById = new Map(topics.map((t) => [t.id, t]));
 
   return specialties.map((specialty) => {
-    const inSpecialty = posts.filter((p) => p.specialtyId === specialty.id);
+    const inSpecialty = posts.filter((p) => (rootOf.get(p.specialtyId!) ?? p.specialtyId) === specialty.id);
     const counts = new Map<string, number>();
     for (const post of inSpecialty) {
       for (const id of new Set(post.careTopicIds)) {

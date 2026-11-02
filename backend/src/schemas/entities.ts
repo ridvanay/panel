@@ -2396,6 +2396,10 @@ export const SpecialtySchema = z.object({
    * gömülü `specialty` nesnesinde her zaman null'dır.
    */
   imageUrl: z.string().nullable(),
+  /** Paket AG — alt uzmanlıkta üst uzmanlığın id'si; üst seviyede null. Tek seviye (API'de zorlanır). */
+  parentId: z.string().nullable(),
+  /** Üst uzmanlığın slug'ı — yalnızca uzmanlık uçları (`/specialties*`, admin) yükler; gömülü doktor DTO'sunda null. */
+  parentSlug: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -2409,6 +2413,10 @@ export type SpecialtyDto = z.infer<typeof SpecialtySchema>;
  */
 export const SpecialtyWithDoctorCountSchema = SpecialtySchema.extend({
   doctorCount: z.number().int().nonnegative(),
+  /** Paket AG — üst uzmanlık (yerelleştirilmiş ad); üst seviyede null. */
+  parent: z.object({ slug: z.string(), name: z.string() }).nullable(),
+  /** Paket AG — aktif alt uzmanlıklar (`order asc`, yerelleştirilmiş). */
+  children: z.array(z.object({ slug: z.string(), name: z.string(), icon: z.string() })),
 });
 export type SpecialtyWithDoctorCountDto = z.infer<typeof SpecialtyWithDoctorCountSchema>;
 

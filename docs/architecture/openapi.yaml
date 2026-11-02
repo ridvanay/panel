@@ -20997,7 +20997,7 @@ components:
     Specialty:
       type: object
       description: "Tıbbi uzmanlık alanı (ör. Kardiyoloji) — `icon-box` bloğuyla AYNI lucide-react ikon sözlüğü."
-      required: [id, name, slug, icon, order, isActive, imageMediaId, imageUrl, createdAt, updatedAt]
+      required: [id, name, slug, icon, order, isActive, imageMediaId, imageUrl, parentId, parentSlug, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -21018,20 +21018,47 @@ components:
           description: >
             Paket O — `{ <dil>: { name, description } }`. Public uçlar (`?locale=`) ve doktor
             yanıtlarındaki gömülü `specialty` aktif dili zaten uygular.
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Paket AG — alt uzmanlıkta üst uzmanlığın id'si; üst seviyede null. Yalnızca tek seviye."
+        parentSlug:
+          type: string
+          nullable: true
+          description: "Paket AG — üst uzmanlığın slug'ı. Yalnızca uzmanlık uçlarında dolar; doktor yanıtındaki gömülü `specialty` nesnesinde null."
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
     SpecialtyWithDoctorCount:
-      description: "`GET /specialties/{slug}` (public) yanıt gövdesi — `Specialty` + `doctorCount`."
+      description: "`GET /specialties/{slug}` (public) yanıt gövdesi — `Specialty` + `doctorCount` + üst/alt uzmanlıklar (Paket AG)."
       allOf:
         - $ref: "#/components/schemas/Specialty"
         - type: object
-          required: [doctorCount]
+          required: [doctorCount, parent, children]
           properties:
             doctorCount:
               type: integer
               minimum: 0
-              description: "Bu branşa bağlı, YALNIZCA `isActive: true` doktor sayısı."
+              description: "Bu branşa bağlı, YALNIZCA `isActive: true` doktor sayısı (yalnızca kendi hekimleri; alt/üst uzmanlık hekimleri dahil değil)."
+            parent:
+              type: object
+              nullable: true
+              description: "Paket AG — üst uzmanlık (aktifse; yerelleştirilmiş ad). Üst seviyede null."
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+            children:
+              type: array
+              description: "Paket AG — aktif alt uzmanlıklar (`order asc`, yerelleştirilmiş)."
+              items:
+                type: object
+                required: [slug, name, icon]
+                properties:
+                  slug: { type: string }
+                  name: { type: string }
+                  icon: { type: string }
 
     DoctorAvailabilityRule:
       type: object
@@ -22203,6 +22230,13 @@ components:
         translations:
           allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
           description: "Paket O — `{ <dil>: { name (≤80), description (≤500) } }`; gönderilirse harita tamamen yazılır."
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Paket AG — üst uzmanlık (alt uzmanlık yapar); null üst seviyeye alır. 422 (`parentId`): üst
+            bulunamadı, kendisi, üst zaten alt uzmanlık (tek seviye) ya da bu uzmanlığın alt uzmanlıkları var.
 
     UpdateSpecialtyRequest:
       allOf: [{ $ref: "#/components/schemas/CreateSpecialtyRequest" }]

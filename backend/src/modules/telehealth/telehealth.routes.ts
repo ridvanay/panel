@@ -335,7 +335,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       const rows = await app.prisma.specialty.findMany({
         where: { isActive: true },
         orderBy: { order: "asc" },
-        include: { imageMedia: true },
+        include: { imageMedia: true, parent: { select: { slug: true } } },
       });
       const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
       return reply.send(ok(rows.map((row) => toSpecialtyDto(localizeSpecialty(row, contentLocale)))));
@@ -350,9 +350,11 @@ export async function telehealthRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const specialty = await app.prisma.specialty.findFirst({
         where: { slug: request.params.slug, isActive: true },
-        include: { imageMedia: true },
+        include: { imageMedia: true, parent: true },
       });
       if (!specialty) throw new NotFoundError("Uzmanlık alanı bulunamadı.");
+      // Paket AG — alt uzmanlıklar (aktif, `order asc`); üst uzmanlık yalnızca aktifse döner.
+      const childRows = await app.prisma.specialty.findMany({ where: { parentId: specialty.id, isActive: true }, orderBy: { order: "asc" } });
 
       // Yalnızca AKTİF doktorlar sayılır — `/doctors` liste ucunun `isActive: true` filtresiyle
       // TUTARLI (pasif doktorlar public yüzeyde hiçbir yerde SAYILMAZ/GÖSTERİLMEZ).
@@ -364,7 +366,18 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
 
       const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
-      return reply.send(ok(toSpecialtyWithDoctorCountDto(localizeSpecialty(specialty, contentLocale), doctorCount)));
+      const parentRow = specialty.parent && specialty.parent.isActive ? localizeSpecialty(specialty.parent, contentLocale) : null;
+      return reply.send(
+        ok(
+          toSpecialtyWithDoctorCountDto(localizeSpecialty(specialty, contentLocale), doctorCount, {
+            parent: parentRow ? { slug: parentRow.slug, name: parentRow.name } : null,
+            children: childRows.map((child) => {
+              const localized = localizeSpecialty(child, contentLocale);
+              return { slug: localized.slug, name: localized.name, icon: localized.icon };
+            }),
+          })
+        )
+      );
     }
   );
 

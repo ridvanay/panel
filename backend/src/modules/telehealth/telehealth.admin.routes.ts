@@ -200,7 +200,43 @@ async function assertSpecialtyImageMedia(app: FastifyInstance, mediaId: string) 
   }
 }
 
-const WITH_SPECIALTY_IMAGE = { imageMedia: true } as const;
+const WITH_SPECIALTY_IMAGE = { imageMedia: true, parent: { select: { slug: true } } } as const;
+
+/**
+ * Paket AG — üst uzmanlık kuralları (tek seviye, döngüsüz). DB'de değil API'de zorlanır (`NavigationItem` deseni).
+ * `specialtyId` yeni kayıtta undefined. Hepsi 422 `parentId` alanı.
+ */
+async function assertValidSpecialtyParent(app: FastifyInstance, parentId: string, specialtyId: string | undefined): Promise<void> {
+  const fail = (message: string): never => {
+    throw new ValidationError(message, { parentId: [message] });
+  };
+  if (specialtyId && parentId === specialtyId) fail("Bir uzmanlık kendisinin alt uzmanlığı olamaz.");
+  const parent = await app.prisma.specialty.findUnique({ where: { id: parentId }, select: { id: true, parentId: true } });
+  if (!parent) return fail("Üst uzmanlık bulunamadı.");
+  if (parent.parentId) fail("Üst uzmanlık zaten bir alt uzmanlık; yalnızca tek seviyeye izin verilir.");
+  if (specialtyId && (await app.prisma.specialty.count({ where: { parentId: specialtyId } })) > 0) {
+    fail("Bu uzmanlığın alt uzmanlıkları var; başka bir uzmanlığın altına taşınamaz.");
+  }
+}
+
+/** Paket AG — üst uzmanlık değişiminin audit kaydı (yalnızca id'ler; PII yok). */
+async function logSpecialtyParentAudit(
+  app: FastifyInstance,
+  request: { user?: { id: string; email: string } | null; ip: string },
+  specialtyId: string,
+  fromParentId: string | null,
+  toParentId: string | null
+): Promise<void> {
+  await logAudit(app, {
+    actorId: request.user!.id,
+    actorEmail: request.user!.email,
+    action: "specialty.parent_set",
+    targetType: "Specialty",
+    targetId: specialtyId,
+    metadata: { parentId: toParentId, previousParentId: fromParentId },
+    ipAddress: request.ip,
+  });
+}
 
 /** `/admin/telehealth/specialties` prefix'i altında bağlanır — okuma panel kapısı, yazma ADMIN+MANAGER (§8.4). */
 export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
@@ -230,8 +266,9 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       schema: { body: CreateSpecialtyRequestSchema, response: { 201: ApiSuccessSchema(SpecialtySchema) } },
     },
     async (request, reply) => {
-      const { name, slug, icon, description, order, isActive, imageMediaId, translations } = request.body;
+      const { name, slug, icon, description, order, isActive, imageMediaId, translations, parentId } = request.body;
       if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
+      if (parentId) await assertValidSpecialtyParent(app, parentId, undefined);
       const specialty = await app.prisma.specialty.create({
         data: {
           name,
@@ -241,10 +278,12 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
           order: order ?? 0,
           isActive: isActive ?? true,
           imageMediaId: imageMediaId ?? null,
+          parentId: parentId ?? null,
           translations: translations ?? {},
         },
         include: WITH_SPECIALTY_IMAGE,
       });
+      if (specialty.parentId) await logSpecialtyParentAudit(app, request, specialty.id, null, specialty.parentId);
       return reply.code(201).send(ok(toSpecialtyDto(specialty)));
     }
   );
@@ -260,13 +299,21 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { slug, description, imageMediaId, ...rest } = request.body;
+      const { slug, description, imageMediaId, parentId, ...rest } = request.body;
       if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
+      let previousParentId: string | null = null;
+      if (parentId !== undefined) {
+        const current = await app.prisma.specialty.findUnique({ where: { id: request.params.specialtyId }, select: { parentId: true } });
+        if (!current) throw new NotFoundError("Uzmanlık bulunamadı.");
+        previousParentId = current.parentId;
+        if (parentId) await assertValidSpecialtyParent(app, parentId, request.params.specialtyId);
+      }
       const specialty = await app.prisma.specialty
         .update({
           where: { id: request.params.specialtyId },
           data: {
             ...rest,
+            ...(parentId !== undefined ? { parentId } : {}),
             ...(slug !== undefined ? { slug: slugify(slug) } : {}),
             ...(description !== undefined ? { description } : {}),
             ...(imageMediaId !== undefined ? { imageMediaId } : {}),
@@ -276,6 +323,9 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
         .catch(() => {
           throw new NotFoundError("Uzmanlık bulunamadı.");
         });
+      if (parentId !== undefined && previousParentId !== parentId) {
+        await logSpecialtyParentAudit(app, request, specialty.id, previousParentId, parentId);
+      }
       return reply.send(ok(toSpecialtyDto(specialty)));
     }
   );

@@ -507,18 +507,30 @@ export async function recommend(app: FastifyInstance, input: RecommendInput, now
   if (scoredIds.length === 0) return empty;
 
   // Yayında ve aktif hekimi olan (birincil ya da ek) uzmanlıklar — olmayan puanlamadan düşülür.
+  // Paket AG — alt uzmanlık (ör. ESD) puanlanırsa üst uzmanlığın (Gastroenterology) hekimleri de aday havuzuna girer.
+  // Konu ağırlıkları DEĞİŞMEZ; yalnızca "kapsama" genişler: bir uzmanlığı kendisi VEYA üstü kapsar.
+  const scoredRows = await app.prisma.specialty.findMany({ where: { id: { in: scoredIds } }, select: { id: true, parentId: true } });
+  const parentOf = new Map<string, string>();
+  for (const row of scoredRows) if (row.parentId) parentOf.set(row.id, row.parentId);
+  const coverIds = Array.from(new Set([...scoredIds, ...parentOf.values()]));
+  const covers = (specialtyId: string): string[] => {
+    const parent = parentOf.get(specialtyId);
+    return parent ? [specialtyId, parent] : [specialtyId];
+  };
   const doctors = await app.prisma.doctorProfile.findMany({
     where: {
       ...PUBLIC_DOCTOR_WHERE,
-      OR: [{ specialtyId: { in: scoredIds } }, { additionalSpecialties: { some: { specialtyId: { in: scoredIds } } } }],
+      OR: [{ specialtyId: { in: coverIds } }, { additionalSpecialties: { some: { specialtyId: { in: coverIds } } } }],
     },
     include: DOCTOR_INCLUDE,
   });
-  const staffed = new Set<string>();
+  const staffedRaw = new Set<string>();
   for (const d of doctors) {
-    if (d.specialtyId) staffed.add(d.specialtyId);
-    for (const link of d.additionalSpecialties) staffed.add(link.specialtyId);
+    if (d.specialtyId) staffedRaw.add(d.specialtyId);
+    for (const link of d.additionalSpecialties) staffedRaw.add(link.specialtyId);
   }
+  // Hekimi olmayan alt uzmanlık, üstünde hekim varsa "staffed" sayılır.
+  const staffed = new Set<string>(scoredIds.filter((id) => covers(id).some((cid) => staffedRaw.has(cid))));
   const specialtyRows = await app.prisma.specialty.findMany({ where: { id: { in: scoredIds }, isActive: true } });
   const locale = input.locale;
   const ranked = specialtyRows
@@ -529,12 +541,17 @@ export async function recommend(app: FastifyInstance, input: RecommendInput, now
   if (ranked.length === 0) return empty;
 
   const recIds = ranked.map((r) => r.row.id);
-  const candidates = doctors.filter((d) => (d.specialtyId && recIds.includes(d.specialtyId)) || d.additionalSpecialties.some((l) => recIds.includes(l.specialtyId)));
+  const parentRows = parentOf.size > 0 ? await app.prisma.specialty.findMany({ where: { id: { in: [...parentOf.values()] } }, select: { id: true, slug: true } }) : [];
+  const parentSlugById = new Map(parentRows.map((row) => [row.id, row.slug]));
+  // Önerilen uzmanlıkların kapsadığı kimlikler (kendisi + üstü); hekimin eşleştiği GERÇEK uzmanlık üst de olabilir.
+  const recCover = new Set(recIds.flatMap((id) => covers(id)));
+  const rankOfCovered = (specialtyId: string): number => recIds.findIndex((rid) => covers(rid).includes(specialtyId));
+  const candidates = doctors.filter((d) => (d.specialtyId && recCover.has(d.specialtyId)) || d.additionalSpecialties.some((l) => recCover.has(l.specialtyId)));
   const earliest = await computeEarliestAvailability(app, candidates, now);
   const prepared = candidates.map((d) => {
     const dto = toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(d, locale), locale));
-    const primaryMatch = d.specialtyId !== null && recIds.includes(d.specialtyId);
-    const matchedIds = [d.specialtyId, ...d.additionalSpecialties.map((l) => l.specialtyId)].filter((id): id is string => !!id && recIds.includes(id));
+    const primaryMatch = d.specialtyId !== null && recCover.has(d.specialtyId);
+    const matchedIds = [d.specialtyId, ...d.additionalSpecialties.map((l) => l.specialtyId)].filter((id): id is string => !!id && recCover.has(id));
     return {
       row: d,
       dto,
@@ -542,7 +559,7 @@ export async function recommend(app: FastifyInstance, input: RecommendInput, now
       speaksLanguage: d.languages.includes(input.preferredLanguage),
       earliestAt: earliest.get(d.id) ?? null,
       // Eşitlikte birincil uzmanlığın öneri sırası (birincil > ek kuralı); birincil önerilmiyorsa ek uzmanlığın sırası + 10.
-      specialtyRank: primaryMatch ? recIds.indexOf(d.specialtyId!) : 10 + Math.min(...matchedIds.map((id) => recIds.indexOf(id))),
+      specialtyRank: primaryMatch ? rankOfCovered(d.specialtyId!) : 10 + Math.min(...matchedIds.map((id) => rankOfCovered(id))),
       displayName: dto.displayName ?? dto.fullName,
     };
   });
@@ -557,8 +574,9 @@ export async function recommend(app: FastifyInstance, input: RecommendInput, now
       avatarUrl: d.dto.avatarMedia?.url ?? null,
       specialtyName: d.dto.specialty?.name ?? null,
       matchedSpecialtySlug: (() => {
-        const id = d.primaryMatch ? d.row.specialtyId! : d.row.additionalSpecialties.map((l) => l.specialtyId).find((sid) => recIds.includes(sid))!;
-        return ranked.find((r) => r.row.id === id)?.row.slug ?? ranked[0]!.row.slug;
+        const id = d.primaryMatch ? d.row.specialtyId! : d.row.additionalSpecialties.map((l) => l.specialtyId).find((sid) => recCover.has(sid))!;
+        // Hekim önerilen alt uzmanlığın kendisindeyse o slug; yalnızca üst uzmanlıktaysa üst uzmanlığın slug'ı.
+        return ranked.find((r) => r.row.id === id)?.row.slug ?? parentSlugById.get(id) ?? ranked[0]!.row.slug;
       })(),
       languages: d.row.languages,
       primaryMatch: d.primaryMatch,
