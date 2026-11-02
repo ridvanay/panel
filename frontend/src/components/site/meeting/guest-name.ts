@@ -15,6 +15,8 @@ const ALLOWED = /^[\p{L}\p{M}][\p{L}\p{M}\p{Nd} .'\-]{1,39}$/u;
 const FORBIDDEN = /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩]/u;
 /** `participant-label.ts` kimlik önekleriyle karışmasın. */
 const RESERVED_PREFIXES = ["meet-", "doctor:", "patient:", "interpreter:", "qa-listener-"];
+/** AI İş 3 — koordinatör taklidi: "Patient Coordinator" / "Coordinator" ile başlayan adlar reddedilir (sunucu da reddeder). */
+const RESERVED_NAME_PREFIXES = ["patient coordinator", "coordinator"];
 
 /** NFC, baş/son boşluk kırpma, iç boşlukları teke indirme (boşluk benzeri karakterler dahil, kontrol karakterlerine dokunmaz). */
 export function normalizeGuestName(input: string): string {
@@ -30,6 +32,7 @@ export function validateGuestName(input: string): GuestNameResult {
   // Rezerve önek, genel karakter kuralından önce denetlenir ("doctor:1" için daha açıklayıcı mesaj); ikisi de sunucuda reddedilir.
   const lower = value.toLowerCase();
   if (RESERVED_PREFIXES.some((prefix) => lower.startsWith(prefix))) return { ok: false, reason: "reservedPrefix" };
+  if (RESERVED_NAME_PREFIXES.some((prefix) => lower.startsWith(prefix))) return { ok: false, reason: "reservedPrefix" };
   if (!ALLOWED.test(value)) return { ok: false, reason: "invalidChars" };
   return { ok: true, value };
 }

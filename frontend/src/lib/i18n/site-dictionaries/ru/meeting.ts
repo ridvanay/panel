@@ -153,6 +153,13 @@ export const meetingStrings: MeetingStrings = {
   guestFullTitle: "Встреча заполнена",
   guestFullBody: "Достигнут лимит участников. Обратитесь к организатору.",
 
+  // ---- Hizmet görüşmesi amaç metinleri ----
+  guestPurposeTitle: "Онлайн-консультация с вашим координатором пациентов WM Health",
+  guestPurposeIntermediary: "WM Health — посредник в медицинском туризме, а не поставщик медицинских услуг.",
+  guestPurposeNotice: "Это не медицинский осмотр. Медицинская оценка и решения о лечении принимаются врачами в авторизованных медицинских учреждениях.",
+  guestPurposeWaitingTitle: "Координатор скоро впустит вас",
+  guestPurposeWaitingBody: "Не закрывайте эту страницу. Консультация начнётся, как только присоединится координатор.",
+
   hostAccessLabel: "Может проводить внешние встречи",
   hostAccessAdminNote: "Администраторам разрешено всегда",
   hostAccessGrantTitle: "Разрешить внешние встречи?",

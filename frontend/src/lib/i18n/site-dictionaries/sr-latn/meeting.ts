@@ -153,6 +153,13 @@ export const meetingStrings: MeetingStrings = {
   guestFullTitle: "Ovaj sastanak je pun",
   guestFullBody: "Dostignut je broj učesnika. Obratite se domaćinu.",
 
+  // ---- Hizmet görüşmesi amaç metinleri ----
+  guestPurposeTitle: "Onlajn konsultacija sa vašim koordinatorom pacijenata WM Health",
+  guestPurposeIntermediary: "WM Health je posrednik u zdravstvenom turizmu, a ne pružalac zdravstvenih usluga.",
+  guestPurposeNotice: "Ovo nije medicinski pregled. Medicinsku procenu i odluke o lečenju donose lekari u ovlašćenim zdravstvenim ustanovama.",
+  guestPurposeWaitingTitle: "Koordinator će vas uskoro primiti",
+  guestPurposeWaitingBody: "Ostavite ovu stranicu otvorenom. Konsultacija počinje čim se koordinator pridruži.",
+
   hostAccessLabel: "Može da održava spoljne sastanke",
   hostAccessAdminNote: "Administratori uvek imaju dozvolu",
   hostAccessGrantTitle: "Dozvoliti spoljne sastanke?",

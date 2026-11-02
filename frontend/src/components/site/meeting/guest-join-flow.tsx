@@ -267,6 +267,7 @@ export function GuestJoinFlow() {
   const nameResult = validateGuestName(name);
   const nameError = touched && !nameResult.ok ? nameProblemMessage(nameResult.reason, t) : undefined;
 
+  const isServiceConsultation = info?.purpose === "service_consultation";
   const showForm = stage.kind === "name" || stage.kind === "joining";
   const showWaiting = stage.kind === "waiting";
 
@@ -326,8 +327,13 @@ export function GuestJoinFlow() {
         {showWaiting ? (
           <div role="status" className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-6 text-center" data-testid="guest-waiting">
             <Hourglass className="mx-auto h-9 w-9 text-foreground/50" aria-hidden="true" />
-            <h1 className="font-heading text-lg font-semibold text-foreground">{t.guestWaitingTitle}</h1>
-            <p className="text-sm text-foreground/70">{t.guestWaitingBody}</p>
+            <h1 className="font-heading text-lg font-semibold text-foreground">{isServiceConsultation ? t.guestPurposeWaitingTitle : t.guestWaitingTitle}</h1>
+            <p className="text-sm text-foreground/70">{isServiceConsultation ? t.guestPurposeWaitingBody : t.guestWaitingBody}</p>
+            {isServiceConsultation && (
+              <p className="text-xs text-foreground/60" data-testid="guest-purpose-notice-waiting">
+                {t.guestPurposeNotice}
+              </p>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -351,10 +357,16 @@ export function GuestJoinFlow() {
           >
             <div className="space-y-1">
               <h1 className="font-heading text-xl font-semibold text-foreground">
-                <bdi>{info?.title ?? t.guestJoinTitle}</bdi>
+                {isServiceConsultation ? t.guestPurposeTitle : <bdi>{info?.title ?? t.guestJoinTitle}</bdi>}
               </h1>
               {info?.hostName && <p className="text-sm text-foreground/70">{fmt(t.guestHostedBy, { host: info.hostName })}</p>}
             </div>
+            {isServiceConsultation && (
+              <div className="space-y-1.5 rounded-[var(--site-radius)] border border-border bg-background p-3 text-xs text-foreground/70" data-testid="guest-purpose-notes">
+                <p>{t.guestPurposeIntermediary}</p>
+                <p>{t.guestPurposeNotice}</p>
+              </div>
+            )}
             {stage.kind === "name" && stage.message && <Alert variant="error">{stage.message}</Alert>}
             <Field id="guest-name" label={t.guestNameLabel} hint={t.guestNameHint} error={nameError} required>
               {(inputProps) => (

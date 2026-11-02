@@ -155,6 +155,8 @@ export interface GuestPreflight {
   startsAt: string;
   endsAt: string;
   phase: "upcoming" | "open";
+  /** AI İş 3 — hizmet görüşmesinde "service_consultation"; yoksa (eski sunucu) "general" sayılır. */
+  purpose?: "general" | "service_consultation";
 }
 
 export type GuestJoinResponse =

@@ -153,6 +153,13 @@ export const meetingStrings: MeetingStrings = {
   guestFullTitle: "هذا الاجتماع ممتلئ",
   guestFullBody: "تم بلوغ حد المشاركين. يرجى التواصل مع المضيف.",
 
+  // ---- Hizmet görüşmesi amaç metinleri ----
+  guestPurposeTitle: "استشارة عبر الإنترنت مع منسّق المرضى في WM Health",
+  guestPurposeIntermediary: "WM Health جهة وساطة في السياحة العلاجية وليست مقدّم رعاية صحية.",
+  guestPurposeNotice: "هذا ليس فحصًا طبيًا. يتم التقييم الطبي وقرارات العلاج من قِبل الأطباء في المنشآت الصحية المرخّصة.",
+  guestPurposeWaitingTitle: "سيسمح لك المنسّق بالدخول بعد قليل",
+  guestPurposeWaitingBody: "يُرجى إبقاء هذه الصفحة مفتوحة. تبدأ الاستشارة بمجرد انضمام المنسّق.",
+
   hostAccessLabel: "يمكنه استضافة اجتماعات خارجية",
   hostAccessAdminNote: "المسؤولون لديهم الإذن دائمًا",
   hostAccessGrantTitle: "السماح بالاجتماعات الخارجية؟",

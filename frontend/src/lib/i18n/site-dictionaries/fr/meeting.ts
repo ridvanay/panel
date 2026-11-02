@@ -153,6 +153,13 @@ export const meetingStrings: MeetingStrings = {
   guestFullTitle: "Cette réunion est complète",
   guestFullBody: "La limite de participants est atteinte. Veuillez contacter l'hôte.",
 
+  // ---- Hizmet görüşmesi amaç metinleri ----
+  guestPurposeTitle: "Consultation en ligne avec votre coordinateur patient WM Health",
+  guestPurposeIntermediary: "WM Health est un intermédiaire du tourisme de santé, et non un prestataire de soins.",
+  guestPurposeNotice: "Il ne s'agit pas d'un examen médical. L'évaluation médicale et les décisions de traitement relèvent des médecins des établissements de santé agréés.",
+  guestPurposeWaitingTitle: "Votre coordinateur va vous admettre dans un instant",
+  guestPurposeWaitingBody: "Gardez cette page ouverte. La consultation commence dès que votre coordinateur la rejoint.",
+
   hostAccessLabel: "Peut organiser des réunions externes",
   hostAccessAdminNote: "Les administrateurs sont toujours autorisés",
   hostAccessGrantTitle: "Autoriser les réunions externes ?",
