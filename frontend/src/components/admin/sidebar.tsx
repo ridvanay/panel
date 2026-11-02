@@ -40,6 +40,8 @@ import {
   Package,
   MapPin,
   Video,
+  Headset,
+  CalendarCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -59,6 +61,7 @@ import { useAuth } from "@/context/auth-context";
 import { useModules } from "@/context/modules-context";
 import { useT } from "@/context/i18n-context";
 import type { SiteRole } from "@/lib/api/types";
+import { EXTERNAL_MEETINGS_ENABLED } from "@/lib/feature-flags";
 
 export interface NavItem {
   href: string;
@@ -86,6 +89,11 @@ export interface NavItem {
    * Gizleme kullanılabilirlik içindir; sunucu her istekte yetkiyi bağımsız doğrular.
    */
   meetingHost?: boolean;
+  /**
+   * AI İş 3 — yalnızca aktif hizmet masası koordinatörüne (`/users/me` `isServiceCoordinator`) görünür; rolden bağımsızdır
+   * (EDITOR dahil). Gizleme kullanılabilirlik içindir; sunucu her istekte koordinatör profilini bağımsız doğrular.
+   */
+  serviceCoordinator?: boolean;
 }
 
 /**
@@ -95,14 +103,16 @@ export interface NavItem {
  */
 export function filterVisibleNavItems(
   items: NavItem[],
-  user: { role: SiteRole; canHostMeetings?: boolean } | null,
+  user: { role: SiteRole; canHostMeetings?: boolean; isServiceCoordinator?: boolean } | null,
   isModuleEnabled: (key: string) => boolean
 ): NavItem[] {
   return items.filter(
     (item) =>
       (!item.roles || (user && item.roles.includes(user.role))) &&
       (!item.module || isModuleEnabled(item.module)) &&
-      (!item.meetingHost || (user !== null && (user.role === "ADMIN" || user.canHostMeetings === true)))
+      // AI İş 3 hızlı sürüm: genel harici toplantı özelliği kapalıyken "Toplantılar" hiç görünmez.
+      (!item.meetingHost || (EXTERNAL_MEETINGS_ENABLED && user !== null && (user.role === "ADMIN" || user.canHostMeetings === true))) &&
+      (!item.serviceCoordinator || user?.isServiceCoordinator === true)
   );
 }
 
@@ -141,6 +151,10 @@ export const navItems: NavItem[] = [
   },
   { href: "/admin/telehealth/doctors", labelKey: "nav.telehealth", icon: Stethoscope, module: "telehealth" },
   { href: "/admin/telehealth/specialties", labelKey: "nav.telehealthSpecialties", icon: Tag, module: "telehealth" },
+  // AI İş 3 — Hizmet Masası (genel masa ayarları, koordinatörler, görüşmeler): yalnızca ADMIN/MANAGER (anahtarı yalnızca ADMIN değiştirir).
+  { href: "/admin/service-desk", labelKey: "nav.serviceDesk", icon: Headset, roles: ["ADMIN", "MANAGER"] },
+  // AI İş 3 — koordinatörün kendi görüşmeleri; rolden bağımsız, `isServiceCoordinator` ile (EDITOR dahil).
+  { href: "/admin/my-consultations", labelKey: "nav.myConsultations", icon: CalendarCheck, serviceCoordinator: true },
   // Paket AG İş 3 — harici görüntülü toplantılar: yalnızca ADMIN ve "harici toplantı oluşturabilir" yetkisi verilenler görür.
   { href: "/admin/meetings", labelKey: "nav.meetings", icon: Video, module: "telehealth", meetingHost: true },
   {

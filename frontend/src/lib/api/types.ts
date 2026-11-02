@@ -87,7 +87,16 @@ export type ApiErrorCode =
   | "CONTACT_FORM_TOKEN_INVALID"
   | "BULK_PREVIEW_STALE"
   | "BULK_CONFLICT_ACK_REQUIRED"
-  | "BULK_UNDO_BLOCKED";
+  | "BULK_UNDO_BLOCKED"
+  // AI İş 3 — hizmet masası (admin)
+  | "CLOSURE_HAS_CONSULTATIONS"
+  | "COORDINATOR_HAS_UPCOMING_CONSULTATIONS"
+  | "COORDINATOR_NOT_ELIGIBLE"
+  | "PAID_CONSULTATIONS_DISABLED"
+  | "SERVICE_NOT_BOOKABLE"
+  // AI İş 3 — ziyaretçi hizmet görüşmesi (FE-V)
+  | "SERVICE_CONSULTATION_LIMIT"
+  | "CONSULTATION_NOT_CHANGEABLE";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -148,6 +157,11 @@ export interface User {
    * Yalnızca menü/sayfa görünürlüğü içindir; sunucu her istekte bağımsız karar verir. Eski yanıtta yoksa `undefined` (= yetki yok).
    */
   readonly canHostMeetings?: boolean;
+  /**
+   * AI İş 3 — türetilmiş, salt okunur: kullanıcının aktif bir hizmet masası koordinatör profili var mı. Yalnızca menü/sayfa
+   * görünürlüğü içindir; sunucu her istekte profili bağımsız doğrular. Eski yanıtta yoksa `undefined` (= koordinatör değil).
+   */
+  readonly isServiceCoordinator?: boolean;
   createdAt: string;
   twoFactorEnabled: boolean;
   /**

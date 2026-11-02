@@ -11,10 +11,14 @@ function visibleHrefsFor(role: SiteRole, canHostMeetings?: boolean): string[] {
   return filterVisibleNavItems(navItems, { role, canHostMeetings }, () => true).map((item) => item.href);
 }
 
+function visibleCoordinatorHrefs(role: SiteRole, isServiceCoordinator: boolean | undefined): string[] {
+  return filterVisibleNavItems(navItems, { role, isServiceCoordinator }, () => true).map((item) => item.href);
+}
+
 describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
-  it("ADMIN sidebar'daki HER öğeyi görür", () => {
+  it("ADMIN sidebar'daki HER öğeyi görür (bayrakla kapalı Toplantılar ve koordinatöre özel Görüşmelerim hariç)", () => {
     const visible = visibleHrefsFor("ADMIN");
-    expect(visible).toEqual(navItems.map((item) => item.href));
+    expect(visible).toEqual(navItems.map((item) => item.href).filter((href) => href !== "/admin/meetings" && href !== "/admin/my-consultations"));
   });
 
   it("MANAGER: Kullanıcılar/Ayarlar/Sistem Sağlığı/Loglar/İçe Aktarma GİZLİ, geri kalan panel operasyonu görünür", () => {
@@ -63,19 +67,37 @@ describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
     expect(visible).not.toContain("/admin/telehealth/appointments");
   });
 
-  // Paket AG İş 3 — "Toplantılar" yalnızca ADMIN'e ve `canHostMeetings` yetkisi olanlara görünür.
-  it("Toplantılar: yetkisiz MANAGER/EDITOR için GİZLİ, yetkili olunca görünür; ADMIN her zaman görür", () => {
-    expect(visibleHrefsFor("ADMIN")).toContain("/admin/meetings");
+  // AI İş 3 hızlı sürüm — genel harici toplantı özelliği kapalı: "Toplantılar" hiç kimseye görünmez
+  // (bayrak açıkken davranış `sidebar-external-meetings-flag-on.test.tsx` içinde).
+  it("Toplantılar: EXTERNAL_MEETINGS_ENABLED kapalıyken ADMIN ve yetkili kullanıcılar için de GİZLİ", () => {
+    expect(visibleHrefsFor("ADMIN")).not.toContain("/admin/meetings");
     for (const role of ["MANAGER", "EDITOR"] as const) {
-      expect(visibleHrefsFor(role), role).not.toContain("/admin/meetings");
-      expect(visibleHrefsFor(role, false), role).not.toContain("/admin/meetings");
-      expect(visibleHrefsFor(role, true), role).toContain("/admin/meetings");
+      expect(visibleHrefsFor(role, true), role).not.toContain("/admin/meetings");
     }
   });
 
-  it("Toplantılar: telehealth modülü kapalıysa yetkili kullanıcıda bile gizlenir; kullanıcı yoksa gizli", () => {
-    expect(filterVisibleNavItems(navItems, { role: "EDITOR", canHostMeetings: true }, (key) => key !== "telehealth").map((i) => i.href)).not.toContain("/admin/meetings");
-    expect(filterVisibleNavItems(navItems, null, () => true).map((i) => i.href)).not.toContain("/admin/meetings");
+  // AI İş 3 — Hizmet Masası (ADMIN/MANAGER) ve Görüşmelerim (isServiceCoordinator, rolden bağımsız).
+  it("Hizmet Masası: ADMIN ve MANAGER görür, EDITOR görmez", () => {
+    expect(visibleHrefsFor("ADMIN")).toContain("/admin/service-desk");
+    expect(visibleHrefsFor("MANAGER")).toContain("/admin/service-desk");
+    expect(visibleHrefsFor("EDITOR")).not.toContain("/admin/service-desk");
+    expect(visibleCoordinatorHrefs("EDITOR", true)).not.toContain("/admin/service-desk");
+  });
+
+  it("Görüşmelerim: yalnızca isServiceCoordinator olanlara görünür; EDITOR-koordinatör görür, EDITOR-değil görmez", () => {
+    expect(visibleCoordinatorHrefs("EDITOR", true)).toContain("/admin/my-consultations");
+    expect(visibleCoordinatorHrefs("EDITOR", false)).not.toContain("/admin/my-consultations");
+    expect(visibleCoordinatorHrefs("EDITOR", undefined)).not.toContain("/admin/my-consultations");
+    expect(visibleCoordinatorHrefs("MANAGER", true)).toContain("/admin/my-consultations");
+    expect(visibleCoordinatorHrefs("ADMIN", false)).not.toContain("/admin/my-consultations");
+    expect(filterVisibleNavItems(navItems, null, () => true).map((i) => i.href)).not.toContain("/admin/my-consultations");
+  });
+
+  it("EDITOR-koordinatör: Görüşmelerim eklenir, personel PII/yönetim öğeleri (randevular) hâlâ GİZLİ", () => {
+    const visible = visibleCoordinatorHrefs("EDITOR", true);
+    expect(visible).toContain("/admin/my-consultations");
+    expect(visible).not.toContain("/admin/telehealth/appointments");
+    expect(visible).not.toContain("/admin/users");
   });
 
   // K10b — mali/iş verisi analitik paneli, randevular İLE AYNI eşik (ADMIN/MANAGER), EDITOR'e KAPALI.
