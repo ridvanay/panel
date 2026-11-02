@@ -102,7 +102,7 @@ export function BlogPostView({
   locales: Locale[];
   dict: BlogDict;
   siteName: string;
-  preview?: Pick<PublicBlogPreviewDetail, "pendingReviewer" | "reviewApproved">;
+  preview?: Pick<PublicBlogPreviewDetail, "pendingReviewer" | "reviewApproved" | "status">;
 }) {
   const localizations = toContentLocalizations(post);
   const t = dict.blog;
@@ -134,7 +134,7 @@ export function BlogPostView({
 
   return (
     <div dir={localeDirection(lang)} className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12" data-testid="blog-post">
-      {preview ? <BlogPreviewBanner t={t} approved={preview.reviewApproved} /> : null}
+      {preview ? <BlogPreviewBanner t={t} approved={preview.reviewApproved} status={preview.status} /> : null}
       {preview ? null : <SyncLocaleAlternates kind="blog" items={localizations} />}
       {preview ? null : <ViewTracker kind="blog" slug={trackedSlug} />}
       {jsonLd.map((json, index) => (

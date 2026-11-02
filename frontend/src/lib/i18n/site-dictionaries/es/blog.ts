@@ -98,6 +98,7 @@ export const blogStrings: BlogStrings = {
   // ---- Önizleme (taslak) ----
   previewBannerPending: "Vista previa: pendiente de aprobación médica",
   previewBannerPublish: "Vista previa: pendiente de publicación",
+  previewBannerLive: "Vista previa",
   reviewPendingBy: "Revisión pendiente: {name}",
   previewOpen: "Vista previa",
   previewOpenError: "No se pudo abrir la vista previa. Inténtelo de nuevo.",

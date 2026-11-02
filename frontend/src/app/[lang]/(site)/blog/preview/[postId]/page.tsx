@@ -49,7 +49,7 @@ export default async function BlogPreviewRoute({ params, searchParams }: PagePro
       locales={locales}
       dict={dict}
       siteName={settings.siteName}
-      preview={{ pendingReviewer: post.pendingReviewer ?? null, reviewApproved: post.reviewApproved === true }}
+      preview={{ pendingReviewer: post.pendingReviewer ?? null, reviewApproved: post.reviewApproved === true, status: post.status }}
     />
   );
 }

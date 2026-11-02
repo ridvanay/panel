@@ -426,11 +426,14 @@ export async function getPreviewPostDetail(app: FastifyInstance, postId: string,
   let locale = resolveEffectiveLocaleCode(localeSet, localeRaw);
   if (locale && !isLocaleTranslated(post.translations, locale)) locale = undefined;
 
-  const detail = await buildPostDetail(app, post, locale, localeSet, true);
-  const doctor = post.reviewerDoctor;
+  // Yayındaki VE hekim onaylı yazıda hekim bilgisi yayındaki detayla aynı doldurulur; diğer durumlarda gizlenir.
+  const livePublished = post.status === "PUBLISHED" && post.medicalReviewStatus === "approved";
+  const detail = await buildPostDetail(app, post, locale, localeSet, !livePublished);
+  const doctor = livePublished ? null : post.reviewerDoctor;
   return {
     ...detail,
     preview: true as const,
+    status: post.status,
     reviewApproved: post.medicalReviewStatus === "approved",
     pendingReviewer: doctor
       ? {

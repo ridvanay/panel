@@ -820,6 +820,7 @@ export interface PublicBlogDetail extends PublicBlogCard {
 /** Taslak önizleme (`GET /blog/preview/:postId?t=`) — yayındaki detayla aynı şekil; `reviewer` HER ZAMAN null. */
 export interface PublicBlogPreviewDetail extends PublicBlogDetail {
   preview: true;
+  status: "DRAFT" | "SCHEDULED" | "PUBLISHED";
   pendingReviewer: { name: string; title: string; slug: string; avatarUrl: string | null } | null;
   reviewApproved: boolean;
 }

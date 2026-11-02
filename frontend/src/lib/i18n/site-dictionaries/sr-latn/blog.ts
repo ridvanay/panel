@@ -98,6 +98,7 @@ export const blogStrings: BlogStrings = {
   // ---- Önizleme (taslak) ----
   previewBannerPending: "Pregled — čeka se odobrenje lekara",
   previewBannerPublish: "Pregled — čeka se objavljivanje",
+  previewBannerLive: "Pregled",
   reviewPendingBy: "Pregled na čekanju: {name}",
   previewOpen: "Pregled",
   previewOpenError: "Pregled nije moguće otvoriti. Pokušajte ponovo.",

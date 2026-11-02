@@ -196,6 +196,7 @@ describe("blog taslak önizleme", () => {
         preview: true,
         reviewer: null,
         reviewApproved: false,
+        status: "DRAFT",
         lastReviewedAt: null,
       });
       expect(data.pendingReviewer).toMatchObject({ slug: doctor.slug, name: reviewerDisplayName(doctor, undefined), avatarUrl: null });
@@ -233,7 +234,28 @@ describe("blog taslak önizleme", () => {
       const published = await seedDraft({ status: "PUBLISHED", publishedAt: new Date(), medicalReviewStatus: "approved" });
       const res = await open(published.id, await shareToken(published.id));
       expect(res.statusCode).toBe(200);
-      expect(res.json().data.reviewer).toBeNull();
+    });
+
+    it("yayındaki + onaylı yazı: reviewer yayındaki detayla aynı, pendingReviewer null, status PUBLISHED", async () => {
+      const when = new Date("2026-10-01T10:00:00.000Z");
+      const published = await seedDraft({ status: "PUBLISHED", publishedAt: when, medicalReviewStatus: "approved", lastReviewedAt: when });
+      const res = await open(published.id, await shareToken(published.id));
+      const data = res.json().data;
+      expect(res.headers["cache-control"]).toBe("no-store");
+      expect(res.headers["x-robots-tag"]).toBe("noindex, nofollow");
+      expect(data).toMatchObject({ status: "PUBLISHED", preview: true, reviewApproved: true, pendingReviewer: null, lastReviewedAt: when.toISOString() });
+      const live = (await app.inject({ method: "GET", url: `/api/v1/blog/posts/${published.slug}` })).json().data;
+      expect(data.reviewer).not.toBeNull();
+      expect(data.reviewer).toEqual(live.reviewer);
+    });
+
+    it("DRAFT ve SCHEDULED: status döner, eski davranış (reviewer null, pendingReviewer dolu)", async () => {
+      for (const status of ["DRAFT", "SCHEDULED"] as const) {
+        const post = await seedDraft({ status, medicalReviewStatus: "approved", lastReviewedAt: new Date(), ...(status === "SCHEDULED" ? { publishedAt: new Date(Date.now() + 86_400_000) } : {}) });
+        const data = (await open(post.id, await shareToken(post.id))).json().data;
+        expect(data).toMatchObject({ status, reviewer: null, lastReviewedAt: null });
+        expect(data.pendingReviewer).not.toBeNull();
+      }
     });
 
     it("önizleme yazı durumunu, onayı, sayacı ve güncelleme zamanını DEĞİŞTİRMEZ", async () => {

@@ -9,7 +9,7 @@ import { absolutePreviewUrl, localizedPreviewPath, previewPath } from "@/lib/blo
 import { LOCALES } from "./blog-z1-fixtures";
 
 const LANGS = ["tr", "en", "de", "ar", "ru", "es", "fr", "ro", "sr-latn"] as const;
-const NEW_KEYS = ["previewBannerPending", "previewBannerPublish", "reviewPendingBy", "previewOpen", "previewOpenError"] as const;
+const NEW_KEYS = ["previewBannerPending", "previewBannerPublish", "reviewPendingBy", "previewOpen", "previewOpenError", "previewBannerLive"] as const;
 
 const DATA: SitemapData = {
   siteUrl: "https://wm.example",

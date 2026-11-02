@@ -33,6 +33,7 @@ function makePreview(over: Partial<PublicBlogPreviewDetail> = {}): PublicBlogPre
     preview: true,
     pendingReviewer: { name: "H. Sofu", title: "Prof. Dr.", slug: "hakan-sofu", avatarUrl: null },
     reviewApproved: false,
+    status: "DRAFT",
     ...over,
   };
 }
@@ -98,6 +99,33 @@ describe("Taslak önizleme sayfası — görünüm", () => {
   it("onaylı ama yayınlanmamışsa şerit 'yayın bekliyor' der", async () => {
     await renderPreview("en", { reviewApproved: true });
     expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("Preview — awaiting publication");
+  });
+
+  it("yayındaki + onaylı yazıda şerit yalnızca 'Preview'; 'awaiting' yok; hekim satırı yayındaki gibi", async () => {
+    const reviewer = { name: "H. Sofu", title: "Prof. Dr.", slug: "hakan-sofu", avatarUrl: null, specialty: null };
+    const { container } = await renderPreview("en", { status: "PUBLISHED", reviewApproved: true, pendingReviewer: null, reviewer, lastReviewedAt: "2026-10-01T10:00:00.000Z" });
+    const banner = screen.getByTestId("blog-preview-banner");
+    expect(banner).toHaveTextContent(/^Preview$/);
+    expect(banner).not.toHaveTextContent(/awaiting/);
+    expect(screen.getByText("Medically reviewed by")).toBeInTheDocument();
+    expect(screen.getByTestId("blog-last-reviewed")).toBeInTheDocument();
+    expect(screen.queryByTestId("blog-byline-pending-reviewer")).toBeNull();
+    expect(container.querySelector('script[type="application/ld+json"]')).toBeNull();
+    expect(screen.queryByTestId("blog-share")).toBeNull();
+  });
+
+  it("onaylı ama SCHEDULED yazıda şerit 'yayın bekliyor' kalır", async () => {
+    await renderPreview("en", { status: "SCHEDULED", reviewApproved: true });
+    expect(screen.getByTestId("blog-preview-banner")).toHaveTextContent("Preview — awaiting publication");
+  });
+
+  it("previewBannerLive 9 dilde tanımlı", async () => {
+    const expected: Record<string, string> = { en: "Preview", tr: "Önizleme", de: "Vorschau", ar: "معاينة", ru: "Предпросмотр", es: "Vista previa", fr: "Aperçu", ro: "Previzualizare", "sr-latn": "Pregled" };
+    for (const [lang, text] of Object.entries(expected)) {
+      const mod = (await import(`@/lib/i18n/site-dictionaries/${lang}/blog`)) as Record<string, Record<string, string>>;
+      const dict = Object.values(mod).find((v) => v && typeof v === "object" && "previewBannerPending" in v)!;
+      expect(dict.previewBannerLive).toBe(text);
+    }
   });
 
   it("'Medically reviewed by' yok; 'Review pending: <unvan + ad>' var", async () => {

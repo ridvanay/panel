@@ -98,6 +98,7 @@ export const blogStrings: BlogStrings = {
   // ---- Önizleme (taslak) ----
   previewBannerPending: "Previzualizare — în așteptarea aprobării medicului",
   previewBannerPublish: "Previzualizare — în așteptarea publicării",
+  previewBannerLive: "Previzualizare",
   reviewPendingBy: "Revizuire în așteptare: {name}",
   previewOpen: "Previzualizare",
   previewOpenError: "Previzualizarea nu a putut fi deschisă. Încercați din nou.",

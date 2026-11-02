@@ -98,11 +98,12 @@ function pendingDisplayName(r: NonNullable<PublicBlogPreviewDetail["pendingRevie
 }
 
 /** Taslak önizleme şeridi: onaylı ama yayınlanmamışsa "yayın bekliyor", aksi halde "hekim onayı bekliyor". */
-export function BlogPreviewBanner({ t, approved }: { t: BlogStrings; approved: boolean }) {
+export function BlogPreviewBanner({ t, approved, status }: { t: BlogStrings; approved: boolean; status?: PublicBlogPreviewDetail["status"] }) {
+  const live = approved && status === "PUBLISHED";
   return (
     <div role="status" className="mb-6 flex items-center gap-2 rounded-[var(--site-radius)] border border-warning/40 bg-warning/10 px-4 py-3 text-sm font-medium text-foreground" data-testid="blog-preview-banner">
       <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {approved ? t.previewBannerPublish : t.previewBannerPending}
+      {live ? t.previewBannerLive : approved ? t.previewBannerPublish : t.previewBannerPending}
     </div>
   );
 }

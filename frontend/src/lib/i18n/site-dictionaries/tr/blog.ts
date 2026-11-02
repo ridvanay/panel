@@ -98,6 +98,7 @@ export const blogStrings: BlogStrings = {
   // ---- Önizleme (taslak) ----
   previewBannerPending: "Önizleme — hekim onayı bekliyor",
   previewBannerPublish: "Önizleme — yayın bekliyor",
+  previewBannerLive: "Önizleme",
   reviewPendingBy: "İnceleme bekliyor: {name}",
   previewOpen: "Önizle",
   previewOpenError: "Önizleme açılamadı. Lütfen tekrar deneyin.",

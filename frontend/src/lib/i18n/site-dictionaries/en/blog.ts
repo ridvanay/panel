@@ -104,6 +104,7 @@ export const blogStrings = {
   // ---- Önizleme (taslak) ----
   previewBannerPending: "Preview — awaiting physician approval",
   previewBannerPublish: "Preview — awaiting publication",
+  previewBannerLive: "Preview",
   reviewPendingBy: "Review pending: {name}",
   previewOpen: "Preview",
   previewOpenError: "The preview could not be opened. Please try again.",
