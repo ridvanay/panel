@@ -895,6 +895,17 @@ export const SiteSettingsSchema = z.object({
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
+/**
+ * Paket AG (İş 2) — YALNIZCA admin uçları (`GET/PATCH /admin/settings`). Public `GET /settings` bu alanları
+ * ASLA döndürmez (alıcı adresleri herkese açık olmamalı). `bookingNotificationRecipients` ham değer
+ * (`null` = hiç ayarlanmamış → varsayılan, `""` = bildirim yok); `...Effective` gerçekte kullanılan liste.
+ */
+export const AdminSiteSettingsSchema = SiteSettingsSchema.extend({
+  bookingNotificationRecipients: z.string().nullable(),
+  bookingNotificationRecipientsEffective: z.array(z.string()),
+});
+export type AdminSiteSettingsDto = z.infer<typeof AdminSiteSettingsSchema>;
+
 // ---------- §10.9 Eklenti/Modül Yönetimi — modül TANIMI lib/module-registry.ts'te statik, burada
 // SADECE aktif/pasif durum + kim/ne zaman değiştirdiği görünür (bkz. prisma/schema.prisma::SiteModule).
 
@@ -2839,6 +2850,16 @@ export const AppointmentBookingSchema = z.object({
   updatedAt: z.string(),
 });
 export type AppointmentBookingDto = z.infer<typeof AppointmentBookingSchema>;
+
+/**
+ * Paket AG (İş 2) — admin booking detayı (`GET /admin/telehealth/bookings/{bookingId}`): liste DTO'su + tercüman talebi
+ * dili ve hastanın site dili. Yalnızca ADMIN/MANAGER (hasta PII'si içerir).
+ */
+export const AdminBookingDetailSchema = AppointmentBookingSchema.extend({
+  locale: z.string().nullable(),
+  interpreterLanguage: z.string().nullable(),
+});
+export type AdminBookingDetailDto = z.infer<typeof AdminBookingDetailSchema>;
 
 /**
  * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.4 KARAR O — `/patient/appointments`

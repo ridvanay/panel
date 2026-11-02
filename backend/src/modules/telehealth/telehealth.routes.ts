@@ -52,6 +52,7 @@ import { findTimeOffInWindow, subtractTimeOff } from "./lib/time-off";
 import { computeEarliestAvailability } from "./lib/earliest-availability";
 import { bookAppointment, confirmBookingPayment, createBooking } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
+import { notifyAdminsOfBookingEvent } from "./lib/admin-booking-notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
 import { PUBLIC_DOCTOR_WHERE } from "./lib/archive-filters";
 import { encryptSecret, decryptSecret } from "../../lib/crypto";
@@ -521,6 +522,11 @@ export async function telehealthRoutes(app: FastifyInstance) {
         include: WITH_APPOINTMENT_RELATIONS,
       });
 
+      // Paket AG (İş 2) — yalnızca kesinleşmiş (SCHEDULED) booking'li randevu iptalinde; best-effort.
+      if (appointment.bookingId) {
+        await notifyAdminsOfBookingEvent(app, { kind: "cancelled", bookingId: appointment.bookingId, appointmentId: appointment.id });
+      }
+
       return reply.send(ok(toAppointmentDto(updated)));
     }
   );
@@ -609,6 +615,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
         await triggerAppointmentConfirmationEmail(app, { booking, appointments, rawAccessToken });
         await provisionPatientAccountForBooking(app, booking);
+        // Paket AG (İş 2) — admin randevu bildirimi: commit SONRASI, best-effort.
+        await notifyAdminsOfBookingEvent(app, { kind: "confirmed", bookingId: booking.id });
       }
 
       // [TCT] §9.7.1 madde 6 (bağlayıcı) — yapılandırılmamışken booking yine `201` döner;
@@ -706,6 +714,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
           where: { bookingId: booking.id, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
           data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: request.body?.reason ?? null },
         });
+        // Paket AG (İş 2) — ödenmiş (PAID) booking iptali; best-effort.
+        await notifyAdminsOfBookingEvent(app, { kind: "cancelled", bookingId: booking.id });
       } else {
         throw new ConflictError("Bu rezervasyon iptal edilebilir bir durumda değil.");
       }

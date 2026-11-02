@@ -1337,6 +1337,9 @@ model SiteSettings {
   updatedAt                  DateTime         @updatedAt
   // Dolu ve geçmişteyse ADMIN/MANAGER için 2FA zorunlu; null = kapalı (varsayılan).
   staffTwoFactorRequiredAt   DateTime?
+  /// Paket AG - randevu bildirimi alicilari (virgullu liste). null = hic ayarlanmamis -> kodda varsayilan
+  /// adres; "" = admin bilerek bosaltti -> bildirim gitmez. Public DTO'da DONMEZ (yalniz admin uclari).
+  bookingNotificationRecipients String?
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
@@ -4236,4 +4239,26 @@ model PackageViewStat {
   @@id([day, kind, key])
   @@index([kind, day])
   @@map("package_view_stats")
+}
+
+/// Paket AG (Is 2) - admin randevu bildirimi kuyrugu/idempotency kaydi. `eventKey` tekil: ayni olay iki kez
+/// kaydedilemez (cift gonderim yok). `status`: pending | sent | failed | skipped. Hasta verisi/PII TUTULMAZ;
+/// `payload` yalniz saat degisikligi icin eski/yeni baslangic anini tasir. Booking/randevu silinirse kayit kalir
+/// (FK yok; gonderim aninda varlik bulunamazsa `failed`).
+model AdminNotification {
+  id            String    @id @default(uuid())
+  eventKey      String    @unique
+  kind          String
+  bookingId     String?
+  appointmentId String?
+  status        String    @default("pending")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime?
+  lastError     String?
+  payload       Json?
+  createdAt     DateTime  @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@map("admin_notifications")
 }

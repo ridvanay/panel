@@ -6,8 +6,9 @@ import { requirePanelAccess } from "../../middleware/panel-access";
 import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
-import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
+import { AdminSiteSettingsSchema, PageSchema, SiteSettingsSchema } from "../../schemas/entities";
 import { toPageDto, toSiteSettingsDto } from "../../mappers";
+import { effectiveBookingNotificationRecipients, parseBookingNotificationRecipients } from "../../lib/booking-notification-recipients";
 import { attachLocalizationsOne } from "../../lib/localization";
 import { logAudit } from "../../lib/audit";
 import { ValidationError } from "../../lib/errors";
@@ -94,6 +95,12 @@ async function readSettings(app: FastifyInstance) {
   };
 }
 
+/** Paket AG (İş 2) — admin DTO'su: public DTO + alıcı listesi (ham + etkin). */
+function toAdminSettingsDto(row: { bookingNotificationRecipients: string | null } | null, base: ReturnType<typeof toSiteSettingsDto> | Awaited<ReturnType<typeof readSettings>>) {
+  const stored = row?.bookingNotificationRecipients ?? null;
+  return { ...base, bookingNotificationRecipients: stored, bookingNotificationRecipientsEffective: effectiveBookingNotificationRecipients(stored) };
+}
+
 /** `/settings` prefix'i altında bağlanır — herkese açık, site header/nav'ı bunu okur. */
 export async function publicSettingsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -147,15 +154,16 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 
-  server.get("/", { schema: { response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } }, async (_request, reply) => {
-    return reply.send(ok(await readSettings(app)));
+  server.get("/", { schema: { response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } } }, async (_request, reply) => {
+    const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { bookingNotificationRecipients: true } });
+    return reply.send(ok(toAdminSettingsDto(row, await readSettings(app))));
   });
 
   server.patch(
     "/",
     {
       preHandler: requireSiteRole(...ROLES_ADMIN),
-      schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } },
+      schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } },
     },
     async (request, reply) => {
       const existing = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
@@ -171,10 +179,23 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
           : existingOrDefaults.shippingEstimatedDaysMax;
       assertShippingEstimateRange(finalShippingMin, finalShippingMax);
 
+      // Paket AG (İş 2) — alıcı listesi: doğrula + normalize et (trim, küçük harf, tekrarsız, en çok 10).
+      // `null` korunur (varsayılana dön); boş/yalnız boşluk → "" (bildirim yok).
+      const body = { ...request.body };
+      let recipientCount: number | undefined;
+      if (typeof body.bookingNotificationRecipients === "string") {
+        const parsed = parseBookingNotificationRecipients(body.bookingNotificationRecipients);
+        if (!parsed.ok) throw new ValidationError(parsed.message, { bookingNotificationRecipients: [parsed.message] });
+        body.bookingNotificationRecipients = parsed.list.join(", ");
+        recipientCount = parsed.list.length;
+      } else if (body.bookingNotificationRecipients === null) {
+        recipientCount = 0;
+      }
+
       const settings = await app.prisma.siteSettings.upsert({
         where: { id: SETTINGS_ID },
-        create: { id: SETTINGS_ID, ...DEFAULTS, ...request.body },
-        update: request.body,
+        create: { id: SETTINGS_ID, ...DEFAULTS, ...body },
+        update: body,
       });
 
       await logAudit(app, {
@@ -187,6 +208,10 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
         // salt alan adının yanına YENİ değer de açıkça yazılır (boolean, PII/sır DEĞİL).
         metadata: {
           changed: Object.keys(request.body),
+          // Adresler audit'e YAZILMAZ (PII) — yalnızca adet (`null` = varsayılana dönüldü).
+          ...(recipientCount !== undefined
+            ? { bookingNotificationRecipientsCount: recipientCount, bookingNotificationRecipientsReset: request.body.bookingNotificationRecipients === null }
+            : {}),
           ...(request.body.demoPaymentsEnabled !== undefined
             ? { demoPaymentsEnabled: request.body.demoPaymentsEnabled }
             : {}),
@@ -198,7 +223,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
       // yönlendirmesi) — hepsi `settings` etiketli fetch'lerden okunur (bkz. lib/revalidate.ts).
       await triggerTagRevalidation(app, [CACHE_TAGS.settings]);
 
-      return reply.send(ok(toSiteSettingsDto(settings)));
+      return reply.send(ok(toAdminSettingsDto(settings, toSiteSettingsDto(settings))));
     }
   );
 

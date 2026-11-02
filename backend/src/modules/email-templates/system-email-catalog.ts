@@ -22,6 +22,7 @@ import {
 import { TEST_EMAIL_HTML, TEST_EMAIL_SUBJECT } from "../settings/settings.email.routes";
 import { buildReviewInviteEmail } from "../reviews/reviews.service";
 import { buildPackageConfirmationEmail, buildPackageInquiryNotice, toPackageEmailLocale } from "../packages/packages.notifications";
+import { buildBookingNotificationEmail, type BookingNotificationEmailData } from "../telehealth/lib/booking-notification-email";
 import { renderTemplatePreviewOrTest } from "./email-templates.service";
 
 /**
@@ -72,6 +73,9 @@ const CODE_ENTRIES: SystemEmailEntry[] = [
   { id: "code:interpreter-access-granted", label: "Tercümanlık yetkisi verildi", audience: "staff", source: "code", languages: "9" },
   { id: "code:crm-new-lead", label: "CRM yeni talep (personel)", audience: "staff", source: "code", languages: "tr" },
   { id: "code:security-2fa-reset", label: "2FA sıfırlandı (güvenlik bildirimi)", audience: "user", source: "code", languages: "tr+en" },
+  { id: "code:booking-admin-confirmed", label: "Yeni randevu bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
+  { id: "code:booking-admin-cancelled", label: "Randevu iptal bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
+  { id: "code:booking-admin-rescheduled", label: "Randevu saat değişikliği bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
   { id: "code:smtp-test", label: "SMTP yapılandırma testi", audience: "staff", source: "code", languages: "tr" },
 ];
 
@@ -94,6 +98,25 @@ const DOCTOR_SAMPLE_VALUES: Record<string, string> = {
   doctor_name: "Dr. Mehmet Demir",
   booking_number: "BKG-1024-ABCD",
 };
+
+/** Paket AG (İş 2) — yönetici randevu bildirimi örneği (hasta verisi YOK; yalnızca uydurma randevu bilgisi). */
+export function bookingAdminSampleData(kind: BookingNotificationEmailData["kind"]): BookingNotificationEmailData {
+  const startsAt = new Date("2026-11-12T10:30:00Z");
+  const endsAt = new Date("2026-11-12T11:00:00Z");
+  return {
+    kind,
+    bookingId: "00000000-0000-4000-8000-000000000001",
+    bookingNumber: "BKG-1024-ABCD",
+    doctorName: "Op. Dr. M. Demir",
+    slots: [{ startsAt, endsAt }],
+    patientTimeZone: "Europe/Berlin",
+    previous: kind === "rescheduled" ? { startsAt: new Date("2026-11-11T10:30:00Z"), endsAt: new Date("2026-11-11T11:00:00Z") } : null,
+    interpreterLanguage: kind === "confirmed" ? "ar" : null,
+    siteLocale: "de",
+    paymentLabel: kind === "confirmed" ? "Paid (card)" : undefined,
+    frontendUrl: env.FRONTEND_URL,
+  };
+}
 
 function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtml: string; cta?: { label: string; url: string }; afterCtaHtml?: string } {
   const base = env.FRONTEND_URL.replace(/\/$/, "");
@@ -153,6 +176,13 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
       ]);
     case "code:security-2fa-reset":
       return { subject: "2FA'nız sıfırlandı / Your 2FA was reset", bodyHtml: buildTwoFactorResetNoticeHtml("Ayşe Yılmaz", SAMPLE_DATE) };
+    case "code:booking-admin-confirmed":
+    case "code:booking-admin-cancelled":
+    case "code:booking-admin-rescheduled": {
+      const kind = id === "code:booking-admin-confirmed" ? "confirmed" : id === "code:booking-admin-cancelled" ? "cancelled" : "rescheduled";
+      const mail = buildBookingNotificationEmail(bookingAdminSampleData(kind));
+      return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
+    }
     case "code:smtp-test":
       return { subject: TEST_EMAIL_SUBJECT, bodyHtml: TEST_EMAIL_HTML };
     default:

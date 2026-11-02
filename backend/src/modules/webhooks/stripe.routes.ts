@@ -11,6 +11,7 @@ import { logAudit } from "../../lib/audit";
 import { BookingNotPayableError } from "../../lib/errors";
 import { confirmBookingPayment } from "../telehealth/lib/booking";
 import { triggerAppointmentConfirmationEmail } from "../telehealth/lib/notifications";
+import { notifyAdminsOfBookingEvent } from "../telehealth/lib/admin-booking-notifications";
 import { provisionPatientAccountForBooking } from "../telehealth/lib/patient-account";
 
 function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
@@ -158,6 +159,11 @@ async function handleTelehealthBookingPaid(app: FastifyInstance, session: Stripe
   // DÖNDÜKTEN SONRA, transaction DIŞINDA, best-effort (fonksiyonun KENDİ içinde try/catch VAR,
   // bu webhook handler'ını ASLA bozmaz — bkz. patient-account.ts::provisionPatientAccountForBooking).
   await provisionPatientAccountForBooking(app, result.booking);
+
+  // Paket AG (İş 2) — admin randevu bildirimi: commit SONRASI, best-effort. Tekrarlanan webhook'ta
+  // `confirmBookingPayment` zaten 409 ile döner (yukarıdaki no-op dalı) ve buraya hiç gelinmez;
+  // ayrıca `eventKey` tekil olduğundan çift e-posta yoktur.
+  await notifyAdminsOfBookingEvent(app, { kind: "confirmed", bookingId: result.booking.id });
 }
 
 /**

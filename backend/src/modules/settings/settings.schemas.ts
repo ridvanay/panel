@@ -53,6 +53,9 @@ export const UpdateSiteSettingsRequestSchema = z
     liveChatRequireEmail: z.boolean().optional(),
     // Dahili sohbet düğmesinin köşesi — DB'de enum (serbest metin DEĞİL).
     liveChatPosition: z.enum(["BOTTOM_RIGHT", "BOTTOM_LEFT"]).optional(),
+    // Paket AG (İş 2) — virgülle ayrılmış alıcı listesi. Adres doğrulaması/normalizasyonu route handler'da
+    // (`lib/booking-notification-recipients.ts`): `null` = varsayılana dön, `""` = bildirim gönderme.
+    bookingNotificationRecipients: z.string().max(2000).nullable().optional(),
   })
   .refine(
     (data) =>

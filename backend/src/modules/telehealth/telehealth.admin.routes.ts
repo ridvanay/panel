@@ -11,6 +11,7 @@ import { ROLES_ADMIN, ROLES_ADMIN_MANAGER, ROLES_PANEL } from "../../lib/site-ro
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import {
+  AdminBookingDetailSchema,
   AppointmentBookingSchema,
   AppointmentSchema,
   DoctorAvailabilityRuleSchema,
@@ -41,6 +42,7 @@ import { runSerializable } from "../../lib/serializable-tx";
 import { confirmBookingPayment } from "./lib/booking";
 import { APPOINTMENT_DELETION_INCLUDE, getAppointmentDeletionBlockers, toDeletionInput } from "./lib/appointment-deletion";
 import { triggerAppointmentConfirmationEmail, triggerAppointmentRescheduledEmail } from "./lib/notifications";
+import { notifyAdminsOfBookingEvent } from "./lib/admin-booking-notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
 import { parseTelehealthTheme } from "./lib/theme-settings";
 import {
@@ -909,6 +911,11 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
         reason: request.body.reason ?? null,
       });
 
+      // Paket AG (İş 2) — yalnızca kesinleşmiş (SCHEDULED/IN_PROGRESS) booking'li randevuda ve saat gerçekten değiştiyse.
+      if (existing.bookingId && (existing.status === "SCHEDULED" || existing.status === "IN_PROGRESS") && newStartsAt.getTime() !== oldStartsAt.getTime()) {
+        await notifyAdminsOfBookingEvent(app, { kind: "rescheduled", appointmentId: existing.id, oldStartsAt, oldEndsAt, newStartsAt });
+      }
+
       return reply.send(ok(toAppointmentDto(updated, "internal")));
     }
   );
@@ -1044,6 +1051,33 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
     }
   );
 
+  /**
+   * Paket AG (İş 2) — salt-okunur booking detayı; admin bildirim e-postasındaki "Open appointment" bağlantısının
+   * hedefi (`/admin/telehealth/bookings/<id>`). Liste ucuyla AYNI eşik (ADMIN+MANAGER) ve AYNI DTO (+ tercüman dili,
+   * site dili). `identity` yalnızca `canAccessBookingHealthData` eşiğini geçen aktörlere dolu döner.
+   */
+  server.get(
+    "/:bookingId",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: { params: BookingIdParamSchema, response: { 200: ApiSuccessSchema(AdminBookingDetailSchema) } },
+    },
+    async (request, reply) => {
+      const row = await app.prisma.appointmentBooking.findUnique({
+        where: { id: request.params.bookingId },
+        include: { ...WITH_BOOKING_RELATIONS, interpreterRequest: { select: { language: true } } },
+      });
+      if (!row) throw new NotFoundError("Rezervasyon bulunamadı.");
+      return reply.send(
+        ok({
+          ...toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }), "internal"),
+          locale: row.locale,
+          interpreterLanguage: row.interpreterRequest?.language ?? null,
+        })
+      );
+    }
+  );
+
   server.post(
     "/:bookingId/mark-paid",
     {
@@ -1085,6 +1119,9 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       // `.claude/architect-scope-guest-account-otp.md` §5.1 (bağlayıcı) — best-effort, ödeme
       // onayını (yukarıdaki `mark-paid`) ASLA bozmaz.
       await provisionPatientAccountForBooking(app, booking);
+
+      // Paket AG (İş 2) — admin randevu bildirimi: commit SONRASI, best-effort (içeride yutulur, yanıtı değiştirmez).
+      await notifyAdminsOfBookingEvent(app, { kind: "confirmed", bookingId: booking.id });
 
       const withRelations = await app.prisma.appointmentBooking.findUniqueOrThrow({
         where: { id: booking.id },

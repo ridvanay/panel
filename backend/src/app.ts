@@ -90,6 +90,7 @@ import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
 import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders";
+import { registerAdminNotificationSweeper } from "./modules/telehealth/lib/admin-booking-notifications";
 import { registerAppointmentAutoCloseSweeper } from "./lib/appointment-auto-close";
 import { registerQaListenerSweeper } from "./modules/telehealth/lib/qa-listener-sweeper";
 import { registerInterpreterSweeper } from "./modules/telehealth/lib/interpreter-sweeper";
@@ -528,6 +529,14 @@ export function buildApp() {
       registerAppointmentReminderSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu hatırlatma (appointment-reminders) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket AG (İş 2) — dakikalık kadans, gönderilemeyen admin randevu bildirimlerini yeniden dener
+      // (1/5/15 dk, en çok 4 deneme). Test ortamında kayıt edilmez: testler `runAdminNotificationSweep`'i elle çağırır.
+      if (env.NODE_ENV !== "test") registerAdminNotificationSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Admin randevu bildirimi (admin-notifications) scheduler kurulumu başarısız oldu.");
     }
 
     try {

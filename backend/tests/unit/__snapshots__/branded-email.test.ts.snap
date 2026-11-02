@@ -114,6 +114,315 @@ Bu e-posta otomatik olarak gönderilmiştir.",
 }
 `;
 
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-cancelled · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Appointment #BKG-1024-ABCD cancelled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>An appointment has been cancelled.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Status:</strong> Cancelled</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">إشعار داخلي — مخصص للموظفين المصرح لهم فقط.</p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Appointment #BKG-1024-ABCD cancelled",
+  "text": "An appointment has been cancelled.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Status: Cancelled
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+إشعار داخلي — مخصص للموظفين المصرح لهم فقط.
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-cancelled · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Appointment #BKG-1024-ABCD cancelled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>An appointment has been cancelled.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Status:</strong> Cancelled</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Internal notification — for authorised staff only.</p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Appointment #BKG-1024-ABCD cancelled",
+  "text": "An appointment has been cancelled.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Status: Cancelled
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+Internal notification — for authorised staff only.
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-cancelled · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Appointment #BKG-1024-ABCD cancelled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>An appointment has been cancelled.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Status:</strong> Cancelled</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Kurum içi bildirim — yalnızca yetkili personel içindir.</p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Appointment #BKG-1024-ABCD cancelled",
+  "text": "An appointment has been cancelled.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Status: Cancelled
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+Kurum içi bildirim — yalnızca yetkili personel içindir.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-confirmed · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New appointment #BKG-1024-ABCD — Op. Dr. M. Demir — 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>A new appointment has been confirmed.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> yes (Arabic (ar))</p><p style="margin:0 0 8px;"><strong>Payment:</strong> Paid (card)</p><p style="margin:12px 0 0;">Patient details are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">إشعار داخلي — مخصص للموظفين المصرح لهم فقط.</p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New appointment #BKG-1024-ABCD — Op. Dr. M. Demir — 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "A new appointment has been confirmed.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Duration: 30 min
+Interpreter: yes (Arabic (ar))
+Payment: Paid (card)
+Patient details are only visible in the admin panel after signing in.
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+إشعار داخلي — مخصص للموظفين المصرح لهم فقط.
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-confirmed · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New appointment #BKG-1024-ABCD — Op. Dr. M. Demir — 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>A new appointment has been confirmed.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> yes (Arabic (ar))</p><p style="margin:0 0 8px;"><strong>Payment:</strong> Paid (card)</p><p style="margin:12px 0 0;">Patient details are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Internal notification — for authorised staff only.</p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New appointment #BKG-1024-ABCD — Op. Dr. M. Demir — 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "A new appointment has been confirmed.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Duration: 30 min
+Interpreter: yes (Arabic (ar))
+Payment: Paid (card)
+Patient details are only visible in the admin panel after signing in.
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+Internal notification — for authorised staff only.
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-confirmed · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New appointment #BKG-1024-ABCD — Op. Dr. M. Demir — 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>A new appointment has been confirmed.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> yes (Arabic (ar))</p><p style="margin:0 0 8px;"><strong>Payment:</strong> Paid (card)</p><p style="margin:12px 0 0;">Patient details are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Kurum içi bildirim — yalnızca yetkili personel içindir.</p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New appointment #BKG-1024-ABCD — Op. Dr. M. Demir — 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "A new appointment has been confirmed.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Duration: 30 min
+Interpreter: yes (Arabic (ar))
+Payment: Paid (card)
+Patient details are only visible in the admin panel after signing in.
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+Kurum içi bildirim — yalnızca yetkili personel içindir.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-rescheduled · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Appointment #BKG-1024-ABCD rescheduled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>An appointment has been rescheduled.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Previous date and time:</strong> Wednesday, 11 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Wednesday, 11 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>New date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Status:</strong> Rescheduled</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">إشعار داخلي — مخصص للموظفين المصرح لهم فقط.</p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Appointment #BKG-1024-ABCD rescheduled",
+  "text": "An appointment has been rescheduled.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Previous date and time: Wednesday, 11 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Wednesday, 11 November 2026, 13:30–14:00 (GMT+3)
+New date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Status: Rescheduled
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+إشعار داخلي — مخصص للموظفين المصرح لهم فقط.
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-rescheduled · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Appointment #BKG-1024-ABCD rescheduled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>An appointment has been rescheduled.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Previous date and time:</strong> Wednesday, 11 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Wednesday, 11 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>New date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Status:</strong> Rescheduled</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Internal notification — for authorised staff only.</p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Appointment #BKG-1024-ABCD rescheduled",
+  "text": "An appointment has been rescheduled.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Previous date and time: Wednesday, 11 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Wednesday, 11 November 2026, 13:30–14:00 (GMT+3)
+New date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Status: Rescheduled
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+Internal notification — for authorised staff only.
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:booking-admin-rescheduled · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Appointment #BKG-1024-ABCD rescheduled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>An appointment has been rescheduled.</p><p style="margin:0 0 8px;"><strong>Appointment:</strong> #BKG-1024-ABCD</p><p style="margin:0 0 8px;"><strong>Physician:</strong> Op. Dr. M. Demir</p><p style="margin:0 0 8px;"><strong>Previous date and time:</strong> Wednesday, 11 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Wednesday, 11 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>New date and time:</strong> Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)</p><p style="margin:0 0 8px;"><strong>Status:</strong> Rescheduled</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open appointment</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Kurum içi bildirim — yalnızca yetkili personel içindir.</p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Appointment #BKG-1024-ABCD rescheduled",
+  "text": "An appointment has been rescheduled.
+Appointment: #BKG-1024-ABCD
+Physician: Op. Dr. M. Demir
+Previous date and time: Wednesday, 11 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Wednesday, 11 November 2026, 13:30–14:00 (GMT+3)
+New date and time: Thursday, 12 November 2026, 11:30–12:00 (Berlin, CET) — Istanbul: Thursday, 12 November 2026, 13:30–14:00 (GMT+3)
+Status: Rescheduled
+Open appointment (http://localhost:3000/admin/telehealth/bookings/00000000-0000-4000-8000-000000000001)
+----
+WM Health Istanbul
+Kurum içi bildirim — yalnızca yetkili personel içindir.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
 exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:crm-new-lead · ar 1`] = `
 {
   "html": "<!doctype html>

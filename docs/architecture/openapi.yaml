@@ -5331,6 +5331,9 @@ paths:
     get:
       tags: [Settings]
       summary: Site ayarlarını oku (authenticated)
+      description: >
+        **Paket AG (2026-11-02):** yanıt `AdminSiteSettings`'tir (= `SiteSettings` + `bookingNotificationRecipients`
+        + `bookingNotificationRecipientsEffective`). Alıcı adresleri public `GET /settings`'te ASLA dönmez.
       responses:
         "200":
           description: OK
@@ -5340,7 +5343,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/SiteSettings" }
+                      data: { $ref: "#/components/schemas/AdminSiteSettings" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     patch:
       tags: [Settings]
@@ -5371,6 +5374,12 @@ paths:
         tek yazma/okuma yolu step-up korumalı `GET|PUT /admin/settings/staff-two-factor`'dır
         (genel PATCH gövdeyi körlemesine yayar; şifre+TOTP isteyen bir alan burada barınamaz —
         SMTP ayarlarıyla AYNI gerekçe).
+
+
+        **Paket AG (2026-11-02):** `bookingNotificationRecipients` — randevu bildirimi alıcıları. `null` =
+        varsayılana dön (kodda `admin@wmhealthistanbul.com`), `""` = bildirim gönderme, dolu = virgülle ayrılmış
+        adresler (trim, küçük harf, tekrarsız, en çok 10; geçersiz adres `422`, `details.bookingNotificationRecipients`).
+        Audit `metadata`'ya adresler YAZILMAZ, yalnızca adet (`bookingNotificationRecipientsCount`).
       requestBody:
         required: true
         content:
@@ -5385,7 +5394,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/SiteSettings" }
+                      data: { $ref: "#/components/schemas/AdminSiteSettings" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
@@ -10440,6 +10449,31 @@ paths:
                         items: { $ref: "#/components/schemas/AppointmentBooking" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/bookings/{bookingId}:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+    get:
+      tags: [TeleHealth]
+      summary: Rezervasyon detayı (yalnızca ADMIN veya MANAGER)
+      description: >
+        **Paket AG (2026-11-02).** Yönetici randevu bildirim e-postasındaki "Open appointment" bağlantısının
+        (`/admin/telehealth/bookings/<id>` — frontend yolu) veri ucu. Liste ucuyla AYNI RBAC eşiği ve AYNI DTO;
+        ek olarak hastanın site dili (`locale`) ve tercüman talebi dili (`interpreterLanguage`). Intake notu/belge
+        içeriği dönmez; `identity` yalnızca sağlık verisi eşiğini geçen aktöre (ADMIN) dolu gelir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminBookingDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /admin/telehealth/bookings/{bookingId}/mark-paid:
     parameters:
@@ -18676,6 +18710,33 @@ components:
             Dahili sohbet düğmesinin ve açılan pencerenin köşesi. Harici sağlayıcılar (Crisp/Tawk.to)
             kendi konumlarını yönetir, bu alanı kullanmaz.
 
+    AdminSiteSettings:
+      description: >
+        Paket AG — `GET/PATCH /admin/settings` yanıtı: `SiteSettings` + randevu bildirimi alıcıları (yalnızca admin uçları).
+      allOf:
+        - $ref: "#/components/schemas/SiteSettings"
+        - type: object
+          required: [bookingNotificationRecipients, bookingNotificationRecipientsEffective]
+          properties:
+            bookingNotificationRecipients:
+              type: string
+              nullable: true
+              description: "Ham değer: `null` = hiç ayarlanmamış (varsayılan adres), `\"\"` = bildirim gönderilmez, dolu = virgülle ayrılmış adresler."
+            bookingNotificationRecipientsEffective:
+              type: array
+              items: { type: string }
+              description: "Gerçekte kullanılan alıcı listesi (ham değer `null` ise `[admin@wmhealthistanbul.com]`, `\"\"` ise `[]`)."
+
+    AdminBookingDetail:
+      description: "Paket AG — `GET /admin/telehealth/bookings/{bookingId}` yanıtı: `AppointmentBooking` + hastanın site dili ve tercüman talebi dili."
+      allOf:
+        - $ref: "#/components/schemas/AppointmentBooking"
+        - type: object
+          required: [locale, interpreterLanguage]
+          properties:
+            locale: { type: string, nullable: true, description: "Randevu anında hastanın aktif site dili." }
+            interpreterLanguage: { type: string, nullable: true, description: "Tercüman talebi varsa dil kodu; yoksa `null`." }
+
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
       type: object
@@ -18735,6 +18796,7 @@ components:
         liveChatRequirePhone: { type: boolean, description: "Formdaki Telefon alanı zorunlu mu." }
         liveChatRequireEmail: { type: boolean, description: "Formdaki E-posta alanı zorunlu mu." }
         liveChatPosition: { type: string, enum: [BOTTOM_RIGHT, BOTTOM_LEFT], description: "Dahili sohbet düğmesinin köşesi (geçersiz değer 422)." }
+        bookingNotificationRecipients: { type: string, nullable: true, maxLength: 2000, description: "Paket AG — `null` = varsayılana dön, `\"\"` = bildirim yok, dolu = virgülle ayrılmış adresler (en çok 10; geçersiz adres 422)." }
         # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
         # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş
         # geçebilir) — bu KASITLIDIR, çapraz-alan `422` kuralı YOKTUR.
