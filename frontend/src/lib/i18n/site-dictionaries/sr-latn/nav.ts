@@ -25,7 +25,6 @@ export const navStrings: NavStrings = {
   wishlist: "Lista želja",
   cart: "Korpa",
   dropdownViewAll: "Prikaži sve: {label}",
-  dropdownFindDoctor: "Pronađite lekara",
   consultPhysicians: "Konsultujte lekara",
   languageSheetTitle: "Jezik / Language",
   languageSheetClose: "Zatvori izbor jezika",

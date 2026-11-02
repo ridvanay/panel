@@ -58,6 +58,7 @@ import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 import { cn } from "@/lib/utils";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 import { isPhysiciansListHref } from "@/lib/i18n/physicians-path";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
@@ -173,9 +174,11 @@ interface NavNode {
 function buildNavTree(items: NavigationItemDto[], physiciansLabel: string, specialties: NavSpecialty[]): NavNode[] {
   // Paket V — hekim listesine giden öğenin etiketi sözlükten (9 dilde "Consult Physicians").
   const labelOf = (item: NavigationItemDto) => (isPhysiciansListHref(item.href) ? physiciansLabel : item.label);
-  const roots = items.filter((item) => item.parentId === null).sort((a, b) => a.order - b.order);
+  // Paket AJ-2 — hekimler ziyaretçiye kapalıyken eski menü verisindeki hekim listesi öğesi ("Consult Physicians") çizilmez.
+  const visible = DOCTORS_VISIBLE_TO_VISITORS ? items : items.filter((item) => !isPhysiciansListHref(item.href));
+  const roots = visible.filter((item) => item.parentId === null).sort((a, b) => a.order - b.order);
   return roots.map((root) => {
-    const children = items
+    const children = visible
       .filter((item) => item.parentId === root.id)
       .sort((a, b) => a.order - b.order)
       .map((child) => ({ id: child.id, href: child.href, label: labelOf(child) }));

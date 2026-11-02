@@ -25,7 +25,6 @@ export const navStrings: NavStrings = {
   wishlist: "Избранное",
   cart: "Корзина",
   dropdownViewAll: "Показать все: {label}",
-  dropdownFindDoctor: "Найти врача",
   consultPhysicians: "Консультация врача",
   languageSheetTitle: "Язык / Language",
   languageSheetClose: "Закрыть выбор языка",

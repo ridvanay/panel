@@ -25,7 +25,6 @@ export const navStrings: NavStrings = {
   wishlist: "Favorilerim",
   cart: "Sepet",
   dropdownViewAll: "Tüm {label}",
-  dropdownFindDoctor: "Hekim bulun",
   consultPhysicians: "Hekime Danışın",
   languageSheetTitle: "Dil / Language",
   languageSheetClose: "Dil seçimini kapat",

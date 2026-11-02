@@ -35,7 +35,6 @@ export const navStrings = {
   cart: "Cart",
   /** Masaüstü açılır menünün alt bölümü — `{label}` üst menü öğesinin adı (aktif dilde küçük harfle). */
   dropdownViewAll: "View all {label}",
-  dropdownFindDoctor: "Find a physician",
   /** Paket V — `/physicians` menü öğesinin etiketi (masaüstü, mobil, footer). */
   consultPhysicians: "Consult Physicians",
   /** Paket V — mobil dil seçim alt sayfasının başlığı (yerel ad + "Language"). */

@@ -82,11 +82,7 @@ const ALLOWED: RegExp[] = [
  * FE-A beklemede: bu dosyalardaki bulgular testi düşürmez ama raporlanır. Her giriş: kaynak dosya + ifade.
  * (Doldurma kuralı: yalnızca FE-A sahipli dosyalar.)
  */
-const FE_A_PENDING: { file: string; phrase: RegExp }[] = [
-  // components/site/site-header.tsx — eski menü verisindeki /physicians öğesi etiketi sözlükten "Consult Physicians" olarak çizilir
-  // (menü öğesi ziyaretçide gizlenmeli; FE-A düzeltince bu satır silinir).
-  { file: "components/site/site-header.tsx", phrase: /Consult Physicians/g },
-];
+const FE_A_PENDING: { file: string; phrase: RegExp }[] = [];
 
 function visibleText(container: HTMLElement): string {
   const parts: string[] = [container.textContent ?? ""];
