@@ -185,7 +185,7 @@ function safeUrl(url: string | null | undefined): string | null {
 export function renderEmailButton(label: string, url: string, color: string): string {
   const href = safeUrl(url);
   if (!href) return "";
-  if (!HEX.test(color)) color = "#0f766e";
+  if (!HEX.test(color)) color = "#2951a0";
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="${color}" style="padding:12px 24px;border-radius:6px;background-color:${color};"><a href="${escapeHtml(href)}" target="_blank" style="display:inline-block;font-family:${FONT};font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">${escapeHtml(label)}</a></td></tr></table>`;
 }
 
@@ -253,7 +253,7 @@ export function renderBrandedEmail(ctx: EmailBrandContext, input: BrandedEmailIn
   const align = dir === "rtl" ? "right" : "left";
   const bodyDir = input.bodyLocale ? (toBrandLocale(input.bodyLocale) === "ar" ? "rtl" : "ltr") : dir;
   const bodyAlign = bodyDir === "rtl" ? "right" : "left";
-  const color = HEX.test(ctx.primaryColor) ? ctx.primaryColor : "#0f766e";
+  const color = HEX.test(ctx.primaryColor) ? ctx.primaryColor : "#2951a0";
   const logo = safeUrl(ctx.logoUrl);
   const header = logo
     ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(ctx.siteName)}" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" />`

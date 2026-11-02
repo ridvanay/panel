@@ -48,7 +48,7 @@ function minimalBrandContext(localeCode: string): EmailBrandContext {
     siteName: DEFAULT_SITE_NAME,
     siteUrl: env.FRONTEND_URL,
     logoUrl: null,
-    primaryColor: "#0f766e",
+    primaryColor: "#2951a0",
     address: null,
     phone: null,
     infoEmail: null,
@@ -110,7 +110,7 @@ export async function loadEmailBrandContext(app: FastifyInstance, localeCode: st
     siteUrl: env.FRONTEND_URL,
     // Paket AE-ek — logo WebP'ye çevrilmişse e-postada PNG (yoksa JPEG) uyumluluk kopyası kullanılır.
     logoUrl: absoluteHttpsLogo(await compatImageUrl(app, settings?.logoUrl, "png").catch(() => settings?.logoUrl ?? null)),
-    primaryColor: appearance?.primaryColor ?? "#0f766e",
+    primaryColor: appearance?.primaryColor ?? "#2951a0",
     address: localized.address || fallback.address || null,
     phone: localized.phone || fallback.phone || null,
     infoEmail: [localized.email, fallback.email].find((e) => !!e && SINGLE_EMAIL.test(e)) ?? null,
