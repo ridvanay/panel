@@ -3,9 +3,8 @@ import { ensureAdminSession } from "./support/api";
 
 const ADMIN_STORAGE_STATE = "tests/e2e/.auth/admin.json";
 
-// Paket AH — giriş sayfası Accept-Language'e göre dilleniyor ve varsayılan site dili EN oldu; aşağıdaki
-// Türkçe etiketler ("E-posta", "Şifre", "Giriş yap") için tarayıcı dili Türkçeye sabitlenir.
-setup.use({ locale: "tr-TR" });
+// Paket AH — giriş sayfası Accept-Language'e göre dilleniyor ve Türkçe ziyaretçiye kapatıldı; alanlar dilden
+// bağımsız seçicilerle (input type, submit) bulunur.
 
 /**
  * Playwright "setup" projesi (bkz. `playwright.config.ts` — `chromium` projesi buna bağımlı).
@@ -18,9 +17,9 @@ setup("admin olarak giriş yap ve oturumu kaydet", async ({ page }) => {
   const { email, password } = await ensureAdminSession();
 
   await page.goto("/login");
-  await page.getByLabel("E-posta").fill(email);
-  await page.getByLabel("Şifre").fill(password);
-  await page.getByRole("button", { name: "Giriş yap" }).click();
+  await page.locator('input[type="email"]').fill(email);
+  await page.locator('input[type="password"]').fill(password);
+  await page.locator('button[type="submit"]').click();
 
   // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — `ensureAdminSession()` ADMIN
   // rolüyle giriş yapar; `resolvePostLoginPath` artık panel rolleri (`ADMIN`/`MANAGER`/`EDITOR`)

@@ -70,7 +70,7 @@ describe("SiteHeader — mobil menü (lg altı)", () => {
     const ctas = screen.getAllByRole("link", { name: "Appointment" });
     // Masaüstü (lg:flex) ve mobil (lg:hidden) kopyaları — CSS ile yalnızca biri görünür.
     expect(ctas).toHaveLength(2);
-    ctas.forEach((cta) => expect(cta).toHaveAttribute("href", "/physicians"));
+    ctas.forEach((cta) => expect(cta).toHaveAttribute("href", "/request"));
   });
 
   it("panel açılınca menü öğeleri, akordeon, dil listesi ve giriş linki görünür; Esc kapatır ve odak düğmeye döner", async () => {

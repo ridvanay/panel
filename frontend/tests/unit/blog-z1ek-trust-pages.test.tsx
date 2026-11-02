@@ -143,7 +143,7 @@ describe("Paket Z1-ek — Authors & medical reviewers", () => {
     render(await MedicalReviewersPage({ lang: "en" }));
     const cards = screen.getAllByTestId("trust-reviewer-card");
     expect(cards).toHaveLength(2);
-    expect(within(cards[0]!).getByRole("link", { name: "View the profile of Prof. Dr. H. Sofu" })).toHaveAttribute("href", "/physicians/hakan-sofu");
+    expect(within(cards[0]!).getByRole("link", { name: "View the profile of Prof. Dr. H. Sofu" })).toHaveAttribute("href", "/request" /* Paket AH: hekim profil yolu ziyaretçide talep formuna çevrilir; sayfa artık yönlendirme */);
     expect(cards[0]).toHaveTextContent("Guides reviewed: 3");
     expect(screen.queryByText("Dr. B. Yok")).toBeNull();
   });

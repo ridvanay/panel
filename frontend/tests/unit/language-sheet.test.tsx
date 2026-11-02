@@ -123,7 +123,7 @@ describe("mobil dil seçici (alt sayfa)", () => {
     renderHeader("ar", arNavStrings);
     expect(screen.getByTestId("mobile-language-button")).toHaveAccessibleName(`${arNavStrings.languageButtonAria.replace("{language}", "العربية")}`);
     // Panelde "Doctors" kaydı (/doctors) sözlükteki etiketle ve yeni yolla görünür.
-    expect(screen.getAllByRole("link", { name: arNavStrings.consultPhysicians })[0]).toHaveAttribute("href", "/ar/physicians");
+    expect(screen.getAllByRole("link", { name: arNavStrings.consultPhysicians })[0]).toHaveAttribute("href", "/ar/request");
     expect(screen.queryByRole("link", { name: "Doctors" })).toBeNull();
     await user.click(screen.getByTestId("mobile-language-button"));
     expect(await screen.findByRole("dialog", { name: arNavStrings.languageSheetTitle })).toBeInTheDocument();

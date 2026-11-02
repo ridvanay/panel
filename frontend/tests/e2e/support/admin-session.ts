@@ -43,13 +43,13 @@ export async function createAuthenticatedPageAs(
   email: string,
   password: string
 ): Promise<{ page: Page; close: () => Promise<void> }> {
-  // Paket AH — giriş sayfası Accept-Language'e göre dilleniyor; Türkçe etiketler için tr-TR.
-  const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100", locale: "tr-TR" });
+  // Paket AH — giriş sayfasının dili değişebildiği için alanlar dilden bağımsız seçicilerle bulunur.
+  const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100" });
   const page = await context.newPage();
   await page.goto("/login");
-  await page.getByLabel("E-posta").fill(email);
-  await page.getByLabel("Şifre").fill(password);
-  await page.getByRole("button", { name: "Giriş yap" }).click();
+  await page.locator('input[type="email"]').fill(email);
+  await page.locator('input[type="password"]').fill(password);
+  await page.locator('button[type="submit"]').click();
   // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — bu yardımcı ADMIN/EDITOR/MANAGER
   // (panel → `/admin`) VE hasta/müşteri (USER/CUSTOMER → `/patient/appointments`) hesapları için
   // AYNI ANDA kullanılıyor (bkz. dosya genelindeki çağıranlar); `login-form.tsx::goToDestination`
