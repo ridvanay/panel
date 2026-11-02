@@ -47,6 +47,8 @@ const DICT: Record<string, Labels> = {
   privacy: { en: "Privacy Policy", de: "Datenschutzerklärung", ar: "سياسة الخصوصية", ru: "Политика конфиденциальности", fr: "Politique de confidentialité", es: "Política de privacidad", ro: "Politica de confidențialitate", "sr-latn": "Politika privatnosti" },
   notice: { en: "Privacy Notice", de: "Datenschutzhinweise", ar: "إشعار الخصوصية", ru: "Уведомление о конфиденциальности", fr: "Notice d’information", es: "Aviso de privacidad", ro: "Notă de informare", "sr-latn": "Obaveštenje o privatnosti" },
   terms: { en: "Terms of Use", de: "Nutzungsbedingungen", ar: "شروط الاستخدام", ru: "Условия использования", fr: "Conditions d’utilisation", es: "Condiciones de uso", ro: "Termeni de utilizare", "sr-latn": "Uslovi korišćenja" },
+  home: { en: "Home", de: "Startseite", ar: "الرئيسية", ru: "Главная", fr: "Accueil", es: "Inicio", ro: "Acasă", "sr-latn": "Početna" },
+  howItWorks: { en: "How it works", de: "So funktioniert es", ar: "كيف يعمل", ru: "Как это работает", fr: "Comment ça marche", es: "Cómo funciona", ro: "Cum funcționează", "sr-latn": "Kako funkcioniše" },
   cookies: { en: "Cookie Policy", de: "Cookie-Richtlinie", ar: "سياسة ملفات تعريف الارتباط", ru: "Политика использования файлов cookie", fr: "Politique relative aux cookies", es: "Política de cookies", ro: "Politica privind cookie-urile", "sr-latn": "Politika kolačića" },
 };
 
@@ -71,10 +73,14 @@ const TURKISH_TO_KEY: Record<string, keyof typeof DICT> = {
   "kullanım şartları": "terms",
   "kullanım koşulları": "terms",
   "çerez politikası": "cookies",
+  "ana sayfa": "home",
+  "anasayfa": "home",
+  "nasıl çalışır?": "howItWorks",
+  "nasıl çalışır": "howItWorks",
 };
 
 const TURKISH_CHARS = /[çğıöşüÇĞİÖŞÜ]/;
-const TURKISH_WORDS = /\b(tüm hakları|saklıdır|evinizden|uzman|doktor|güvenli|görüşme|hakkımızda|gizlilik|aydınlatma|politikası|şartları|kullanım|çerez|branşlar|yasal)\b/i;
+const TURKISH_WORDS = /\b(tüm hakları|saklıdır|evinizden|uzman|doktor|güvenli|görüşme|hakkımızda|gizlilik|aydınlatma|politikası|şartları|kullanım|çerez|branşlar|yasal|ana sayfa|anasayfa|hizmetler|randevu|hekim|sağlık|nasıl)\b/i;
 const looksTurkish = (value: string | null | undefined) => !!value && (TURKISH_CHARS.test(value) || TURKISH_WORDS.test(value));
 const norm = (value: string) => value.trim().toLocaleLowerCase("tr");
 

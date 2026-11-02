@@ -35,7 +35,7 @@ describe("scripts/localize-footer-english.ts", () => {
       data: {
         title: "Branşlar",
         order: 0,
-        links: { create: [{ label: "Doktorlarımız", href: "/physicians", order: 0 }, { label: "Sağlık Rehberleri", href: "/blog", order: 1 }] },
+        links: { create: [{ label: "Doktorlarımız", href: "/physicians", order: 0 }, { label: "Sağlık Rehberleri", href: "/blog", order: 1 }, { label: "Ana Sayfa", href: "/", order: 2 }] },
       },
     });
     await prisma.footerColumn.create({
@@ -79,7 +79,7 @@ describe("scripts/localize-footer-english.ts", () => {
   it("gercek calistirma: EN + 8 dil, TR yasal ve hekim baglantilari cikar (sayfa kayitlari kalir), slogan/telif null; idempotent", async () => {
     expect(runScript([...CONFIRM, `--backup-dir=${backupDir}`]).status).toBe(0);
     expect(await columns()).toEqual([
-      ["Services", ["Health Guides|/blog|0"]],
+      ["Services", ["Health Guides|/blog|0", "Home|/|1"]],
       ["Legal", ["Privacy Notice|/privacy-notice|0", "Privacy Policy|/gizlilik|1", "Bilinmeyen Türkçe Bağlantı|/x|2"]],
     ]);
     const legal = await prisma.footerColumn.findFirstOrThrow({ where: { title: "Legal" } });

@@ -155,3 +155,70 @@
 [uyarı] sözlükte yok, DEĞİŞTİRİLMEDİ: bağlantı: Nöroloji (/doctors?specialty=noroloji)
 [uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
 [bilgi] Yapılacak değişiklik yok (idempotent).
+##### YENIDEN KURU (duzeltme sonrasi)
+## setup-intermediary-nav.ts
+[setup-intermediary-nav] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[mevcut] header: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[SİLİNECEK] kök öğe: Home (/)
+[SİLİNECEK] kök öğe: About (/about)
+[SİLİNECEK] kök öğe: Health Tourism Services (/specialties)
+[SİLİNECEK] kök öğe: VIP Accommodation & Transfer (/vip-accommodation-transfer)
+[SİLİNECEK] kök öğe: Contact (/contact)
+[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header CTA: "Appointment" -> /request 
+[plan] etiket dilleri: en, de, ar, ru, fr, es, ro, sr-latn
+[uyarı] footer'da href="/blog" bağlantısı yok — "Health Guides" header'dan çıkınca hiçbir yerde kalmaz. add-blog-nav-item.ts ile footer'a ekleyin ya da panelden elle ekleyin.
+[kuru] hiçbir şey yazılmadı.
+## localize-footer-english.ts
+[localize-footer-english] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[plan] bağlantı ÇIKARILIR: "Kardiyoloji" /doctors?specialty=kardiyoloji (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "Dermatoloji" /doctors?specialty=dermatoloji (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "Nöroloji" /doctors?specialty=noroloji (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "Psikiyatri" /doctors?specialty=psikiyatri (hekim adresi (301))
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[kuru] hiçbir şey yazılmadı.
+##### confirm ile uygulama (yeni script) + tekrar kuru
+## setup-intermediary-nav.ts --confirm=setup-intermediary-nav --operator=qa
+[setup-intermediary-nav] mod=YAZ
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[mevcut] header: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[SİLİNECEK] kök öğe: Home (/)
+[SİLİNECEK] kök öğe: About (/about)
+[SİLİNECEK] kök öğe: Health Tourism Services (/specialties)
+[SİLİNECEK] kök öğe: VIP Accommodation & Transfer (/vip-accommodation-transfer)
+[SİLİNECEK] kök öğe: Contact (/contact)
+[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header CTA: "Appointment" -> /request 
+[plan] etiket dilleri: en, de, ar, ru, fr, es, ro, sr-latn
+[uyarı] footer'da href="/blog" bağlantısı yok — "Health Guides" header'dan çıkınca hiçbir yerde kalmaz. add-blog-nav-item.ts ile footer'a ekleyin ya da panelden elle ekleyin.
+[yedek] C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\intermediary-nav-2026-11-02T17-23-17-844Z.json
+[fix] header menüsü yazıldı (5 öğe yazıldı, 5 eski öğe SİLİNDİ), CTA güncellendi.
+[geri al] npx tsx scripts/setup-intermediary-nav.ts --restore=C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\intermediary-nav-2026-11-02T17-23-17-844Z.json --confirm=setup-intermediary-nav --operator=<ad>
+## setup-intermediary-nav.ts
+[setup-intermediary-nav] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[mevcut] header: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header CTA: "Appointment" -> /request 
+[plan] etiket dilleri: en, de, ar, ru, fr, es, ro, sr-latn
+[uyarı] footer'da href="/blog" bağlantısı yok — "Health Guides" header'dan çıkınca hiçbir yerde kalmaz. add-blog-nav-item.ts ile footer'a ekleyin ya da panelden elle ekleyin.
+[bilgi] Yapılacak değişiklik yok (idempotent).
+## localize-footer-english.ts --confirm=localize-footer-english --operator=qa
+[localize-footer-english] mod=YAZ
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[plan] bağlantı ÇIKARILIR: "Kardiyoloji" /doctors?specialty=kardiyoloji (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "Dermatoloji" /doctors?specialty=dermatoloji (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "Nöroloji" /doctors?specialty=noroloji (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "Psikiyatri" /doctors?specialty=psikiyatri (hekim adresi (301))
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[yedek] C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\footer-2026-11-02T17-23-19-954Z.json
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[fix] footer güncellendi (sütun=0, bağlantı=0, çıkarılan=4).
+[geri al] npx tsx scripts/localize-footer-english.ts --restore=C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\footer-2026-11-02T17-23-19-954Z.json --confirm=localize-footer-english --operator=<ad>
+## localize-footer-english.ts
+[localize-footer-english] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[bilgi] Yapılacak değişiklik yok (idempotent).
