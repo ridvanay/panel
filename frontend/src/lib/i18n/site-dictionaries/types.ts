@@ -16,6 +16,7 @@ import type { DestinationsStrings } from "./en/destinations";
 import type { ConsultationStrings } from "./en/consultation";
 import type { BlogStrings } from "./en/blog";
 import type { TrustPagesStrings } from "./en/trust-pages";
+import type { IntermediaryStrings } from "./en/intermediary";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -50,6 +51,8 @@ export type SiteDictionary = {
   blog: BlogStrings;
   /** Paket Z1-ek - guven sayfalari (content-standards, medical-reviewers). */
   trustPages: TrustPagesStrings;
+  /** Paket AH — kurumsal kimlik ibaresi (aracı kuruluş). */
+  intermediary: IntermediaryStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings, BlogStrings, TrustPagesStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings, BlogStrings, TrustPagesStrings, IntermediaryStrings };
