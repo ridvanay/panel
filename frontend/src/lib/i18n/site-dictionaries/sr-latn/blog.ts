@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "O ovom vodiču",
   authorBoxText: "Pripremio urednički tim WM Health u skladu sa našim standardima sadržaja.",
   readingProgress: "Napredak čitanja",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Pregled — čeka se odobrenje lekara",
+  previewBannerPublish: "Pregled — čeka se objavljivanje",
+  reviewPendingBy: "Pregled na čekanju: {name}",
+  previewOpen: "Pregled",
+  previewOpenError: "Pregled nije moguće otvoriti. Pokušajte ponovo.",
 };

@@ -26,6 +26,9 @@ import { CategorySelect } from "@/components/admin/blog/category-select";
 import { TagSelect } from "@/components/admin/blog/tag-select";
 import { useAuth } from "@/context/auth-context";
 import { exportToCsv } from "@/lib/export-csv";
+import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { openAdminBlogPreview } from "@/lib/blog/preview";
+import { toast } from "sonner";
 
 function matchesPost(post: BlogPost, query: string): boolean {
   return post.title.toLowerCase().includes(query);
@@ -113,6 +116,14 @@ export default function AdminBlogListPage() {
     }),
     filterTabItems,
   });
+
+  async function handlePreview(post: BlogPost) {
+    try {
+      await openAdminBlogPreview(post.id);
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    }
+  }
 
   function handleTagFilterChange(value: string) {
     setTagFilter(value);
@@ -272,6 +283,7 @@ export default function AdminBlogListPage() {
                 onRequestPermanentDelete={list.requestPermanentDelete}
                 editHref={(post) => `/admin/blog/${post.id}`}
                 viewHref={(post) => `/blog/${post.slug}`}
+                onPreview={(post) => void handlePreview(post)}
                 extraColumns={[
                   {
                     key: "category",

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import { noindexHeaderSources } from "./src/lib/seo/private-paths";
+import { blogPreviewHeaderRules } from "./src/lib/seo/preview-headers";
 
 /**
  * `next/image` `remotePatterns` — `.claude/architect-scope-products-catalog.md` §6.1 (frontend-agent'a
@@ -82,7 +83,11 @@ const nextConfig: NextConfig = {
   // güvenlik önlemi değildir; asıl koruma bu başlıktır. Liste `src/lib/seo/private-paths.ts`te (robots.txt
   // ile aynı kaynak).
   async headers() {
-    return noindexHeaderSources().map((source) => ({ source, headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }));
+    return [
+      ...noindexHeaderSources().map((source) => ({ source, headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] })),
+      // Taslak blog önizlemesi: belirteç URL'de — Referrer-Policy: no-referrer (bkz. preview-headers.ts).
+      ...blogPreviewHeaderRules(),
+    ];
   },
 };
 

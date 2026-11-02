@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "عن هذا الدليل",
   authorBoxText: "أعدّه فريق التحرير في WM Health وفق معايير المحتوى لدينا.",
   readingProgress: "تقدّم القراءة",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "معاينة — بانتظار موافقة الطبيب",
+  previewBannerPublish: "معاينة — بانتظار النشر",
+  reviewPendingBy: "المراجعة قيد الانتظار: {name}",
+  previewOpen: "معاينة",
+  previewOpenError: "تعذّر فتح المعاينة. يرجى المحاولة مرة أخرى.",
 };

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchBlogDetailServer } from "@/lib/api/server-blog";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
-import type { ContentLocalization, PublicBlogDetail } from "@/lib/api/types";
+import type { ContentLocalization, Locale, PublicBlogDetail, PublicBlogPreviewDetail } from "@/lib/api/types";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
@@ -23,7 +23,7 @@ import { BlogToc } from "./blog-toc";
 import { BlogFaq } from "./blog-faq";
 import { BlogShareButtons } from "./blog-share-buttons";
 import { BlogPostCard } from "./blog-post-card";
-import { BlogAuthorBox, BlogByline, BlogConsultCard, BlogKeyTakeaways, BlogReferences } from "./blog-article-parts";
+import { BlogAuthorBox, BlogByline, BlogConsultCard, BlogKeyTakeaways, BlogPreviewBanner, BlogReferences } from "./blog-article-parts";
 import { BlogReadingProgress } from "./blog-reading-progress";
 
 type PostPageProps = { lang: string; slug: string };
@@ -77,9 +77,34 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
   // Taslak, silinmiş ya da bu dilde çevirisi olmayan yazı: 404 (yeni uç kanonik metne düşmez).
   if (!post) notFound();
 
-  const localizations = toContentLocalizations(post);
-  redirectToCanonicalSlug({ requestedSlug: slug, activeLocale: lang, localizations, locales, pathPrefix: "/blog" });
+  redirectToCanonicalSlug({ requestedSlug: slug, activeLocale: lang, localizations: toContentLocalizations(post), locales, pathPrefix: "/blog" });
+  return <BlogPostView post={post} lang={lang} slug={slug} locales={locales} dict={dict} siteName={settings.siteName} />;
+}
 
+type BlogDict = Awaited<ReturnType<typeof getSiteDictionary>>;
+
+/**
+ * Yazı gövdesi — yayındaki sayfa ve taslak önizleme AYNI görünümü kullanır. `preview` verilirse: üstte önizleme
+ * şeridi ve "Review pending" satırı; JSON-LD, paylaşım düğmeleri, görüntülenme sayacı ve dil-alternatifi senkronu YOK.
+ */
+export function BlogPostView({
+  post,
+  lang,
+  slug,
+  locales,
+  dict,
+  siteName,
+  preview,
+}: {
+  post: PublicBlogDetail;
+  lang: string;
+  slug: string;
+  locales: Locale[];
+  dict: BlogDict;
+  siteName: string;
+  preview?: Pick<PublicBlogPreviewDetail, "pendingReviewer" | "reviewApproved">;
+}) {
+  const localizations = toContentLocalizations(post);
   const t = dict.blog;
   const defaultLocale = locales.find((l) => l.isDefault)?.code ?? lang;
   const localize = (path: string) => withLocalePrefix(path, lang, defaultLocale);
@@ -87,15 +112,17 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
   const url = `${SITE_URL}${localize(`/blog/${slug}`)}`;
   const trackedSlug = post.localizations.find((l) => l.locale === defaultLocale)?.slug ?? slug;
 
-  const jsonLd = blogJsonLdStrings({
-    post,
-    url,
-    siteUrl: SITE_URL,
-    siteName: settings.siteName,
-    physicianUrl: (doctorSlug) => `${SITE_URL}${physicianHref(doctorSlug)}`,
-    imageUrl: toPublicMediaUrl(post.coverCompatUrl ?? post.coverUrl),
-    inLanguage: lang,
-  });
+  const jsonLd = preview
+    ? []
+    : blogJsonLdStrings({
+        post,
+        url,
+        siteUrl: SITE_URL,
+        siteName,
+        physicianUrl: (doctorSlug) => `${SITE_URL}${physicianHref(doctorSlug)}`,
+        imageUrl: toPublicMediaUrl(post.coverCompatUrl ?? post.coverUrl),
+        inLanguage: lang,
+      });
 
   const { html, items: tocItems } = buildToc(post.contentHtml);
   const split = splitAtMiddleHeading(html);
@@ -107,8 +134,9 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
 
   return (
     <div dir={localeDirection(lang)} className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12" data-testid="blog-post">
-      <SyncLocaleAlternates kind="blog" items={localizations} />
-      <ViewTracker kind="blog" slug={trackedSlug} />
+      {preview ? <BlogPreviewBanner t={t} approved={preview.reviewApproved} /> : null}
+      {preview ? null : <SyncLocaleAlternates kind="blog" items={localizations} />}
+      {preview ? null : <ViewTracker kind="blog" slug={trackedSlug} />}
       {jsonLd.map((json, index) => (
         <JsonLdScript key={index} json={json} />
       ))}
@@ -123,7 +151,7 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
           </p>
         ) : null}
         <h1 className="mt-3 font-heading text-3xl font-semibold leading-tight text-foreground sm:text-4xl">{post.title}</h1>
-        <BlogByline post={post} t={t} lang={lang} physicianHref={physicianHref} />
+        <BlogByline post={post} t={t} lang={lang} physicianHref={physicianHref} pendingReviewer={preview?.pendingReviewer ?? null} />
       </header>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-12">
@@ -156,11 +184,13 @@ export async function BlogPostPage({ lang, slug }: PostPageProps) {
             <p className="mt-10 rounded-[var(--site-radius)] border border-border bg-surface p-4 text-sm text-foreground/80" data-testid="blog-disclaimer">
               {t.disclaimer}
             </p>
-            <BlogShareButtons
-              url={url}
-              title={post.title}
-              labels={{ heading: t.shareTitle, copy: t.shareCopy, copied: t.shareCopied, whatsapp: t.shareWhatsapp, email: t.shareEmail }}
-            />
+            {preview ? null : (
+              <BlogShareButtons
+                url={url}
+                title={post.title}
+                labels={{ heading: t.shareTitle, copy: t.shareCopy, copied: t.shareCopied, whatsapp: t.shareWhatsapp, email: t.shareEmail }}
+              />
+            )}
           </div>
         </article>
 

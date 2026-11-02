@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "Об этом руководстве",
   authorBoxText: "Подготовлено редакционной командой WM Health в соответствии с нашими стандартами контента.",
   readingProgress: "Прогресс чтения",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Предпросмотр — ожидается одобрение врача",
+  previewBannerPublish: "Предпросмотр — ожидается публикация",
+  reviewPendingBy: "Ожидает проверки: {name}",
+  previewOpen: "Предпросмотр",
+  previewOpenError: "Не удалось открыть предпросмотр. Попробуйте ещё раз.",
 };

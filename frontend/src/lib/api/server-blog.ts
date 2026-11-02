@@ -1,6 +1,6 @@
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
-import type { BlogPost, PublicBlogDetail, PublicBlogList, PublicBlogReviewerItem, PublicBlogTopicGroup } from "./types";
+import type { BlogPost, PublicBlogDetail, PublicBlogPreviewDetail, PublicBlogList, PublicBlogReviewerItem, PublicBlogTopicGroup } from "./types";
 
 /**
  * Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi.
@@ -77,4 +77,14 @@ export async function fetchBlogReviewersServer(locale?: string): Promise<PublicB
   } catch {
     return [];
   }
+}
+
+/**
+ * Taslak önizleme — `GET /blog/preview/:postId?t=`. Önbelleğe ALINMAZ (`no-store`); belirteç yok/geçersiz/
+ * süresi dolmuş/iptal edilmiş ya da yazı bulunamadı → 404 → `null` (çağıran `notFound()` çağırır).
+ */
+export async function fetchBlogPreviewServer(postId: string, token: string, locale?: string): Promise<PublicBlogPreviewDetail | null> {
+  const query = `?t=${encodeURIComponent(token)}${locale ? `&locale=${encodeURIComponent(locale)}` : ""}`;
+  const json = await fetchServerJson<{ data: PublicBlogPreviewDetail }>(`/blog/preview/${encodeURIComponent(postId)}${query}`, { noStore: true });
+  return json?.data ?? null;
 }

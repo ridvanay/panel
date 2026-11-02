@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "Über diesen Ratgeber",
   authorBoxText: "Erstellt vom WM-Health-Redaktionsteam nach unseren Inhaltsstandards.",
   readingProgress: "Lesefortschritt",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Vorschau – Freigabe durch den Arzt ausstehend",
+  previewBannerPublish: "Vorschau – Veröffentlichung ausstehend",
+  reviewPendingBy: "Prüfung ausstehend: {name}",
+  previewOpen: "Vorschau",
+  previewOpenError: "Die Vorschau konnte nicht geöffnet werden. Bitte versuchen Sie es erneut.",
 };

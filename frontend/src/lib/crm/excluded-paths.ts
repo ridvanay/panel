@@ -27,6 +27,8 @@ export const CRM_ALWAYS_EXCLUDED_PATHS = [
   "/dashboard",
   // Kullanıcı kararı (2026-11-01) — paket ziyaretleri kişi bazında kaydedilmez; yalnızca anonim sayaç (packages.stats).
   "/packages",
+  // Taslak blog önizlemesi (belirteçli bağlantı) — ziyaret kaydı tutulmaz (backend `crm.privacy.ts` ile aynı).
+  "/blog/preview",
 ] as const;
 
 function stripLocale(path: string): string {

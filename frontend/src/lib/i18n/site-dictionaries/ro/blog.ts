@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "Despre acest ghid",
   authorBoxText: "Pregătit de echipa editorială WM Health, conform standardelor noastre de conținut.",
   readingProgress: "Progresul lecturii",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Previzualizare — în așteptarea aprobării medicului",
+  previewBannerPublish: "Previzualizare — în așteptarea publicării",
+  reviewPendingBy: "Revizuire în așteptare: {name}",
+  previewOpen: "Previzualizare",
+  previewOpenError: "Previzualizarea nu a putut fi deschisă. Încercați din nou.",
 };

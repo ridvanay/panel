@@ -45,6 +45,8 @@ interface ContentListTableProps<T extends ContentListEntity, Q extends QuickEdit
 
   editHref: (item: T) => string;
   viewHref: (item: T) => string;
+  /** Blog taslak önizlemesi — verilirse YAYINDA OLMAYAN her satırda "Önizle" gösterilir (diğer listeler vermez). */
+  onPreview?: (item: T) => void;
 
   /**
    * §10.20 — `Sayfalar`da `DELETE`/`restore` uçları artık `canUseAdvancedBuilder: true` gerektirir;
@@ -103,6 +105,7 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
   onRequestPermanentDelete,
   editHref,
   viewHref,
+  onPreview,
   canManageLifecycle = true,
   extraColumns,
   quickEditExtraFields,
@@ -301,6 +304,21 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                               </button>
                             </>
                           )}
+                          {onPreview && item.status !== "PUBLISHED" && (
+                            <>
+                              <span className="text-foreground/30" aria-hidden>
+                                |
+                              </span>
+                              <button
+                                type="button"
+                                className="hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50"
+                                disabled={busy}
+                                onClick={() => onPreview(item)}
+                              >
+                                Önizle
+                              </button>
+                            </>
+                          )}
                           {item.status === "PUBLISHED" && (
                             <>
                               <span className="text-foreground/30" aria-hidden>
@@ -493,6 +511,11 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                         {canManageLifecycle && (
                           <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onTrash(item)}>
                             Çöpe Taşı
+                          </DropdownMenuItem>
+                        )}
+                        {onPreview && item.status !== "PUBLISHED" && (
+                          <DropdownMenuItem disabled={busy} onClick={() => onPreview(item)}>
+                            Önizle
                           </DropdownMenuItem>
                         )}
                         {item.status === "PUBLISHED" && (

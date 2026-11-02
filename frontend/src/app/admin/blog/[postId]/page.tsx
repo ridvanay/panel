@@ -31,6 +31,7 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { BlogReviewPanel } from "@/components/admin/blog/blog-review-panel";
+import { BlogPreviewControls } from "@/components/admin/blog/blog-preview-controls";
 import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
 import {
   cleanTranslationLists,
@@ -430,6 +431,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
           </span>
         </Alert>
       )}
+
+      <BlogPreviewControls postId={postId} defaultLocale={defaultLocale?.code} />
 
       <Tabs defaultValue="content">
         <TabsList>

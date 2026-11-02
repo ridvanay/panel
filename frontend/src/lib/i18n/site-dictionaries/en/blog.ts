@@ -101,6 +101,12 @@ export const blogStrings = {
   authorBoxTitle: "About this guide",
   authorBoxText: "Prepared by the WM Health Editorial Team following our content standards.",
   readingProgress: "Reading progress",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Preview — awaiting physician approval",
+  previewBannerPublish: "Preview — awaiting publication",
+  reviewPendingBy: "Review pending: {name}",
+  previewOpen: "Preview",
+  previewOpenError: "The preview could not be opened. Please try again.",
 } as const;
 
 export type BlogStrings = Record<keyof typeof blogStrings, string>;

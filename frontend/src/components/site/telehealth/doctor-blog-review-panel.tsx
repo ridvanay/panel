@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, BadgeCheck, ClipboardCheck, MessageSquareWarning } from "lucide-react";
+import { AlertTriangle, BadgeCheck, ClipboardCheck, ExternalLink, MessageSquareWarning } from "lucide-react";
 import { toast } from "sonner";
 import * as blogApi from "@/lib/api/blog";
 import type { DoctorBlogReviewItem } from "@/lib/api/types";
 import { useBlogStrings } from "@/lib/i18n/use-blog-strings";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { openPreviewTab, previewPath } from "@/lib/blog/preview";
 import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { fillBlogString } from "@/lib/blog/format";
 import { Alert } from "@/components/ui/alert";
@@ -113,7 +115,21 @@ function ReviewCard({
   const [noteError, setNoteError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"approve" | "changes" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const localize = useLocalizePath();
   const noteId = `review-note-${item.id}`;
+
+  async function openPreviewPage() {
+    setOpening(true);
+    setActionError(null);
+    try {
+      await openPreviewTab(async () => localize(previewPath(item.id, (await blogApi.createDoctorPreviewSession(item.id)).token)));
+    } catch {
+      setActionError(t.previewOpenError);
+    } finally {
+      setOpening(false);
+    }
+  }
 
   async function approve() {
     setBusy("approve");
@@ -181,9 +197,15 @@ function ReviewCard({
       ) : null}
 
       <div className="mt-4">
-        <Button type="button" variant="ghost" size="sm" aria-expanded={preview} onClick={() => setPreview((v) => !v)}>
-          {preview ? t.reviewHidePreview : t.reviewPreview}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="ghost" size="sm" aria-expanded={preview} onClick={() => setPreview((v) => !v)}>
+            {preview ? t.reviewHidePreview : t.reviewPreview}
+          </Button>
+          <Button type="button" variant="outline" size="sm" loading={opening} aria-label={`${t.previewOpen}: ${item.title}`} onClick={() => void openPreviewPage()}>
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            {t.previewOpen}
+          </Button>
+        </div>
         {preview ? (
           <div className="mt-3 rounded-md border border-border bg-background p-4" data-testid="doctor-blog-review-preview">
             {item.keyTakeaways.length > 0 ? (

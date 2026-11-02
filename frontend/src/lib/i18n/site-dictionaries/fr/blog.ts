@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "À propos de ce guide",
   authorBoxText: "Préparé par l'équipe éditoriale de WM Health selon nos normes de contenu.",
   readingProgress: "Progression de la lecture",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Aperçu — en attente de l'approbation du médecin",
+  previewBannerPublish: "Aperçu — en attente de publication",
+  reviewPendingBy: "Relecture en attente : {name}",
+  previewOpen: "Aperçu",
+  previewOpenError: "Impossible d'ouvrir l'aperçu. Veuillez réessayer.",
 };

@@ -817,6 +817,26 @@ export interface PublicBlogDetail extends PublicBlogCard {
   localizations: { locale: string; slug: string }[];
 }
 
+/** Taslak önizleme (`GET /blog/preview/:postId?t=`) — yayındaki detayla aynı şekil; `reviewer` HER ZAMAN null. */
+export interface PublicBlogPreviewDetail extends PublicBlogDetail {
+  preview: true;
+  pendingReviewer: { name: string; title: string; slug: string; avatarUrl: string | null } | null;
+  reviewApproved: boolean;
+}
+
+/** `POST .../preview-session` ve `POST /admin/blog/:id/preview-link` yanıtı (belirteç yalnızca bu yanıtta döner). */
+export interface BlogPreviewToken {
+  token: string;
+  expiresAt: string;
+}
+
+/** `GET /admin/blog/:id/preview-link`. */
+export interface BlogPreviewLinkStatus {
+  active: boolean;
+  expiresAt: string | null;
+  createdAt: string | null;
+}
+
 // ---------- Paket Z1 — doktor paneli "Medical review" kuyruğu ----------
 export interface DoctorBlogReviewItem {
   id: string;

@@ -1,6 +1,8 @@
 import { apiFetch, apiFetchPage } from "./client";
 import type {
   BlogCategory,
+  BlogPreviewLinkStatus,
+  BlogPreviewToken,
   BlogPost,
   BlogTag,
   BulkContentAction,
@@ -126,4 +128,28 @@ export function approveDoctorBlogReview(id: string) {
 /** `note` 1..2000 karakter (backend zorunlu kılar; arayüz de gönderimden önce denetler). */
 export function requestDoctorBlogChanges(id: string, note: string) {
   return apiFetch<DoctorBlogReviewItem>(`/doctor/blog-reviews/${encodeURIComponent(id)}/request-changes`, { method: "POST", body: { note } });
+}
+
+// ---------- Taslak önizleme ----------
+/** Admin/editör: 30 dk'lık oturum belirteci (yeni sekmede `?t=` ile açılır). */
+export function createPreviewSession(postId: string) {
+  return apiFetch<BlogPreviewToken>(`/admin/blog/${encodeURIComponent(postId)}/preview-session`, { method: "POST" });
+}
+
+/** Atanan hekim: 30 dk'lık oturum belirteci. */
+export function createDoctorPreviewSession(id: string) {
+  return apiFetch<BlogPreviewToken>(`/doctor/blog-reviews/${encodeURIComponent(id)}/preview-session`, { method: "POST" });
+}
+
+/** Paylaşım bağlantısı belirteci (7 gün; yalnızca bu yanıtta döner, yeniden oluşturmak eskisini geçersiz kılar). */
+export function createPreviewLink(postId: string) {
+  return apiFetch<BlogPreviewToken>(`/admin/blog/${encodeURIComponent(postId)}/preview-link`, { method: "POST" });
+}
+
+export function getPreviewLink(postId: string) {
+  return apiFetch<BlogPreviewLinkStatus>(`/admin/blog/${encodeURIComponent(postId)}/preview-link`);
+}
+
+export function revokePreviewLink(postId: string) {
+  return apiFetch<void>(`/admin/blog/${encodeURIComponent(postId)}/preview-link`, { method: "DELETE" });
 }

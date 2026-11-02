@@ -95,4 +95,10 @@ export const blogStrings: BlogStrings = {
   authorBoxTitle: "Bu rehber hakkında",
   authorBoxText: "İçerik standartlarımıza uygun olarak WM Health Editör Ekibi tarafından hazırlanmıştır.",
   readingProgress: "Okuma ilerlemesi",
+  // ---- Önizleme (taslak) ----
+  previewBannerPending: "Önizleme — hekim onayı bekliyor",
+  previewBannerPublish: "Önizleme — yayın bekliyor",
+  reviewPendingBy: "İnceleme bekliyor: {name}",
+  previewOpen: "Önizle",
+  previewOpenError: "Önizleme açılamadı. Lütfen tekrar deneyin.",
 };

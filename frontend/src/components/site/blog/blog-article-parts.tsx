@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { BadgeCheck, CalendarCheck, Check, Clock, ExternalLink, UserRound } from "lucide-react";
+import { BadgeCheck, CalendarCheck, Check, Clock, ExternalLink, Eye, Hourglass, UserRound } from "lucide-react";
 import { SafeImage } from "@/components/site/safe-image";
-import type { PublicBlogDetail } from "@/lib/api/types";
+import type { PublicBlogDetail, PublicBlogPreviewDetail } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
 import { BLOG_AUTHOR_NAME } from "@/lib/blog/json-ld";
 import { fillBlogString, formatBlogDate } from "@/lib/blog/format";
@@ -20,7 +20,20 @@ export function BlogAvatar({ src, size }: { src: string | null; size: number }) 
  * profil bağlantısı) + okuma süresi. Hekim satırı yalnızca onaylı hekim varken; "Last reviewed" yalnızca tarih
  * doluyken çizilir (hekim varsa hekim satırında, yoksa meta satırında). Tarihler sunucuda biçimlenir (hidrasyon güvenli).
  */
-export function BlogByline({ post, t, lang, physicianHref }: { post: PublicBlogDetail; t: BlogStrings; lang: string; physicianHref: (slug: string) => string }) {
+export function BlogByline({
+  post,
+  t,
+  lang,
+  physicianHref,
+  pendingReviewer,
+}: {
+  post: PublicBlogDetail;
+  t: BlogStrings;
+  lang: string;
+  physicianHref: (slug: string) => string;
+  /** Yalnızca taslak önizlemede: onay VERMEMİŞ atanan hekim ("Review pending"). */
+  pendingReviewer?: PublicBlogPreviewDetail["pendingReviewer"];
+}) {
   const reviewed = formatBlogDate(post.lastReviewedAt, lang);
   const reviewer = post.reviewer;
   const reviewedDate = reviewed ? (
@@ -64,7 +77,32 @@ export function BlogByline({ post, t, lang, physicianHref }: { post: PublicBlogD
             {reviewedDate ? <span className="mt-0.5 block text-foreground/70">{reviewedDate}</span> : null}
           </p>
         </div>
+      ) : pendingReviewer ? (
+        <div className="flex w-full items-center gap-4 rounded-[var(--site-radius)] border border-dashed border-border bg-surface p-3 sm:w-fit sm:pe-6" data-testid="blog-byline-pending-reviewer">
+          <BlogAvatar src={pendingReviewer.avatarUrl} size={56} />
+          <p className="min-w-0 text-sm">
+            <span className="flex items-center gap-1 font-medium text-foreground/80">
+              <Hourglass className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {fillBlogString(t.reviewPendingBy, { name: pendingDisplayName(pendingReviewer) })}
+            </span>
+          </p>
+        </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Unvan ad içinde zaten geçiyorsa yinelenmez ("Prof. Dr. H. Sofu"). */
+function pendingDisplayName(r: NonNullable<PublicBlogPreviewDetail["pendingReviewer"]>): string {
+  return r.title && !r.name.toLowerCase().includes(r.title.toLowerCase()) ? `${r.title} ${r.name}` : r.name;
+}
+
+/** Taslak önizleme şeridi: onaylı ama yayınlanmamışsa "yayın bekliyor", aksi halde "hekim onayı bekliyor". */
+export function BlogPreviewBanner({ t, approved }: { t: BlogStrings; approved: boolean }) {
+  return (
+    <div role="status" className="mb-6 flex items-center gap-2 rounded-[var(--site-radius)] border border-warning/40 bg-warning/10 px-4 py-3 text-sm font-medium text-foreground" data-testid="blog-preview-banner">
+      <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {approved ? t.previewBannerPublish : t.previewBannerPending}
     </div>
   );
 }
