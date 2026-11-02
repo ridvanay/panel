@@ -704,7 +704,7 @@ export function SiteHeader({
           </Link>
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text`; `buttonStyle` yapısal sınıf varyantı.
-            <Link href={localize(effectiveCtaHref)} data-testid="header-book-consultation" className={cn(ctaClassName, "inline-flex h-10 items-center px-4 text-[15px] whitespace-nowrap")}>
+            <Link href={localize(effectiveCtaHref)} data-testid="header-book-consultation" className={cn(ctaClassName, "inline-flex h-10 shrink-0 items-center px-4 text-[15px] whitespace-nowrap")}>
               {effectiveCtaLabel}
             </Link>
           )}

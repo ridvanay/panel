@@ -25,6 +25,8 @@ export const NAV_GAP_COMPACT = 16;
 const SECTION_GAP = 24;
 /** Düğmeler arası boşluk (`gap-2`). */
 const ACTION_GAP = 8;
+/** Ölçülen genişliklere eklenen güvenlik payı (px): 1280–1600 px arasında sağ düğmelerin taşmasını önler. */
+const MEASURE_SAFETY = 16;
 
 export function computeDesktopNavLayout(input: {
   available: number;
@@ -68,7 +70,8 @@ export function useDesktopNavLayout(
       const style = window.getComputedStyle(row);
       const padding = parseFloat(style.paddingLeft || "0") + parseFloat(style.paddingRight || "0");
       const next = computeDesktopNavLayout({
-        available: row.clientWidth - padding - logo.offsetWidth,
+        // Paket AJ — alt piksel yuvarlaması, kaydırma çubuğu ve menü kaplarının payı için küçük güvenlik boşluğu.
+        available: row.clientWidth - padding - logo.offsetWidth - MEASURE_SAFETY,
         itemWidths: Array.from(box.querySelectorAll<HTMLElement>("[data-measure='item']")).map((el) => el.offsetWidth),
         findFull: width("[data-measure='find-full']"),
         findIcon: width("[data-measure='find-icon']"),

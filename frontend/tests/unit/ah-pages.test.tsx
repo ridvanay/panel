@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
 /**
@@ -24,6 +25,10 @@ vi.mock("next/navigation", () => ({
   permanentRedirect: (path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`);
   },
+}));
+vi.mock("@/lib/api/server-contact-channels", () => ({ fetchContactChannelsServer: async () => ({ whatsapp: { number: "+90 555 000 00 00", message: "Hello {package}" } }) }));
+vi.mock("@/lib/api/server-contact", () => ({
+  fetchContactPageServer: async () => ({ content: { phone: "+90 212 000 00 00", email: "info@example.com" } }),
 }));
 vi.mock("@/lib/api/server-locales", () => ({ fetchLocalesServer: () => mocks.locales() }));
 vi.mock("@/lib/api/server-settings", () => ({ fetchSiteSettingsServer: () => mocks.settings() }));
@@ -137,22 +142,28 @@ describe("/request sayfası", () => {
   it("H1, giriş metni, aktif bölümler (alt bölümler gruplu; pasif yok) ve aracı kuruluş ibaresi", async () => {
     await renderRequest();
     const dict = await getSiteDictionary("en");
-    expect(screen.getByRole("heading", { level: 1, name: dict.request.pageTitle })).toBeInTheDocument();
-    const select = screen.getByLabelText(dict.request.serviceLabel) as HTMLSelectElement;
-    expect(select.querySelector('optgroup[label="Gastroenterology"]')).not.toBeNull();
-    expect(select.querySelector('option[value="esd"]')).not.toBeNull();
-    expect(select.querySelector('option[value="dental"]')).not.toBeNull();
-    expect(select.querySelector('option[value="inactive"]')).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: dict.services.bookConsultation })).toBeInTheDocument();
+    expect(screen.getByText(dict.request.heroSubtitle)).toBeInTheDocument();
+    expect(within(screen.getByTestId("request-trust-badges")).getAllByRole("listitem")).toHaveLength(4);
+    expect(screen.getByRole("radio", { name: "Gastroenterology" })).toBeInTheDocument();
+    expect(screen.getByTestId("request-service-esd")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Dental care" })).toBeInTheDocument();
+    expect(screen.queryByTestId("request-service-inactive")).toBeNull();
+    expect(screen.getByTestId("request-side-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("request-next-steps")).toBeInTheDocument();
+    expect(within(screen.getByTestId("request-contact-panel")).getByRole("link", { name: dict.request.contactWhatsapp })).toHaveAttribute("href", expect.stringContaining("https://wa.me/905550000000"));
+    expect(screen.getByRole("link", { name: /info@example\.com/ })).toHaveAttribute("href", "mailto:info@example.com");
     expect(screen.getByTestId("intermediary-notice")).toHaveTextContent("International Health Tourism Intermediary");
     expect(screen.queryByTestId("intermediary-certificate")).toBeNull();
   });
 
   it("?service= bilinen bölümü önceden seçer; bilinmeyen değer yok sayılır", async () => {
     const { unmount } = await renderRequest("en", { service: "esd" });
-    expect(screen.getByLabelText((await getSiteDictionary("en")).request.serviceLabel)).toHaveValue("esd");
+    expect(screen.getByTestId("request-service-esd")).toBeChecked();
     unmount();
     await renderRequest("en", { service: "nope" });
-    expect(screen.getByLabelText((await getSiteDictionary("en")).request.serviceLabel)).toHaveValue("");
+    expect(screen.getByTestId("request-service-esd")).not.toBeChecked();
+    expect(screen.getByTestId("request-service-gastroenterology")).not.toBeChecked();
   });
 
   it("?package= bilinen paketi gösterir; paket yoksa yok sayılır", async () => {
@@ -179,6 +190,14 @@ describe("/request sayfası", () => {
     ]);
     await renderRequest();
     const dict = await getSiteDictionary("en");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("request-service-esd"));
+    await user.click(screen.getByTestId("request-next"));
+    await user.selectOptions(screen.getByLabelText(dict.request.countryLabel), "DE");
+    await user.click(screen.getByTestId("request-next"));
+    await user.type(screen.getByLabelText(dict.request.fullNameLabel), "Anna");
+    await user.type(screen.getByRole("textbox", { name: dict.request.emailLabel }), "a@example.com");
+    await user.click(screen.getByTestId("request-next"));
     expect(screen.getByRole("link", { name: dict.request.privacyNoticeLink })).toHaveAttribute("href", "/privacy-notice-pdpl-kvkk");
     expect(screen.getByRole("link", { name: dict.request.consentHealthLink })).toHaveAttribute("href", "/explicit-consent");
   });
@@ -187,7 +206,7 @@ describe("/request sayfası", () => {
     await renderRequest("ar");
     const dict = await getSiteDictionary("ar");
     expect(screen.getByTestId("request-page")).toHaveAttribute("dir", "rtl");
-    expect(screen.getByRole("heading", { level: 1, name: dict.request.pageTitle })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: dict.services.bookConsultation })).toBeInTheDocument();
   });
 
   it("bölüm listesi alınamazsa hata durumu: uyarı + iletişim bağlantısı", async () => {
