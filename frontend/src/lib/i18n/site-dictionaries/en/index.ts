@@ -20,6 +20,7 @@ import { trustPagesStrings } from "./trust-pages";
 import { intermediaryStrings } from "./intermediary";
 import { requestStrings } from "./request";
 import { servicesStrings } from "./services";
+import { vipStrings } from "./vip";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -44,4 +45,5 @@ export const siteDictionary: SiteDictionary = {
   intermediary: intermediaryStrings,
   request: requestStrings,
   services: servicesStrings,
+  vip: vipStrings,
 };

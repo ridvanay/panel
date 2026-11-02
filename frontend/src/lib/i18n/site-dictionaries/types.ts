@@ -19,6 +19,7 @@ import type { TrustPagesStrings } from "./en/trust-pages";
 import type { IntermediaryStrings } from "./en/intermediary";
 import type { RequestStrings } from "./en/request";
 import type { ServicesStrings } from "./en/services";
+import type { VipStrings } from "./en/vip";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -59,6 +60,8 @@ export type SiteDictionary = {
   request: RequestStrings;
   /** Paket AI — hizmet mega menüsü, hizmet grupları, süreç şeridi, header düğmeleri. */
   services: ServicesStrings;
+  /** Paket AJ (AJ-3) - VIP Accommodation & Transfer sayfasi (zengin icerik). */
+  vip: VipStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings, BlogStrings, TrustPagesStrings, IntermediaryStrings, RequestStrings, ServicesStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings, UiStrings, ReviewsStrings, ContactCtaStrings, PackagesStrings, DestinationsStrings, ConsultationStrings, BlogStrings, TrustPagesStrings, IntermediaryStrings, RequestStrings, ServicesStrings, VipStrings };

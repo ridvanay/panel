@@ -27,7 +27,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/lib/api/server-locales", () => ({ fetchLocalesServer: () => mocks.locales() }));
 vi.mock("@/lib/api/server-settings", () => ({ fetchSiteSettingsServer: () => mocks.settings() }));
-vi.mock("@/lib/api/server-pages", () => ({ fetchPublishedPagesServer: () => mocks.pages() }));
+vi.mock("@/lib/api/server-pages", () => ({ fetchPublishedPagesServer: () => mocks.pages(), fetchPageBySlugServer: () => Promise.resolve(null) }));
 vi.mock("@/lib/api/server-packages", () => ({ fetchPackageServer: (...a: unknown[]) => mocks.pkg(...a) }));
 vi.mock("@/lib/api/server-telehealth", () => ({
   fetchDoctorBySlugServer: (...a: unknown[]) => mocks.doctor(...a),
@@ -197,22 +197,23 @@ describe("/request sayfası", () => {
   });
 });
 
-describe("VIP Accommodation & Transfer (sade sayfa)", () => {
-  it.each(["en", "de", "ar", "ru", "fr", "es", "ro", "sr-latn"])("%s: 6 başlık, 'Request' düğmeleri /request'e gider, FİYAT yok, ibare var", async (lang) => {
+describe("VIP Accommodation & Transfer (zengin sayfa, AJ-3)", () => {
+  it.each(["en", "de", "ar", "ru", "fr", "es", "ro", "sr-latn"])("%s: 6 kart, 'Request' düğmeleri /request'e gider, FİYAT yok, ibare var", async (lang) => {
     const { container } = render(await VipAccommodationTransferPage(params(lang)));
     const dict = await getSiteDictionary(lang);
-    expect(screen.getByRole("heading", { level: 1, name: dict.request.vipTitle })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(6);
+    expect(screen.getByRole("heading", { level: 1, name: dict.vip.title })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).length).toBeGreaterThanOrEqual(6);
     const links = screen.getAllByTestId("vip-request");
     expect(links).toHaveLength(6);
     const prefix = lang === "en" ? "" : `/${lang}`;
     for (const link of links) {
-      expect(link).toHaveAttribute("href", `${prefix}/request`);
-      expect(link).toHaveTextContent(dict.request.vipRequestCta);
+      expect(link.getAttribute("href")!.startsWith(`${prefix}/request?topic=vip-`)).toBe(true);
+      expect(link).toHaveTextContent(dict.vip.requestCta);
     }
     expect(container.textContent).not.toMatch(/[€$£₺]|\bEUR\b|\bUSD\b|\bTL\b/);
     expect(screen.getByTestId("intermediary-notice")).toBeInTheDocument();
-    expect(screen.getByTestId("vip-page")).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+    expect(screen.getByTestId("vip-cta-book")).toHaveAttribute("href", `${prefix}/request`);
+    expect(screen.getByTestId("vip-page").parentElement).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
   });
 });
 
