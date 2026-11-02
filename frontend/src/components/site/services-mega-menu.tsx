@@ -50,7 +50,7 @@ export interface ServicesMegaMenuProps {
 }
 
 const ITEM_CLASS =
-  "flex w-full items-start gap-3 rounded-lg px-2 py-1.5 text-start outline-none transition-colors duration-150 hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] motion-reduce:transition-none";
+  "flex w-full items-start gap-3 rounded-lg px-2 py-1 text-start outline-none transition-colors duration-150 hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] motion-reduce:transition-none";
 const CHIP_CLASS =
   "inline-flex h-6 items-center rounded-full border border-border bg-surface px-2 text-xs font-semibold text-[var(--site-primary)] outline-none transition-colors hover:bg-[color-mix(in_oklch,var(--site-primary)_8%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_8%,var(--site-surface))] motion-reduce:transition-none";
 
@@ -111,16 +111,16 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
             data-testid="services-mega-menu"
             style={{ maxHeight: `${MEGA_MENU_MAX_HEIGHT_PX}px` }}
             className={cn(
-              "flex w-[min(62rem,calc(100vw-2rem))] origin-(--transform-origin) flex-col overflow-hidden rounded-[18px] border border-border bg-surface text-foreground shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18),0_2px_6px_rgba(15,23,42,0.06)] outline-none",
+              "flex w-[min(64rem,calc(100vw-2rem))] origin-(--transform-origin) flex-col overflow-hidden rounded-[18px] border border-border bg-surface text-foreground shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18),0_2px_6px_rgba(15,23,42,0.06)] outline-none",
               "transition-[opacity,transform] duration-150 ease-out data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0",
               "motion-reduce:transition-none motion-reduce:data-[starting-style]:translate-y-0 motion-reduce:data-[ending-style]:translate-y-0"
             )}
           >
-            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem]">
-              <div className="min-h-0 overflow-y-auto p-4" data-testid="services-mega-groups">
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_16rem]">
+              <div className="min-h-0 overflow-y-auto px-4 py-3" data-testid="services-mega-groups">
                 <div className="columns-2 gap-x-6">
                   {groups.map((group) => (
-                    <Menu.Group key={group.id} data-testid={`services-group-${group.id}`} className="mb-3 break-inside-avoid">
+                    <Menu.Group key={group.id} data-testid={`services-group-${group.id}`} className="mb-2 break-inside-avoid">
                       <Menu.GroupLabel className="px-2 pb-1 text-[11px] font-bold tracking-[0.1em] text-[var(--site-muted-text,currentColor)] uppercase">
                         {serviceGroupTitle(group.id, strings)}
                       </Menu.GroupLabel>
@@ -134,7 +134,7 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm leading-5 font-semibold text-foreground">{item.name}</span>
                                 {item.shortDescription && (
-                                  <span className="block truncate text-xs leading-4 text-[var(--site-muted-text,currentColor)]">{item.shortDescription}</span>
+                                  <span className="block line-clamp-2 text-xs leading-4 text-[var(--site-muted-text,currentColor)]">{item.shortDescription}</span>
                                 )}
                               </span>
                             </Menu.Item>

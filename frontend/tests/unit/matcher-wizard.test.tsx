@@ -299,6 +299,8 @@ describe("sihirbaz akışı", () => {
     rerender(<PhysicianMatcher mode="page" />);
     expect(await screen.findByTestId("matcher-no-match")).toHaveTextContent("koordinatörümüz size en uygun hekimi 1 iş günü içinde bildirsin");
     expect(screen.getByTestId("matcher-request-generic")).toHaveAttribute("href", "/tr/request");
+    // Koordinatör sonucunda "Let a coordinator call me" düğmesinden tam bir tane.
+    expect(screen.getAllByRole("button", { name: "Koordinatör beni arasın" })).toHaveLength(1);
   });
 
   it("iletişim zorunlu: 18 yaş altı veli alanı; iki onay kutusu varsayılan işaretsiz; gönderimde sağlık rızası olduğu gibi iletilir", async () => {

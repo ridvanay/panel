@@ -389,6 +389,9 @@ export function SiteHeader({
     setMobileMenuOpen(false);
   }
   const closeMobileMenu = () => setMobileMenuOpen(false);
+  // Sheet portal'ı `<body>`'ye gider ve `.site-scope` dışında kalır (`--site-*` değişkenleri kaybolur);
+  // bu yüzden portal hedefi site kapsamı olarak verilir (bkz. cart-drawer.tsx ile aynı desen).
+  const [sitePortal, setSitePortal] = useState<HTMLElement | null>(null);
 
   // Paket V (İş 2) — mobil dil seçimi alt sayfası; header'daki bayrak düğmesi ve menüdeki dil satırı açar.
   const [languageSheetOpen, setLanguageSheetOpen] = useState(false);
@@ -759,7 +762,13 @@ export function SiteHeader({
           )}
           {/* Base UI Dialog (`Sheet`): odak panelde tutulur, Esc/dış tıklama kapatır, kapanınca odak
               hamburger'a döner, açıkken arka plan kaydırılamaz. */}
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <Sheet
+            open={mobileMenuOpen}
+            onOpenChange={(open) => {
+              if (open) setSitePortal(document.querySelector<HTMLElement>(".site-scope"));
+              setMobileMenuOpen(open);
+            }}
+          >
             <SheetTrigger
               render={
                 <button
@@ -778,6 +787,7 @@ export function SiteHeader({
             </SheetTrigger>
             <SheetContent
               id={MOBILE_MENU_ID}
+              portalContainer={sitePortal}
               // Paket L — RTL dillerde mobil menü satır sonu tarafından (soldan) açılır.
               side={localeDirection(activeLocale?.code) === "rtl" ? "left" : "right"}
               showCloseButton={false}

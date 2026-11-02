@@ -1065,11 +1065,6 @@ export function PhysicianMatcher({
               <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5" data-testid="matcher-no-match">
                 <h3 className="font-heading text-lg font-semibold text-foreground">{m.noMatchTitle}</h3>
                 <p className="mt-1 text-sm text-foreground/70">{submission ? m.noMatchText : m.noMatchNeedContact}</p>
-                {!submission && (
-                  <Button type="button" className="mt-3 min-h-11" onClick={() => void askCallback()}>
-                    {m.coordinatorCall}
-                  </Button>
-                )}
                 <Link
                   href={localize("/request")}
                   className="mt-3 inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-muted"

@@ -178,9 +178,10 @@ describe("mega menü — masaüstü", () => {
     expect(menu.style.maxHeight).toBe("520px");
     expect(menu.className).toContain("overflow-hidden");
     expect(within(menu).getByTestId("services-mega-groups").className).toContain("overflow-y-auto");
-    // Tek satır açıklama (sarkmaz): truncate.
+    // Açıklama en çok 2 satıra sarar (kesilmez, taşmaz).
     const desc = within(menu).getByText("Digestive health procedures");
-    expect(desc.className).toContain("truncate");
+    expect(desc.className).toContain("line-clamp-2");
+    expect(desc.className).not.toContain("truncate");
   });
 
   it("klavye: Enter ile açılır, oklarla gezilir, Esc kapatır ve odak tetikleyiciye döner", async () => {
@@ -221,6 +222,7 @@ describe("header — düğmeler ve mobil akordeon", () => {
 
   function renderHeader(extra: Partial<Parameters<typeof SiteHeader>[0]> = {}) {
     return render(
+      <div className="site-scope">
       <SiteHeader
         settings={settings}
         pages={[]}
@@ -232,6 +234,7 @@ describe("header — düğmeler ve mobil akordeon", () => {
         navSpecialties={SPECIALTIES}
         {...extra}
       />
+      </div>
     );
   }
 
@@ -280,6 +283,11 @@ describe("header — düğmeler ve mobil akordeon", () => {
     expect(find).toHaveAttribute("href", "/find-your-treatment");
     expect(book).toHaveAttribute("href", "/request");
     expect(book).toHaveTextContent("Book a consultation");
+    // Sheet portal'ı .site-scope içinde: --site-button/--site-primary değişkenleri kaybolmaz.
+    expect(find.closest(".site-scope")).not.toBeNull();
+    expect(book.closest(".site-scope")).not.toBeNull();
+    expect(book.className).toContain("bg-[var(--site-button)]");
+    expect(find.className).toContain("border-[var(--site-primary");
     const panel = find.parentElement!;
     expect(panel.firstElementChild).toBe(find);
     expect(find.nextElementSibling).toBe(book);
