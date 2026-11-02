@@ -65,6 +65,7 @@ vi.mock("@/lib/api/matcher", async (importOriginal) => {
 import { MATCHER_DICTIONARIES } from "@/lib/i18n/use-matcher-strings";
 import { matcherStrings as en } from "@/lib/i18n/matcher-dictionaries/en";
 import { PhysicianMatcher } from "@/components/site/matcher/physician-matcher";
+import { ServiceBookingProvider } from "@/components/site/service-booking/service-booking-context";
 import { bookingHref, emergencyNumberFor, searchTopics, topicsInText } from "@/components/site/matcher/matcher-helpers";
 
 const topic = (id: string, slug: string, label: string, synonyms: string[], bodyArea: MatcherTopic["bodyArea"] = "abdomen", isRedFlag = false): MatcherTopic => ({ id, slug, label, synonyms, bodyArea, isRedFlag, description: "" });
@@ -266,6 +267,51 @@ describe("sihirbaz akışı", () => {
     const tracked = JSON.stringify(track.mock.calls);
     expect(tracked).not.toMatch(/Ayşe|yanma|reflux|mide/i);
     expect(track.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(["matcher_start", "matcher_step", "matcher_result"]));
+  });
+
+  describe("AI İş 3 — rezervasyon açıkken sonuç düğmeleri", () => {
+    function ui() {
+      return (
+        <ServiceBookingProvider enabled callbackLabel="Request a call back" bookLabel="Book an online consultation">
+          <PhysicianMatcher mode="page" />
+        </ServiceBookingProvider>
+      );
+    }
+
+    async function reachResults(user: ReturnType<typeof userEvent.setup>, rerender: (ui: React.ReactElement) => void) {
+      nav.params = new URLSearchParams("step=1");
+      await chooseReflux(user);
+      await user.click(screen.getByTestId("matcher-continue"));
+      rerender(ui());
+      await user.click(await screen.findByLabelText("1–6 ay"));
+      await user.click(screen.getByLabelText("Hayır"));
+      await user.click(screen.getByTestId("matcher-continue"));
+      rerender(ui());
+      await user.click(await screen.findByLabelText("Farketmez"));
+      await user.click(screen.getByTestId("matcher-continue"));
+      await waitFor(() => expect(nav.params.get("step")).toBe("5"));
+      rerender(ui());
+      return screen.findByTestId("matcher-specialty-card");
+    }
+
+    it("Book → /book-consultation?service=…; ikincil düğme 'Request a call back' → /request?service=…", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(ui());
+      const card = await reachResults(user, rerender);
+      expect(within(card).getByTestId("matcher-book-online")).toHaveAttribute("href", "/tr/book-consultation?service=gastroenterology");
+      const request = within(card).getByTestId("matcher-request");
+      expect(request).toHaveAttribute("href", "/tr/request?service=gastroenterology");
+      expect(request).toHaveTextContent("Request a call back");
+    });
+
+    it("kırmızı bayrak görüldüyse rezervasyon düğmesi YOK; yalnızca talep bağlantısı kalır", async () => {
+      api.rec = { ...REC, redFlag: true };
+      const user = userEvent.setup();
+      const { rerender } = render(ui());
+      const card = await reachResults(user, rerender);
+      expect(within(card).queryByTestId("matcher-book-online")).toBeNull();
+      expect(within(card).getByTestId("matcher-request")).toHaveAttribute("href", "/tr/request?service=gastroenterology");
+    });
   });
 
   it("bölüm önerisi yoksa koordinatör yolu ve genel talep bağlantısı (hekim kartı hiç çizilmez)", async () => {

@@ -17,7 +17,16 @@ import type { NavigationItemDto, SiteSettings } from "@/lib/api/types";
  * koordinatör bandı, `request.ts`/`nav.ts`/`home.ts`/`services.ts`/`intermediary.ts`) FE_A_PENDING listesindedir;
  * orkestratör FE-A dosyalarını düzelttikten sonra liste boşaltılır ve test katılaşır.
  */
-const mocks = vi.hoisted(() => ({ settings: vi.fn(), pages: vi.fn(), locales: vi.fn(), specialty: vi.fn(), specialties: vi.fn(), module: vi.fn(), theme: vi.fn() }));
+const mocks = vi.hoisted(() => ({ settings: vi.fn(), pages: vi.fn(), locales: vi.fn(), specialty: vi.fn(), specialties: vi.fn(), module: vi.fn(), theme: vi.fn(), booking: vi.fn() }));
+vi.mock("@/lib/api/server-service-consultations", () => ({
+  fetchServiceConsultationConfigServer: () => mocks.booking(),
+  isServiceBookingEnabledServer: async () => (await mocks.booking())?.enabled === true,
+}));
+vi.mock("@/lib/api/service-consultations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/service-consultations")>()),
+  getServiceConsultationSlots: async () => [],
+}));
+vi.mock("@/lib/api/geo", () => ({ getGeoHint: async () => null }));
 
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -111,10 +120,85 @@ beforeEach(() => {
   mocks.settings.mockReset().mockResolvedValue({ siteName: "WM Health", healthTourismCertificateNo: null });
   mocks.pages.mockReset().mockResolvedValue([]);
   mocks.module.mockReset().mockResolvedValue(true);
+  mocks.booking.mockReset().mockResolvedValue(null);
   mocks.theme.mockReset().mockResolvedValue({ emergencyNotice: { enabled: false, summary: {}, full: {} } });
   const spec = (over: Record<string, unknown>) => ({ id: over.slug, name: String(over.slug), icon: "Stethoscope", description: null, order: 0, isActive: true, parentId: null, imageUrl: null, ...over });
   mocks.specialty.mockReset().mockResolvedValue({ ...spec({ slug: "esd", name: "ESD" }), doctorCount: 4, children: [] });
   mocks.specialties.mockReset().mockResolvedValue([spec({ slug: "gastroenterology", name: "Gastroenterology" }), spec({ slug: "esd", name: "ESD", parentId: "gastroenterology" })]);
+});
+
+describe("AI İş 3 — rezervasyon sayfaları (hasta koordinatörü, hekim yok)", () => {
+  const params = () => ({ params: Promise.resolve({ lang: "en" }) });
+  const ON = { enabled: true, timeZone: "Europe/Istanbul", durationMin: 30, minNoticeMin: 120, horizonDays: 30 };
+
+  it("rezervasyon sayfası (açık): sihirbaz iskeleti, başlık ve rozetler", async () => {
+    mocks.booking.mockResolvedValue(ON);
+    const { default: BookConsultationPage } = await import("@/app/[lang]/(site)/book-consultation/page");
+    const { container } = render(await BookConsultationPage({ ...params(), searchParams: Promise.resolve({ service: "esd" }) }));
+    const text = visibleText(container);
+    expect(text).toContain("Book an online consultation");
+    expect(text).toContain("30-minute video consultation with a patient coordinator");
+    expect(text).toContain("Free of charge");
+    expect(text).toContain("This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.");
+    expect(findDoctorPhrases(text)).toEqual([]);
+  });
+
+  it.each(["ar", "de", "ru", "fr", "es", "ro", "sr-latn"])("rezervasyon sayfası %s: dil sözlüğüyle çizilir, hekim ima eden sözcük yok; Arapçada dir=rtl", async (lang) => {
+    mocks.booking.mockResolvedValue(ON);
+    const { impliesDoctor } = await import("@/lib/intermediary");
+    const { default: BookConsultationPage } = await import("@/app/[lang]/(site)/book-consultation/page");
+    const dict = await getSiteDictionary(lang);
+    const { container, getByTestId } = render(await BookConsultationPage({ params: Promise.resolve({ lang }), searchParams: Promise.resolve({}) }));
+    expect(container.textContent).toContain(dict.serviceBooking.pageTitle);
+    expect(getByTestId("book-consultation-page")).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+    // Zorunlu tıbbi karar beyanı (izinli beyanın çevirisi) her dilde serbesttir.
+    const hits = visibleText(container).split(String.fromCharCode(10)).map((line) => line.replaceAll(dict.serviceBooking.medicalNote, "")).filter((line) => impliesDoctor(line));
+    expect(hits.map((h) => h.slice(0, 80)), lang).toEqual([]);
+  });
+
+  it("rezervasyon sayfası (kapalı): talep formuna yönlendiren bilgi kartı", async () => {
+    const { default: BookConsultationPage } = await import("@/app/[lang]/(site)/book-consultation/page");
+    const { container, getByTestId } = render(await BookConsultationPage({ ...params(), searchParams: Promise.resolve({ service: "esd" }) }));
+    expect(getByTestId("service-booking-callback-cta")).toHaveAttribute("href", "/request?service=esd");
+    expect(findDoctorPhrases(visibleText(container))).toEqual([]);
+  });
+
+  it("yönetim sayfası ve talep sayfası (rezervasyon açıkken H1 'Request a call back' + 'Book a consultation' bağlantısı)", async () => {
+    mocks.booking.mockResolvedValue(ON);
+    const { default: ManagePage } = await import("@/app/[lang]/(site)/book-consultation/manage/page");
+    const manage = render(await ManagePage(params()));
+    expect(findDoctorPhrases(visibleText(manage.container))).toEqual([]);
+    manage.unmount();
+    const request = render(await RequestPage({ params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve({ service: "esd" }) }));
+    expect(request.getByRole("heading", { level: 1 })).toHaveTextContent("Request a call back");
+    expect(request.getByTestId("request-pick-time-link")).toHaveAttribute("href", "/book-consultation?service=esd");
+    expect(request.getByTestId("request-pick-time")).toHaveTextContent("Prefer to pick a time?");
+    expect(findDoctorPhrases(visibleText(request.container))).toEqual([]);
+  });
+
+  it("talep sayfası (kapalı): AJ-7 hâli — H1 'Book a consultation', seçim bağlantısı yok", async () => {
+    const request = render(await RequestPage({ params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve({}) }));
+    expect(request.getByRole("heading", { level: 1 })).toHaveTextContent("Book a consultation");
+    expect(request.queryByTestId("request-pick-time")).not.toBeInTheDocument();
+  });
+
+  it("bölüm sayfası ve hizmet listesi: açıkken Book → /book-consultation, ikincil → Request a call back", async () => {
+    mocks.booking.mockResolvedValue(ON);
+    const { default: SpecialtyDetailPage } = await import("@/app/[lang]/(site)/specialties/[slug]/page");
+    const detail = render(await SpecialtyDetailPage({ params: Promise.resolve({ lang: "en", slug: "esd" }) }));
+    expect(detail.getByTestId("specialty-book-cta")).toHaveAttribute("href", "/book-consultation?service=esd");
+    expect(detail.getByTestId("specialty-request-cta")).toHaveAttribute("href", "/request?service=esd");
+    expect(detail.getByTestId("specialty-request-cta")).toHaveTextContent("Request a call back");
+    detail.unmount();
+    const list = render(await SpecialtiesPage({ ...params(), searchParams: Promise.resolve({}) } as never));
+    const [book] = list.getAllByTestId("service-card-book");
+    expect(book).toHaveAttribute("href", expect.stringContaining("/book-consultation?service="));
+    expect(list.getAllByTestId("service-card-request")[0]).toHaveTextContent("Request a call back");
+    list.unmount();
+    mocks.booking.mockResolvedValue(null);
+    const closed = render(await SpecialtiesPage({ ...params(), searchParams: Promise.resolve({}) } as never));
+    expect(closed.getAllByTestId("service-card-book")[0]).toHaveAttribute("href", expect.stringContaining("/request?service="));
+  });
 });
 
 describe("Tarama yardımcısı", () => {

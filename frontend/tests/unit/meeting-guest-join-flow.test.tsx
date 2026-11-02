@@ -344,3 +344,52 @@ describe("dil ve yön", () => {
     expect(screen.getByTestId("guest-join")).toHaveTextContent("انضمام");
   });
 });
+
+describe("AI İş 3 — hizmet görüşmesi amacı (purpose=service_consultation)", () => {
+  const servicePreflight = () => ({ ...openPreflight(), title: "WM Health online consultation", hostName: "Patient Coordinator · Ayşe K.", purpose: "service_consultation" as const });
+
+  it("amaç başlığı, aracı kuruluş ibaresi ve 'tıbbi muayene değildir' notu gösterilir; koordinatör adı ev sahibi satırındadır", async () => {
+    harness.localeCode = "en";
+    guestPreflight.mockResolvedValue(servicePreflight());
+    await renderFlow();
+    expect(await screen.findByRole("heading", { name: "Online consultation with your WM Health patient coordinator" })).toBeInTheDocument();
+    const notes = screen.getByTestId("guest-purpose-notes");
+    expect(notes).toHaveTextContent("WM Health is a health tourism intermediary, not a healthcare provider.");
+    expect(notes).toHaveTextContent("This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.");
+    expect(screen.getByText(/Patient Coordinator · Ayşe K\./)).toBeInTheDocument();
+  });
+
+  it("bekleme ekranı koordinatörün alacağını söyler", async () => {
+    harness.localeCode = "en";
+    guestPreflight.mockResolvedValue(servicePreflight());
+    guestJoin.mockResolvedValue({ status: "waiting", guestSession: "gs_v1.s", pollAfterSec: 5 });
+    await renderFlow();
+    fireEvent.change(await screen.findByLabelText(/Your name/), { target: { value: "Jane Roe" } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("guest-join"));
+    });
+    expect(await screen.findByTestId("guest-waiting")).toHaveTextContent("Your coordinator will admit you shortly");
+    expect(screen.getByTestId("guest-purpose-notice-waiting")).toHaveTextContent("This is not a medical examination");
+  });
+
+  it("genel toplantıda (purpose yok / general) amaç metinleri görünmez", async () => {
+    harness.localeCode = "en";
+    guestPreflight.mockResolvedValue({ ...openPreflight(), purpose: "general" as const });
+    await renderFlow();
+    await screen.findByTestId("guest-name-form");
+    expect(screen.queryByTestId("guest-purpose-notes")).not.toBeInTheDocument();
+    expect(screen.queryByText(/patient coordinator/i)).not.toBeInTheDocument();
+  });
+
+  it.each(["Patient Coordinator", "patient coordinator Ayşe", "Coordinator", "  COORDINATOR Mehmet"])("misafir adı %j reddedilir; API çağrılmaz", async (name) => {
+    harness.localeCode = "en";
+    guestPreflight.mockResolvedValue(servicePreflight());
+    await renderFlow();
+    fireEvent.change(await screen.findByLabelText(/Your name/), { target: { value: name } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("guest-join"));
+    });
+    expect(guestJoin).not.toHaveBeenCalled();
+    expect(await screen.findByText("This name is not allowed. Please choose another one.")).toBeInTheDocument();
+  });
+});
