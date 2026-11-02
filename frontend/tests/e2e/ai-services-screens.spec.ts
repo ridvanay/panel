@@ -23,8 +23,8 @@ test.describe.configure({ mode: "serial" });
 
 const OUT = path.resolve(__dirname, "../../../docs/prompts/2026-11-02-AI-ekran");
 const LANGS = [
-  { code: "en", prefix: "", topic: /Obesity \/ weight/i, redFlagQuery: "chest pain" },
-  { code: "ar", prefix: "/ar", topic: /./, redFlagQuery: "chest pain" },
+  { code: "en", prefix: "", topic: /Obesity \/ weight/i, noMatch: /Dizziness/i, redFlagQuery: "chest pain" },
+  { code: "ar", prefix: "/ar", topic: /./, noMatch: /./, redFlagQuery: "chest pain" },
 ] as const;
 const DEVICES = [
   { name: "masaustu", width: 1440, height: 900 },
@@ -124,6 +124,17 @@ for (const lang of LANGS) {
         await walkWizardToResult(page);
         await expect(page.getByTestId("matcher-specialty-card").first()).toBeVisible();
         await shot(page, `${prefix}-04-find-your-treatment-sonuc`, true);
+      });
+
+      test("06 Find your treatment eşleşme yok", async ({ page }) => {
+        test.skip(device.name !== "masaustu", "yalnızca masaüstü");
+        test.setTimeout(120_000);
+        await page.goto(`${lang.prefix}/find-your-treatment`);
+        await expect(page.getByTestId("physician-matcher")).toBeVisible();
+        await pickTopicBySearch(page, "dizziness", lang.noMatch);
+        await walkWizardToResult(page);
+        await expect(page.getByTestId("matcher-no-match")).toBeVisible();
+        await shot(page, `${prefix}-06-find-your-treatment-eslesme-yok`, true);
       });
 
       test("05 Find your treatment kırmızı bayrak", async ({ page }) => {

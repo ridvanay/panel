@@ -254,6 +254,63 @@ test.describe("Mobil (390)", () => {
   });
 });
 
+test.describe("Mega menü — 1024x768 ölçüm ve açıklama satırları", () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
+  for (const [label, path] of [["EN", "/"], ["AR", "/ar"]] as const) {
+    test(`${label}: yükseklik ≤ 520, açıklamalar en çok 2 satır ve kırpılmıyor, viewport'a sığar`, async ({ page }, testInfo) => {
+      await openMegaMenu(page, path);
+      const h = await settledMenuHeight(page);
+      testInfo.annotations.push({ type: `menu-height-${label}-1024`, description: String(h) });
+      console.log(`[AI] mega menü yüksekliği ${label} 1024x768: ${h}px`);
+      expect(h).toBeLessThanOrEqual(520);
+      const box = (await page.getByTestId("services-mega-menu").boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(1024);
+      expect(box.y + box.height).toBeLessThanOrEqual(768);
+      const lines = await page.getByTestId("services-item").evaluateAll((els) =>
+        els.map((el) => {
+          const d = el.querySelector("a > span:nth-of-type(2) > span:nth-of-type(2)") as HTMLElement | null;
+          if (!d) return { lines: 0, clipped: false };
+          const lh = parseFloat(getComputedStyle(d).lineHeight);
+          return { lines: Math.round(d.getBoundingClientRect().height / lh), clipped: d.scrollHeight - d.clientHeight > 1 };
+        })
+      );
+      console.log(`[AI] ${label} 1024 açıklama satırları: ${lines.map((l) => l.lines).join(",")}`);
+      expect(lines.every((l) => l.lines >= 1 && l.lines <= 2)).toBe(true);
+      const overflow = await page.getByTestId("services-mega-groups").evaluate((el) => el.scrollHeight - el.clientHeight);
+      expect(overflow).toBeLessThanOrEqual(1);
+    });
+  }
+});
+
+test.describe("Mobil menü — site renkleri", () => {
+  test("'Book a consultation' dolgulu, 'Find your treatment' çerçevesi masaüstü header ile aynı site renginde", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    const desk = await page.evaluate(() => {
+      const f = getComputedStyle(document.querySelector('[data-testid="header-find-treatment"]')!);
+      const b = getComputedStyle(document.querySelector('[data-testid="header-book-consultation"]')!);
+      return { findBorder: f.borderTopColor, findText: f.color, bookBg: b.backgroundColor, bookText: b.color };
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await page.getByRole("button", { name: /menu/i }).first().click();
+    await expect(page.getByTestId("mobile-menu-book-consultation")).toBeVisible();
+    const mob = await page.evaluate(() => {
+      const f = getComputedStyle(document.querySelector('[data-testid="mobile-menu-find-treatment"]')!);
+      const b = getComputedStyle(document.querySelector('[data-testid="mobile-menu-book-consultation"]')!);
+      return { findBorder: f.borderTopColor, findText: f.color, bookBg: b.backgroundColor, bookText: b.color };
+    });
+    console.log(`[AI] masaüstü ${JSON.stringify(desk)}\n[AI] mobil ${JSON.stringify(mob)}`);
+    expect(mob.bookBg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(mob.bookBg).toBe(desk.bookBg);
+    expect(mob.bookText).toBe(desk.bookText);
+    expect(mob.findBorder).toBe(desk.findBorder);
+    expect(mob.findText).toBe(desk.findText);
+  });
+});
+
 test.describe("/specialties — Health Tourism Services sayfası", () => {
   test("süreç şeridi (6 adım), gruplu bölümler, kartlarda Book/Request bağlantıları, çipler; Specialist/Türkçe yok", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
