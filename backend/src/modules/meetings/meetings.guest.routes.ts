@@ -18,7 +18,7 @@ import {
 import { GUEST_TOKEN_REGEX, issueGuestSession, verifyGuestSession, verifyGuestToken } from "./meeting-tokens";
 import { normalizeGuestName } from "./meeting-guest-name";
 import { GuestJoinRequestSchema, GuestJoinResponseSchema, GuestPreflightRequestSchema, GuestPreflightResponseSchema } from "./meetings.schemas";
-import { MAX_GUEST_SESSIONS_PER_MEETING, hostDisplayName, meetingOpensAt } from "./meetings.service";
+import { MAX_GUEST_SESSIONS_PER_MEETING, hostDisplayName, meetingOpensAt, serviceCoordinatorLabel } from "./meetings.service";
 
 const POLL_AFTER_SEC = 5;
 
@@ -54,6 +54,8 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
             doctorProfile: { select: { fullName: true, publicName: true, isFounder: true } },
           },
         },
+        // AI İş 3: hizmet görüşmesine bağlıysa ev sahibi adı "Patient Coordinator · <displayName>" olur.
+        serviceConsultation: { select: { coordinator: { select: { displayName: true } } } },
       },
     });
     // Bulunan kayıtta ayrıca sabit zamanlı özet doğrulaması; bulunamayınca sahte karşılaştırma (süre dengesi).
@@ -75,7 +77,8 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       return reply.send(
         ok({
           title: meeting.title,
-          hostName: hostDisplayName(meeting.host),
+          hostName: meeting.serviceConsultation ? serviceCoordinatorLabel(meeting.serviceConsultation.coordinator.displayName) : hostDisplayName(meeting.host),
+          purpose: meeting.serviceConsultation ? ("service_consultation" as const) : ("general" as const),
           startsAt: meeting.startsAt.toISOString(),
           endsAt: meeting.endsAt.toISOString(),
           phase: Date.now() < meetingOpensAt(meeting).getTime() ? ("upcoming" as const) : ("open" as const),

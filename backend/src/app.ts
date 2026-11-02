@@ -94,6 +94,7 @@ import { registerAdminNotificationSweeper } from "./modules/telehealth/lib/admin
 import { registerAppointmentAutoCloseSweeper } from "./lib/appointment-auto-close";
 import { registerQaListenerSweeper } from "./modules/telehealth/lib/qa-listener-sweeper";
 import { registerMeetingSweeper } from "./modules/telehealth/lib/meeting-sweeper";
+import { externalMeetingsEnabled } from "./lib/feature-flags";
 import { meetingsRoutes } from "./modules/meetings/meetings.routes";
 import { meetingsGuestRoutes } from "./modules/meetings/meetings.guest.routes";
 import { adminMeetingsRoutes } from "./modules/meetings/meetings.admin.routes";
@@ -327,9 +328,13 @@ export function buildApp() {
       // Paket AG (İş 3) — randevudan BAĞIMSIZ harici görüntülü toplantı: ev sahibi (/meetings), herkese açık
       // misafir (/meet/guest, belirteçli) ve ADMIN gözetimi (/admin/meetings). `telehealth.livekit.routes.ts`'e
       // DOKUNULMAZ; ayrı token üreticisi `telehealth/lib/meeting-livekit.ts`. Üçü de `requireModuleEnabled("telehealth")` taşır.
-      api.register(meetingsRoutes, { prefix: "/meetings" });
+      // AI İş 3 (hızlı sürüm): genel harici toplantı özelliği KAPALI (lib/feature-flags.ts) — ev sahibi ve ADMIN
+      // uçları kaydedilmez. Misafir uçları hizmet görüşmesindeki hasta katılımı için HER ZAMAN kayıtlıdır.
+      if (externalMeetingsEnabled()) {
+        api.register(meetingsRoutes, { prefix: "/meetings" });
+        api.register(adminMeetingsRoutes, { prefix: "/admin/meetings" });
+      }
       api.register(meetingsGuestRoutes, { prefix: "/meet/guest" });
-      api.register(adminMeetingsRoutes, { prefix: "/admin/meetings" });
       // §9.7.1/§9.7.9/§9.7.10 (bağlayıcı) — Stripe Checkout oturumu, integration-agent'ın AYRI
       // dosyası (`telehealth.checkout.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI). Aynı
       // public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +

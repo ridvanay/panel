@@ -8,7 +8,8 @@
  */
 const FORBIDDEN_CODE_POINTS = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}]/u;
 const ALLOWED = /^[\p{L}\p{M}][\p{L}\p{M}\p{Nd} .'’-]{1,39}$/u;
-const RESERVED_PREFIXES = ["meet-", "doctor:", "patient:", "interpreter:", "qa-listener-"];
+// "patient coordinator" / "coordinator": hasta koordinatörü etiketi taklit edilemez (AI İş 3).
+const RESERVED_PREFIXES = ["meet-", "doctor:", "patient:", "interpreter:", "qa-listener-", "patient coordinator", "coordinator"];
 
 export type GuestNameResult = { ok: true; name: string } | { ok: false; reason: string };
 

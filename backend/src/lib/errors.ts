@@ -183,7 +183,16 @@ export type ApiErrorCode =
   | "MEETING_NOT_OPEN"
   | "MEETING_FULL"
   | "MEETING_NOT_EDITABLE"
-  | "MEETING_LIMIT_REACHED";
+  | "MEETING_LIMIT_REACHED"
+  | "MEETING_MANAGED_BY_SERVICE_DESK"
+  | "SERVICE_NOT_BOOKABLE"
+  | "SERVICE_CONSULTATION_LIMIT"
+  | "CONSULTATION_NOT_CHANGEABLE"
+  | "PAID_CONSULTATIONS_DISABLED"
+  | "COORDINATOR_NOT_ELIGIBLE"
+  | "COORDINATOR_HAS_UPCOMING_CONSULTATIONS"
+  | "CLOSURE_HAS_CONSULTATIONS"
+  | "SERVICE_COORDINATOR_FORBIDDEN";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -694,5 +703,68 @@ export class MeetingNotEditableError extends ApiError {
 export class MeetingLimitReachedError extends ApiError {
   constructor(message = "Toplantı veya davet sınırı aşıldı.") {
     super(409, "MEETING_LIMIT_REACHED", message);
+  }
+}
+
+/** Paket AI (İş 3) — hizmet masası hizmeti rezerve edilemiyor (anahtar kapalı, masa/saat/koordinatör yok, hizmet pasif). 404. */
+export class ServiceNotBookableError extends ApiError {
+  constructor(message = "This service cannot be booked online right now.") {
+    super(404, "SERVICE_NOT_BOOKABLE", message);
+  }
+}
+
+/** Paket AI (İş 3) — aynı e-postaya ait gelecek görüşme sınırı (2) aşıldı. 409. */
+export class ServiceConsultationLimitError extends ApiError {
+  constructor(message = "You already have the maximum number of upcoming consultations.") {
+    super(409, "SERVICE_CONSULTATION_LIMIT", message);
+  }
+}
+
+/** Paket AI (İş 3) — görüşme iptal/değişiklik penceresinde değil, iptal edilmiş veya değişiklik sınırı dolu. 409. */
+export class ConsultationNotChangeableError extends ApiError {
+  constructor(message = "This consultation can no longer be changed.") {
+    super(409, "CONSULTATION_NOT_CHANGEABLE", message);
+  }
+}
+
+/** Paket AI (İş 3) — ücretli görüşme bu sürümde kapalı. 422. */
+export class PaidConsultationsDisabledError extends ApiError {
+  constructor(message = "Paid consultations are not available yet.") {
+    super(422, "PAID_CONSULTATIONS_DISABLED", message);
+  }
+}
+
+/** Paket AI (İş 3) — kullanıcı koordinatör olamaz (doktor profili var, pasif, rolü uygun değil). 422. */
+export class CoordinatorNotEligibleError extends ApiError {
+  constructor(message = "Bu kullanıcı koordinatör olamaz.") {
+    super(422, "COORDINATOR_NOT_ELIGIBLE", message);
+  }
+}
+
+/** Paket AI (İş 3) — koordinatörün gelecek görüşmeleri varken pasifleştirme. 409; `details.count`. */
+export class CoordinatorHasUpcomingConsultationsError extends ApiError {
+  constructor(count: number) {
+    super(409, "COORDINATOR_HAS_UPCOMING_CONSULTATIONS", `Önce ${count} görüşmeyi iptal edin; koordinatörün gelecek görüşmeleri var.`, { count: [String(count)] });
+  }
+}
+
+/** Paket AI (İş 3) — tatil günü eklenirken o günde SCHEDULED görüşme var. 409; `details.count`. */
+export class ClosureHasConsultationsError extends ApiError {
+  constructor(count: number) {
+    super(409, "CLOSURE_HAS_CONSULTATIONS", `Bu günde ${count} planlı görüşme var; önce iptal edin.`, { count: [String(count)] });
+  }
+}
+
+/** Paket AI (İş 3) — hizmete bağlı toplantı AG uçlarından yönetilemez (zaman/iptal/bağlantı yalnızca hizmet masasından). 409. */
+export class MeetingManagedByServiceDeskError extends ApiError {
+  constructor(message = "Bu toplantı hizmet masası tarafından yönetiliyor.") {
+    super(409, "MEETING_MANAGED_BY_SERVICE_DESK", message);
+  }
+}
+
+/** Paket AI (İş 3) — kullanıcı aktif koordinatör değil. 403. */
+export class ServiceCoordinatorForbiddenError extends ApiError {
+  constructor(message = "Bu işlem için aktif koordinatör olmanız gerekir.") {
+    super(403, "SERVICE_COORDINATOR_FORBIDDEN", message);
   }
 }

@@ -52,6 +52,7 @@ import {
   cancelMeeting,
   computePhase,
   encodeMeetingCursor,
+  loadOwnManageableMeeting,
   loadOwnMeeting,
   meetingOpensAt,
   requireMeetingHost,
@@ -130,7 +131,8 @@ export async function meetingsRoutes(app: FastifyInstance) {
 
       const { token, hash } = generateGuestToken();
       const meeting = await runSerializable(app, async (tx) => {
-        const upcoming = await tx.externalMeeting.count({ where: { hostUserId: host.id, status: "SCHEDULED", endsAt: { gt: now } } });
+        // Hizmet masası görüşmeleri bu sınıra sayılmaz (yoğun koordinatör kilitlenmesin).
+        const upcoming = await tx.externalMeeting.count({ where: { hostUserId: host.id, status: "SCHEDULED", endsAt: { gt: now }, serviceConsultation: null } });
         if (upcoming >= MAX_FUTURE_MEETINGS_PER_HOST) {
           throw new MeetingLimitReachedError(`En çok ${MAX_FUTURE_MEETINGS_PER_HOST} gelecek toplantınız olabilir.`);
         }
@@ -191,7 +193,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
     { schema: { params: MeetingIdParamSchema, body: UpdateMeetingRequestSchema, response: { 200: ApiSuccessSchema(MeetingSchema) } } },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
-      const meeting = await loadOwnMeeting(app, request.params.id, host.id);
+      const meeting = await loadOwnManageableMeeting(app, request.params.id, host.id);
       const now = new Date();
       const phase = computePhase(meeting, now);
       if (phase === "cancelled" || phase === "ended") throw new MeetingNotEditableError();
@@ -242,7 +244,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
-      const meeting = await loadOwnMeeting(app, request.params.id, host.id);
+      const meeting = await loadOwnManageableMeeting(app, request.params.id, host.id);
       const phase = computePhase(meeting);
       if (phase === "cancelled" || phase === "ended") throw new MeetingNotEditableError();
 
@@ -267,7 +269,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
     { schema: { params: MeetingIdParamSchema, response: { 204: z.undefined() } } },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
-      const meeting = await loadOwnMeeting(app, request.params.id, host.id);
+      const meeting = await loadOwnManageableMeeting(app, request.params.id, host.id);
       await app.prisma.externalMeeting.update({ where: { id: meeting.id }, data: { guestTokenHash: null, guestTokenCreatedAt: null }, select: { id: true } });
       await logAudit(app, {
         actorId: host.id,
@@ -287,7 +289,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
     { schema: { params: MeetingIdParamSchema, response: { 200: ApiSuccessSchema(MeetingSchema) } } },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
-      const meeting = await loadOwnMeeting(app, request.params.id, host.id);
+      const meeting = await loadOwnManageableMeeting(app, request.params.id, host.id);
       if (meeting.status !== "CANCELLED" && computePhase(meeting) === "ended") throw new MeetingNotEditableError("Biten bir toplantı iptal edilemez.");
       const updated = await cancelMeeting(app, meeting, { actorId: host.id, actorEmail: host.email, ipAddress: request.ip, source: "host" });
       return reply.send(ok(toMeetingDto(updated)));
@@ -412,7 +414,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
-      const meeting = await loadOwnMeeting(app, request.params.id, host.id);
+      const meeting = await loadOwnManageableMeeting(app, request.params.id, host.id);
       const phase = computePhase(meeting);
       if (phase === "cancelled" || phase === "ended") throw new MeetingNotEditableError();
 

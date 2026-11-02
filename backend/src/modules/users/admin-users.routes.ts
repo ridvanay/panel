@@ -30,6 +30,7 @@ import { sendPasswordResetEmail } from "../email-templates/email-templates.servi
 import { logAudit } from "../../lib/audit";
 import { env } from "../../config/env";
 import { runSerializable } from "../../lib/serializable-tx";
+import { externalMeetingsEnabled } from "../../lib/feature-flags";
 import { isMeetingHostEligible } from "../../lib/meeting-host";
 import { kickAllMeetingParticipants } from "../telehealth/lib/meeting-livekit";
 import { decryptSecret } from "../../lib/crypto";
@@ -293,91 +294,94 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     }
   );
 
-  /**
-   * Paket AG (İş 3) — "harici toplantı oluşturabilir" yetkisi ver / geri al. ADMIN her zaman yetkilidir (no-op).
-   * Uygunluk: panel rolü (ADMIN/MANAGER/EDITOR) veya doktor profiline bağlı kullanıcı; aksi 422. Geri almada
-   * (S3) kullanıcının gelecekteki toplantıları AYNI işlemde iptal edilir; açık odaları süpürücü boşaltır.
-   */
-  server.patch(
-    "/:userId/meeting-host",
-    {
-      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
-      schema: {
-        params: AdminUserIdParamSchema,
-        body: UpdateAdminUserMeetingHostRequestSchema,
-        response: { 200: ApiSuccessSchema(AdminUserSchema) },
+  // AI İş 3 (hızlı sürüm): genel harici toplantı özelliği kapalıyken bu uç KAYDEDİLMEZ (lib/feature-flags.ts).
+  if (externalMeetingsEnabled()) {
+    /**
+     * Paket AG (İş 3) — "harici toplantı oluşturabilir" yetkisi ver / geri al. ADMIN her zaman yetkilidir (no-op).
+     * Uygunluk: panel rolü (ADMIN/MANAGER/EDITOR) veya doktor profiline bağlı kullanıcı; aksi 422. Geri almada
+     * (S3) kullanıcının gelecekteki toplantıları AYNI işlemde iptal edilir; açık odaları süpürücü boşaltır.
+     */
+    server.patch(
+      "/:userId/meeting-host",
+      {
+        config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
+        schema: {
+          params: AdminUserIdParamSchema,
+          body: UpdateAdminUserMeetingHostRequestSchema,
+          response: { 200: ApiSuccessSchema(AdminUserSchema) },
+        },
       },
-    },
-    async (request, reply) => {
-      const { enabled } = request.body;
-      const now = new Date();
-      let from = false;
-      let cancelledMeetingIds: string[] = [];
-      let cancelledRooms: string[] = [];
+      async (request, reply) => {
+        const { enabled } = request.body;
+        const now = new Date();
+        let from = false;
+        let cancelledMeetingIds: string[] = [];
+        let cancelledRooms: string[] = [];
 
-      const user = await runSerializable(app, async (tx) => {
-        const target = await tx.user.findUnique({ where: { id: request.params.userId }, include: { doctorProfile: { select: { id: true } } } });
-        if (!target || target.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
-        from = target.meetingHostGrantedAt !== null;
-        // ADMIN zaten her zaman yetkili: alan değişmez.
-        if (target.role === "ADMIN" || from === enabled) return target;
-        if (enabled && !isMeetingHostEligible(target)) throw new MeetingHostNotEligibleError();
+        const user = await runSerializable(app, async (tx) => {
+          const target = await tx.user.findUnique({ where: { id: request.params.userId }, include: { doctorProfile: { select: { id: true } } } });
+          if (!target || target.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
+          from = target.meetingHostGrantedAt !== null;
+          // ADMIN zaten her zaman yetkili: alan değişmez.
+          if (target.role === "ADMIN" || from === enabled) return target;
+          if (enabled && !isMeetingHostEligible(target)) throw new MeetingHostNotEligibleError();
 
-        if (!enabled) {
-          const upcoming = await tx.externalMeeting.findMany({
-            where: { hostUserId: target.id, status: "SCHEDULED", endsAt: { gt: now } },
-            select: { id: true, roomName: true },
-          });
-          cancelledMeetingIds = upcoming.map((m) => m.id);
-          cancelledRooms = upcoming.map((m) => m.roomName);
-          if (cancelledMeetingIds.length > 0) {
-            await tx.externalMeeting.updateMany({
-              where: { id: { in: cancelledMeetingIds } },
-              data: { status: "CANCELLED", cancelledAt: now, cancelledById: request.user!.id, guestTokenHash: null, guestTokenCreatedAt: null },
+          if (!enabled) {
+            const upcoming = await tx.externalMeeting.findMany({
+              where: { hostUserId: target.id, status: "SCHEDULED", endsAt: { gt: now }, serviceConsultation: null },
+              select: { id: true, roomName: true },
             });
+            cancelledMeetingIds = upcoming.map((m) => m.id);
+            cancelledRooms = upcoming.map((m) => m.roomName);
+            if (cancelledMeetingIds.length > 0) {
+              await tx.externalMeeting.updateMany({
+                where: { id: { in: cancelledMeetingIds } },
+                data: { status: "CANCELLED", cancelledAt: now, cancelledById: request.user!.id, guestTokenHash: null, guestTokenCreatedAt: null },
+              });
+            }
           }
-        }
-        return tx.user.update({
-          where: { id: target.id },
-          data: enabled ? { meetingHostGrantedAt: now, meetingHostGrantedById: request.user!.id } : { meetingHostGrantedAt: null, meetingHostGrantedById: null },
-          include: { doctorProfile: { select: { id: true } } },
+          return tx.user.update({
+            where: { id: target.id },
+            data: enabled ? { meetingHostGrantedAt: now, meetingHostGrantedById: request.user!.id } : { meetingHostGrantedAt: null, meetingHostGrantedById: null },
+            include: { doctorProfile: { select: { id: true } } },
+          });
         });
-      });
 
-      if (user.role !== "ADMIN" && from !== enabled) {
-        await logAudit(app, {
-          actorId: request.user!.id,
-          actorEmail: request.user!.email,
-          action: enabled ? "user.meeting_host_granted" : "user.meeting_host_revoked",
-          targetType: "User",
-          targetId: user.id,
-          metadata: { from, to: enabled, ...(enabled ? {} : { cancelledMeetings: cancelledMeetingIds.length }) },
-          ipAddress: request.ip,
-        });
-        for (const meetingId of cancelledMeetingIds) {
+        if (user.role !== "ADMIN" && from !== enabled) {
           await logAudit(app, {
             actorId: request.user!.id,
             actorEmail: request.user!.email,
-            action: "meeting.cancelled",
-            targetType: "ExternalMeeting",
-            targetId: meetingId,
-            metadata: { source: "host_revoked" },
+            action: enabled ? "user.meeting_host_granted" : "user.meeting_host_revoked",
+            targetType: "User",
+            targetId: user.id,
+            metadata: { from, to: enabled, ...(enabled ? {} : { cancelledMeetings: cancelledMeetingIds.length }) },
             ipAddress: request.ip,
           });
-        }
-        // Açık oda varsa hemen boşalt (best-effort); kesin kapanışı + `closedAt`'i meeting-sweeper yazar.
-        for (const roomName of cancelledRooms) {
-          try {
-            await kickAllMeetingParticipants(roomName);
-          } catch (err) {
-            app.log.warn({ err }, "Yetkisi geri alınan ev sahibinin toplantı odası hemen boşaltılamadı; süpürücü tekrar deneyecek.");
+          for (const meetingId of cancelledMeetingIds) {
+            await logAudit(app, {
+              actorId: request.user!.id,
+              actorEmail: request.user!.email,
+              action: "meeting.cancelled",
+              targetType: "ExternalMeeting",
+              targetId: meetingId,
+              metadata: { source: "host_revoked" },
+              ipAddress: request.ip,
+            });
+          }
+          // Açık oda varsa hemen boşalt (best-effort); kesin kapanışı + `closedAt`'i meeting-sweeper yazar.
+          for (const roomName of cancelledRooms) {
+            try {
+              await kickAllMeetingParticipants(roomName);
+            } catch (err) {
+              app.log.warn({ err }, "Yetkisi geri alınan ev sahibinin toplantı odası hemen boşaltılamadı; süpürücü tekrar deneyecek.");
+            }
           }
         }
-      }
 
-      return reply.send(ok(toAdminUserDto(user)));
-    }
-  );
+        return reply.send(ok(toAdminUserDto(user)));
+      }
+    );
+  }
 
   server.patch(
     "/:userId/status",

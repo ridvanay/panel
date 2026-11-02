@@ -10,7 +10,7 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { MeetingNotEditableError, MeetingNotFoundError } from "../../lib/errors";
 import { AdminMeetingSchema, ListAdminMeetingsQuerySchema, MeetingIdParamSchema } from "./meetings.schemas";
-import { buildMeetingListQuery, cancelMeeting, computePhase, encodeMeetingCursor, toAdminMeetingDto } from "./meetings.service";
+import { assertNotServiceManaged, buildMeetingListQuery, cancelMeeting, computePhase, encodeMeetingCursor, toAdminMeetingDto } from "./meetings.service";
 
 const ADMIN_MEETINGS_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
 const HOST_SELECT = { select: { id: true, name: true } } as const;

@@ -42,6 +42,7 @@ vi.mock("../../src/lib/branded-mail", async (importOriginal) => {
 });
 
 import { buildTestApp } from "../helpers/build-test-app";
+import { setExternalMeetingsEnabledForTests } from "../../src/lib/feature-flags";
 import { resetDatabase } from "../helpers/reset-db";
 import { signAccessToken } from "../../src/lib/jwt";
 import { env } from "../../src/config/env";
@@ -139,12 +140,15 @@ let admin: Awaited<ReturnType<typeof mkUser>>;
 let editor: Awaited<ReturnType<typeof mkUser>>;
 
 beforeAll(async () => {
+  // AI İş 3: genel harici toplantı özelliği varsayılan KAPALI; bu paket AG uçlarını test eder.
+  setExternalMeetingsEnabledForTests(true);
   app = await buildTestApp();
   await resetDatabase(app.prisma);
   await app.prisma.siteModule.upsert({ where: { key: "telehealth" }, create: { key: "telehealth", enabled: true }, update: { enabled: true } });
 });
 
 afterAll(async () => {
+  setExternalMeetingsEnabledForTests(null);
   await resetDatabase(app.prisma);
   await app.close();
   delete process.env.LIVEKIT_URL;

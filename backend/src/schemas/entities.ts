@@ -55,6 +55,8 @@ export const UserSchema = z.object({
   // Paket AG (İş 3) — TÜRETİLMİŞ + SALT-OKUNUR: ADMIN için her zaman true; diğerleri için admin'in verdiği
   // "harici toplantı oluşturabilir" yetkisi (bkz. lib/meeting-host.ts). Yazma: PATCH /admin/users/{id}/meeting-host.
   canHostMeetings: z.boolean(),
+  // Paket AI (İş 3) — TÜRETİLMİŞ + SALT-OKUNUR: aktif hizmet masası koordinatör profili var mı (yazma: /admin/service-desk/coordinators).
+  isServiceCoordinator: z.boolean(),
   // [TCT] §9.7.7 KARAR K3 — doktorluk `DoctorProfile.userId === user.id` İLİŞKİSİDİR
   // (`SiteRole.DOCTOR` YOK). Bu alan o ilişkinin TÜRETİLMİŞ + SALT-OKUNUR bir yansımasıdır —
   // `null` = bu kullanıcı hiçbir doktor profiline bağlı DEĞİL.

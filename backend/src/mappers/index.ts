@@ -192,7 +192,7 @@ import { doctorDisplayName } from "../lib/doctor-display-name";
 // [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto` artık `doctorProfile` İLİŞKİSİNİ
 // GEREKTİRİR (BİLİNÇLİ breaking tip değişikliği): alan opsiyonel BIRAKILMAZ ki TypeScript her çağrı
 // yerini `include: { doctorProfile: { select: { id: true } } }` eklemeye ZORLASIN.
-type UserWithDoctorLink = User & { doctorProfile: { id: string } | null };
+type UserWithDoctorLink = User & { doctorProfile: { id: string } | null; coordinatorProfile?: { isActive: boolean } | null };
 
 export function toUserDto(user: UserWithDoctorLink): UserDto {
   return {
@@ -213,6 +213,8 @@ export function toUserDto(user: UserWithDoctorLink): UserDto {
     canUseAdvancedBuilder: canUseAdvancedBuilder(user),
     // Paket AG (İş 3) — bkz. lib/meeting-host.ts (TEK türetme kaynağı).
     canHostMeetings: canHostMeetings(user),
+    // Paket AI (İş 3) — TÜRETİLMİŞ: aktif CoordinatorProfile (yalnızca /users/me ilişkiyi yükler; diğer yerlerde false).
+    isServiceCoordinator: Boolean(user.coordinatorProfile?.isActive),
     doctorProfileId: user.doctorProfile?.id ?? null,
   };
 }

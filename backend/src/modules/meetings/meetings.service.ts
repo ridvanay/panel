@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ExternalMeeting, Prisma, SiteRole } from "@prisma/client";
 import { canHostMeetings } from "../../lib/meeting-host";
 import { logAudit } from "../../lib/audit";
-import { MeetingHostForbiddenError, MeetingNotFoundError } from "../../lib/errors";
+import { MeetingHostForbiddenError, MeetingManagedByServiceDeskError, MeetingNotFoundError } from "../../lib/errors";
 import { doctorDisplayName } from "../../lib/doctor-display-name";
 import { MEETING_JOIN_LEAD_MS, kickAllMeetingParticipants } from "../telehealth/lib/meeting-livekit";
 
@@ -141,11 +141,28 @@ export function hostDisplayName(user: {
   return user.name;
 }
 
+/** Hizmet görüşmesinde ev sahibinin odada/ön ekranda görünen adı (unvan YOK; kaynak `CoordinatorProfile.displayName`). */
+export function serviceCoordinatorLabel(displayName: string): string {
+  return `Patient Coordinator · ${displayName}`;
+}
+
 /** Başkasının (ADMIN dahil) veya olmayan toplantı → 404 (varlık sızdırılmaz). */
 export async function loadOwnMeeting(app: FastifyInstance, id: string, hostUserId: string): Promise<ExternalMeeting> {
   const meeting = await app.prisma.externalMeeting.findFirst({ where: { id, hostUserId } });
   if (!meeting) throw new MeetingNotFoundError();
   return meeting;
+}
+
+/** Düzenle/iptal/bağlantı/davet uçları için: hizmete bağlı toplantı AG uçlarından yönetilemez (409). */
+export async function loadOwnManageableMeeting(app: FastifyInstance, id: string, hostUserId: string): Promise<ExternalMeeting> {
+  const meeting = await loadOwnMeeting(app, id, hostUserId);
+  await assertNotServiceManaged(app, meeting.id);
+  return meeting;
+}
+
+export async function assertNotServiceManaged(app: FastifyInstance, meetingId: string): Promise<void> {
+  const linked = await app.prisma.serviceConsultation.count({ where: { meetingId } });
+  if (linked > 0) throw new MeetingManagedByServiceDeskError();
 }
 
 export interface CancelContext {

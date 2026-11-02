@@ -49,7 +49,7 @@ export default async function usersRoutes(app: FastifyInstance) {
   server.get("/me", { schema: { response: { 200: ApiSuccessSchema(UserSchema) } } }, async (request, reply) => {
     const user = await app.prisma.user.findUnique({
       where: { id: request.user!.id },
-      include: { doctorProfile: { select: { id: true } } },
+      include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
     });
     if (!user) throw new NotFoundError("Kullanıcı bulunamadı.");
     return reply.send(ok(toUserDto(user)));
@@ -62,7 +62,7 @@ export default async function usersRoutes(app: FastifyInstance) {
       const user = await app.prisma.user.update({
         where: { id: request.user!.id },
         data: request.body,
-        include: { doctorProfile: { select: { id: true } } },
+        include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
       });
       return reply.send(ok(toUserDto(user)));
     }
