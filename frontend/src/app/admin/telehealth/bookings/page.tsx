@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import Link from "next/link";
 import { AlertCircle, Archive, CreditCard, Search, Languages } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { AppointmentBooking, BookingPaymentStatus } from "@/lib/api/types";
@@ -220,7 +221,11 @@ export default function AdminTelehealthBookingsPage() {
                 <TableBody>
                   {bookings.map((booking) => (
                     <TableRow key={booking.id}>
-                      <TableCell className="font-mono text-xs text-foreground/70">{booking.bookingNumber}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground/70">
+                        <Link href={`/admin/telehealth/bookings/${booking.id}`} className="text-primary hover:underline" aria-label={`${booking.bookingNumber} ayrıntıları`}>
+                          {booking.bookingNumber}
+                        </Link>
+                      </TableCell>
                       <TableCell>
                         <span className="font-medium text-foreground">{booking.patientName}</span>
                         <p className="text-xs text-foreground/50">{booking.patientEmail}</p>

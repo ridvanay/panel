@@ -21,6 +21,8 @@ import { LocaleManager } from "@/components/admin/locale-manager";
 import { ApiKeysSection } from "@/components/admin/settings/api-keys-section";
 import { EmailSettingsSection } from "@/components/admin/settings/email-settings-section";
 import { WebhooksSection } from "@/components/admin/settings/webhooks-section";
+import { BookingRecipientsCard } from "@/components/admin/settings/booking-recipients-card";
+import { validateBookingRecipients } from "@/lib/booking-notification-recipients";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -110,6 +112,9 @@ interface GeneralSettingsSnapshot {
   liveChatRequirePhone: boolean;
   liveChatRequireEmail: boolean;
   liveChatPosition: LiveChatPosition;
+  /** Paket AG — `true` = kayıtlı değer `null` (varsayılan alıcı). */
+  recipientsUseDefault: boolean;
+  recipientsText: string;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -187,6 +192,11 @@ export default function AdminSettingsPage() {
   const [liveChatRequireEmail, setLiveChatRequireEmail] = useState(false);
   const [liveChatPosition, setLiveChatPosition] = useState<LiveChatPosition>("BOTTOM_RIGHT");
 
+  // Paket AG — randevu bildirimi alıcıları. Kayıtlı `null` = varsayılan adres; `""` = bildirim yok.
+  const [recipientsUseDefault, setRecipientsUseDefault] = useState(true);
+  const [recipientsText, setRecipientsText] = useState("");
+  const [recipientsError, setRecipientsError] = useState<string | undefined>(undefined);
+
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [permissionsError, setPermissionsError] = useState<string | null>(null);
@@ -217,6 +227,10 @@ export default function AdminSettingsPage() {
       setLiveChatRequirePhone(settings.liveChatRequirePhone ?? true);
       setLiveChatRequireEmail(settings.liveChatRequireEmail ?? false);
       setLiveChatPosition(settings.liveChatPosition ?? "BOTTOM_RIGHT");
+      const storedRecipients = settings.bookingNotificationRecipients ?? null;
+      setRecipientsUseDefault(storedRecipients === null);
+      setRecipientsText(storedRecipients ?? "");
+      setRecipientsError(undefined);
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
@@ -231,6 +245,8 @@ export default function AdminSettingsPage() {
         liveChatRequirePhone: settings.liveChatRequirePhone ?? true,
         liveChatRequireEmail: settings.liveChatRequireEmail ?? false,
         liveChatPosition: settings.liveChatPosition ?? "BOTTOM_RIGHT",
+        recipientsUseDefault: storedRecipients === null,
+        recipientsText: storedRecipients ?? "",
       });
       setLoaded(true);
     } catch (err) {
@@ -259,7 +275,9 @@ export default function AdminSettingsPage() {
       liveChatRequireName !== snapshot.liveChatRequireName ||
       liveChatRequirePhone !== snapshot.liveChatRequirePhone ||
       liveChatRequireEmail !== snapshot.liveChatRequireEmail ||
-      liveChatPosition !== snapshot.liveChatPosition
+      liveChatPosition !== snapshot.liveChatPosition ||
+      recipientsUseDefault !== snapshot.recipientsUseDefault ||
+      recipientsText !== snapshot.recipientsText
     );
   }, [
     siteName,
@@ -275,6 +293,8 @@ export default function AdminSettingsPage() {
     liveChatRequirePhone,
     liveChatRequireEmail,
     liveChatPosition,
+    recipientsUseDefault,
+    recipientsText,
     snapshot,
   ]);
 
@@ -329,6 +349,15 @@ export default function AdminSettingsPage() {
   async function handleSave() {
     setSaveError(null);
     setSaved(false);
+    if (!recipientsUseDefault) {
+      const check = validateBookingRecipients(recipientsText);
+      if (!check.ok) {
+        setRecipientsError(check.message);
+        toast.error(check.message);
+        return;
+      }
+    }
+    setRecipientsError(undefined);
     setSaving(true);
     try {
       const updated = await settingsApi.updateSettings({
@@ -348,6 +377,7 @@ export default function AdminSettingsPage() {
         liveChatRequirePhone,
         liveChatRequireEmail,
         liveChatPosition,
+        bookingNotificationRecipients: recipientsUseDefault ? null : recipientsText.trim(),
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
@@ -374,7 +404,10 @@ export default function AdminSettingsPage() {
         liveChatRequirePhone,
         liveChatRequireEmail,
         liveChatPosition,
+        recipientsUseDefault,
+        recipientsText: recipientsUseDefault ? "" : recipientsText.trim(),
       });
+      if (!recipientsUseDefault) setRecipientsText(recipientsText.trim());
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -774,6 +807,24 @@ export default function AdminSettingsPage() {
                   </div>
                 )}
               </Card>
+            </motion.div>
+            {/* Paket AG — randevu bildirimi alıcıları (kayıt `Kaydet` ile birlikte yapılır). */}
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <BookingRecipientsCard
+                useDefault={recipientsUseDefault}
+                value={recipientsText}
+                error={recipientsError}
+                onChange={(value) => {
+                  setRecipientsUseDefault(false);
+                  setRecipientsText(value);
+                  setRecipientsError(undefined);
+                }}
+                onResetToDefault={() => {
+                  setRecipientsUseDefault(true);
+                  setRecipientsText("");
+                  setRecipientsError(undefined);
+                }}
+              />
             </motion.div>
           </motion.div>
 

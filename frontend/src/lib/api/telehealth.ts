@@ -8,6 +8,7 @@ import type {
   QaListenerHistoryEntry,
   QaListenerTokenResponse,
   Appointment,
+  AdminBookingDetail,
   AppointmentBooking,
   AppointmentDeletionCheck,
   AppointmentDocument,
@@ -621,6 +622,11 @@ export function listAdminBookings(params: ListAdminBookingsParams = {}): Promise
       limit: params.limit ?? 50,
     },
   });
+}
+
+/** Paket AG — `GET /admin/telehealth/bookings/{bookingId}` (ADMIN/MANAGER); bildirim e-postasındaki "Open appointment" hedefi. */
+export function getAdminBooking(bookingId: string): Promise<AdminBookingDetail> {
+  return apiFetch<AdminBookingDetail>(`/admin/telehealth/bookings/${encodeURIComponent(bookingId)}`);
 }
 
 /**

@@ -1962,6 +1962,13 @@ export interface SiteSettings {
   liveChatRequireEmail?: boolean;
   /** Dahili sohbet düğmesinin köşesi — varsayılan `BOTTOM_RIGHT`. Harici sağlayıcılar kullanmaz. */
   liveChatPosition?: LiveChatPosition;
+  /**
+   * Paket AG — YALNIZCA `GET/PATCH /admin/settings` döner (public `GET /settings` ASLA). Randevu bildirimi alıcıları,
+   * virgülle ayrılmış ham değer: `null` = hiç ayarlanmamış (varsayılan adres kullanılır), `""` = bildirim gönderilmez.
+   */
+  bookingNotificationRecipients?: string | null;
+  /** Gerçekte kullanılan alıcı listesi (varsayılan dahil). */
+  bookingNotificationRecipientsEffective?: string[];
 }
 
 export type LiveChatPosition = "BOTTOM_RIGHT" | "BOTTOM_LEFT";
@@ -1993,6 +2000,8 @@ export interface UpdateSiteSettingsRequest {
   liveChatRequireEmail?: boolean;
   /** Dahili sohbet düğmesinin köşesi — varsayılan `BOTTOM_RIGHT`. Harici sağlayıcılar kullanmaz. */
   liveChatPosition?: LiveChatPosition;
+  /** Paket AG — `null` = varsayılana dön, `""` = bildirim gönderme, dolu = virgülle ayrılmış adresler (sunucu doğrular, 422). */
+  bookingNotificationRecipients?: string | null;
 }
 
 export interface UpdateBlogPostRequest extends BlogReviewWriteFields {
@@ -4490,6 +4499,12 @@ export interface AppointmentBooking {
   archivedReason?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Paket AG — `GET /admin/telehealth/bookings/{bookingId}` (ADMIN/MANAGER): liste DTO'su + tercüman talebi dili ve hastanın site dili. */
+export interface AdminBookingDetail extends AppointmentBooking {
+  locale: string | null;
+  interpreterLanguage: string | null;
 }
 
 /** 2026-10-18 (Paket B2) — `GET /admin/telehealth/doctors/{doctorId}/deletion-check`. */
