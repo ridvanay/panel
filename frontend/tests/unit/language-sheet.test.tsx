@@ -118,12 +118,12 @@ describe("mobil dil seçici (alt sayfa)", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("Arapça arayüz: başlık ve düğme etiketleri sözlükten; menüdeki hekim bağlantısı yeni yol ve sözlük etiketi", async () => {
+  it("Arapça arayüz: başlık ve düğme etiketleri sözlükten; eski hekim menü kaydı ziyaretçiye çizilmez (AJ-2)", async () => {
     const user = userEvent.setup();
     renderHeader("ar", arNavStrings);
     expect(screen.getByTestId("mobile-language-button")).toHaveAccessibleName(`${arNavStrings.languageButtonAria.replace("{language}", "العربية")}`);
-    // Panelde "Doctors" kaydı (/doctors) sözlükteki etiketle ve yeni yolla görünür.
-    expect(screen.getAllByRole("link", { name: arNavStrings.consultPhysicians })[0]).toHaveAttribute("href", "/ar/request");
+    // Paket AJ-2 — panelde kalan "Doctors" kaydı (/doctors) hekimler ziyaretçiye kapalıyken hiç çizilmez.
+    expect(screen.queryByRole("link", { name: arNavStrings.consultPhysicians })).toBeNull();
     expect(screen.queryByRole("link", { name: "Doctors" })).toBeNull();
     await user.click(screen.getByTestId("mobile-language-button"));
     expect(await screen.findByRole("dialog", { name: arNavStrings.languageSheetTitle })).toBeInTheDocument();
