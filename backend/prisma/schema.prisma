@@ -1340,6 +1340,11 @@ model SiteSettings {
   /// Paket AG - randevu bildirimi alicilari (virgullu liste). null = hic ayarlanmamis -> kodda varsayilan
   /// adres; "" = admin bilerek bosaltti -> bildirim gitmez. Public DTO'da DONMEZ (yalniz admin uclari).
   bookingNotificationRecipients String?
+  /// Paket AH — Uluslararasi Saglik Turizmi Yetki Belgesi numarasi (admin girer; bos = site belge satirini gostermez).
+  healthTourismCertificateNo String?
+  /// Paket AH — blog yayininda hekim onayi (Z1) sarti. false (varsayilan) = sart aranmaz, editoryal yayin yeterli;
+  /// true = eski Z1 davranisi. Mevcut yayindaki yazilar etkilenmez.
+  blogMedicalReviewRequired Boolean @default(false)
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
@@ -2288,6 +2293,7 @@ model Specialty {
 
   parent            Specialty?                  @relation("SpecialtyParent", fields: [parentId], references: [id], onDelete: SetNull)
   children          Specialty[]                 @relation("SpecialtyParent")
+  consultationRequests ConsultationRequest[]
   doctors           DoctorProfile[]
   testimonials      Testimonial[]               @relation("SpecialtyTestimonials")
   imageMedia        Media?                      @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
@@ -3660,6 +3666,8 @@ enum CrmLeadChannel {
   MATCHER
   /// Paket X — sağlık paketi "Plan my package" talebi (ayrıntılar `PackageInquiry`).
   PACKAGE
+  /// Paket AH — bölüm/paket bazlı danışma talebi formu (ayrıntılar `ConsultationRequest`).
+  CONSULTATION_REQUEST
 }
 
 /// Paket N2 — talep (lead). Kaynak kayıtlara (iletişim formu, canlı destek, randevu) YALNIZCA düz
@@ -3703,6 +3711,7 @@ model CrmLead {
   notes             CrmLeadNote[]
   matcherSubmission MatcherSubmission?
   packageInquiry    PackageInquiry?
+  consultationRequest ConsultationRequest?
 
   @@unique([channel, sourceRefId])
   @@index([status, createdAt])
@@ -4164,6 +4173,7 @@ model HealthPackage {
 
   coverMedia Media?           @relation("HealthPackageCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
   inquiries  PackageInquiry[]
+  consultationRequests ConsultationRequest[]
 
   @@index([isActive, isFeatured, sortOrder])
   @@index([coverMediaId])
@@ -4198,6 +4208,45 @@ model PackageInquiry {
   @@index([packageId])
   @@index([createdAt])
   @@map("package_inquiries")
+}
+
+/// Paket AH — bölüm/paket bazlı danışma talebi ("Request a consultation"; CRM lead `channel=CONSULTATION_REQUEST`).
+/// Mesaj sağlık verisi içerebileceği için AES-256-GCM şifreli (`lib/crypto.ts`). Lead anonimleştirilince kişi alanları temizlenir.
+model ConsultationRequest {
+  id                  String    @id @default(uuid())
+  /// Talep numarası: `REQ-` + seq (5 hane dolgulu).
+  seq                 Int       @unique @default(autoincrement())
+  leadId              String    @unique
+  specialtyId         String?
+  packageId           String?
+  /// Hizmet/paket adı anlık görüntüsü (EN) — bölüm/paket silinse de talepte görünür.
+  serviceName         String
+  preferredFrom       DateTime? @db.Date
+  preferredTo         DateTime? @db.Date
+  country             String
+  contactLanguage     String
+  needsInterpreter    Boolean   @default(false)
+  fullName            String?
+  email               String?
+  phone               String?
+  messageEncrypted    String?
+  contactConsentAt    DateTime
+  healthDataConsentAt DateTime?
+  consentTextVersion  String?
+  locale              String
+  ipAddress           String?
+  userAgent           String?
+  anonymizedAt        DateTime?
+  createdAt           DateTime  @default(now())
+
+  lead      CrmLead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  specialty Specialty?     @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  package   HealthPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+
+  @@index([specialtyId])
+  @@index([packageId])
+  @@index([createdAt])
+  @@map("consultation_requests")
 }
 
 /// Paket X — anasayfa "Top destinations" kartı. Bütün rakamlar (hasta sayısı, fiyatlar, dönem) yönetici tarafından

@@ -116,7 +116,7 @@ describe("hatırlatma e-postası", () => {
     });
     expect(ok).toBe(true);
     const calls = sendTemplateEmailMock.mock.calls as unknown as [unknown, string, string, Record<string, string>][];
-    expect(calls.find((c) => c[2] === "ayse@example.com")![3].doctor_name).toBe("Doç. Dr. H. Sofu");
+    expect(calls.find((c) => c[2] === "ayse@example.com")![3].doctor_name).toBe("Assoc. Prof. Dr. H. Sofu");
     expect(calls.find((c) => c[2] === "doctor@example.com")![3].doctor_name).toBe("Assoc. Prof. Dr. Hakan SOFU");
   });
 });

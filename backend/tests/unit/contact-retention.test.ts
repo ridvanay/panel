@@ -13,6 +13,7 @@ function fakeApp(overrides: {
         updateMany: overrides.updateMany ?? vi.fn().mockResolvedValue({ count: 0 }),
         deleteMany: overrides.deleteMany ?? vi.fn().mockResolvedValue({ count: 0 }),
       },
+      consultationRequest: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       contactForm: {
         findUnique: overrides.findUnique ?? vi.fn().mockResolvedValue({ retentionDays: 180 }),
       },

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { emitWebhookEvent } from "./webhook-emitter";
-import { isReviewSatisfied } from "../modules/blog/lib/medical-review";
+import { isBlogMedicalReviewRequired, isReviewSatisfied } from "../modules/blog/lib/medical-review";
 import { toPublicBlogPostDto, toPublicPageDto, toPublicPortfolioItemDto } from "../modules/public-api/public-api.mappers";
 
 /**
@@ -43,7 +43,9 @@ export async function runScheduledPublishSweep(app: FastifyInstance): Promise<Sc
 
   // Paket Z1 — blog yazıları yayın kuralına tabidir: onaysız zamanlanmış yazı yayına ÇIKMAZ (SCHEDULED kalır,
   // uyarı loglanır). Kural: modules/blog/lib/medical-review.ts::isReviewSatisfied (admin yazma yoluyla aynı).
-  const publishableBlogPosts = dueBlogPosts.filter((post) => isReviewSatisfied(post, post.category));
+  // Paket AH - hekim onayi sarti yalniz `blogMedicalReviewRequired=true` iken aranir (varsayilan false: editoryal yayin yeter).
+  const reviewRequired = dueBlogPosts.length > 0 && (await isBlogMedicalReviewRequired(app));
+  const publishableBlogPosts = reviewRequired ? dueBlogPosts.filter((post) => isReviewSatisfied(post, post.category)) : dueBlogPosts;
   for (const post of dueBlogPosts) {
     if (!publishableBlogPosts.includes(post)) {
       app.log.warn({ postId: post.id }, "Zamanlanmış blog yazısı hekim onayı olmadığı için yayınlanmadı");

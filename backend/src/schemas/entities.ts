@@ -892,6 +892,8 @@ export const SiteSettingsSchema = z.object({
   liveChatRequirePhone: z.boolean(),
   liveChatRequireEmail: z.boolean(),
   liveChatPosition: z.enum(["BOTTOM_RIGHT", "BOTTOM_LEFT"]),
+  // Paket AH - Uluslararası Sağlık Turizmi Yetki Belgesi numarası (admin girer; null/boş = belge satırı gösterilmez).
+  healthTourismCertificateNo: z.string().nullable(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
@@ -903,6 +905,8 @@ export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 export const AdminSiteSettingsSchema = SiteSettingsSchema.extend({
   bookingNotificationRecipients: z.string().nullable(),
   bookingNotificationRecipientsEffective: z.array(z.string()),
+  // Paket AH - blog yayınında hekim onayı (Z1) şartı; false = şart aranmaz (yalnız admin uçlarında).
+  blogMedicalReviewRequired: z.boolean(),
 });
 export type AdminSiteSettingsDto = z.infer<typeof AdminSiteSettingsSchema>;
 

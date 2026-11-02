@@ -11,6 +11,8 @@
  * - İşlem e-postası olduğundan abonelik iptali bağlantısı YOKTUR (pazarlama değil — rapora yazıldı).
  * - Her e-postanın `text/plain` sürümü de üretilir.
  */
+import { intermediaryIdentityFor } from "./intermediary-identity";
+
 export const BRAND_LOCALES = ["en", "tr", "de", "es", "fr", "ar", "ru", "ro", "sr-latn"] as const;
 export type BrandLocale = (typeof BRAND_LOCALES)[number];
 
@@ -20,6 +22,21 @@ export type EmailAudience = "patient" | "user" | "staff";
 export function toBrandLocale(code: string | null | undefined): BrandLocale {
   const normalized = (code ?? "").toLowerCase();
   return (BRAND_LOCALES as readonly string[]).includes(normalized) ? (normalized as BrandLocale) : "en";
+}
+
+/**
+ * Paket AH - MUSTERIYE giden hicbir e-posta Turkce olmaz: alici dili `tr` ise `en` kullanilir. Bu cozumleyici
+ * tek noktadir (kabuk, footer, hasta/kullanici e-posta dili cozumleyicileri buradan gecer). Personel e-postalari
+ * (`audience: "staff"`) `toBrandLocale` ile mevcut dilinde kalabilir.
+ */
+export function toCustomerEmailLocale(code: string | null | undefined): BrandLocale {
+  const locale = toBrandLocale(code);
+  return locale === "tr" ? "en" : locale;
+}
+
+/** Alici turune gore etkin e-posta dili: personel mevcut dilinde, musteri `tr` -> `en`. */
+export function resolveEmailLocale(code: string | null | undefined, audience: EmailAudience): BrandLocale {
+  return audience === "staff" ? toBrandLocale(code) : toCustomerEmailLocale(code);
 }
 
 export interface EmailBrandContext {
@@ -180,6 +197,9 @@ function renderFooter(ctx: EmailBrandContext, locale: BrandLocale, audience: Ema
   if (audience === "staff") {
     parts.push(line(escapeHtml(t.staffNote)), line(escapeHtml(t.automated)));
   } else {
+    // Paket AH - aracı kuruluş kimlik ibaresi (müşteri e-postaları; kısa ibare + açıklama, alıcının dilinde).
+    const identity = intermediaryIdentityFor(locale);
+    parts.push(line(`<strong style="color:#374151;">${escapeHtml(identity.shortLabel)}</strong>`), line(escapeHtml(identity.description)));
     if (ctx.address) parts.push(line(escapeHtml(ctx.address)));
     const contact = [ctx.phone ? escapeHtml(ctx.phone) : null, ctx.infoEmail ? link(ctx.infoEmail, `mailto:${ctx.infoEmail}`) : null, link(t.contact, ctx.contactUrl)].filter(Boolean);
     parts.push(line(contact.join(" &middot; ")));
@@ -229,7 +249,7 @@ export function htmlToText(html: string): string {
 }
 
 export function renderBrandedEmail(ctx: EmailBrandContext, input: BrandedEmailInput): { html: string; text: string } {
-  const locale = toBrandLocale(input.locale);
+  const locale = resolveEmailLocale(input.locale, input.audience);
   const dir = locale === "ar" ? "rtl" : "ltr";
   const align = dir === "rtl" ? "right" : "left";
   const bodyDir = input.bodyLocale ? (toBrandLocale(input.bodyLocale) === "ar" ? "rtl" : "ltr") : dir;

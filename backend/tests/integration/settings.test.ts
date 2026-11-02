@@ -444,3 +444,76 @@ describe("settings — liveChatPreChatEnabled/liveChatRequireName/Phone/Email", 
     expect(publicGet.json().data.liveChatRequireEmail).toBe(true);
   });
 });
+
+/**
+ * Paket AH - `SiteSettings.healthTourismCertificateNo` (Uluslararasi Saglik Turizmi Yetki Belgesi numarasi) ve
+ * `blogMedicalReviewRequired` bayragi. Public `GET /settings` belge numarasini doner; bayrak yalniz admin uclarinda.
+ */
+describe("settings - healthTourismCertificateNo + blogMedicalReviewRequired (Paket AH)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+  let editorToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    ({ accessToken: adminToken } = await registerTestUser(app, { email: "settings-ah-admin@example.com" }));
+    const { hashPassword } = await import("../../src/lib/password");
+    const { signAccessToken } = await import("../../src/lib/jwt");
+    const editor = await app.prisma.user.create({
+      data: { email: "settings-ah-editor@example.com", name: "Editor", passwordHash: await hashPassword("Sifre12345!"), role: "EDITOR", status: "ACTIVE", emailVerifiedAt: new Date(), twoFactorEnabled: true },
+    });
+    editorToken = signAccessToken({ sub: editor.id, email: editor.email }).token;
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  const patch = (token: string, payload: Record<string, unknown>) =>
+    app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${token}` }, payload });
+
+  it("varsayilan: belge numarasi null (satir yokken de), blogMedicalReviewRequired=false (admin GET)", async () => {
+    const pub = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(pub.json().data.healthTourismCertificateNo).toBeNull();
+    expect(pub.json().data).not.toHaveProperty("blogMedicalReviewRequired");
+    const adm = await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${adminToken}` } });
+    expect(adm.json().data.healthTourismCertificateNo).toBeNull();
+    expect(adm.json().data.blogMedicalReviewRequired).toBe(false);
+  });
+
+  it("ADMIN belge numarasini yazar (trim); public GET dondurur; bos string -> null", async () => {
+    const res = await patch(adminToken, { healthTourismCertificateNo: "  UST-2026/12345  " });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().data.healthTourismCertificateNo).toBe("UST-2026/12345");
+    const pub = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(pub.json().data.healthTourismCertificateNo).toBe("UST-2026/12345");
+
+    const cleared = await patch(adminToken, { healthTourismCertificateNo: "   " });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().data.healthTourismCertificateNo).toBeNull();
+    expect((await app.inject({ method: "GET", url: "/api/v1/settings" })).json().data.healthTourismCertificateNo).toBeNull();
+    await patch(adminToken, { healthTourismCertificateNo: "ABC-1" });
+    const nulled = await patch(adminToken, { healthTourismCertificateNo: null });
+    expect(nulled.json().data.healthTourismCertificateNo).toBeNull();
+  });
+
+  it("64 karakter siniri ve kontrol/HTML karakterleri 422; ADMIN disi 403", async () => {
+    expect((await patch(adminToken, { healthTourismCertificateNo: "x".repeat(64) })).statusCode).toBe(200);
+    const long = await patch(adminToken, { healthTourismCertificateNo: "x".repeat(65) });
+    expect(long.statusCode).toBe(422);
+    expect(long.json().error.details).toHaveProperty("healthTourismCertificateNo");
+    expect((await patch(adminToken, { healthTourismCertificateNo: "A<script>1" })).statusCode).toBe(422);
+    expect((await patch(adminToken, { healthTourismCertificateNo: "A\u0000B" })).statusCode).toBe(422);
+    expect((await patch(editorToken, { healthTourismCertificateNo: "Z-1" })).statusCode).toBe(403);
+  });
+
+  it("blogMedicalReviewRequired: ADMIN yazar, admin GET dondurur; MANAGER/EDITOR yazamaz", async () => {
+    const on = await patch(adminToken, { blogMedicalReviewRequired: true });
+    expect(on.json().data.blogMedicalReviewRequired).toBe(true);
+    expect((await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${adminToken}` } })).json().data.blogMedicalReviewRequired).toBe(true);
+    expect((await patch(editorToken, { blogMedicalReviewRequired: false })).statusCode).toBe(403);
+    expect((await patch(adminToken, { blogMedicalReviewRequired: false })).json().data.blogMedicalReviewRequired).toBe(false);
+  });
+});

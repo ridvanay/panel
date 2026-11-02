@@ -104,6 +104,7 @@ import { matcherPublicRoutes } from "./modules/matcher/matcher.routes";
 import { matcherAdminRoutes } from "./modules/matcher/matcher.admin.routes";
 import { reviewsPublicRoutes } from "./modules/reviews/reviews.routes";
 import { packagesPublicRoutes } from "./modules/packages/packages.routes";
+import { consultationRequestsPublicRoutes } from "./modules/consultation-requests/consultation-requests.routes";
 import { adminContactChannelsRoutes, adminDestinationsRoutes, adminPackagesRoutes } from "./modules/packages/packages.admin.routes";
 import { reviewsPatientRoutes } from "./modules/reviews/reviews.patient.routes";
 import { reviewsAdminRoutes } from "./modules/reviews/reviews.admin.routes";
@@ -402,6 +403,8 @@ export function buildApp() {
       api.register(reviewsPublicRoutes);
       // Paket X — sağlık paketleri, destinasyonlar, iletişim kanalları ve admin CRUD.
       api.register(packagesPublicRoutes);
+      // Paket AH - bölüm/paket bazlı danışma talebi formu (randevu/ödeme yerine).
+      api.register(consultationRequestsPublicRoutes);
       api.register(adminPackagesRoutes, { prefix: "/admin/packages" });
       api.register(adminDestinationsRoutes, { prefix: "/admin/destinations" });
       api.register(adminContactChannelsRoutes, { prefix: "/admin/telehealth/settings/contact-channels" });

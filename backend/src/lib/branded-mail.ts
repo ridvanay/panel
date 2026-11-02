@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { env, isProd } from "../config/env";
 import { sendMail, type SendMailResult } from "./mail";
 import { getLocaleSet } from "./localization";
-import { renderBrandedEmail, toBrandLocale, type BrandedEmailInput, type EmailBrandContext } from "./branded-email";
+import { renderBrandedEmail, resolveEmailLocale, toBrandLocale, type BrandedEmailInput, type EmailBrandContext } from "./branded-email";
 import { parseContactPageContent, localeContent } from "../modules/contact/contact-page";
 import { CONTACT_FORM_ID } from "../modules/contact/contact.constants";
 import { parseLanguageSupport } from "../modules/telehealth/lib/language-support";
@@ -128,17 +128,20 @@ export interface SendBrandedMailInput extends BrandedEmailInput {
 
 /** Kurumsal kabukla gönderir (HTML + düz metin); Reply-To = iletişim sayfasındaki destek adresi. */
 export async function sendBrandedMail(app: FastifyInstance, input: SendBrandedMailInput): Promise<SendMailResult> {
-  const ctx = await safeBrandContext(app, input.locale);
+  // Paket AH - müşteri e-postası Türkçe olmaz (tr -> en); bağlam ve kabuk aynı dili kullanır.
+  const locale = resolveEmailLocale(input.locale, input.audience);
+  const ctx = await safeBrandContext(app, locale);
   if (input.audience === "patient" && !ctx.kvkk) {
     app.log.warn("Hasta e-postasında KVKK aydınlatma bağlantısı yok — yayımlanmış hukuki sayfa (isLegalDocument) bulunamadı.");
   }
-  const { html, text } = renderBrandedEmail(ctx, input);
+  const { html, text } = renderBrandedEmail(ctx, { ...input, locale });
   return sendMail(app, { to: input.to, subject: input.subject, html, text, ...(ctx.infoEmail ? { replyTo: ctx.infoEmail } : {}) });
 }
 
 /** Önizleme/test için: gönderim yapmadan kurumsal HTML + metin. */
 export async function renderBrandedPreview(app: FastifyInstance, input: BrandedEmailInput): Promise<{ html: string; text: string }> {
-  return renderBrandedEmail(await safeBrandContext(app, input.locale), input);
+  const locale = resolveEmailLocale(input.locale, input.audience);
+  return renderBrandedEmail(await safeBrandContext(app, locale), { ...input, locale });
 }
 
 /**

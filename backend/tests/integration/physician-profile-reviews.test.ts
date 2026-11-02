@@ -5,7 +5,7 @@ import { resetDatabase } from "../helpers/reset-db";
 
 /**
  * Paket Y — zengin hekim profili ve hasta yorumları. Testler YALNIZCA fixture verisi kullanır (uydurma
- * yorum seed'i yoktur). Kapsam: davet token'ı (tek kullanımlık, süreli), "Deneyiminizi paylaşın"
+ * yorum seed'i yoktur). Kapsam: davet token'ı (tek kullanımlık, süreli), "Share your experience"
  * süpürücüsü (24 saat, hastanın dili, çift gönderim yok), pending görünmez, admin metni düzenleyemez,
  * maskeleme audit'e, 3'ten az onaylıda ortalama yok, hasta portalı + "Yorumumu sil", tercüman/doktor
  * yorum yazamaz/moderasyon göremez, video/before-after kuralları, randevuda hastanın dili.
@@ -160,8 +160,8 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(de.html).toContain("/de/review/");
       expect(de.html).toContain("Ayşe Yılmaz");
       const tr = mailSpy.mock.calls.find((c) => (c[1] as { to: string }).to === noLocale.booking.patientEmail)![1] as { subject: string; html: string };
-      expect(tr.subject).toBe("Görüşmenizi değerlendirir misiniz?");
-      expect(tr.html).toContain("/tr/review/");
+      expect(tr.subject).toBe("How was your consultation?");
+      expect(tr.html).toContain("/en/review/");
       mailSpy.mockClear();
       expect((await runReviewRequestSweep(app)).sent).toBe(0);
       expect(mailSpy).not.toHaveBeenCalled();
@@ -179,20 +179,21 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       const { runReviewRequestSweep } = await import("../../src/lib/review-requests");
       expect((await runReviewRequestSweep(app)).sent).toBe(3);
       const html = (b: { booking: { patientEmail: string } }) => (mailSpy.mock.calls.find((c) => (c[1] as { to: string }).to === b.booking.patientEmail)![1] as { html: string }).html;
-      expect(html(tr)).toContain("Doç. Dr. M. Demir");
-      expect(html(tr)).not.toContain("Assoc.");
+      // Paket AH: müşteriye Türkçe e-posta gitmez; kayıtlı dil tr ise en kullanılır (kanonik unvan).
+      expect(html(tr)).toContain("Assoc. Prof. Dr. M. Demir");
+      expect(html(tr)).not.toContain("Doç.");
       expect(html(de)).toContain("Assoz. Prof. Dr. M. Demir");
       expect(html(fr)).toContain("Assoc. Prof. Dr. M. Demir"); // çeviri yoksa kanonik unvan
 
       // Vazgeçme bağlantısı: düğmeden (CTA) SONRA, 12px; gövde metninde düğmeden önce yer almaz.
       const body = html(tr);
-      const cta = body.indexOf("Deneyiminizi paylaşın");
+      const cta = body.indexOf("Share your experience");
       const optOut = body.indexOf("?optout=1");
       expect(cta).toBeGreaterThan(0);
       expect(optOut).toBeGreaterThan(cta);
       expect(body.slice(body.lastIndexOf("<p", optOut), optOut)).toContain("font-size:12px");
       const text = (mailSpy.mock.calls.find((c) => (c[1] as { to: string }).to === tr.booking.patientEmail)![1] as { text: string }).text;
-      expect(text.indexOf("?optout=1")).toBeGreaterThan(text.indexOf("Deneyiminizi paylaşın"));
+      expect(text.indexOf("?optout=1")).toBeGreaterThan(text.indexOf("Share your experience"));
     });
 
     it("token tek kullanımlık ve süreli; yorum pending başlar ve herkese açık listede görünmez", async () => {
@@ -384,7 +385,7 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(sent.html).toContain('<html lang="de"');
       const noLocale = await completedBooking({ doctorId: d.id, locale: null });
       await triggerAppointmentConfirmationEmail(app, { booking: noLocale.booking, appointments: [noLocale.appointment], rawAccessToken: "raw-token-tr" });
-      expect((mailSpy.mock.calls.at(-1)![1] as { html: string }).html).toContain("/tr/patient/bookings/");
+      expect((mailSpy.mock.calls.at(-1)![1] as { html: string }).html).toContain("/en/patient/bookings/");
     });
   });
 

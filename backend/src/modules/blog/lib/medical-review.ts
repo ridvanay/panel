@@ -10,6 +10,15 @@ import { PUBLIC_DOCTOR_WHERE } from "../../telehealth/lib/archive-filters";
 
 export const READING_WORDS_PER_MINUTE = 200;
 
+/**
+ * Paket AH - hekim onayi (Z1) sarti `SiteSettings.blogMedicalReviewRequired` bayragina baglidir. false (varsayilan,
+ * satir yoksa da) = yayin kurallari ARANMAZ (editoryal yayin yeter); true = eski Z1 davranisi. Kod silinmedi.
+ */
+export async function isBlogMedicalReviewRequired(app: FastifyInstance): Promise<boolean> {
+  const row = await app.prisma.siteSettings.findUnique({ where: { id: "singleton" }, select: { blogMedicalReviewRequired: true } });
+  return row?.blogMedicalReviewRequired ?? false;
+}
+
 /** HTML'den metin çıkarır, 200 kelime/dk ile süre hesaplar (en az 1 dakika). */
 export function computeReadingMinutes(html: string | null | undefined): number {
   if (!html) return 1;
@@ -66,6 +75,8 @@ export interface ReviewRuleInput {
  *    Mevcut PUBLISHED kayıtlar geriye dönük düşürülmez; kural yalnızca geçişte çalışır.
  */
 export async function assertBlogReviewRules(app: FastifyInstance, input: ReviewRuleInput): Promise<void> {
+  // Paket AH - bayrak kapaliyken (varsayilan) hekim onayi sarti aranmaz.
+  if (!(await isBlogMedicalReviewRequired(app))) return;
   const { effective, previousStatus } = input;
   const category = effective.categoryId
     ? await app.prisma.blogCategory.findUnique({ where: { id: effective.categoryId }, select: { isMedical: true } })

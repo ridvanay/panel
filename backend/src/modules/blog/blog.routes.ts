@@ -64,6 +64,7 @@ import {
   assertSpecialtyAndTopics,
   computeReadingMinutes,
   demotionPatch,
+  isBlogMedicalReviewRequired,
   isReviewSatisfied,
 } from "./lib/medical-review";
 import { getPublicPostDetail, listPublicPosts, listPublicReviewers, listPublicTopics } from "./lib/blog-public";
@@ -671,7 +672,8 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       // (skippedIds). Zaten PUBLISHED olanlar geçişte olmadığı için etkilenmez.
       const blockedByReview: string[] = [];
       let bulkIds = request.body.ids;
-      if (request.body.action === "publish") {
+      // Paket AH - bayrak kapaliyken (varsayilan) hekim onayi sarti aranmaz.
+      if (request.body.action === "publish" && (await isBlogMedicalReviewRequired(app))) {
         const rows = await app.prisma.blogPost.findMany({
           where: { id: { in: request.body.ids }, deletedAt: null, status: { not: "PUBLISHED" } },
           include: { category: { select: { isMedical: true } } },

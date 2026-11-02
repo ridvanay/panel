@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import type { CrmLead, CrmLeadChannel, CrmLeadStatus, Prisma } from "@prisma/client";
+import type { ConsultationRequest, CrmLead, CrmLeadChannel, CrmLeadStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { env } from "../../config/env";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
 import { sendBrandedMail } from "../../lib/branded-mail";
 import { readCrmSettings } from "./crm.settings";
+import { formatRequestNumber } from "../consultation-requests/consultation-request-email";
 import { sanitizeText } from "./crm.privacy";
 
 /**
@@ -36,6 +37,7 @@ export const CRM_LEAD_CHANNELS = [
   "ADS_IMPORT",
   "MATCHER",
   "PACKAGE",
+  "CONSULTATION_REQUEST",
 ] as const satisfies readonly CrmLeadChannel[];
 
 export const CRM_LEAD_STATUS_LABELS: Record<CrmLeadStatus, string> = {
@@ -61,6 +63,7 @@ export const CRM_LEAD_CHANNEL_LABELS: Record<CrmLeadChannel, string> = {
   ADS_IMPORT: "Google Ads",
   MATCHER: "Eşleştirme sihirbazı",
   PACKAGE: "Sağlık paketi",
+  CONSULTATION_REQUEST: "Danışma talebi",
 };
 
 /** Sonuçlanmış durumlar — "bugün aranacaklar" listesine girmez. */
@@ -167,6 +170,27 @@ export function toLeadDto(lead: CrmLead, slaHours: number, assignees: Map<string
     anonymizedAt: lead.anonymizedAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(),
     sla: computeSla(lead, slaHours),
+  };
+}
+
+/** Paket AH — danışma talebi ayrıntısı (yalnız yetkili CRM görüntüleyicisi): mesaj burada çözülür. */
+export function toConsultationRequestDto(r: ConsultationRequest) {
+  return {
+    number: formatRequestNumber(r.seq),
+    serviceName: r.serviceName,
+    specialtyId: r.specialtyId,
+    packageId: r.packageId,
+    preferredFrom: r.preferredFrom ? r.preferredFrom.toISOString().slice(0, 10) : null,
+    preferredTo: r.preferredTo ? r.preferredTo.toISOString().slice(0, 10) : null,
+    country: r.country,
+    contactLanguage: r.contactLanguage,
+    needsInterpreter: r.needsInterpreter,
+    message: r.messageEncrypted ? decryptNoteBody(r.messageEncrypted) : null,
+    contactConsentAt: r.contactConsentAt.toISOString(),
+    healthDataConsentAt: r.healthDataConsentAt?.toISOString() ?? null,
+    consentTextVersion: r.consentTextVersion,
+    locale: r.locale,
+    anonymizedAt: r.anonymizedAt?.toISOString() ?? null,
   };
 }
 
@@ -434,12 +458,21 @@ export async function anonymizeExpiredLeads(app: FastifyInstance, now: Date = ne
     where: { createdAt: { lt: new Date(now.getTime() - PACKAGE_NOTE_RETENTION_DAYS * 86_400_000) }, note: { not: null } },
     data: { note: null },
   });
+  // Paket AH - danışma talebindeki mesaj da sağlık verisi içerebilir: aynı 365 gün sınırı.
+  await app.prisma.consultationRequest.updateMany({
+    where: { createdAt: { lt: new Date(now.getTime() - PACKAGE_NOTE_RETENTION_DAYS * 86_400_000) }, messageEncrypted: { not: null } },
+    data: { messageEncrypted: null, healthDataConsentAt: null },
+  });
   const expired = await app.prisma.crmLead.findMany({ where: { createdAt: { lt: cutoff }, anonymizedAt: null }, select: { id: true } });
   if (expired.length === 0) return 0;
   const ids = expired.map((l) => l.id);
   await app.prisma.$transaction([
     app.prisma.crmLeadNote.deleteMany({ where: { leadId: { in: ids } } }),
     app.prisma.packageInquiry.updateMany({ where: { leadId: { in: ids } }, data: { note: null, preferredDates: null, travellers: null, anonymizedAt: now } }),
+    app.prisma.consultationRequest.updateMany({
+      where: { leadId: { in: ids } },
+      data: { fullName: null, email: null, phone: null, messageEncrypted: null, ipAddress: null, userAgent: null, preferredFrom: null, preferredTo: null, anonymizedAt: now },
+    }),
     app.prisma.crmLead.updateMany({
       where: { id: { in: ids } },
       data: {

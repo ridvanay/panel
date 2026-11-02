@@ -14,6 +14,8 @@ export type MatcherEmailLocale = (typeof MATCHER_EMAIL_LOCALES)[number];
 
 export function toMatcherEmailLocale(code: string | null | undefined): MatcherEmailLocale {
   const normalized = (code ?? "").toLowerCase();
+  // Paket AH - müşteriye Türkçe e-posta gitmez (tr -> en).
+  if (normalized === "tr") return "en";
   return (MATCHER_EMAIL_LOCALES as readonly string[]).includes(normalized) ? (normalized as MatcherEmailLocale) : "en";
 }
 

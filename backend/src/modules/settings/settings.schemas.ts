@@ -56,6 +56,17 @@ export const UpdateSiteSettingsRequestSchema = z
     // Paket AG (İş 2) — virgülle ayrılmış alıcı listesi. Adres doğrulaması/normalizasyonu route handler'da
     // (`lib/booking-notification-recipients.ts`): `null` = varsayılana dön, `""` = bildirim gönderme.
     bookingNotificationRecipients: z.string().max(2000).nullable().optional(),
+    // Paket AH - yetki belgesi numarası: trim, en çok 64 karakter, kontrol karakteri yok; boş string -> null (handler'da).
+    healthTourismCertificateNo: z
+      .string()
+      .trim()
+      .max(64)
+      // eslint-disable-next-line no-control-regex
+      .refine((value) => !/[\u0000-\u001f\u007f<>]/.test(value), "Belge numarası geçersiz karakter içeriyor.")
+      .nullable()
+      .optional(),
+    // Paket AH - blog hekim onayı (Z1) şartı bayrağı.
+    blogMedicalReviewRequired: z.boolean().optional(),
   })
   .refine(
     (data) =>

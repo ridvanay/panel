@@ -37,6 +37,12 @@ export async function runContactRetentionSweep(app: FastifyInstance): Promise<Co
     data: { ipAddress: null, userAgent: null, piiRedactedAt: new Date() },
   });
 
+  // Paket AH - danisma talebinin IP/UA'si de ayni 30 gun kuralina tabidir (talep satiri KALIR).
+  await app.prisma.consultationRequest.updateMany({
+    where: { createdAt: { lt: redactionCutoff }, OR: [{ ipAddress: { not: null } }, { userAgent: { not: null } }] },
+    data: { ipAddress: null, userAgent: null },
+  });
+
   const form = await app.prisma.contactForm.findUnique({
     where: { id: CONTACT_FORM_ID },
     select: { retentionDays: true },

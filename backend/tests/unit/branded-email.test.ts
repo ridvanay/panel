@@ -133,10 +133,13 @@ describe("renderBrandedEmail (saf kabuk)", () => {
   });
 
   it("hasta footer'ı 112 notu içerir; personel footer'ı sade (iletişim/KVKK/112 yok)", () => {
+    // Paket AH — müşteriye Türkçe e-posta gitmez: hasta alıcı dili `tr` ise İngilizce kabuk.
     const patient = renderBrandedEmail(CTX, { locale: "tr", audience: "patient", bodyHtml: "<p>x</p>" });
     expect(patient.html).toContain("112");
     expect(patient.html).toContain("https://example.com/tr/kvkk");
-    expect(patient.html).toContain("Bu e-posta otomatik olarak gönderilmiştir.");
+    expect(patient.html).toContain("This email was sent automatically.");
+    expect(patient.html).not.toContain("Bu e-posta otomatik olarak gönderilmiştir.");
+    expect(patient.html).toContain('<html lang="en" dir="ltr">');
 
     const staff = renderBrandedEmail(CTX, { locale: "tr", audience: "staff", bodyHtml: "<p>x</p>" });
     expect(staff.html).not.toContain("112");
@@ -162,9 +165,9 @@ describe("renderBrandedEmail (saf kabuk)", () => {
 
   it("destek dili satırı yalnızca liste varsa", () => {
     const on = renderBrandedEmail(CTX, { locale: "tr", audience: "patient", bodyHtml: "" });
-    expect(on.html).toContain("Kendi dilinizde ücretsiz destek: Türkçe, English");
+    expect(on.html).toContain("Free support in your language: Türkçe, English");
     const off = renderBrandedEmail({ ...CTX, supportLanguages: null }, { locale: "tr", audience: "patient", bodyHtml: "" });
-    expect(off.html).not.toContain("Kendi dilinizde");
+    expect(off.html).not.toContain("Free support in your language");
   });
 });
 
@@ -209,7 +212,9 @@ describe("sistem e-postaları — snapshot (TR/EN/AR)", () => {
       it(`${entry.id} · ${locale}`, async () => {
         const sample = await renderSystemEmailSample(fakeApp(), entry, locale);
         expect(sample.available).toBe(true);
-        expect(sample.html).toContain(`<html lang="${locale}" dir="${locale === "ar" ? "rtl" : "ltr"}">`);
+        // Paket AH — müşteri e-postalarında `tr` → `en`; personel e-postaları mevcut dilinde.
+        const shellLocale = entry.audience !== "staff" && locale === "tr" ? "en" : locale;
+        expect(sample.html).toContain(`<html lang="${shellLocale}" dir="${shellLocale === "ar" ? "rtl" : "ltr"}">`);
         expect(sample.text.length).toBeGreaterThan(20);
         expect({ subject: sample.subject, html: sample.html, text: sample.text }).toMatchSnapshot();
       });

@@ -28,6 +28,7 @@ export const DEFAULTS = {
   faviconUrl: null as string | null,
   appleTouchIconUrl: null as string | null,
   tagline: "Uzman Doktorlarla Güvenli Online Görüşme" as string | null,
+  healthTourismCertificateNo: null as string | null,
   headerLogoHeight: null as number | null,
   headerLogoMaxWidth: null as number | null,
   homePageId: null as string | null,
@@ -96,9 +97,18 @@ async function readSettings(app: FastifyInstance) {
 }
 
 /** Paket AG (İş 2) — admin DTO'su: public DTO + alıcı listesi (ham + etkin). */
-function toAdminSettingsDto(row: { bookingNotificationRecipients: string | null } | null, base: ReturnType<typeof toSiteSettingsDto> | Awaited<ReturnType<typeof readSettings>>) {
+function toAdminSettingsDto(
+  row: { bookingNotificationRecipients: string | null; blogMedicalReviewRequired?: boolean } | null,
+  base: ReturnType<typeof toSiteSettingsDto> | Awaited<ReturnType<typeof readSettings>>
+) {
   const stored = row?.bookingNotificationRecipients ?? null;
-  return { ...base, bookingNotificationRecipients: stored, bookingNotificationRecipientsEffective: effectiveBookingNotificationRecipients(stored) };
+  return {
+    ...base,
+    bookingNotificationRecipients: stored,
+    bookingNotificationRecipientsEffective: effectiveBookingNotificationRecipients(stored),
+    // Paket AH - satır yoksa varsayılan false (şart aranmaz).
+    blogMedicalReviewRequired: row?.blogMedicalReviewRequired ?? false,
+  };
 }
 
 /** `/settings` prefix'i altında bağlanır — herkese açık, site header/nav'ı bunu okur. */
@@ -156,10 +166,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
 
   server.get("/", { schema: { response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } } }, async (request, reply) => {
     // Alıcı adresleri yalnızca ADMIN'e dolu döner (MANAGER/EDITOR: null / []).
-    const row =
-      request.user?.role === "ADMIN"
-        ? await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { bookingNotificationRecipients: true } })
-        : null;
+    const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { bookingNotificationRecipients: true, blogMedicalReviewRequired: true } });
     const dto = toAdminSettingsDto(row, await readSettings(app));
     if (request.user?.role !== "ADMIN") return reply.send(ok({ ...dto, bookingNotificationRecipients: null, bookingNotificationRecipientsEffective: [] }));
     return reply.send(ok(dto));
@@ -197,6 +204,10 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
       } else if (body.bookingNotificationRecipients === null) {
         recipientCount = 0;
       }
+      // Paket AH - belge numarası: boş (yalnız boşluk) -> null.
+      if (typeof body.healthTourismCertificateNo === "string" && body.healthTourismCertificateNo.trim() === "") {
+        body.healthTourismCertificateNo = null;
+      }
 
       const settings = await app.prisma.siteSettings.upsert({
         where: { id: SETTINGS_ID },
@@ -218,6 +229,8 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
           ...(recipientCount !== undefined
             ? { bookingNotificationRecipientsCount: recipientCount, bookingNotificationRecipientsReset: request.body.bookingNotificationRecipients === null }
             : {}),
+          // Paket AH - belge numarası kamuya açık bilgidir; yine de yalnız "değişti" izi yazılır (değer audit'e girmez).
+          ...(request.body.blogMedicalReviewRequired !== undefined ? { blogMedicalReviewRequired: request.body.blogMedicalReviewRequired } : {}),
           ...(request.body.demoPaymentsEnabled !== undefined
             ? { demoPaymentsEnabled: request.body.demoPaymentsEnabled }
             : {}),

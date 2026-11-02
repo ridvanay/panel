@@ -5,6 +5,7 @@ import { sendBrandedMail } from "../../../lib/branded-mail";
 import { doctorEmailName } from "../../../lib/doctor-email-name";
 import { effectiveBookingNotificationRecipients } from "../../../lib/booking-notification-recipients";
 import { buildBookingNotificationEmail, paymentLabel, type BookingNotificationEmailData } from "./booking-notification-email";
+import { buildConsultationAdminEmail, formatRequestNumber } from "../../consultation-requests/consultation-request-email";
 
 /**
  * Paket AG (Is 2) - her kesinlesen/iptal edilen/saati degisen randevuda admin alicilarina bildirim.
@@ -23,7 +24,9 @@ import { buildBookingNotificationEmail, paymentLabel, type BookingNotificationEm
 export type BookingNotificationEvent =
   | { kind: "confirmed"; bookingId: string }
   | { kind: "cancelled"; bookingId: string; appointmentId?: string | null }
-  | { kind: "rescheduled"; appointmentId: string; oldStartsAt: Date; oldEndsAt: Date; newStartsAt: Date };
+  | { kind: "rescheduled"; appointmentId: string; oldStartsAt: Date; oldEndsAt: Date; newStartsAt: Date }
+  // Paket AH - danisma talebi (ayni altyapi: idempotent eventKey, yeniden deneme, alici basina gonderim). PII YOK.
+  | { kind: "consultation_request"; requestId: string };
 
 export const ADMIN_NOTIFICATION_MAX_ATTEMPTS = 4;
 /** attempts (az once tamamlanan deneme sayisi) -> sonraki denemeye kadar bekleme. */
@@ -39,6 +42,8 @@ interface NotificationPayload {
   oldStartsAt?: string;
   oldEndsAt?: string;
   newStartsAt?: string;
+  /** Yalniz consultation_request: ConsultationRequest.id. */
+  requestId?: string;
   /** Basariyla gonderilmis alici adresleri (kucuk harf) - retry'da tekrar gonderilmez. */
   deliveredTo?: string[];
 }
@@ -49,6 +54,8 @@ export function bookingEventKey(event: BookingNotificationEvent): string {
       return `booking:${event.bookingId}:confirmed`;
     case "cancelled":
       return event.appointmentId ? `appointment:${event.appointmentId}:cancelled` : `booking:${event.bookingId}:cancelled`;
+    case "consultation_request":
+      return `consultation-request:${event.requestId}:created`;
     case "rescheduled":
       // Eski + yeni baslangic: A->B->C->B zincirinde ucuncu olay (C->B) onceki B olayiyla carpismaz.
       return `appointment:${event.appointmentId}:rescheduled:${event.oldStartsAt.toISOString()}:${event.newStartsAt.toISOString()}`;
@@ -148,6 +155,36 @@ async function loadEmailData(app: FastifyInstance, row: NotificationRow): Promis
   };
 }
 
+interface AdminMail {
+  subject: string;
+  preheader: string;
+  title: string;
+  bodyHtml: string;
+  cta: { label: string; url: string };
+}
+
+/** Paket AH - danisma talebi bildirimi: yalniz PII'siz alanlar okunur (ad/e-posta/telefon/mesaj select'te YOK). */
+async function loadConsultationMail(app: FastifyInstance, row: NotificationRow): Promise<AdminMail> {
+  const requestId = ((row.payload ?? {}) as NotificationPayload).requestId;
+  if (!requestId) throw new MissingEntityError();
+  const request = await app.prisma.consultationRequest.findUnique({
+    where: { id: requestId },
+    select: { seq: true, leadId: true, serviceName: true, country: true, contactLanguage: true, needsInterpreter: true, preferredFrom: true, preferredTo: true },
+  });
+  if (!request) throw new MissingEntityError();
+  return buildConsultationAdminEmail({
+    requestNumber: formatRequestNumber(request.seq),
+    serviceName: request.serviceName,
+    country: request.country,
+    contactLanguage: request.contactLanguage,
+    needsInterpreter: request.needsInterpreter,
+    preferredFrom: request.preferredFrom ? request.preferredFrom.toISOString().slice(0, 10) : null,
+    preferredTo: request.preferredTo ? request.preferredTo.toISOString().slice(0, 10) : null,
+    leadId: request.leadId,
+    frontendUrl: env.FRONTEND_URL,
+  });
+}
+
 /** Tek gonderim denemesi (alici basina ayri e-posta): sonucu satira yazar. Firlatmaz. */
 async function attemptDelivery(app: FastifyInstance, row: NotificationRow): Promise<"sent" | "pending" | "failed" | "skipped"> {
   const now = new Date();
@@ -162,7 +199,7 @@ async function attemptDelivery(app: FastifyInstance, row: NotificationRow): Prom
     }
     const remaining = recipients.filter((a) => !delivered.has(a));
     if (remaining.length > 0) {
-      const mail = buildBookingNotificationEmail(await loadEmailData(app, row));
+      const mail: AdminMail = row.kind === "consultation_request" ? await loadConsultationMail(app, row) : buildBookingNotificationEmail(await loadEmailData(app, row));
       for (const to of remaining) {
         try {
           await sendBrandedMail(app, { to, subject: mail.subject, locale: "en", audience: "staff", preheader: mail.preheader, title: mail.title, bodyHtml: mail.bodyHtml, cta: mail.cta });
@@ -214,12 +251,14 @@ export async function waitForAdminNotifications(): Promise<void> {
 export async function notifyAdminsOfBookingEvent(app: FastifyInstance, event: BookingNotificationEvent): Promise<"queued" | "duplicate" | "error"> {
   try {
     const eventKey = bookingEventKey(event);
-    const bookingId = event.kind === "rescheduled" ? null : event.bookingId;
+    const bookingId = event.kind === "rescheduled" || event.kind === "consultation_request" ? null : event.bookingId;
     const appointmentId = event.kind === "rescheduled" ? event.appointmentId : event.kind === "cancelled" ? (event.appointmentId ?? null) : null;
     const payload: NotificationPayload =
       event.kind === "rescheduled"
         ? { oldStartsAt: event.oldStartsAt.toISOString(), oldEndsAt: event.oldEndsAt.toISOString(), newStartsAt: event.newStartsAt.toISOString() }
-        : {};
+        : event.kind === "consultation_request"
+          ? { requestId: event.requestId }
+          : {};
 
     let row: NotificationRow;
     try {

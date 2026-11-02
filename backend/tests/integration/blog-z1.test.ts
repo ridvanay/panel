@@ -90,6 +90,8 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
+    // Paket AH — Z1 kuralı `blogMedicalReviewRequired` bayrağına bağlı (varsayılan false); bu dosyadaki Z1 testleri eski davranışı (true) sınar.
+    await app.prisma.siteSettings.upsert({ where: { id: "singleton" }, create: { id: "singleton", blogMedicalReviewRequired: true }, update: { blogMedicalReviewRequired: true } });
     admin = { authorization: `Bearer ${(await registerTestUser(app)).accessToken}` };
     editor = (await createUser("EDITOR", false)).auth;
 
@@ -626,6 +628,82 @@ describe("Paket Z1 — blog tıbbi inceleme altyapısı", () => {
       expect(localizedCategoryName(cat, "EN")).toBe("Health travel guide");
       expect(localizedCategoryName(cat, "ru")).toBe("Seyahat Rehberi");
       expect(localizedCategoryName(cat, undefined)).toBe("Seyahat Rehberi");
+    });
+  });
+
+  // Paket AH — hekim onayı (Z1) şartı bayrakla kapanır; kod silinmedi, bayrak true iken eski davranış geri gelir.
+  describe("Paket AH — blogMedicalReviewRequired bayrağı", () => {
+    const setFlag = (value: boolean) =>
+      app.prisma.siteSettings.upsert({ where: { id: "singleton" }, create: { id: "singleton", blogMedicalReviewRequired: value }, update: { blogMedicalReviewRequired: value } });
+
+    it("bayrak false: onaysız yazıyı admin yayınlayabilir (oluşturma, DRAFT→PUBLISHED, SCHEDULED); tıbbi kategori ve kategorisiz fark etmez", async () => {
+      await setFlag(false);
+      try {
+        const created = await adminPost({ title: "AH Doğrudan Yayın", status: "PUBLISHED", categoryId: medicalCategoryId });
+        expect(created.statusCode, created.body).toBe(201);
+        expect(created.json().data.status).toBe("PUBLISHED");
+
+        const draft = await adminPost({ title: "AH Taslak", categoryId: medicalCategoryId });
+        const published = await adminPatch(draft.json().data.id as string, { status: "PUBLISHED" });
+        expect(published.statusCode, published.body).toBe(200);
+        expect(published.json().data).toMatchObject({ status: "PUBLISHED", medicalReviewStatus: "pending" });
+
+        const future = new Date(Date.now() + 3600_000).toISOString();
+        const scheduled = await adminPost({ title: "AH Zamanlı", status: "SCHEDULED", scheduledAt: future });
+        expect(scheduled.statusCode, scheduled.body).toBe(201);
+      } finally {
+        await setFlag(true);
+      }
+    });
+
+    it("bayrak false: toplu yayın atlama yapmaz; zamanlanmış yayın sweeper'ı onaysız yazıyı da yayınlar", async () => {
+      await setFlag(false);
+      try {
+        const a = (await adminPost({ title: "AH Toplu A", categoryId: medicalCategoryId })).json().data.id as string;
+        const b = (await adminPost({ title: "AH Toplu B" })).json().data.id as string;
+        const bulk = await app.inject({ method: "POST", url: "/api/v1/admin/blog/bulk", headers: admin, payload: { ids: [a, b], action: "publish" } });
+        expect(bulk.statusCode).toBe(200);
+        expect(bulk.json().data.skippedIds).toEqual([]);
+        expect(bulk.json().data.affectedCount).toBe(2);
+
+        const due = await app.prisma.blogPost.create({
+          data: { title: "AH Sweeper", slug: "ah-sweeper", status: "SCHEDULED", scheduledAt: new Date(Date.now() - 60_000), categoryId: medicalCategoryId, medicalReviewStatus: "pending" },
+        });
+        await runScheduledPublishSweep(app);
+        expect((await app.prisma.blogPost.findUniqueOrThrow({ where: { id: due.id } })).status).toBe("PUBLISHED");
+      } finally {
+        await setFlag(true);
+      }
+    });
+
+    it("bayrak yoksa (ayar satırı yok) varsayılan false: şart aranmaz", async () => {
+      await app.prisma.siteSettings.deleteMany({ where: { id: "singleton" } });
+      try {
+        const res = await adminPost({ title: "AH Satırsız", status: "PUBLISHED", categoryId: medicalCategoryId });
+        expect(res.statusCode, res.body).toBe(201);
+      } finally {
+        await setFlag(true);
+      }
+    });
+
+    it("bayrak true (admin ayarıyla): eski davranış geri gelir; PATCH /admin/settings bayrağı yazar, ADMIN dışı 403", async () => {
+      await setFlag(false);
+      const on = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: admin, payload: { blogMedicalReviewRequired: true } });
+      expect(on.statusCode, on.body).toBe(200);
+      expect(on.json().data.blogMedicalReviewRequired).toBe(true);
+      const blocked = await adminPost({ title: "AH Eski Davranış", status: "PUBLISHED", categoryId: medicalCategoryId });
+      expect(blocked.statusCode).toBe(422);
+      expect(blocked.json().error.details).toHaveProperty("medicalReviewStatus");
+      expect((await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: editor, payload: { blogMedicalReviewRequired: false } })).statusCode).toBe(403);
+      const get = await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: admin });
+      expect(get.json().data.blogMedicalReviewRequired).toBe(true);
+    });
+
+    it("mevcut yayındaki yazılar bayrak değişiminden etkilenmez", async () => {
+      const post = await seedPublished();
+      await setFlag(false);
+      await setFlag(true);
+      expect((await app.prisma.blogPost.findUniqueOrThrow({ where: { id: post.id } })).status).toBe("PUBLISHED");
     });
   });
 });

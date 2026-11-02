@@ -5,6 +5,7 @@ import { getLocaleSet } from "../../../lib/localization";
 import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
 import { NotFoundError } from "../../../lib/errors";
 import { sendBrandedMail } from "../../../lib/branded-mail";
+import { toCustomerEmailLocale } from "../../../lib/branded-email";
 import { renderTemplate } from "../../../lib/template-render";
 import { sendTemplateEmail } from "../../email-templates/email-templates.service";
 import { formatDoctorSlots, formatPatientRanges } from "../../../lib/dual-time";
@@ -89,9 +90,10 @@ function formatSlotsSummary(appointments: readonly { startsAt: Date; endsAt?: Da
  * `AppointmentBooking.locale`; yoksa (eski kayıt / booking'siz randevu) TR. Bağlantıların dil
  * segmenti ve kurumsal kabuğun (footer, yön) dili budur; şablon gövdesi admin'in yazdığı dildedir.
  */
-export const PATIENT_EMAIL_FALLBACK_LOCALE = "tr";
+export const PATIENT_EMAIL_FALLBACK_LOCALE = "en";
 export function patientEmailLocale(booking: { locale?: string | null } | null | undefined): string {
-  return booking?.locale || PATIENT_EMAIL_FALLBACK_LOCALE;
+  // Paket AH - müşteriye giden e-posta Türkçe olmaz: kayıtlı dil `tr` ise (ya da yoksa) `en`.
+  return toCustomerEmailLocale(booking?.locale);
 }
 
 /** Hastanın kendi rezervasyon bağlantısı — hastanın dil segmentiyle. */

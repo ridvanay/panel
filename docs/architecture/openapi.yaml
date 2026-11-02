@@ -4853,6 +4853,51 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
+  /consultation-requests:
+    post:
+      tags: [CRM]
+      summary: "Paket AH — bölüm/paket bazlı danışma talebi (randevu/ödeme yerine; kimlik doğrulama YOK)"
+      description: >
+        **Paket AH (2026-11-02).** WM Health bir sağlık kuruluşu değil, uluslararası sağlık turizmi aracı kuruluşudur;
+        ziyaretçi randevu/ödeme yerine bu formla talep bırakır, hasta koordinatörü 1 iş günü içinde döner.
+        Rate limit: 5/dakika, IP tabanlı (`CONTACT_SUBMIT_RATE_LIMIT`); honeypot (`website`) doluysa **201 (sahte numara)**
+        ve HİÇBİR kayıt/e-posta yazılmaz.
+
+
+        Doğrulama (422, `error.details.<alan>`): `serviceSlug` aktif uzmanlık (üst ya da alt) ve/veya `packageSlug` aktif
+        paket — en az biri zorunlu; `country` ISO 3166-1 alpha-2; `contactLanguage` ∈ {en,de,ar,ru,fr,es,ro,sr-latn};
+        `preferredTo >= preferredFrom`; `phone` doluysa geçerli numara; **`contactConsent` true zorunlu**;
+        **`message` doluysa `healthDataConsent` true zorunlu**.
+
+
+        Kayıt: `ConsultationRequest` + aynı transaction'da `CrmLead` (`channel: CONSULTATION_REQUEST`) → admin CRM "Talepler".
+        Mesaj AES-256-GCM ile şifreli saklanır (yalnız `healthDataConsent` ile); sağlık rızası mesaj yoksa kayda geçmez.
+        Aynı e-posta + aynı hizmet/paket için 10 dk içindeki tekrar yeni talep açmaz (aynı numara döner).
+
+
+        Bildirimler (best-effort, yanıtı bloklamaz): (1) yönetici — AG `admin-booking-notifications` altyapısı, idempotent
+        `eventKey = consultation-request:<id>:created`, alıcılar `bookingNotificationRecipients`; konu
+        `New consultation request #REQ-00012 — <bölüm/paket>`; gövdede AD/E-POSTA/TELEFON/MESAJ YOKTUR (yalnız bölüm, ülke,
+        iletişim dili, tercüman, tarih aralığı, "Open request" → `/admin/crm/leads/<leadId>`); (2) ziyaretçiye onay e-postası —
+        `locale` dilinde (`tr` → `en`), talep no + "1 iş günü" + aracı kuruluş ibaresi (footer).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateConsultationRequestRequest" }
+      responses:
+        "201":
+          description: Alındı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateConsultationRequestResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /admin/import/jobs:
     get:
       tags: [Import]
@@ -5335,6 +5380,10 @@ paths:
         **Paket AG (2026-11-02):** yanıt `AdminSiteSettings`'tir (= `SiteSettings` + `bookingNotificationRecipients`
         + `bookingNotificationRecipientsEffective`). Alıcı adresleri public `GET /settings`'te ASLA dönmez ve bu uçta
         YALNIZCA `SiteRole=ADMIN`'e dolu gelir (MANAGER/EDITOR için `null` ve `[]`).
+
+
+        **Paket AH (2026-11-02):** yanıta `blogMedicalReviewRequired` (admin-only bayrak) eklendi; `healthTourismCertificateNo`
+        `SiteSettings` içindedir ve public `GET /settings`'te de döner.
       responses:
         "200":
           description: OK
@@ -13627,6 +13676,15 @@ paths:
       responses:
         "204": { description: Silindi }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/crm/leads/{id}/consultation-request/withdraw-health-consent:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [CRM]
+      summary: "Paket AH — ziyaretçi sağlık verisi onayını geri çekti: mesaj ve sağlık onay zamanı silinir (denetim kaydı)"
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/crm/leads/{id}/notes:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -14537,7 +14595,7 @@ components:
       description: "Yeni, Arandı, Ulaşılamadı, Randevu Verildi, Görüşme Yapıldı, Tedavi Planlandı, Tedavi Oldu, Olumsuz, Test/Spam"
     CrmLeadChannel:
       type: string
-      enum: [CONTACT_FORM, LIVE_CHAT, WHATSAPP, PHONE, EMAIL, BOOKING_ABANDONED, MANUAL, ADS_IMPORT]
+      enum: [CONTACT_FORM, LIVE_CHAT, WHATSAPP, PHONE, EMAIL, BOOKING_ABANDONED, MANUAL, ADS_IMPORT, MATCHER, PACKAGE, CONSULTATION_REQUEST]
     CrmLead:
       type: object
       properties:
@@ -14580,6 +14638,11 @@ components:
         - $ref: "#/components/schemas/CrmLead"
         - type: object
           properties:
+            consultationRequest:
+              nullable: true
+              description: "Paket AH — `channel=CONSULTATION_REQUEST` talebinin ayrıntısı (yalnız yetkili CRM görüntüleyicisi; `message` çözülmüş sağlık verisi olabilir → görüntüleme denetim kaydına `healthNoteViewed` düşer)."
+              allOf:
+                - $ref: "#/components/schemas/ConsultationRequestDetail"
             notes:
               type: array
               items:
@@ -18710,6 +18773,11 @@ components:
           description: >
             Dahili sohbet düğmesinin ve açılan pencerenin köşesi. Harici sağlayıcılar (Crisp/Tawk.to)
             kendi konumlarını yönetir, bu alanı kullanmaz.
+        healthTourismCertificateNo:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: "Paket AH — Uluslararası Sağlık Turizmi Yetki Belgesi numarası (admin girer). `null` = belge satırı sitede gösterilmez."
 
     AdminSiteSettings:
       description: >
@@ -18717,8 +18785,11 @@ components:
       allOf:
         - $ref: "#/components/schemas/SiteSettings"
         - type: object
-          required: [bookingNotificationRecipients, bookingNotificationRecipientsEffective]
+          required: [bookingNotificationRecipients, bookingNotificationRecipientsEffective, blogMedicalReviewRequired]
           properties:
+            blogMedicalReviewRequired:
+              type: boolean
+              description: "Paket AH — blog yayınında hekim onayı (Z1) şartı. `false` (varsayılan) = şart aranmaz, editoryal yayın yeterli; `true` = eski Z1 davranışı. Mevcut yayındaki yazılar etkilenmez. Public `GET /settings`'te dönmez."
             bookingNotificationRecipients:
               type: string
               nullable: true
@@ -18727,6 +18798,52 @@ components:
               type: array
               items: { type: string }
               description: "Gerçekte kullanılan alıcı listesi (ham değer `null` ise `[admin@wmhealthistanbul.com]`, `\"\"` ise `[]`)."
+
+    CreateConsultationRequestRequest:
+      type: object
+      required: [country, contactLanguage, needsInterpreter, fullName, email, contactConsent, locale]
+      description: "Paket AH — `POST /consultation-requests` gövdesi. `serviceSlug` ya da `packageSlug` (en az biri) zorunludur."
+      properties:
+        serviceSlug: { type: string, nullable: true, description: "Aktif uzmanlık (üst ya da alt bölüm) slug'ı." }
+        packageSlug: { type: string, nullable: true, description: "Aktif sağlık paketi slug'ı (paket seçiliyse hizmet isteğe bağlı)." }
+        preferredFrom: { type: string, format: date, nullable: true }
+        preferredTo: { type: string, format: date, nullable: true, description: "`preferredFrom`'dan önce olamaz (422)." }
+        country: { type: string, minLength: 2, maxLength: 2, example: DE, description: "ISO 3166-1 alpha-2 (büyük/küçük harf duyarsız)." }
+        contactLanguage: { type: string, enum: [en, de, ar, ru, fr, es, ro, sr-latn] }
+        needsInterpreter: { type: boolean }
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 200 }
+        phone: { type: string, nullable: true, maxLength: 40, description: "İsteğe bağlı; doluysa geçerli numara olmalı (ülke kodu ile)." }
+        message: { type: string, nullable: true, maxLength: 1000, description: "İsteğe bağlı; doluysa `healthDataConsent=true` ZORUNLU (422 `details.healthDataConsent`)." }
+        contactConsent: { type: boolean, description: "İletişim için açık rıza — `true` ZORUNLU (422 `details.contactConsent`)." }
+        healthDataConsent: { type: boolean, default: false }
+        locale: { type: string, description: "Formun gösterildiği site dili (onay e-postasının dili; `tr` → `en`)." }
+        website: { type: string, maxLength: 200, description: "Honeypot — insan kullanıcıda BOŞ kalır." }
+        consentTextVersion: { type: string, maxLength: 40, description: "Rıza metni sürümü (ispat için); verilmezse `consultation-v1`." }
+    CreateConsultationRequestResponse:
+      type: object
+      required: [requestNumber]
+      properties:
+        requestNumber: { type: string, example: REQ-00012, description: "Talep numarası (PII içermez). Honeypot tetiklenirse de biçimce geçerli sahte numara döner." }
+    ConsultationRequestDetail:
+      type: object
+      description: "Paket AH — CRM talep detayında danışma talebi ayrıntısı."
+      properties:
+        number: { type: string, example: REQ-00012 }
+        serviceName: { type: string, description: "Talep anındaki hizmet/paket adı (EN anlık görüntü)." }
+        specialtyId: { type: string, nullable: true }
+        packageId: { type: string, nullable: true }
+        preferredFrom: { type: string, format: date, nullable: true }
+        preferredTo: { type: string, format: date, nullable: true }
+        country: { type: string }
+        contactLanguage: { type: string }
+        needsInterpreter: { type: boolean }
+        message: { type: string, nullable: true, description: "Çözülmüş mesaj (şifreli saklanır)." }
+        contactConsentAt: { type: string, format: date-time }
+        healthDataConsentAt: { type: string, format: date-time, nullable: true }
+        consentTextVersion: { type: string, nullable: true }
+        locale: { type: string }
+        anonymizedAt: { type: string, format: date-time, nullable: true }
 
     AdminBookingDetail:
       description: "Paket AG — `GET /admin/telehealth/bookings/{bookingId}` yanıtı: `AppointmentBooking` + hastanın site dili ve tercüman talebi dili."
@@ -18797,6 +18914,8 @@ components:
         liveChatRequirePhone: { type: boolean, description: "Formdaki Telefon alanı zorunlu mu." }
         liveChatRequireEmail: { type: boolean, description: "Formdaki E-posta alanı zorunlu mu." }
         liveChatPosition: { type: string, enum: [BOTTOM_RIGHT, BOTTOM_LEFT], description: "Dahili sohbet düğmesinin köşesi (geçersiz değer 422)." }
+        healthTourismCertificateNo: { type: string, nullable: true, maxLength: 64, description: "Paket AH — Yetki Belgesi numarası. Trim edilir; boş/yalnız boşluk → `null`; 64 karakter üstü, kontrol karakteri ve `<` `>` 422." }
+        blogMedicalReviewRequired: { type: boolean, description: "Paket AH — blog hekim onayı (Z1) şartı bayrağı (varsayılan `false`)." }
         bookingNotificationRecipients: { type: string, nullable: true, maxLength: 2000, description: "Paket AG — `null` = varsayılana dön, `\"\"` = bildirim yok, dolu = virgülle ayrılmış adresler (en çok 10; geçersiz adres 422)." }
         # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
         # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş

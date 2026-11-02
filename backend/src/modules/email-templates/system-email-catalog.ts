@@ -23,6 +23,7 @@ import { TEST_EMAIL_HTML, TEST_EMAIL_SUBJECT } from "../settings/settings.email.
 import { buildReviewInviteEmail } from "../reviews/reviews.service";
 import { buildPackageConfirmationEmail, buildPackageInquiryNotice, toPackageEmailLocale } from "../packages/packages.notifications";
 import { buildBookingNotificationEmail, type BookingNotificationEmailData } from "../telehealth/lib/booking-notification-email";
+import { buildConsultationAdminEmail, buildConsultationConfirmationEmail } from "../consultation-requests/consultation-request-email";
 import { renderTemplatePreviewOrTest } from "./email-templates.service";
 
 /**
@@ -76,6 +77,8 @@ const CODE_ENTRIES: SystemEmailEntry[] = [
   { id: "code:booking-admin-confirmed", label: "Yeni randevu bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
   { id: "code:booking-admin-cancelled", label: "Randevu iptal bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
   { id: "code:booking-admin-rescheduled", label: "Randevu saat değişikliği bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
+  { id: "code:consultation-request-confirmation", label: "Danışma talebi alındı (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
+  { id: "code:consultation-request-admin", label: "Yeni danışma talebi bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
   { id: "code:smtp-test", label: "SMTP yapılandırma testi", audience: "staff", source: "code", languages: "tr" },
 ];
 
@@ -181,6 +184,24 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
     case "code:booking-admin-rescheduled": {
       const kind = id === "code:booking-admin-confirmed" ? "confirmed" : id === "code:booking-admin-cancelled" ? "cancelled" : "rescheduled";
       const mail = buildBookingNotificationEmail(bookingAdminSampleData(kind));
+      return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
+    }
+    case "code:consultation-request-confirmation": {
+      const mail = buildConsultationConfirmationEmail({ locale, requestNumber: "REQ-01024", serviceName: "Gastroenterology" });
+      return { subject: mail.subject, bodyHtml: mail.html };
+    }
+    case "code:consultation-request-admin": {
+      const mail = buildConsultationAdminEmail({
+        requestNumber: "REQ-01024",
+        serviceName: "Gastroenterology",
+        country: "DE",
+        contactLanguage: "de",
+        needsInterpreter: true,
+        preferredFrom: "2026-12-01",
+        preferredTo: "2026-12-15",
+        leadId: "00000000-0000-4000-8000-000000000002",
+        frontendUrl: env.FRONTEND_URL,
+      });
       return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
     }
     case "code:smtp-test":

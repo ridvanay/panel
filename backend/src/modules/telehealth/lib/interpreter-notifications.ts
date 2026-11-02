@@ -223,13 +223,15 @@ export interface ParticipantEmailInput {
 
 /** Hastaya/doktora: "Görüşmenize tercüman katılacak (dil)" + tercümanın yalnızca görünen adı. */
 export function buildParticipantInterpreterEmail(input: ParticipantEmailInput): InterpreterMailContent {
-  const t = STRINGS[input.locale];
+  // Paket AH - hastaya (müşteri) giden e-posta Türkçe olmaz: tr -> en.
+  const locale: NotificationLocale = input.audience === "patient" && input.locale === "tr" ? "en" : input.locale;
+  const t = STRINGS[locale];
   const rows = [
     `<p>${escapeHtml(input.audience === "patient" ? t.patientIntro : t.doctorIntro)} (${escapeHtml(nativeLanguageName(input.language))})</p>`,
     `<p><strong>${escapeHtml(t.interpreterLabel)}:</strong> ${escapeHtml(input.interpreterDisplayName)}<br/>`,
-    `<strong>${escapeHtml(t.dateLabel)}:</strong> ${escapeHtml(formatInZone(input.startsAt, input.locale, input.timeZone))}</p>`,
+    `<strong>${escapeHtml(t.dateLabel)}:</strong> ${escapeHtml(formatInZone(input.startsAt, locale, input.timeZone))}</p>`,
   ];
-  return { subject: t.participantSubject, html: wrap(input.locale, rows), locale: input.locale, audience: input.audience === "patient" ? "patient" : "staff" };
+  return { subject: t.participantSubject, html: wrap(locale, rows), locale, audience: input.audience === "patient" ? "patient" : "staff" };
 }
 
 /** Best-effort gönderim — hata loglanır, atamayı etkilemez. */
