@@ -380,6 +380,8 @@ for (const lang of LANGS) {
         await shot("07-talep-adim3", true);
         await page.getByTestId("request-next").click();
         await expect(page.getByTestId("request-step-4")).toBeVisible();
+        // AJ-7 düzeltmesi (58ec452): inceleme adımına geçmek formu göndermez, rıza hatası kullanıcı göndermeden görünmez.
+        await expect(page.getByTestId("request-consent-contact-error")).toHaveCount(0);
         await shot("08-talep-adim4", true);
         await page.getByTestId("request-consent-contact").check();
         await page.getByTestId("request-consent-health").check().catch(() => undefined);
