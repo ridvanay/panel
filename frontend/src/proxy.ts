@@ -10,6 +10,7 @@ import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 import { legacyPhysiciansPath } from "@/lib/i18n/physicians-path";
 import { legacyFindTreatmentPath } from "@/lib/i18n/legacy-matcher-path";
 import { removedLocaleRedirectPath } from "@/lib/i18n/removed-locale-path";
+import { doctorPortalRetiredRedirect } from "@/lib/doctor-portal-redirect";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
@@ -389,6 +390,11 @@ export async function proxy(request: NextRequest) {
   ) {
     return NextResponse.redirect(crossOriginUrl(SITE_ORIGIN, pathname, request.nextUrl.search), 307);
   }
+
+  // Paket AJ (AJ-5) — doktor alt alan adı ve `/doctor/**` ziyaretçiye kapalı: 301 -> ana site kökü.
+  // `DOCTOR_PORTAL_ENABLED=true` ise bu blok devre dışıdır (aşağıdaki eski host izolasyonu çalışır).
+  const retiredPortalTarget = doctorPortalRetiredRedirect(host, pathname);
+  if (retiredPortalTarget) return NextResponse.redirect(retiredPortalTarget, 301);
 
   const isDoctorHost = isDoctorHostname(host);
 

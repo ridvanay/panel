@@ -62,10 +62,13 @@ describe("proxy — hekim portalı host-izolasyonu (.claude/architect-scope-doct
     vi.resetModules();
     process.env.NEXT_PUBLIC_SITE_URL = SITE_ORIGIN;
     process.env.NEXT_PUBLIC_DOCTOR_URL = DOCTOR_ORIGIN;
+    // Paket AJ (AJ-5): portal varsayılan kapalı; eski host izolasyonu yalnızca bayrakla açılır.
+    process.env.DOCTOR_PORTAL_ENABLED = "true";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    delete process.env.DOCTOR_PORTAL_ENABLED;
     if (ORIGINAL_SITE_URL === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
     else process.env.NEXT_PUBLIC_SITE_URL = ORIGINAL_SITE_URL;
     if (ORIGINAL_DOCTOR_URL === undefined) delete process.env.NEXT_PUBLIC_DOCTOR_URL;
@@ -261,10 +264,12 @@ describe("proxy — §6 ESKİ `localhost` HOST MİGRASYONU (backend CORS allow-l
     vi.resetModules();
     process.env.NEXT_PUBLIC_SITE_URL = SITE_ORIGIN;
     process.env.NEXT_PUBLIC_DOCTOR_URL = DOCTOR_ORIGIN;
+    process.env.DOCTOR_PORTAL_ENABLED = "true";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    delete process.env.DOCTOR_PORTAL_ENABLED;
     if (ORIGINAL_SITE_URL === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
     else process.env.NEXT_PUBLIC_SITE_URL = ORIGINAL_SITE_URL;
     if (ORIGINAL_DOCTOR_URL === undefined) delete process.env.NEXT_PUBLIC_DOCTOR_URL;
