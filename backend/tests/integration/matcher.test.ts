@@ -20,7 +20,7 @@ vi.mock("../../src/lib/mail", async (importOriginal) => {
   return { ...actual, sendMail: (...args: unknown[]) => (mailSpy(...args), Promise.resolve({ messageId: "test" })) };
 });
 
-describe("matcher — hekim eşleştirme sihirbazı (Paket W)", () => {
+describe("matcher — tedavi eşleştirme sihirbazı (Paket W)", () => {
   let app: FastifyInstance;
   let admin: { id: string; token: string };
   let manager: { id: string; token: string };

@@ -30,63 +30,63 @@ interface ConfirmationStrings {
 const CONFIRMATION: Record<MatcherEmailLocale, ConfirmationStrings> = {
   en: {
     subject: "We have received your request #{number}",
-    intro: "Thank you. We have received your physician matching request #{number}.",
+    intro: "Thank you. We have received your treatment matching request #{number}.",
     contactLine: "Our patient coordinator will contact you within 1 business day.",
     noContactLine: "You did not give permission to be contacted, so we will not call or write to you about this request.",
     disclaimer: "This tool does not provide a diagnosis or medical advice.",
   },
   tr: {
     subject: "Talebinizi aldık #{number}",
-    intro: "Teşekkür ederiz. #{number} numaralı hekim eşleştirme talebinizi aldık.",
+    intro: "Teşekkür ederiz. #{number} numaralı tedavi eşleştirme talebinizi aldık.",
     contactLine: "Hasta koordinatörümüz 1 iş günü içinde sizinle iletişime geçecek.",
     noContactLine: "İletişime geçilmesine izin vermediğiniz için bu talep hakkında sizi aramayacak ve size yazmayacağız.",
     disclaimer: "Bu araç tanı koymaz ve tıbbi tavsiye vermez.",
   },
   de: {
     subject: "Wir haben Ihre Anfrage #{number} erhalten",
-    intro: "Vielen Dank. Wir haben Ihre Anfrage zur Arztsuche #{number} erhalten.",
+    intro: "Vielen Dank. Wir haben Ihre Anfrage zur Behandlungssuche #{number} erhalten.",
     contactLine: "Unsere Patientenkoordination meldet sich innerhalb von einem Werktag bei Ihnen.",
     noContactLine: "Sie haben einer Kontaktaufnahme nicht zugestimmt; wir werden Sie zu dieser Anfrage daher weder anrufen noch anschreiben.",
     disclaimer: "Dieses Tool stellt keine Diagnose und ersetzt keine ärztliche Beratung.",
   },
   es: {
     subject: "Hemos recibido su solicitud n.º {number}",
-    intro: "Gracias. Hemos recibido su solicitud de búsqueda de médico n.º {number}.",
+    intro: "Gracias. Hemos recibido su solicitud de búsqueda de tratamiento n.º {number}.",
     contactLine: "Nuestro coordinador de pacientes se pondrá en contacto con usted en un plazo de 1 día hábil.",
     noContactLine: "No ha autorizado que le contactemos, por lo que no le llamaremos ni le escribiremos sobre esta solicitud.",
     disclaimer: "Esta herramienta no ofrece diagnósticos ni consejo médico.",
   },
   fr: {
     subject: "Nous avons bien reçu votre demande n° {number}",
-    intro: "Merci. Nous avons bien reçu votre demande d’orientation vers un médecin n° {number}.",
+    intro: "Merci. Nous avons bien reçu votre demande d’orientation vers un traitement n° {number}.",
     contactLine: "Notre coordinateur patients vous contactera sous 1 jour ouvré.",
     noContactLine: "Vous n’avez pas autorisé de prise de contact : nous ne vous appellerons pas et ne vous écrirons pas au sujet de cette demande.",
     disclaimer: "Cet outil ne pose pas de diagnostic et ne fournit pas d’avis médical.",
   },
   ar: {
     subject: "تلقّينا طلبك رقم {number}",
-    intro: "شكرًا لك. تلقّينا طلبك لاختيار الطبيب المناسب رقم {number}.",
+    intro: "شكرًا لك. تلقّينا طلبك للعثور على العلاج المناسب رقم {number}.",
     contactLine: "سيتواصل معك منسّق المرضى لدينا خلال يوم عمل واحد.",
     noContactLine: "لم تمنحنا الإذن بالتواصل معك، لذلك لن نتصل بك أو نراسلك بشأن هذا الطلب.",
     disclaimer: "هذه الأداة لا تقدّم تشخيصًا ولا نصيحة طبية.",
   },
   ru: {
     subject: "Мы получили вашу заявку № {number}",
-    intro: "Спасибо. Мы получили вашу заявку на подбор врача № {number}.",
+    intro: "Спасибо. Мы получили вашу заявку на подбор лечения № {number}.",
     contactLine: "Наш координатор пациентов свяжется с вами в течение 1 рабочего дня.",
     noContactLine: "Вы не дали согласия на связь, поэтому мы не будем звонить или писать вам по этой заявке.",
     disclaimer: "Этот сервис не ставит диагноз и не даёт медицинских рекомендаций.",
   },
   ro: {
     subject: "Am primit solicitarea dumneavoastră nr. {number}",
-    intro: "Vă mulțumim. Am primit solicitarea dumneavoastră de alegere a medicului nr. {number}.",
+    intro: "Vă mulțumim. Am primit solicitarea dumneavoastră de identificare a tratamentului nr. {number}.",
     contactLine: "Coordonatorul nostru de pacienți vă va contacta în cel mult 1 zi lucrătoare.",
     noContactLine: "Nu ați acordat permisiunea de a fi contactat, așa că nu vă vom suna și nu vă vom scrie despre această solicitare.",
     disclaimer: "Acest instrument nu pune diagnostice și nu oferă sfaturi medicale.",
   },
   "sr-latn": {
     subject: "Primili smo vaš zahtev br. {number}",
-    intro: "Hvala vam. Primili smo vaš zahtev za izbor lekara br. {number}.",
+    intro: "Hvala vam. Primili smo vaš zahtev za izbor tretmana br. {number}.",
     contactLine: "Naš koordinator za pacijente javiće vam se u roku od 1 radnog dana.",
     noContactLine: "Niste dali dozvolu da vas kontaktiramo, pa vas povodom ovog zahteva nećemo zvati niti vam pisati.",
     disclaimer: "Ovaj alat ne postavlja dijagnozu i ne daje medicinske savete.",
@@ -113,7 +113,7 @@ export function buildMatcherConfirmationEmail(input: { locale: MatcherEmailLocal
 export function buildMatcherLeadFallbackNotice(number: number, adminUrl: string): { subject: string; bodyHtml: string } {
   return {
     subject: `Yeni eşleştirme talebi #${number}`,
-    bodyHtml: `<p>Hekim eşleştirme sihirbazından yeni bir talep geldi: <strong>#${number}</strong>.</p><p><a href="${escapeHtml(adminUrl)}">Talebi panelde aç</a></p>`,
+    bodyHtml: `<p>Tedavi eşleştirme sihirbazından yeni bir talep geldi: <strong>#${number}</strong>.</p><p><a href="${escapeHtml(adminUrl)}">Talebi panelde aç</a></p>`,
   };
 }
 

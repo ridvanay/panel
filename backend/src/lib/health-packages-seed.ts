@@ -23,7 +23,7 @@ export const SEED_HEALTH_PACKAGES: SeedPackage[] = [
     en: {
       title: "Executive Check-up",
       summary: `A general health check-up planned around your age, history and goals. ${EVAL}`,
-      includes: ["Consultation with a physician", "Laboratory tests selected by the physician", "Imaging if medically indicated", "Results review"],
+      includes: ["Consultation at an authorized healthcare facility", "Laboratory tests selected by the treating physician", "Imaging if medically indicated", "Results review"],
       notIncluded: ["Flights and accommodation", "Treatments arising from the results"],
       duration: "Usually 1 day",
       idealFor: "Adults who want a structured overview of their health",
@@ -36,7 +36,7 @@ export const SEED_HEALTH_PACKAGES: SeedPackage[] = [
     en: {
       title: "Women's Check-up",
       summary: `A check-up focused on women's health, planned according to age and history. ${EVAL}`,
-      includes: ["Consultation with a physician", "Gynaecological examination if indicated", "Laboratory tests selected by the physician", "Results review"],
+      includes: ["Consultation at an authorized healthcare facility", "Gynaecological examination if indicated", "Laboratory tests selected by the treating physician", "Results review"],
       notIncluded: ["Flights and accommodation", "Treatments arising from the results"],
       duration: "Usually 1 day",
       idealFor: "Women who want a routine health review",
@@ -62,7 +62,7 @@ export const SEED_HEALTH_PACKAGES: SeedPackage[] = [
     en: {
       title: "Longevity Assessment",
       summary: `A preventive health assessment covering lifestyle and risk factors. ${EVAL}`,
-      includes: ["Consultation with a physician", "Laboratory tests selected by the physician", "Lifestyle discussion", "Results review"],
+      includes: ["Consultation at an authorized healthcare facility", "Laboratory tests selected by the treating physician", "Lifestyle discussion", "Results review"],
       notIncluded: ["Flights and accommodation", "Supplements or treatments"],
       duration: "Usually 1 day",
       idealFor: "Adults interested in prevention",
@@ -74,8 +74,8 @@ export const SEED_HEALTH_PACKAGES: SeedPackage[] = [
     category: "aesthetic",
     en: {
       title: "Dermal Filler & Botox",
-      summary: `Aesthetic injections planned after an in-person assessment by a qualified physician. ${EVAL}`,
-      includes: ["Assessment by a physician", "Treatment plan discussion", "Procedure if suitable"],
+      summary: `Aesthetic injections planned after an in-person assessment at an authorized healthcare facility. ${EVAL}`,
+      includes: ["Assessment at an authorized healthcare facility", "Treatment plan discussion", "Procedure if suitable"],
       notIncluded: ["Flights and accommodation"],
       duration: "Usually 1 day",
       idealFor: "Adults considering non-surgical aesthetic treatment",
@@ -113,8 +113,8 @@ export const SEED_HEALTH_PACKAGES: SeedPackage[] = [
     category: "check-up",
     en: {
       title: "Cancer Screening",
-      summary: `Screening tests chosen by a physician according to age, sex and risk factors. Screening does not replace diagnosis. ${EVAL}`,
-      includes: ["Consultation with a physician", "Screening tests selected by the physician", "Results review"],
+      summary: `Screening tests chosen at an authorized healthcare facility according to age, sex and risk factors. Screening does not replace diagnosis. ${EVAL}`,
+      includes: ["Consultation at an authorized healthcare facility", "Screening tests selected by the treating physician", "Results review"],
       notIncluded: ["Flights and accommodation", "Diagnosis or treatment arising from the results"],
       duration: "Usually 1–2 days",
       idealFor: "Adults due for age-appropriate screening",
