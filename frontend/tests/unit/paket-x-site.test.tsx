@@ -104,7 +104,7 @@ describe("whatsapp null iken hiçbir WhatsApp öğesi yok", () => {
     const { container } = render(
       wrap(
         <>
-          <HeaderContactLinks topic="Site" />
+          <HeaderContactLinks fallbackHref="/en/contact" />
           <MobileContactButton topic="Site" />
           <SupportLanguagesBand support={support} dict={en.common} topic="Site" />
         </>,
@@ -117,20 +117,19 @@ describe("whatsapp null iken hiçbir WhatsApp öğesi yok", () => {
     expect(screen.getByTestId("site-header-talk-to-us")).toBeInTheDocument();
   });
 
-  it("kanal yok + sohbet kapalı: header bağlantıları hiçbir şey çizmez", () => {
-    const { container } = render(wrap(<HeaderContactLinks topic="Site" />));
-    expect(container).toBeEmptyDOMElement();
+  it("kanal yok + sohbet kapalı: 'Talk to us' iletişim sayfasına bağlanır", () => {
+    render(wrap(<HeaderContactLinks fallbackHref="/en/contact" />));
+    expect(screen.getByTestId("site-header-talk-to-us")).toHaveAttribute("href", "/en/contact");
   });
 });
 
 describe("header üst şerit bağlantıları", () => {
-  it("WhatsApp site adıyla; Talk to us sohbeti açar", () => {
+  it("WhatsApp üst şeritte yok; Talk to us sohbeti açar", () => {
     const seen: unknown[] = [];
     const listener = (e: Event) => seen.push((e as CustomEvent).detail);
     window.addEventListener(OPEN_LIVE_CHAT_EVENT, listener);
-    render(wrap(<HeaderContactLinks topic="WM Health" />, { whatsapp: WA, chat: true }));
-    expect(screen.getByTestId("site-header-whatsapp")).toHaveAttribute("href", buildWhatsappHref(WA, "WM Health"));
-    expect(screen.getByTestId("site-header-whatsapp")).toHaveAttribute("title", en.contactCta.whatsappNote);
+    render(wrap(<HeaderContactLinks fallbackHref="/en/contact" />, { whatsapp: WA, chat: true }));
+    expect(screen.queryByTestId("site-header-whatsapp")).toBeNull();
     fireEvent.click(screen.getByTestId("site-header-talk-to-us"));
     window.removeEventListener(OPEN_LIVE_CHAT_EVENT, listener);
     expect(seen).toEqual([{}]);

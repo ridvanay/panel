@@ -54,7 +54,12 @@ describe("üst bilgi şeridi", () => {
     const topbar = screen.getByTestId("site-header-topbar");
     expect(topbar).toHaveClass("hidden", "lg:block", "h-9");
     expect(within(topbar).getByTestId("site-header-support")).toHaveTextContent("Support in 9 languages · Free interpreter");
-    expect(within(topbar).getByRole("link", { name: "Contact support" })).toHaveAttribute("href", "/contact");
+    expect(within(topbar).getByRole("link", { name: "Talk to us" })).toHaveAttribute("href", "/contact");
+    // AJ-8: "Contact support" ve "WhatsApp" öğeleri şeritten kalktı.
+    expect(within(topbar).queryByText("Contact support")).toBeNull();
+    expect(within(topbar).queryByTestId("site-header-whatsapp")).toBeNull();
+    // Kısaltma yok: hiçbir şerit metni üç noktayla kesilmez (truncate/ellipsis sınıfı yok).
+    expect(topbar.querySelector(".truncate, [class*='text-ellipsis']")).toBeNull();
     expect(within(topbar).getByRole("group", { name: "Support and account" })).toBeInTheDocument();
     expect(within(topbar).getByRole("link", { name: en.loginAriaLabel })).toBeInTheDocument();
   });

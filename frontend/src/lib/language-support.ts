@@ -41,7 +41,8 @@ export function resolveLanguageSupport(
   locales: Pick<Locale, "code" | "nativeLabel">[] = []
 ): ResolvedLanguageSupport | null {
   const support = settings?.languageSupport ?? DEFAULT_LANGUAGE_SUPPORT;
-  const codes = [...new Set((support.supportLanguages ?? []).filter((c) => typeof c === "string" && c.trim()))];
+  // Paket AJ — Türkçe ziyaretçiye kapalı: destek dili listesinde "tr" kalmış olsa bile ziyaretçi tarafında listelenmez.
+  const codes = [...new Set((support.supportLanguages ?? []).filter((c) => typeof c === "string" && c.trim() && c.trim().toLowerCase() !== "tr"))];
   if (codes.length === 0) return null;
   const hours = support.supportHours?.[lang]?.trim() || support.supportHours?.en?.trim() || null;
   return {

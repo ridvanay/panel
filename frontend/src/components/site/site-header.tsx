@@ -11,7 +11,6 @@ import {
   Heart,
   Languages,
   LogOut,
-  MessageCircle,
   ChevronDown,
   Menu,
   Receipt,
@@ -501,26 +500,35 @@ export function SiteHeader({
       )}
       style={{ "--site-header-top": scrolled ? "-52px" : "-36px" } as React.CSSProperties}
     >
-      {/* 1) Üst bilgi şeridi (36 px, yalnızca ≥1024 px). */}
+      {/* 1) Üst bilgi şeridi (36 px, ≥1024 px). Paket AJ (AJ-8): soldan sağa ibare · (≥1280) "Treatments by authorized healthcare facilities",
+          destek dili metni, "Talk to us"; sağda dil seçici + hesap. Hiçbir metin üç noktayla kesilmez — sığmayan öğe gizlenir. */}
+      <div
+        className="flex min-h-7 items-center justify-center border-b border-border/60 bg-[color-mix(in_oklch,var(--site-primary)_4%,transparent)] px-4 py-1 text-center text-[11px] leading-tight text-[var(--site-header-link)] lg:hidden"
+        data-testid="site-header-mobile-strip"
+      >
+        {intermediary && <span className="font-medium">{intermediary.shortLabel}</span>}
+      </div>
       <div className="hidden h-9 border-b border-border/60 bg-[color-mix(in_oklch,var(--site-primary)_4%,transparent)] text-[13px] lg:block" data-testid="site-header-topbar">
-        <div className="mx-auto flex h-full max-w-[1360px] items-center justify-between gap-4 px-6 xl:px-8">
-          <div className="flex min-w-0 items-center gap-3 text-[var(--site-header-link)]">
+        <div className="mx-auto flex h-full max-w-[1360px] items-center justify-between gap-6 px-6 xl:px-8">
+          <div className="flex items-center gap-x-4 whitespace-nowrap text-[var(--site-header-link)]">
             {intermediary && (
-              <span className="inline-flex min-w-0 items-center gap-1.5" data-testid="site-header-intermediary">
-                <span className="truncate font-medium">{intermediary.shortLabel}</span>
-                <span aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1.5" data-testid="site-header-intermediary">
+                <span className="font-medium">{intermediary.shortLabel}</span>
+                <span aria-hidden="true" className="max-xl:hidden">
+                  ·
+                </span>
                 <Link
                   href={`${localize("/about")}#authorized-facilities`}
-                  className="shrink-0 rounded text-[var(--site-header-link)] underline-offset-2 hover:text-[var(--site-header-link-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--site-primary)]"
+                  className="rounded text-[var(--site-header-link)] underline-offset-2 hover:text-[var(--site-header-link-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--site-primary)] max-xl:hidden"
                 >
                   {intermediary.facilitiesLink}
                 </Link>
               </span>
             )}
             {support && support.count > 0 && (
-              <span className="inline-flex min-w-0 items-center gap-1.5 truncate max-2xl:hidden" data-testid="site-header-support">
+              <span className="inline-flex items-center gap-1.5" data-testid="site-header-support">
                 <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate">
+                <span>
                   {formatSiteString(dict.topbarSupport, { count: support.count })}
                   {support.interpreterIncluded && (
                     <>
@@ -531,16 +539,9 @@ export function SiteHeader({
                 </span>
               </span>
             )}
-            <Link
-              href={localize("/contact")}
-              className="inline-flex shrink-0 items-center gap-1 rounded font-medium text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--site-primary)]"
-            >
-              <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
-              {dict.topbarContact}
-            </Link>
-            <HeaderContactLinks topic={settings.siteName} />
+            <HeaderContactLinks fallbackHref={localize("/contact")} />
           </div>
-          <div role="group" aria-label={dict.topbarAriaLabel} className="flex shrink-0 items-center gap-1">
+          <div role="group" aria-label={dict.topbarAriaLabel} className="flex shrink-0 items-center gap-1 whitespace-nowrap">
             {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} label={dict.languageHeading} compact={false} />}
             {hasInterpreterPanel && telehealthModuleEnabled && (
               <Link

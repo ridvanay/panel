@@ -99,6 +99,12 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
     expect(within(band).getByRole("link", { name: "Request a call back" })).toHaveAttribute("href", "/en/contact");
   });
 
+  it("AJ-8: ayarda tr kalmış olsa bile ziyaretçi destek listesinde Türkçe yok", () => {
+    const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en", "tr", "de"], supportHours: {}, interpreterIncluded: false }), "en");
+    expect(support?.languages.map((l) => l.code)).toEqual(["en", "de"]);
+    expect(resolveLanguageSupport(settingsWith({ supportLanguages: ["tr"], supportHours: {}, interpreterIncluded: false }), "en")).toBeNull();
+  });
+
   it("bant hero ile aynı genişlikte: aynı kapsayıcı sınıfı, renkli alan kapsayıcının içinde", () => {
     const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en"], supportHours: {}, interpreterIncluded: false }), "en");
     render(withChannels(<SupportLanguagesBand support={support} dict={en.common} />, "en", false, "/en/contact"));
@@ -109,7 +115,7 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
   });
 
   it("tercüman açık + canlı destek açık; rozet sayıyı gösterir", () => {
-    const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en", "tr"], supportHours: {}, interpreterIncluded: true }), "tr");
+    const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en", "de"], supportHours: {}, interpreterIncluded: true }), "tr");
     render(
       withChannels(
         <>
