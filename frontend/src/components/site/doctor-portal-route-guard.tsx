@@ -11,7 +11,7 @@ import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
  * §K6 (`.claude/architect-scope-telehealth-template.md`) + görev talimatı — doktor hesabı
  * (`User.doctorProfileId !== null`) oturum açtığında `(site)` route grubunda `/doctor/**` DIŞINDA
  * bir sayfaya erişemez; her navigasyonda `/doctor`'a geri yönlendirilir. TEK istisna
- * `/consultation/{id}`'dir (2026-09-15, bkz. `isDoctorSharedRouteException`). Guard SADECE bu
+ * `/consultation/{id}` (2026-09-15) ve `/blog/preview/{postId}` (2026-11-02) istisnalarıdır (bkz. `isDoctorSharedRouteException`). Guard SADECE bu
  * `"use client"` bileşende yaşar — `proxy.ts` erişim tokenına (bellek-içi) sahip DEĞİLDİR,
  * bkz. `frontend/src/proxy.ts` (bakım modu + locale rewrite/redirect dışında sorumluluğu YOK).
  *
@@ -55,11 +55,15 @@ function isDoctorPortalRoute(pathname: string | null): boolean {
  * (`POST /appointments/{id}/meeting-token` — doktor yalnızca KENDİ randevusu için token alır);
  * guard yalnızca bir gezinme/UX izolasyon katmanıdır.
  */
-function isDoctorSharedRouteException(pathname: string | null): boolean {
+export function isDoctorSharedRouteException(pathname: string | null): boolean {
   if (!pathname) return false;
   // YALNIZCA `/consultation/{id}` (`app/[lang]/(site)/consultation/[id]/page.tsx`) — `{id}`
   // segmenti ZORUNLUDUR, çıplak `/consultation` bir sayfa DEĞİLDİR.
-  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?consultation/[^/]+`).test(pathname);
+  if (new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?consultation/[^/]+`).test(pathname)) return true;
+  // 2026-11-02 istisnası (kullanıcı kararı; §5.6'ya tarihli not) — atanan inceleyen hekim, doktor panelindeki
+  // "Medical review" listesinden taslak yazının önizlemesini açar: YALNIZCA `/blog/preview/{postId}`.
+  // Yetki burada değil, URL'deki imzalı belirteçtedir (`GET /blog/preview/:postId?t=` — belirteçsiz 404).
+  return new RegExp(`^/(?:${LOCALE_SEGMENT_SOURCE}/)?blog/preview/[^/]+$`).test(pathname);
 }
 
 export function DoctorPortalRouteGuard() {

@@ -435,6 +435,17 @@ rota eklemek bir **mimari karardır** — buraya tarihli bir not düşülmeden g
 gerekçesiyle (`/products`, `/cart`, `/hesabim` vb.) büyütülmesi §5.6'nın "hekim ana vitrinde
 kalamaz" kuralını fiilen boşaltır.
 
+#### 5.6.2 KARAR (2026-11-02, kullanıcı kararı — blog taslak önizlemesi)
+
+İstisna listesine **ikinci ve son kalem olarak** `/blog/preview/{postId}` eklendi (dil önekli ya da
+öneksiz; `{postId}` zorunlu, alt yol yok). Gerekçe: atanan inceleyen hekim, doktor panelindeki
+"Medical review" listesinden taslak yazının önizlemesini açabilmeli (kullanıcı isteği, Z blog paketi).
+Yetki guard'da DEĞİL, URL'deki imzalı belirteçtedir: `GET /blog/preview/:postId?t=` belirteçsiz,
+süresi dolmuş ya da başka yazıya ait belirteçle 404 döner; hekimin oturum belirteci yalnızca
+kendisine atanmış yazı için üretilir (`POST /doctor/blog-reviews/:id/preview-session`). Sayfa
+noindex/nofollow ve `Referrer-Policy: no-referrer`'dır. Diğer blog sayfaları (`/blog`, `/blog/{slug}`)
+istisna DEĞİLDİR — "hekim ana vitrinde kalamaz" kuralı aynen geçerli.
+
 **Yetkilendirme sınırı (security-agent için):** bu bir **yetkilendirme** gevşetmesi DEĞİLDİR —
 guard bir gezinme/UX izolasyon katmanıdır. Doktorun ilgili randevuya erişip erişemeyeceğine API
 karar verir (`POST /appointments/{id}/meeting-token`, doktor yalnızca **kendi** randevusu için
