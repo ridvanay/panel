@@ -18811,6 +18811,7 @@ components:
         country: { type: string, minLength: 2, maxLength: 2, example: DE, description: "ISO 3166-1 alpha-2 (büyük/küçük harf duyarsız)." }
         contactLanguage: { type: string, enum: [en, de, ar, ru, fr, es, ro, sr-latn] }
         needsInterpreter: { type: boolean }
+        preferredContactChannel: { type: string, nullable: true, enum: [email, whatsapp, phone], description: "Paket AJ-7 — isteğe bağlı; geçersiz değer 422 (`details.preferredContactChannel`)." }
         fullName: { type: string, minLength: 2, maxLength: 120 }
         email: { type: string, format: email, maxLength: 200 }
         phone: { type: string, nullable: true, maxLength: 40, description: "İsteğe bağlı; doluysa geçerli numara olmalı (ülke kodu ile)." }
@@ -18838,6 +18839,7 @@ components:
         country: { type: string }
         contactLanguage: { type: string }
         needsInterpreter: { type: boolean }
+        preferredContactChannel: { type: string, nullable: true, enum: [email, whatsapp, phone], description: "Paket AJ-7." }
         message: { type: string, nullable: true, description: "Çözülmüş mesaj (şifreli saklanır)." }
         contactConsentAt: { type: string, format: date-time }
         healthDataConsentAt: { type: string, format: date-time, nullable: true }

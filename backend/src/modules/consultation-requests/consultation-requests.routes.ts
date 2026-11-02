@@ -21,6 +21,9 @@ import { buildConsultationConfirmationEmail, formatRequestNumber } from "./consu
  * Kayit: `ConsultationRequest` + ayni transaction'da `CrmLead` (kanal CONSULTATION_REQUEST) -> admin CRM "Talepler".
  */
 export const CONTACT_LANGUAGES = ["en", "de", "ar", "ru", "fr", "es", "ro", "sr-latn"] as const;
+/** Paket AJ-7: ziyaretçinin tercih ettiği iletişim kanalı (isteğe bağlı). */
+export const CONTACT_CHANNELS = ["email", "whatsapp", "phone"] as const;
+export type ContactChannel = (typeof CONTACT_CHANNELS)[number];
 export const CONSULTATION_MESSAGE_MAX = 1000;
 /** Rıza kutularindaki metnin surumu (on yuz metni degisince artirilir; ispat icin talepte saklanir). */
 export const CONSULTATION_CONSENT_TEXT_VERSION = "consultation-v1";
@@ -54,6 +57,7 @@ export const ConsultationRequestBodySchema = z
       .refine((value) => COUNTRY_CODES.has(value), "Geçerli bir ülke kodu (ISO 3166-1 alpha-2) girin."),
     contactLanguage: z.enum(CONTACT_LANGUAGES),
     needsInterpreter: z.boolean(),
+    preferredContactChannel: z.enum(CONTACT_CHANNELS).nullable().optional(),
     fullName: z.string().trim().min(2).max(120),
     email: z.string().trim().toLowerCase().email().max(200),
     phone: z.string().trim().max(40).nullable().optional(),
@@ -178,6 +182,7 @@ export async function consultationRequestsPublicRoutes(app: FastifyInstance) {
             country: body.country,
             contactLanguage: body.contactLanguage,
             needsInterpreter: body.needsInterpreter,
+            preferredContactChannel: body.preferredContactChannel ?? null,
             fullName,
             email,
             phone,

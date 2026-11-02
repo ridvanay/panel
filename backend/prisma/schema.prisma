@@ -4231,6 +4231,8 @@ model ConsultationRequest {
   country             String
   contactLanguage     String
   needsInterpreter    Boolean   @default(false)
+  /// Paket AJ-7: tercih edilen iletişim kanalı (`email` | `whatsapp` | `phone`); isteğe bağlı.
+  preferredContactChannel String?
   fullName            String?
   email               String?
   phone               String?

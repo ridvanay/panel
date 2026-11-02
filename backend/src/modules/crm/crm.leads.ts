@@ -185,6 +185,7 @@ export function toConsultationRequestDto(r: ConsultationRequest, message: string
     country: r.country,
     contactLanguage: r.contactLanguage,
     needsInterpreter: r.needsInterpreter,
+    preferredContactChannel: r.preferredContactChannel,
     message,
     contactConsentAt: r.contactConsentAt.toISOString(),
     healthDataConsentAt: r.healthDataConsentAt?.toISOString() ?? null,

@@ -115,6 +115,29 @@ describe("Paket AH - danisma talebi", () => {
     expect(`REQ-${String(request.seq).padStart(5, "0")}`).toBe(data.requestNumber);
   });
 
+  it("AJ-7: tercih edilen iletisim kanali (email|whatsapp|phone) kaydedilir ve CRM detayinda gorunur; gecersiz deger 422; alan opsiyonel", async () => {
+    const withChannel = body({ preferredContactChannel: "whatsapp" });
+    const res = await post(withChannel);
+    expect(res.statusCode, res.body).toBe(201);
+    const row = await app.prisma.consultationRequest.findFirstOrThrow({ where: { email: String(withChannel.email) } });
+    expect(row.preferredContactChannel).toBe("whatsapp");
+    const detail = await app.inject({ method: "GET", url: `/api/v1/admin/crm/leads/${row.leadId}`, headers: auth(admin.token) });
+    expect(detail.statusCode, detail.body).toBe(200);
+    expect(detail.json().data.consultationRequest.preferredContactChannel).toBe("whatsapp");
+
+    const without = body();
+    expect((await post(without)).statusCode).toBe(201);
+    const none = await app.prisma.consultationRequest.findFirstOrThrow({ where: { email: String(without.email) } });
+    expect(none.preferredContactChannel).toBeNull();
+
+    const nullChannel = body({ preferredContactChannel: null });
+    expect((await post(nullChannel)).statusCode).toBe(201);
+
+    const bad = await post(body({ preferredContactChannel: "telegram" }));
+    expect(bad.statusCode).toBe(422);
+    expect(JSON.stringify(bad.json())).toContain("preferredContactChannel");
+  });
+
   it("paket ile talep (hizmet istege bagli): serviceName paket EN basligi; pasif/yok paket 422 packageSlug", async () => {
     const pkg = await app.prisma.healthPackage.create({
       data: { slug: `exec-${crypto.randomUUID().slice(0, 6)}`, category: "check-up", isActive: true, translations: { en: { title: "Executive Check-up" }, tr: { title: "Yonetici Check-up" } } },
