@@ -242,13 +242,14 @@ export function NavDropdown({
                           <span className="font-medium">{proceduresLabel}:</span>
                           {item.procedures.map((proc, index) => (
                             <span key={proc.id} className="inline-flex items-center gap-1">
-                              {index > 0 && <span aria-hidden="true">·</span>}
                               <Menu.Item
                                 render={<Link href={localize(proc.href)} />}
                                 className="inline-flex min-h-8 items-center rounded-md px-1 font-semibold text-[var(--site-primary)] outline-none hover:underline data-[highlighted]:underline"
                               >
                                 {proc.label}
                               </Menu.Item>
+                              {/* Ayırıcı öğenin sonunda: satır kırılınca yeni satır "·" ile başlamaz. */}
+                              {index < item.procedures.length - 1 && <span aria-hidden="true">·</span>}
                             </span>
                           ))}
                         </div>

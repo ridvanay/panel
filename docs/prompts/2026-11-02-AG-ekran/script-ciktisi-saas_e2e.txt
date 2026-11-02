@@ -1,0 +1,36 @@
+== KURU ==
+[set-specialty-parents] mod=KURU ÇALIŞTIRMA
+[bagla] esd -> gastroenterology
+[bagla] ercp -> gastroenterology
+[bagla] poem -> gastroenterology
+
+KURU ÇALIŞMA — hiçbir şey yazılmadı. Yazmak için --confirm=set-specialty-parent --operator="Ad Soyad" ekleyin.
+== GERCEK ==
+[set-specialty-parents] mod=YAZ
+[bagla] esd -> gastroenterology
+[bagla] ercp -> gastroenterology
+[bagla] poem -> gastroenterology
+[yedek] C:\Users\Ridonei\AppData\Local\Temp\ag-backups\specialty-parents-2026-11-02T12-03-30-210Z.json
+{
+  err: [TypeError: fetch failed] {
+    [cause]: Error: getaddrinfo ENOTFOUND siteadi.localhost
+        at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26) {
+      errno: -3008,
+      code: 'ENOTFOUND',
+      syscall: 'getaddrinfo',
+      hostname: 'siteadi.localhost'
+    }
+  },
+  tags: [ 'specialties', 'doctors', 'blog' ]
+} Frontend etiket (tag) revalidation isteği gönderilemedi
+
+Bağlandı: esd, ercp, poem
+[geri al] npx tsx scripts/set-specialty-parents.ts --restore=C:\Users\Ridonei\AppData\Local\Temp\ag-backups\specialty-parents-2026-11-02T12-03-30-210Z.json --confirm=set-specialty-parent --operator="Ad Soyad"
+== TEKRAR (idempotent) ==
+[set-specialty-parents] mod=YAZ
+[atla] esd -> gastroenterology: zaten bağlı.
+[atla] ercp -> gastroenterology: zaten bağlı.
+[atla] poem -> gastroenterology: zaten bağlı.
+Bağlanacak uzmanlık yok.
+
+Yapılacak değişiklik yok; hiçbir şey yazılmadı.

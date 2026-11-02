@@ -781,7 +781,6 @@ export function SiteHeader({
                                             <span className="font-medium">{dict.specialtyProceduresTitle}:</span>
                                             {child.procedures.map((proc, index) => (
                                               <span key={proc.id} className="inline-flex items-center gap-1">
-                                                {index > 0 && <span aria-hidden="true">·</span>}
                                                 <Link
                                                   href={localize(proc.href)}
                                                   onClick={closeMobileMenu}
@@ -789,6 +788,7 @@ export function SiteHeader({
                                                 >
                                                   {proc.label}
                                                 </Link>
+                                                {index < child.procedures.length - 1 && <span aria-hidden="true">·</span>}
                                               </span>
                                             ))}
                                           </div>

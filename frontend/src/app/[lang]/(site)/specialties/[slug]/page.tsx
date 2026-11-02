@@ -161,7 +161,8 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
         <div>
           <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">{specialty.name}</h1>
           {specialty.description && <p className="mt-2 text-foreground/60">{specialty.description}</p>}
-          <p className="mt-1 text-sm text-foreground/50">{doctorCountLabel}</p>
+          {/* Üst uzmanlığın hekimleri gösteriliyorsa "0 physicians" çelişkili görünür; sayı gizlenir. */}
+          {!usingParentDoctors && <p className="mt-1 text-sm text-foreground/50">{doctorCountLabel}</p>}
         </div>
       </div>
 

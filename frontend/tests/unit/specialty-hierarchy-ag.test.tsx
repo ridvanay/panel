@@ -114,6 +114,8 @@ describe("Alt uzmanlık sayfası", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Physicians performing this procedure" })).toBeInTheDocument();
     expect(screen.getAllByTestId("doctor-card")).toHaveLength(2);
     expect(screen.queryByTestId("specialty-coordinator-box")).toBeNull();
+    // Üst uzmanlığın hekimleri gösterilirken kendi sayısı ("0 physicians") gizlenir.
+    expect(screen.queryByText("0 physicians")).toBeNull();
 
     const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).map((s) => JSON.parse(s.textContent ?? "{}"));
     expect(scripts.map((s) => s["@type"])).toEqual(["MedicalSpecialty", "BreadcrumbList"]);
@@ -129,6 +131,7 @@ describe("Alt uzmanlık sayfası", () => {
     await renderPage("esd");
     expect(screen.getAllByTestId("doctor-card")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "Physicians performing this procedure" })).toBeNull();
+    expect(screen.getByText("0 physicians")).toBeInTheDocument();
     expect(fetchDoctorsServer).toHaveBeenCalledTimes(1);
   });
 
