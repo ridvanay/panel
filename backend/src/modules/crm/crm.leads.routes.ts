@@ -33,6 +33,7 @@ import {
   toLeadDto,
   UpdateLeadSchema,
 } from "./crm.leads";
+import { registerCrmRequestRoutes } from "./crm.requests.routes";
 
 const IdParam = z.object({ id: z.string().uuid() });
 const EXPORT_MAX_ROWS = 10_000;
@@ -73,6 +74,9 @@ async function resolveSpecialtyDoctor(app: FastifyInstance, input: { specialtyId
  * ve silmek (`crm.lead.deleted`) denetim kaydına yazılır — kayıtlara kişi bilgisi/not metni YAZILMAZ.
  */
 export async function registerCrmLeadRoutes(app: FastifyInstance) {
+  // Paket AJ-4 - "Talepler" ekrani uclari (/requests*), ayni ADMIN + 2FA kapisinin arkasinda.
+  await registerCrmRequestRoutes(app);
+
   app.get("/leads", async (request, reply) => {
     const query = parseOr422(LeadListQuerySchema, request.query);
     const where = buildLeadWhere(query);

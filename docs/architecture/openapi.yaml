@@ -13676,6 +13676,122 @@ paths:
       responses:
         "204": { description: Silindi }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/crm/requests:
+    get:
+      tags: [CRM]
+      summary: "Paket AJ-4 — Talepler ekranı: danışma talepleri listesi (ADMIN + 2FA)"
+      description: |
+        Kanal `CONSULTATION_REQUEST` talepleri. Yalnızca eşlenen 5 durum listelenir (NEW→new, CALLED→contacted, TREATMENT_PLANNED→planning, TREATED→converted, NEGATIVE→closed); diğer lead durumları bu ekranda görünmez.
+        Kayıt kimliği (`id`) CrmLead kimliğidir. Mesaj içeriği DÖNMEZ (`hasMessage`); `/requests/{id}/message` ile alınır.
+        `fullName/email/phone` yalnızca ADMIN rolüne döner.
+      parameters:
+        - { name: status, in: query, schema: { type: string, example: "new,contacted" }, description: "Virgüllü: new, contacted, planning, converted, closed" }
+        - { name: specialtyId, in: query, schema: { type: string, format: uuid }, description: "Hizmet filtresi" }
+        - { name: assignedToId, in: query, schema: { type: string, format: uuid } }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: "Ad, e-posta, telefon ya da REQ-00012" }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 25, maximum: 100 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/CrmRequestItem" } }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      pageSize: { type: integer }
+                      statusCounts: { type: object, description: "{ new, contacted, planning, converted, closed } sayıları (durum filtresi hariç)", additionalProperties: { type: integer } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/requests/assignees:
+    get:
+      tags: [CRM]
+      summary: "Paket AJ-4 — Atanabilecek personel (aktif ADMIN/MANAGER): [{ id, name }]"
+      responses:
+        "200": { description: OK }
+  /admin/crm/requests/export:
+    get:
+      tags: [CRM]
+      summary: "Paket AJ-4 — Talepler CSV (UTF-8 BOM, formül enjeksiyonu nötr)"
+      description: "Liste ile aynı filtreler; en fazla 10.000 satır. Ad/E-posta/Telefon sütunları YALNIZCA ADMIN rolünde bulunur; mesaj asla yazılmaz. Audit `crm.requests.export` (satır sayısı, includesPii, filtre türleri)."
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv: { schema: { type: string } }
+  /admin/crm/requests/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: "CrmLead kimliği (listedeki `id`)" }
+    get:
+      tags: [CRM]
+      summary: "Paket AJ-4 — Talep detayı (notlar çözülmüş; mesaj YOK) — audit `crm.lead.viewed`"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/CrmRequestItem"
+                      - type: object
+                        properties:
+                          contactConsentAt: { type: string, format: date-time }
+                          healthDataConsentAt: { type: string, format: date-time, nullable: true }
+                          consentTextVersion: { type: string, nullable: true }
+                          locale: { type: string }
+                          notes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id: { type: string }
+                                kind: { type: string, enum: [NOTE, STATUS, SYSTEM] }
+                                authorName: { type: string, nullable: true }
+                                body: { type: string }
+                                createdAt: { type: string, format: date-time }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [CRM]
+      summary: "Paket AJ-4 — Durum ve/veya atama güncelle"
+      description: "Gövde: `{ status?: new|contacted|planning|converted|closed, assignedToId?: uuid|null }` (en az bir alan). Başka durum 422. Atanan aktif ADMIN/MANAGER olmalı (422). Değişim zaman çizelgesine not ve audit `crm.lead.update` olarak yazılır. Yanıt: güncel `CrmRequestItem`."
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/requests/{id}/notes:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [CRM]
+      summary: "Paket AJ-4 — İç not ekle (şifreli saklanır; yazar + zaman damgası)"
+      description: "Gövde: `{ body: string(1..5000) }`. 201 → `{ id, kind: NOTE, authorName, body, createdAt }`."
+      responses:
+        "201": { description: Oluşturuldu }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/crm/requests/{id}/message:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [CRM]
+      summary: "Paket AJ-4 — Talep mesajını çöz (sağlık verisi olabilir; ADMIN + 2FA; HER görüntüleme audit)"
+      description: "Audit `crm.consultation_request.message_viewed` (çözme hatasında `crm.consultation_request.decrypt_failed`); içerik audit e yazılmaz. `cache-control: no-store`. Yanıt: `{ id, number, message: string|null }`."
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/crm/leads/{id}/consultation-request/withdraw-health-consent:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -18826,6 +18942,34 @@ components:
       required: [requestNumber]
       properties:
         requestNumber: { type: string, example: REQ-00012, description: "Talep numarası (PII içermez). Honeypot tetiklenirse de biçimce geçerli sahte numara döner." }
+    CrmRequestItem:
+      type: object
+      description: "Paket AJ-4 — Talepler ekranı satırı. fullName/email/phone yalnızca ADMIN e döner."
+      properties:
+        id: { type: string, format: uuid, description: "CrmLead kimliği; tüm /requests/{id} uçları bunu kullanır." }
+        requestId: { type: string, format: uuid }
+        seq: { type: integer }
+        number: { type: string, example: REQ-00012 }
+        createdAt: { type: string, format: date-time }
+        serviceName: { type: string }
+        specialtyId: { type: string, nullable: true }
+        packageId: { type: string, nullable: true }
+        country: { type: string, example: DE }
+        contactLanguage: { type: string, example: de }
+        needsInterpreter: { type: boolean }
+        preferredContactChannel: { type: string, nullable: true, enum: [email, whatsapp, phone] }
+        preferredFrom: { type: string, format: date, nullable: true }
+        preferredTo: { type: string, format: date, nullable: true }
+        status: { type: string, enum: [new, contacted, planning, converted, closed] }
+        statusChangedAt: { type: string, format: date-time }
+        assignedToId: { type: string, nullable: true }
+        assignedToName: { type: string, nullable: true }
+        hasMessage: { type: boolean }
+        anonymizedAt: { type: string, format: date-time, nullable: true }
+        sla: { type: object, properties: { state: { type: string, enum: [met, late, pending, breached] }, minutes: { type: integer } } }
+        fullName: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
     ConsultationRequestDetail:
       type: object
       description: "Paket AH — CRM talep detayında danışma talebi ayrıntısı."
