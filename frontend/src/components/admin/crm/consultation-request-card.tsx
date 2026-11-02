@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import type { CrmConsultationRequest } from "@/lib/api/crm";
+import { requestChannelLabel, type CrmConsultationRequest } from "@/lib/api/crm";
 import { formatDateTime } from "@/components/admin/crm/crm-ui";
 
 /** Paket AH — CRM lead detayında talep formu ayrıntısı (salt okunur; admin paneli Türkçe kalır). */
@@ -11,6 +11,7 @@ export function ConsultationRequestCard({ request }: { request: CrmConsultationR
     ["Ülke", request.country ?? "-"],
     ["İletişim dili", request.contactLanguage ?? "-"],
     ["Tercüman", request.needsInterpreter ? "Evet" : "Hayır"],
+    ["Tercih edilen iletişim kanalı", requestChannelLabel(request.preferredContactChannel ?? null)],
     ["Site dili", request.locale ?? "-"],
     ["İletişim rızası", request.contactConsentAt ? formatDateTime(request.contactConsentAt) : "-"],
     ["Sağlık verisi açık rızası", request.healthDataConsentAt ? formatDateTime(request.healthDataConsentAt) : "Yok"],

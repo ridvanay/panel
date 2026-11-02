@@ -1,4 +1,4 @@
-import { Activity, Search, Filter, Flame, Globe2, Inbox, LayoutDashboard, Link2, MousePointerClick, Network, Settings, Share2, Users, type LucideIcon } from "lucide-react";
+import { Activity, Search, Filter, Flame, Globe2, Inbox, LayoutDashboard, Link2, MessageSquareText, MousePointerClick, Network, Settings, Share2, Users, type LucideIcon } from "lucide-react";
 
 /** Paket N — CRM ekranları (sekme sırası). Her aşama kendi ekranlarını ekler. */
 export interface CrmSection {
@@ -11,6 +11,7 @@ export const CRM_SECTIONS: CrmSection[] = [
   { href: "/admin/crm", label: "Genel Bakış", icon: LayoutDashboard },
   { href: "/admin/crm/live", label: "Şu An Sitede", icon: Activity },
   { href: "/admin/crm/leads", label: "Talepler", icon: Inbox },
+  { href: "/admin/crm/requests", label: "Danışma Talepleri", icon: MessageSquareText },
   { href: "/admin/crm/funnel", label: "Hasta Yolculuğu", icon: Filter },
   { href: "/admin/crm/visitors", label: "Ziyaretçiler", icon: Users },
   { href: "/admin/crm/pages", label: "Sayfa Haritası", icon: Network },

@@ -182,6 +182,8 @@ export interface CrmConsultationRequest {
   contactConsentAt: string | null;
   healthDataConsentAt: string | null;
   locale: string | null;
+  /** Paket AJ-7 - email | whatsapp | phone. */
+  preferredContactChannel?: string | null;
 }
 
 export interface CrmLeadDetail extends CrmLead {
@@ -583,3 +585,92 @@ export const importAdsLeads = (csv: string) =>
 
 export const downloadAdsConversions = (range: CrmRange) =>
   downloadCrmFile("/admin/crm/ads/conversions", { from: range.from, to: range.to }, `google-ads-donusumler-${range.from}_${range.to}.csv`);
+
+// ---------------------------------------------------------------------------------------------
+// Paket AJ-4 - "Danisma Talepleri" (kanal CONSULTATION_REQUEST) ekrani. Kayit kimligi = CrmLead kimligi.
+// Mesaj (saglik verisi) liste/detayda DONMEZ; `getCrmRequestMessage` ile ayri alinir ve her cozme audit'e yazilir.
+// ---------------------------------------------------------------------------------------------
+
+export type CrmRequestStatus = "new" | "contacted" | "planning" | "converted" | "closed";
+
+export const CRM_REQUEST_STATUS_OPTIONS: { value: CrmRequestStatus; label: string }[] = [
+  { value: "new", label: "Yeni" },
+  { value: "contacted", label: "Görüşüldü" },
+  { value: "planning", label: "Planlama" },
+  { value: "converted", label: "Dönüştü" },
+  { value: "closed", label: "Kapandı" },
+];
+export const requestStatusLabel = (s: CrmRequestStatus | null) => CRM_REQUEST_STATUS_OPTIONS.find((o) => o.value === s)?.label ?? "-";
+
+export type CrmRequestChannel = "email" | "whatsapp" | "phone";
+export const CRM_REQUEST_CHANNEL_LABELS: Record<CrmRequestChannel, string> = { email: "E-posta", whatsapp: "WhatsApp", phone: "Telefon" };
+export const requestChannelLabel = (c: string | null) => (c ? (CRM_REQUEST_CHANNEL_LABELS[c as CrmRequestChannel] ?? c) : "-");
+
+export interface CrmRequestRow {
+  id: string;
+  requestId: string;
+  seq: number;
+  number: string;
+  createdAt: string;
+  serviceName: string | null;
+  specialtyId: string | null;
+  packageId: string | null;
+  country: string | null;
+  contactLanguage: string | null;
+  needsInterpreter: boolean;
+  preferredContactChannel: string | null;
+  preferredFrom: string | null;
+  preferredTo: string | null;
+  status: CrmRequestStatus | null;
+  statusChangedAt: string;
+  assignedToId: string | null;
+  assignedToName: string | null;
+  hasMessage: boolean;
+  anonymizedAt: string | null;
+  sla: { state: "met" | "late" | "pending" | "breached"; minutes: number };
+  /** Kişisel veri alanları YALNIZCA ADMIN rolünde döner. */
+  fullName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+export interface CrmRequestDetail extends CrmRequestRow {
+  contactConsentAt: string;
+  healthDataConsentAt: string | null;
+  consentTextVersion: string | null;
+  locale: string | null;
+  notes: CrmLeadNote[];
+}
+
+export interface CrmRequestListQuery {
+  status?: string;
+  specialtyId?: string;
+  assignedToId?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CrmRequestListMeta {
+  total: number;
+  page: number;
+  pageSize: number;
+  statusCounts: Record<CrmRequestStatus, number>;
+}
+
+export async function listCrmRequests(query: CrmRequestListQuery): Promise<{ items: CrmRequestRow[]; meta: CrmRequestListMeta }> {
+  const { data, meta } = await apiFetchWithMeta<CrmRequestRow[]>("/admin/crm/requests", { query: { ...query } });
+  return { items: data, meta: meta as unknown as CrmRequestListMeta };
+}
+export const listCrmRequestAssignees = () => apiFetch<{ id: string; name: string }[]>("/admin/crm/requests/assignees");
+export const getCrmRequest = (id: string) => apiFetch<CrmRequestDetail>(`/admin/crm/requests/${id}`);
+export const updateCrmRequest = (id: string, input: { status?: CrmRequestStatus; assignedToId?: string | null }) =>
+  apiFetch<CrmRequestRow>(`/admin/crm/requests/${id}`, { method: "PATCH", body: input });
+export const addCrmRequestNote = (id: string, body: string) =>
+  apiFetch<CrmLeadNote>(`/admin/crm/requests/${id}/notes`, { method: "POST", body: { body } });
+export const getCrmRequestMessage = (id: string) => apiFetch<{ id: string; number: string; message: string | null }>(`/admin/crm/requests/${id}/message`);
+/** CSV: kişisel veri sütunları sunucuda yalnızca ADMIN için eklenir; her dışa aktarma audit'e yazılır. */
+export const downloadCrmRequestsCsv = (query: CrmRequestListQuery, filename: string) =>
+  downloadCrmFile("/admin/crm/requests/export", { status: query.status, specialtyId: query.specialtyId, assignedToId: query.assignedToId, q: query.q, from: query.from, to: query.to }, filename);
