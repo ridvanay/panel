@@ -41,7 +41,6 @@ export const packagesStrings = {
   priceNote: "Final price is confirmed after medical evaluation.",
   relatedDoctorsTitle: "Physicians for this package",
   viewPhysicianAria: "View the profile of {name}",
-  findPhysicianText: "Not sure which physician is right for you?",
   contactTitle: "Talk to us about this package",
   formTitle: "Plan my package",
   formIntro: "Tell us your plans and our coordinator will get in touch. This is a planning request only: it is not a purchase or a booking, and no payment is taken.",

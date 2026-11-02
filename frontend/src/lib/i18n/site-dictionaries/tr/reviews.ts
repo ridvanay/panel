@@ -92,7 +92,6 @@ export const reviewsStrings: ReviewsStrings = {
   homeCarouselAria: "Hasta yorumları",
   homePrevious: "Önceki yorum",
   homeNext: "Sonraki yorum",
-  homeAboutDoctor: "{doctor} hakkında",
   consentPrivacyLink: "Aydınlatma metnini okuyun",
   countryLabel: "Ülke (isteğe bağlı)",
   countryNone: "Ülkemi gösterme",

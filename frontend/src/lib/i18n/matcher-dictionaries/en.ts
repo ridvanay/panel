@@ -1,5 +1,5 @@
 /**
- * Paket W — "Find my physician" sihirbazı metinleri. KAYNAK dil (yeni anahtar önce buraya); diğer 8 dil
+ * Paket W — "Find your treatment" sihirbazı metinleri. KAYNAK dil (yeni anahtar önce buraya); diğer 8 dil
  * aynı anahtarlarla (parite testi: tests/unit/matcher-wizard.test.tsx). HUKUK KONTROLÜ GEREKEN metinler:
  * `consentHealth`, `consentContact`, `redFlagTitle`/`redFlagText`, `disclaimer`.
  */
@@ -80,7 +80,7 @@ export const matcherStrings = {
   forWhom: { self: "Myself", relative: "A relative" },
   durationLabel: "How long has this been going on?",
   durations: { lt1w: "Less than 1 week", "1to4w": "1–4 weeks", "1to6m": "1–6 months", gt6m: "More than 6 months" },
-  priorLabel: "Has a physician already diagnosed this?",
+  priorLabel: "Has this already been diagnosed?",
   prior: { yes: "Yes", no: "No", unknown: "I don’t know" },
   step3Title: "Your preferences",
   preferenceLabel: "How would you like to be seen?",
@@ -114,13 +114,6 @@ export const matcherStrings = {
   skipContact: "Show my suggestion first",
   step5Title: "Our suggestion for you",
   specialtiesTitle: "Suggested services",
-  physiciansTitle: "Physicians who can help",
-  interpreterBadge: "Free interpreter support",
-  speaks: "Speaks: {languages}",
-  nextSlots: "Next available times",
-  noSlots: "No free times in the next 2 weeks",
-  book: "Book with {name}",
-  viewProfile: "View profile",
   coordinatorCall: "Let a coordinator call me",
   callbackDone: "Thank you. Our coordinator will call you within 1 business day.",
   whatsapp: "Chat on WhatsApp",

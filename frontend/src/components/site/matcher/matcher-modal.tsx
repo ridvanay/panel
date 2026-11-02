@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, Stethoscope } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Search, Stethoscope, X } from "lucide-react";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
@@ -80,6 +80,9 @@ export function MatcherModalProvider({ enabled, children }: { enabled: boolean; 
   );
 }
 
+const subscribeNever = () => () => {};
+const siteScopeElement = (): HTMLElement => (document.querySelector(".site-scope") as HTMLElement | null) ?? document.body;
+
 function MatcherDialogHost({ initialQuery, onStepPush, rewind }: { initialQuery: string; onStepPush: () => void; rewind: () => boolean }) {
   const { m } = useMatcherStrings();
   const searchParams = useSearchParams();
@@ -95,21 +98,37 @@ function MatcherDialogHost({ initialQuery, onStepPush, rewind }: { initialQuery:
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [searchParams, router, pathname, rewind]);
 
+  // Portal `.site-scope` içine kurulur: `--site-*` / `--primary` tema token'ları yalnızca orada tanımlı;
+  // body'ye portal edilirse "Continue" düğmesi genel (mor) varsayılan renge düşerdi.
+  const container = useSyncExternalStore(subscribeNever, siteScopeElement, () => null);
+  if (!container) return null;
+
   return (
     <Dialog open={isOpen} onOpenChange={(next) => !next && close()}>
       <DialogContent
-        className="flex h-[100dvh] w-screen max-w-none flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[90dvh] sm:w-[calc(100vw-2rem)] sm:max-w-3xl sm:rounded-xl sm:p-6"
+        container={container}
+        showCloseButton={false}
+        className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-none p-4 sm:h-auto sm:max-h-[90dvh] sm:w-[calc(100vw-2rem)] sm:max-w-3xl sm:rounded-xl sm:p-6"
         data-testid="matcher-dialog"
       >
-        <DialogTitle className="pe-8 font-heading text-base font-semibold">{m.dialogTitle}</DialogTitle>
-        {isOpen && <PhysicianMatcher mode="modal" initialQuery={initialQuery} onClose={close} onStepPush={onStepPush} />}
+        <DialogTitle className="pe-12 font-heading text-base leading-snug font-semibold">{m.dialogTitle}</DialogTitle>
+        <DialogClose
+          aria-label={m.close}
+          className="absolute end-3 top-3 inline-flex size-11 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-[var(--site-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none motion-reduce:transition-none"
+          data-testid="matcher-close"
+        >
+          <X className="size-5" aria-hidden="true" />
+        </DialogClose>
+        <div className="mt-4 min-w-0">
+          {isOpen && <PhysicianMatcher mode="modal" initialQuery={initialQuery} onClose={close} onStepPush={onStepPush} />}
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
 /**
- * Header ve CTA'larda kullanılan "Find my physician" düğmesi (sağlayıcı yoksa ayrı sayfaya bağlantı).
+ * Header ve CTA'larda kullanılan "Find your treatment" düğmesi (sağlayıcı yoksa ayrı sayfaya bağlantı).
  * Paket AB — `display`: "full" metinli; "icon" yalnızca ikon (tooltip + aria-label); "auto" ölçüm
  * yapılana kadar kırılımla (xl altında yalnızca ikon). Erişilebilir ad her durumda aynı metindir.
  */

@@ -38,7 +38,6 @@ export const packagesStrings: PackagesStrings = {
   priceNote: "Kesin fiyat tıbbi değerlendirmeden sonra netleşir.",
   relatedDoctorsTitle: "Bu paketle ilgili hekimler",
   viewPhysicianAria: "{name} profilini görüntüle",
-  findPhysicianText: "Size hangi hekimin uygun olduğundan emin değil misiniz?",
   contactTitle: "Bu paket hakkında bizimle konuşun",
   formTitle: "Paketimi planla",
   formIntro: "Planlarınızı bize iletin, koordinatörümüz sizinle iletişime geçsin. Bu yalnızca bir planlama talebidir: satın alma ya da randevu değildir ve ödeme alınmaz.",

@@ -15,7 +15,7 @@ export const trustPagesStrings = {
   csMetaDescription: "How WM Health prepares and updates its patient guides.",
   csTitle: "Content standards",
   csIntro:
-    "Our guides help you understand a health topic before you decide on next steps. They offer general information in plain language. They are not medical advice and do not replace a consultation with a physician.",
+    "Our guides help you understand a health topic before you decide on next steps. They offer general information in plain language. They are not medical advice and do not replace a medical consultation.",
   csPrinciplesAria: "Our editorial principles",
   csWrittenTitle: "How guides are written",
   csWrittenText:

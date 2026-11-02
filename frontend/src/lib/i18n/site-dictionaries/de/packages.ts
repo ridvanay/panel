@@ -38,7 +38,6 @@ export const packagesStrings: PackagesStrings = {
   priceNote: "Der endgültige Preis wird nach der ärztlichen Untersuchung bestätigt.",
   relatedDoctorsTitle: "Ärztinnen und Ärzte für dieses Paket",
   viewPhysicianAria: "Profil von {name} ansehen",
-  findPhysicianText: "Sie sind unsicher, welche Ärztin oder welcher Arzt zu Ihnen passt?",
   contactTitle: "Sprechen Sie mit uns über dieses Paket",
   formTitle: "Mein Paket planen",
   formIntro: "Teilen Sie uns Ihre Pläne mit, und unser Koordinator meldet sich bei Ihnen. Dies ist nur eine Planungsanfrage: kein Kauf und keine Buchung, es wird nichts abgebucht.",

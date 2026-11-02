@@ -12,7 +12,6 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsPageTitle: "Hekimlerimiz",
   doctorsPageSubtitle: "Uzmanına göre filtreleyin, uygun saati seçin ve online randevunuzu alın.",
   doctorsEmptyTitle: "Sonuç bulunamadı",
-  doctorsEmptyDescription: "Bu filtrelerle eşleşen bir hekim yok. Filtreleri değiştirmeyi deneyin.",
   searchPlaceholder: "Hekim adına göre ara...",
   searchAriaLabel: "Hekim ara",
   specialtyFilterAriaLabel: "Uzmanlığa göre filtrele",
@@ -91,10 +90,6 @@ export const telehealthStrings: TelehealthStrings = {
   specialtiesPageSubtitle: "Branşa göre doktorlarımızı keşfedin ve online randevunuzu alın.",
   specialtiesEmptyTitle: "Uzmanlık alanı bulunamadı",
   specialtiesEmptyDescription: "Şu anda listelenecek bir uzmanlık alanı yok.",
-  doctorCountOne: "{count} doktor",
-  doctorCountOther: "{count} doktor",
-  specialtyDoctorsEmptyTitle: "Bu uzmanlık alanında hekim bulunamadı",
-  specialtyDoctorsEmptyDescription: "Şu anda bu branşta yayınlanmış bir doktor yok.",
   specialtyCoordinatorTitle: "Bu alanda size uygun hekimi koordinatörümüz belirlesin",
   specialtyCoordinatorText: "Durumunuzu bize anlatın; hasta koordinatörümüz sizi bu alanda uygun bir hekimle buluştursun.",
 

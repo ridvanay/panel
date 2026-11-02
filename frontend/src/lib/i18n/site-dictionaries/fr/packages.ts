@@ -38,7 +38,6 @@ export const packagesStrings: PackagesStrings = {
   priceNote: "Le prix définitif est confirmé après l’évaluation médicale.",
   relatedDoctorsTitle: "Médecins pour ce forfait",
   viewPhysicianAria: "Voir le profil de {name}",
-  findPhysicianText: "Vous ne savez pas quel médecin vous convient ?",
   contactTitle: "Parlez-nous de ce forfait",
   formTitle: "Planifier mon forfait",
   formIntro: "Faites-nous part de vos projets et notre coordinateur vous contactera. Il s’agit uniquement d’une demande de planification : ce n’est ni un achat ni une réservation, et aucun paiement n’est demandé.",

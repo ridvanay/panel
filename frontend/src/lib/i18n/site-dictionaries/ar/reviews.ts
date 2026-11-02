@@ -92,7 +92,6 @@ export const reviewsStrings: ReviewsStrings = {
   homeCarouselAria: "آراء المرضى",
   homePrevious: "الرأي السابق",
   homeNext: "الرأي التالي",
-  homeAboutDoctor: "عن {doctor}",
   consentPrivacyLink: "اقرأ إشعار الخصوصية",
   countryLabel: "البلد (اختياري)",
   countryNone: "عدم إظهار بلدي",

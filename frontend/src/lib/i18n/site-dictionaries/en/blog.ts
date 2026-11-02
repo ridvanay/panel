@@ -45,8 +45,6 @@ export const blogStrings = {
   tocTitle: "In this article",
   tocAria: "Table of contents",
   keyTakeaways: "Key takeaways",
-  consultTitle: "Consult a physician",
-  consultText: "Talk to a specialist online about your own situation.",
   bookButton: "Book",
   bookAria: "Book an appointment with {name}",
   profileAria: "View the profile of {name}",

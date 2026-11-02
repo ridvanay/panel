@@ -17,6 +17,7 @@ import { aboutSerif } from "@/components/site/about/about-fonts";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import type { ContactConsentLocale } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 
 type PageProps = { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
@@ -55,7 +56,8 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
   const { lang } = await params;
   // Paket P — doktor sayfasından "talep bırakın" (`?doctor=<slug>`): mesaj ve uzmanlık ön doldurulur.
   const doctorParam = (await searchParams)?.doctor;
-  const requestedDoctorSlug = typeof doctorParam === "string" && /^[a-z0-9-]{1,80}$/.test(doctorParam) ? doctorParam : null;
+  // Paket AJ-2 — hekimler ziyaretçiye kapalıyken `?doctor=` ön doldurması yok sayılır (hekim adı mesaja girmez).
+  const requestedDoctorSlug = DOCTORS_VISIBLE_TO_VISITORS && typeof doctorParam === "string" && /^[a-z0-9-]{1,80}$/.test(doctorParam) ? doctorParam : null;
   const locale = contactLocale(lang);
   const [page, dict, locales, telehealthEnabled] = await Promise.all([
     fetchContactPageServer(locale),

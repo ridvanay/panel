@@ -9,7 +9,7 @@ export const trustPagesStrings: TrustPagesStrings = {
   csMetaDescription: "Comment WM Health prépare et met à jour ses guides pour les patients.",
   csTitle: "Normes de contenu",
   csIntro:
-    "Nos guides vous aident à comprendre un sujet de santé avant de décider des prochaines étapes. Ils offrent des informations générales dans un langage simple. Ils ne constituent pas un avis médical et ne remplacent pas une consultation avec un médecin.",
+    "Nos guides vous aident à comprendre un sujet de santé avant de décider des prochaines étapes. Ils offrent des informations générales dans un langage simple. Ils ne constituent pas un avis médical et ne remplacent pas une consultation médicale.",
   csPrinciplesAria: "Nos principes éditoriaux",
   csWrittenTitle: "Comment les guides sont rédigés",
   csWrittenText:

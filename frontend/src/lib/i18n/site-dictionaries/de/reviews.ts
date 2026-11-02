@@ -92,7 +92,6 @@ export const reviewsStrings: ReviewsStrings = {
   homeCarouselAria: "Patientenbewertungen",
   homePrevious: "Vorherige Bewertung",
   homeNext: "Nächste Bewertung",
-  homeAboutDoctor: "Über {doctor}",
   consentPrivacyLink: "Datenschutzhinweis lesen",
   countryLabel: "Land (optional)",
   countryNone: "Mein Land nicht anzeigen",

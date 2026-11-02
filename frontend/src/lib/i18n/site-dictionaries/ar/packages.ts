@@ -38,7 +38,6 @@ export const packagesStrings: PackagesStrings = {
   priceNote: "يتم تأكيد السعر النهائي بعد التقييم الطبي.",
   relatedDoctorsTitle: "الأطباء المرتبطون بهذه الباقة",
   viewPhysicianAria: "عرض الملف الشخصي لـ {name}",
-  findPhysicianText: "لست متأكدًا من الطبيب المناسب لك؟",
   contactTitle: "تحدّث معنا عن هذه الباقة",
   formTitle: "خطّط لباقتي",
   formIntro: "أخبرنا بخططك وسيتواصل معك منسّقنا. هذا طلب تخطيط فقط: ليس شراءً ولا حجزًا ولا يتم أي دفع.",

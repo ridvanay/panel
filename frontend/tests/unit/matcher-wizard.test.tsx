@@ -119,7 +119,7 @@ describe("sözlük (9 dil)", () => {
     for (const [lang, dict] of Object.entries(MATCHER_DICTIONARIES)) {
       expect(keyPaths(dict).sort(), lang).toEqual(base);
       for (const v of values(dict)) expect(v.trim().length, lang).toBeGreaterThan(0);
-      for (const key of ["progress", "book", "speaks", "requestNumber", "redFlagCall"] as const) {
+      for (const key of ["progress", "requestNumber", "redFlagCall", "bookOnlineFor", "requestFor"] as const) {
         const placeholders = (en[key].match(/\{\w+\}/g) ?? []).sort();
         expect((dict[key].match(/\{\w+\}/g) ?? []).sort(), `${lang}.${key}`).toEqual(placeholders);
       }

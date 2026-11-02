@@ -9,7 +9,7 @@ export const trustPagesStrings: TrustPagesStrings = {
   csMetaDescription: "Kako WM Health priprema i ažurira vodiče za pacijente.",
   csTitle: "Standardi sadržaja",
   csIntro:
-    "Naši vodiči vam pomažu da razumete zdravstvenu temu pre nego što odlučite o narednim koracima. Pružaju opšte informacije jednostavnim jezikom. Nisu medicinski savet i ne zamenjuju konsultaciju sa lekarom.",
+    "Naši vodiči vam pomažu da razumete zdravstvenu temu pre nego što odlučite o narednim koracima. Pružaju opšte informacije jednostavnim jezikom. Nisu medicinski savet i ne zamenjuju medicinsku konsultaciju.",
   csPrinciplesAria: "Naši urednički principi",
   csWrittenTitle: "Kako se pišu vodiči",
   csWrittenText:

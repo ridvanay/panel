@@ -58,7 +58,7 @@ export function ReviewGridCard({ review, defaultLocaleCode }: { review: Featured
     return () => observer.disconnect();
   }, [body]);
 
-  const hasMore = measuredOverflow || looksLong(body) || Boolean(review.doctorReply);
+  const hasMore = measuredOverflow || looksLong(body) || (DOCTORS_VISIBLE_TO_VISITORS && Boolean(review.doctorReply));
   const stars = <StarRating rating={review.rating} label={fillReview(t.starsAria, { rating: review.rating })} />;
 
   const translationToggle = translation ? (
@@ -143,7 +143,7 @@ export function ReviewGridCard({ review, defaultLocaleCode }: { review: Featured
                 <p dir={bodyDir} lang={bodyLang} className="whitespace-pre-line text-sm leading-7">
                   {body}
                 </p>
-                {review.doctorReply && (
+                {DOCTORS_VISIBLE_TO_VISITORS && review.doctorReply && (
                   <div className="rounded-md border-s-2 border-[var(--site-primary)] bg-muted/40 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{t.doctorReplyLabel}</p>
                     <p className="mt-1 whitespace-pre-line text-sm leading-6">{review.doctorReply}</p>

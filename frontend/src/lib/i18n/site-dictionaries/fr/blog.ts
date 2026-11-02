@@ -40,8 +40,6 @@ export const blogStrings: BlogStrings = {
   tocTitle: "Dans cet article",
   tocAria: "Sommaire",
   keyTakeaways: "L'essentiel",
-  consultTitle: "Consultez un médecin",
-  consultText: "Parlez de votre situation avec un spécialiste, en ligne.",
   bookButton: "Réserver",
   bookAria: "Prendre rendez-vous avec {name}",
   profileAria: "Voir le profil de {name}",

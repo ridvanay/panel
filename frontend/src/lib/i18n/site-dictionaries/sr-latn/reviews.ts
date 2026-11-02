@@ -92,7 +92,6 @@ export const reviewsStrings: ReviewsStrings = {
   homeCarouselAria: "Utisci pacijenata",
   homePrevious: "Prethodni utisak",
   homeNext: "Sledeći utisak",
-  homeAboutDoctor: "O lekaru: {doctor}",
   consentPrivacyLink: "Pročitajte obaveštenje o privatnosti",
   countryLabel: "Zemlja (opciono)",
   countryNone: "Ne prikazuj moju zemlju",

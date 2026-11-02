@@ -7,6 +7,7 @@ import { fillReview, useReviewStrings } from "@/lib/i18n/use-review-strings";
 import { countryName, formatReviewDate, languageName, reviewAuthorName } from "@/lib/review-format";
 import { StarRating } from "@/components/site/reviews/star-rating";
 import { Badge } from "@/components/ui/badge";
+import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
 
 /**
  * Paket Y — tek yorum kartı. Metin HTML olarak sayfadadır (SEO); çeviri varsa "Show translation" anahtarı
@@ -55,7 +56,7 @@ export function ReviewCard({ review, footer }: { review: ReviewItem; footer?: Re
         </button>
       )}
 
-      {review.doctorReply && (
+      {DOCTORS_VISIBLE_TO_VISITORS && review.doctorReply && (
         <div className="mt-4 rounded-md border-s-2 border-[var(--site-primary)] bg-muted/40 p-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{t.doctorReplyLabel}</p>
           <p className="mt-1 whitespace-pre-line text-sm leading-6 text-foreground/80">{review.doctorReply}</p>

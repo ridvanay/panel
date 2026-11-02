@@ -1,6 +1,7 @@
 import { SERVER_API_BASE_URL } from "../env";
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
+import { withoutDoctorFromReviews } from "../intermediary";
 import type { FeaturedReviewsData, ReviewsListResponse } from "../review-types";
 import type { AvailabilitySlot, DoctorProfile, DoctorReviewsResponse, DoctorShowcase, Specialty, SpecialtyWithDoctorCount, TelehealthThemeSettings } from "./types";
 
@@ -95,7 +96,7 @@ export async function fetchFeaturedReviewsServer(locale?: string): Promise<Featu
   const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
   try {
     const json = await fetchServerJson<{ data: FeaturedReviewsData }>(`/reviews/featured${query}`);
-    return json?.data ?? null;
+    return json?.data ? withoutDoctorFromReviews(json.data) : null;
   } catch {
     return null;
   }
@@ -113,7 +114,7 @@ export async function fetchReviewsListServer(params: { locale: string; doctor?: 
   if (params.page && params.page > 1) query.set("page", String(params.page));
   try {
     const json = await fetchServerJson<{ data: ReviewsListResponse }>(`/reviews?${query.toString()}`);
-    return json?.data ?? null;
+    return json?.data ? withoutDoctorFromReviews(json.data) : null;
   } catch {
     return null;
   }

@@ -12,7 +12,6 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsPageTitle: "أطباؤنا",
   doctorsPageSubtitle: "صفِّ حسب التخصص، واختر الوقت المناسب، واحجز موعدك عبر الإنترنت.",
   doctorsEmptyTitle: "لا توجد نتائج",
-  doctorsEmptyDescription: "لا يوجد أطباء يطابقون عوامل التصفية هذه. جرّب تعديلها.",
   searchPlaceholder: "ابحث باسم الطبيب...",
   searchAriaLabel: "البحث عن الأطباء",
   specialtyFilterAriaLabel: "التصفية حسب التخصص",
@@ -91,10 +90,6 @@ export const telehealthStrings: TelehealthStrings = {
   specialtiesPageSubtitle: "اختر خدمة وأرسل طلب استشارة. يُجرى العلاج في منشآت صحية مرخّصة.",
   specialtiesEmptyTitle: "لم يُعثر على أي تخصص",
   specialtiesEmptyDescription: "لا توجد تخصصات لعرضها حاليًا.",
-  doctorCountOne: "عدد الأطباء: {count}",
-  doctorCountOther: "عدد الأطباء: {count}",
-  specialtyDoctorsEmptyTitle: "لا يوجد أطباء في هذا التخصص",
-  specialtyDoctorsEmptyDescription: "لا يوجد حاليًا أطباء منشورون في هذا التخصص.",
   specialtyCoordinatorTitle: "دع منسقنا يرشدك",
   specialtyCoordinatorText: "أخبرنا بحالتك وسيساعدك منسق المرضى على تخطيط العلاج في منشأة صحية مرخّصة.",
 

@@ -40,8 +40,6 @@ export const blogStrings: BlogStrings = {
   tocTitle: "U ovom članku",
   tocAria: "Sadržaj",
   keyTakeaways: "Najvažnije",
-  consultTitle: "Posavetujte se s lekarom",
-  consultText: "Razgovarajte onlajn sa specijalistom o svojoj situaciji.",
   bookButton: "Zakaži",
   bookAria: "Zakažite termin kod: {name}",
   profileAria: "Pogledajte profil: {name}",

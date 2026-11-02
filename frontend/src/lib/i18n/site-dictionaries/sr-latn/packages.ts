@@ -38,7 +38,6 @@ export const packagesStrings: PackagesStrings = {
   priceNote: "Konačna cena se potvrđuje nakon medicinske procene.",
   relatedDoctorsTitle: "Lekari za ovaj paket",
   viewPhysicianAria: "Pogledaj profil: {name}",
-  findPhysicianText: "Niste sigurni koji lekar vam odgovara?",
   contactTitle: "Razgovarajte sa nama o ovom paketu",
   formTitle: "Isplaniraj moj paket",
   formIntro: "Recite nam svoje planove, a naš koordinator će vas kontaktirati. Ovo je samo zahtev za planiranje: nije kupovina niti zakazivanje i ništa se ne naplaćuje.",

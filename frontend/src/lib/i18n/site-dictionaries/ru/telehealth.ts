@@ -12,7 +12,6 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsPageTitle: "Наши врачи",
   doctorsPageSubtitle: "Отфильтруйте по специализации, выберите удобное время и запишитесь на онлайн-приём.",
   doctorsEmptyTitle: "Ничего не найдено",
-  doctorsEmptyDescription: "Нет врачей, соответствующих этим фильтрам. Попробуйте изменить фильтры.",
   searchPlaceholder: "Поиск по имени врача...",
   searchAriaLabel: "Поиск врачей",
   specialtyFilterAriaLabel: "Фильтр по специализации",
@@ -91,10 +90,6 @@ export const telehealthStrings: TelehealthStrings = {
   specialtiesPageSubtitle: "Выберите услугу и отправьте запрос на консультацию. Лечение проводится в авторизованных медицинских учреждениях.",
   specialtiesEmptyTitle: "Специализации не найдены",
   specialtiesEmptyDescription: "Сейчас нет специализаций для отображения.",
-  doctorCountOne: "Врачей: {count}",
-  doctorCountOther: "Врачей: {count}",
-  specialtyDoctorsEmptyTitle: "В этой специализации нет врачей",
-  specialtyDoctorsEmptyDescription: "Сейчас в этой специализации нет опубликованных врачей.",
   specialtyCoordinatorTitle: "Доверьтесь нашему координатору",
   specialtyCoordinatorText: "Расскажите о вашей ситуации, и координатор пациентов поможет спланировать лечение в авторизованном медицинском учреждении.",
 

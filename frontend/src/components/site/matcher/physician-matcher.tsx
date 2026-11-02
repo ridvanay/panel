@@ -68,7 +68,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Paket W/AI — "Find your treatment" sihirbazı (sayfa `/[lang]/find-your-treatment` ve sayfa içi modal).
- * TANI KOYMAZ: yalnızca uzmanlık ve hekim önerir. Adım bilgisi URL'de (`?step=` / modalda `?finder=`),
+ * TANI KOYMAZ: yalnızca hizmet (bölüm) önerir; hekim önerisi/yönlendirmesi YOKTUR (Paket AH/AJ-2). Adım bilgisi URL'de (`?step=` / modalda `?finder=`),
  * geri tuşu çalışır; KİŞİSEL VERİ URL'YE GİRMEZ (şikayet, ad, iletişim yalnızca bellek + POST gövdesi).
  * Adımlar: 1 şikayet → 2 kimin için/süre → 3 tercihler → 4 iletişim → 5 sonuç. Admin ayarı
  * `contactRequired=false` ise 4. adım sonuçtan sonra ve opsiyoneldir.
@@ -580,7 +580,7 @@ export function PhysicianMatcher({
   );
 
   const radioGroup = <T extends string>(name: string, label: string, value: T | null, options: [T, string][], onChange: (v: T) => void) => (
-    <fieldset className="space-y-2">
+    <fieldset className="min-w-0 space-y-2">
       <legend className="mb-1 text-sm font-semibold text-foreground">{label}</legend>
       <div className="grid gap-2 sm:grid-cols-2">
         {options.map(([v, text]) => (
@@ -728,7 +728,7 @@ export function PhysicianMatcher({
 
             <div>
               <h3 className="mb-2 text-sm font-semibold text-foreground">{m.bodyAreasTitle}</h3>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {MATCHER_BODY_AREAS.filter((area) => topics.some((t) => t.bodyArea === area && !t.isRedFlag)).map((area) => {
                   const Icon = BODY_AREA_ICONS[area];
                   const open = openArea === area;
@@ -743,13 +743,13 @@ export function PhysicianMatcher({
                         setShowAllAreaTopics(false);
                       }}
                       className={cn(
-                        "flex min-h-14 items-center gap-2 rounded-[var(--site-radius)] border p-3 text-start text-sm font-medium transition-colors motion-reduce:transition-none",
+                        "flex h-full min-h-14 min-w-0 items-center gap-2 rounded-[var(--site-radius)] border p-3 text-start text-sm font-medium break-words transition-colors focus-visible:ring-2 focus-visible:ring-[var(--site-primary)] focus-visible:outline-none motion-reduce:transition-none",
                         open ? "border-[var(--site-primary)] bg-[var(--site-primary)]/5 text-foreground" : "border-border bg-surface text-foreground hover:bg-surface-muted"
                       )}
                       data-testid={`matcher-area-${area}`}
                     >
                       <Icon className="h-5 w-5 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
-                      {m.bodyAreas[area]}
+                      <span className="min-w-0">{m.bodyAreas[area]}</span>
                     </button>
                   );
                 })}
@@ -911,7 +911,7 @@ export function PhysicianMatcher({
             <Field label={m.nameLabel} error={errors.name} id="matcher-name">
               <input id="matcher-name" autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
             </Field>
-            <fieldset className="space-y-1 text-sm">
+            <fieldset className="min-w-0 space-y-1 text-sm">
               <legend className="font-semibold text-foreground">{m.ageModeLabel}</legend>
               <div className="flex gap-2">
                 <select

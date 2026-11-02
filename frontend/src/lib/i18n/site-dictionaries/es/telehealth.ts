@@ -12,7 +12,6 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsPageTitle: "Nuestros médicos",
   doctorsPageSubtitle: "Filtre por especialidad, elija una hora que le convenga y reserve su cita en línea.",
   doctorsEmptyTitle: "No se han encontrado resultados",
-  doctorsEmptyDescription: "Ningún médico coincide con estos filtros. Pruebe a modificarlos.",
   searchPlaceholder: "Buscar por nombre del médico...",
   searchAriaLabel: "Buscar médicos",
   specialtyFilterAriaLabel: "Filtrar por especialidad",
@@ -91,10 +90,6 @@ export const telehealthStrings: TelehealthStrings = {
   specialtiesPageSubtitle: "Elija un servicio y envíe una solicitud de consulta. El tratamiento se realiza en centros sanitarios autorizados.",
   specialtiesEmptyTitle: "No se ha encontrado ninguna especialidad",
   specialtiesEmptyDescription: "En este momento no hay especialidades que mostrar.",
-  doctorCountOne: "{count} médico",
-  doctorCountOther: "{count} médicos",
-  specialtyDoctorsEmptyTitle: "No hay médicos en esta especialidad",
-  specialtyDoctorsEmptyDescription: "En este momento no hay médicos publicados en esta especialidad.",
   specialtyCoordinatorTitle: "Deje que nuestro coordinador le guíe",
   specialtyCoordinatorText: "Cuéntenos su situación y un coordinador de pacientes le ayudará a planificar el tratamiento en un centro sanitario autorizado.",
 

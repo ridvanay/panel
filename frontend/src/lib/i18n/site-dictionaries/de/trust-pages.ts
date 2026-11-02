@@ -9,7 +9,7 @@ export const trustPagesStrings: TrustPagesStrings = {
   csMetaDescription: "Wie WM Health seine Patientenratgeber erstellt und aktualisiert.",
   csTitle: "Inhaltsstandards",
   csIntro:
-    "Unsere Ratgeber helfen Ihnen, ein Gesundheitsthema zu verstehen, bevor Sie weitere Schritte planen. Sie bieten allgemeine Informationen in einfacher Sprache. Sie sind keine medizinische Beratung und ersetzen keine ärztliche Konsultation.",
+    "Unsere Ratgeber helfen Ihnen, ein Gesundheitsthema zu verstehen, bevor Sie weitere Schritte planen. Sie bieten allgemeine Informationen in einfacher Sprache. Sie sind keine medizinische Beratung und ersetzen keine medizinische Konsultation.",
   csPrinciplesAria: "Unsere redaktionellen Grundsätze",
   csWrittenTitle: "Wie Ratgeber entstehen",
   csWrittenText:

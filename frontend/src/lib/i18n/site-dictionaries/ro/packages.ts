@@ -38,7 +38,6 @@ export const packagesStrings: PackagesStrings = {
   priceNote: "Prețul final se confirmă după evaluarea medicală.",
   relatedDoctorsTitle: "Medici pentru acest pachet",
   viewPhysicianAria: "Vezi profilul lui {name}",
-  findPhysicianText: "Nu știți ce medic vi se potrivește?",
   contactTitle: "Discutați cu noi despre acest pachet",
   formTitle: "Planifică pachetul meu",
   formIntro: "Spuneți-ne planurile dumneavoastră, iar coordonatorul nostru vă va contacta. Este doar o cerere de planificare: nu reprezintă o achiziție sau o programare și nu se percepe nicio plată.",

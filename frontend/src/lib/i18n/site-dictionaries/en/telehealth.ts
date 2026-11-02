@@ -26,7 +26,6 @@ export const telehealthStrings = {
   doctorsPageTitle: "Physicians",
   doctorsPageSubtitle: "Filter by specialty, choose a convenient time and book your online appointment.",
   doctorsEmptyTitle: "No results found",
-  doctorsEmptyDescription: "No physicians match these filters. Try adjusting your filters.",
   searchPlaceholder: "Search by physician name...",
   searchAriaLabel: "Search physicians",
   specialtyFilterAriaLabel: "Filter by specialty",
@@ -122,12 +121,6 @@ export const telehealthStrings = {
   specialtiesPageSubtitle: "Choose a service and send a consultation request. Treatment is performed at authorized healthcare facilities.",
   specialtiesEmptyTitle: "No specialty found",
   specialtiesEmptyDescription: "There are currently no specialties to list.",
-  /** `{count}` yer tutucusu — tekil (1 doctor). */
-  doctorCountOne: "{count} physician",
-  /** `{count}` yer tutucusu — çoğul (0, 2, 3... doctors). */
-  doctorCountOther: "{count} physicians",
-  specialtyDoctorsEmptyTitle: "No physicians found in this specialty",
-  specialtyDoctorsEmptyDescription: "There are currently no published physicians in this specialty.",
   /** Paket V — hekimi olmayan uzmanlık sayfasında doktor listesinin yerine. */
   specialtyCoordinatorTitle: "Let our coordinator guide you",
   specialtyCoordinatorText: "Tell us about your situation and a patient coordinator will help you plan treatment at an authorized healthcare facility.",

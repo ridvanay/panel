@@ -12,7 +12,6 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsPageTitle: "Unsere Ärzte",
   doctorsPageSubtitle: "Filtern Sie nach Fachgebiet, wählen Sie eine passende Zeit und buchen Sie Ihren Online-Termin.",
   doctorsEmptyTitle: "Keine Ergebnisse gefunden",
-  doctorsEmptyDescription: "Keine Ärzte entsprechen diesen Filtern. Versuchen Sie, die Filter anzupassen.",
   searchPlaceholder: "Nach Arztname suchen...",
   searchAriaLabel: "Ärzte suchen",
   specialtyFilterAriaLabel: "Nach Fachgebiet filtern",
@@ -91,10 +90,6 @@ export const telehealthStrings: TelehealthStrings = {
   specialtiesPageSubtitle: "Wählen Sie eine Leistung und senden Sie eine Beratungsanfrage. Die Behandlung erfolgt in autorisierten Gesundheitseinrichtungen.",
   specialtiesEmptyTitle: "Kein Fachgebiet gefunden",
   specialtiesEmptyDescription: "Derzeit gibt es keine Fachgebiete zum Anzeigen.",
-  doctorCountOne: "{count} Arzt",
-  doctorCountOther: "{count} Ärzte",
-  specialtyDoctorsEmptyTitle: "In diesem Fachgebiet wurden keine Ärzte gefunden",
-  specialtyDoctorsEmptyDescription: "Derzeit sind in diesem Fachgebiet keine Ärzte veröffentlicht.",
   specialtyCoordinatorTitle: "Lassen Sie sich von unserem Koordinator begleiten",
   specialtyCoordinatorText: "Schildern Sie uns Ihre Situation – ein Patientenkoordinator hilft Ihnen, die Behandlung in einer autorisierten Gesundheitseinrichtung zu planen.",
 
