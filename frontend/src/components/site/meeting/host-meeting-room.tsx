@@ -24,11 +24,24 @@ import { formatCountdown, formatMeetingClock, isInJoinWindow, MEETING_JOIN_LEAD_
 type Stage = "loading" | "signin" | "notfound" | "error" | "prejoin" | "room" | "left" | "ended" | "removed";
 
 /**
+ * AI İş 3 — geriye uyumlu, isteğe bağlı kaynak: hizmet masası koordinatörü aynı ev sahibi odasını kendi uçlarıyla kullanır
+ * (`/coordinator/consultations/:id/host-token`). Verilmezse AG davranışı (`GET /meetings/:id`, `POST /meetings/:id/host-token`) aynen sürer.
+ */
+export interface HostRoomSource {
+  loadMeeting: () => Promise<Meeting>;
+  requestToken: () => Promise<MeetingTokenResponse>;
+  /** Ayrılınca / "geri" bağlantısında dönülecek panel yolu. */
+  backHref: string;
+  /** `false`: misafir kabul/çıkarma paneli gösterilmez (hizmet görüşmesinde hasta koordinatör girince otomatik alınır). Varsayılan `true`. */
+  showParticipantsPanel?: boolean;
+}
+
+/**
  * Paket AG İş 3 — ev sahibi odası (`/{lang}/meet/{meetingId}`, oturum gerekli). Ön ekran: toplantı başlığı + cihaz testi +
  * "Katıl" (pencere dışındaysa geri sayım). Odadayken yanında katılımcılar paneli. ADMIN rolü başkasının toplantısına ev sahibi
  * olarak giremez (sunucu 404 döner → "bulunamadı"). Ayrılınca panel listesine (doktor: doktor portalı) dönülür.
  */
-export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
+export function HostMeetingRoom({ meetingId, source }: { meetingId: string; source?: HostRoomSource }) {
   const { t } = useMeetingStrings();
   const errorMessage = useMeetingErrorMessage();
   const auth = useAuthOptional();
@@ -42,6 +55,10 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
   const [joining, setJoining] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const prejoinRef = useRef<PrejoinCheckHandle | null>(null);
+  const sourceRef = useRef<HostRoomSource | undefined>(source);
+  useEffect(() => {
+    sourceRef.current = source;
+  }, [source]);
 
   const status = auth?.status ?? "loading";
   const isDoctor = auth?.user?.doctorProfileId != null;
@@ -54,7 +71,7 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
   const loadMeeting = useCallback(async () => {
     setStage("loading");
     try {
-      const m = await getMeeting(meetingId);
+      const m = await (sourceRef.current?.loadMeeting() ?? getMeeting(meetingId));
       setMeeting(m);
       setStage(m.phase === "cancelled" || m.status === "CANCELLED" ? "ended" : m.phase === "ended" ? "ended" : "prejoin");
     } catch (err) {
@@ -81,7 +98,7 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
     setJoining(true);
     setMessage(null);
     try {
-      setToken(await requestHostToken(meetingId));
+      setToken(await (sourceRef.current?.requestToken() ?? requestHostToken(meetingId)));
       setStage("room");
     } catch (err) {
       if (err instanceof ApiClientError && err.code === "MEETING_NOT_OPEN") void loadMeeting();
@@ -91,9 +108,13 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
     }
   }
 
-  const fetchToken = useCallback(() => requestHostToken(meetingId), [meetingId]);
+  const fetchToken = useCallback(() => sourceRef.current?.requestToken() ?? requestHostToken(meetingId), [meetingId]);
 
   function backToList() {
+    if (source) {
+      router.push(source.backHref);
+      return;
+    }
     const path = isDoctor ? "/doctor/meetings" : "/admin/meetings";
     if (isDoctor && isSubdomainModeEnabled() && !isDoctorHostname(window.location.hostname)) {
       window.location.assign(toDoctorOrigin(localize(path)));
@@ -117,7 +138,7 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
     setStage(reason);
   }
 
-  const listHref = isDoctor ? localize("/doctor/meetings") : "/admin/meetings";
+  const listHref = source ? source.backHref : isDoctor ? localize("/doctor/meetings") : "/admin/meetings";
   const backAction = (
     <Link href={listHref} className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted">
       {t.hostRoomBack}
@@ -141,7 +162,7 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
         title={t.hostRoomSignIn}
         actions={
           <Link
-            href={`/login?next=${encodeURIComponent(`/meet/${meetingId}`)}`}
+            href={`/login?next=${encodeURIComponent(source ? source.backHref : `/meet/${meetingId}`)}`}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             <LogIn className="h-4 w-4" aria-hidden="true" />
@@ -178,11 +199,13 @@ export function HostMeetingRoom({ meetingId }: { meetingId: string }) {
     content = <MeetingNotice testId="host-room-removed" icon={<LogOut className="h-9 w-9" />} title={t.roomRemovedTitle} body={t.roomRemovedBody} actions={backAction} />;
   } else if (stage === "room" && token && meeting) {
     content = (
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]" data-testid="host-room">
+      <div className={source?.showParticipantsPanel === false ? "grid gap-4" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]"} data-testid="host-room">
         <div dir="ltr">
           <MeetingRoom mode="host" initialToken={token} fetchToken={fetchToken} endsAt={meeting.endsAt} onExit={handleExit} />
         </div>
-        <MeetingParticipantsPanel meeting={meeting} onMeetingChange={(patch) => setMeeting((prev) => (prev ? { ...prev, ...patch } : prev))} />
+        {source?.showParticipantsPanel === false ? null : (
+          <MeetingParticipantsPanel meeting={meeting} onMeetingChange={(patch) => setMeeting((prev) => (prev ? { ...prev, ...patch } : prev))} />
+        )}
       </div>
     );
   } else if (meeting) {
