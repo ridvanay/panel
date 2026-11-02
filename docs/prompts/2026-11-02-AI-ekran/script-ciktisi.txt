@@ -1,0 +1,54 @@
+##### KURU (1) #####
+[rename-service-labels] mod=KURU ÇALIŞTIRMA +CTA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[güncelle] obesity-and-metabolic-surgery: ad "Obesity and Metabolic Surgery" -> "Obesity & Metabolic Surgery"; grup (boş) -> surgery-oncology; ikon Scale -> Target; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] surgical-oncology: grup (boş) -> surgery-oncology; ikon Ribbon -> ShieldCheck; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] thoracic-surgery: grup (boş) -> surgery-oncology; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] neurosurgery: grup (boş) -> surgery-oncology; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] gastroenterology: grup (boş) -> digestive-interventional; ikon Stethoscope -> Layers; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] interventional-radiology-specialist: ad "Interventional Radiology Specialist" -> "Interventional Radiology"; grup (boş) -> digestive-interventional; ikon Stethoscope -> Zap; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] plastic-and-aesthetic-surgery: ad "Plastic and Aesthetic Surgery" -> "Plastic & Aesthetic Surgery"; grup (boş) -> aesthetic-dental-hair; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] dentalcare: ad "Dentalcare" -> "Dental Care"; grup (boş) -> aesthetic-dental-hair; ikon Stethoscope -> Smile; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] orthodontist: ad "Orthodontist" -> "Orthodontics"; grup (boş) -> aesthetic-dental-hair; ikon Stethoscope -> Gem; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] hair-transplantation: grup (boş) -> aesthetic-dental-hair; ikon Stethoscope -> Star; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] ivf-and-reproductive-health: ad "IVF and Reproductive Health" -> "IVF & Reproductive Health"; grup (boş) -> fertility; ikon Baby -> Heart; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] header CTA: "Appointment" (/request) -> "Book a consultation" (/request) + 8 dil etiketi
+
+KURU ÇALIŞMA — hiçbir şey yazılmadı. Yazmak için --confirm=rename-service-labels --operator="Ad Soyad" ekleyin.
+##### GERCEK (2) #####
+[rename-service-labels] mod=YAZ +CTA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[güncelle] obesity-and-metabolic-surgery: ad "Obesity and Metabolic Surgery" -> "Obesity & Metabolic Surgery"; grup (boş) -> surgery-oncology; ikon Scale -> Target; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] surgical-oncology: grup (boş) -> surgery-oncology; ikon Ribbon -> ShieldCheck; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] thoracic-surgery: grup (boş) -> surgery-oncology; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] neurosurgery: grup (boş) -> surgery-oncology; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] gastroenterology: grup (boş) -> digestive-interventional; ikon Stethoscope -> Layers; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] interventional-radiology-specialist: ad "Interventional Radiology Specialist" -> "Interventional Radiology"; grup (boş) -> digestive-interventional; ikon Stethoscope -> Zap; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] plastic-and-aesthetic-surgery: ad "Plastic and Aesthetic Surgery" -> "Plastic & Aesthetic Surgery"; grup (boş) -> aesthetic-dental-hair; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] dentalcare: ad "Dentalcare" -> "Dental Care"; grup (boş) -> aesthetic-dental-hair; ikon Stethoscope -> Smile; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] orthodontist: ad "Orthodontist" -> "Orthodontics"; grup (boş) -> aesthetic-dental-hair; ikon Stethoscope -> Gem; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] hair-transplantation: grup (boş) -> aesthetic-dental-hair; ikon Stethoscope -> Star; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] ivf-and-reproductive-health: ad "IVF and Reproductive Health" -> "IVF & Reproductive Health"; grup (boş) -> fertility; ikon Baby -> Heart; kısa açıklama; çeviriler (ad + kısa açıklama, 8 dil)
+[güncelle] header CTA: "Appointment" (/request) -> "Book a consultation" (/request) + 8 dil etiketi
+[yedek] C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\service-labels-2026-11-02T18-39-24-792Z.json
+
+Güncellendi: obesity-and-metabolic-surgery, surgical-oncology, thoracic-surgery, neurosurgery, gastroenterology, interventional-radiology-specialist, plastic-and-aesthetic-surgery, dentalcare, orthodontist, hair-transplantation, ivf-and-reproductive-health + header CTA
+[geri al] npx tsx scripts/rename-service-labels.ts --restore=C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\service-labels-2026-11-02T18-39-24-792Z.json --confirm=rename-service-labels --operator="Ad Soyad"
+##### TEKRAR (3, idempotent) #####
+[rename-service-labels] mod=YAZ +CTA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[atla] obesity-and-metabolic-surgery: zaten güncel.
+[atla] surgical-oncology: zaten güncel.
+[atla] thoracic-surgery: zaten güncel.
+[atla] neurosurgery: zaten güncel.
+[atla] gastroenterology: zaten güncel.
+[atla] interventional-radiology-specialist: zaten güncel.
+[atla] plastic-and-aesthetic-surgery: zaten güncel.
+[atla] dentalcare: zaten güncel.
+[atla] orthodontist: zaten güncel.
+[atla] hair-transplantation: zaten güncel.
+[atla] ivf-and-reproductive-health: zaten güncel.
+[atla] header CTA: zaten güncel.
+Güncellenecek kayıt yok.
+
+Yapılacak değişiklik yok; hiçbir şey yazılmadı (idempotent).
