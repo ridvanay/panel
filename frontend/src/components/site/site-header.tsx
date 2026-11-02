@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
-  ClipboardList,
+  Compass,
   ChevronRight,
   Globe,
   Heart,
@@ -46,6 +46,9 @@ import {
   specialtiesToNavChildren,
   type NavSpecialty,
 } from "@/components/site/nav-dropdown";
+import { ServicesMegaMenu, ServicesMobileGroups, FIND_YOUR_TREATMENT_PATH } from "@/components/site/services-mega-menu";
+import { servicesStrings as enServicesStrings } from "@/lib/i18n/site-dictionaries/en/services";
+import type { ServicesStrings } from "@/lib/i18n/site-dictionaries/types";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -134,7 +137,15 @@ interface SiteHeaderProps {
    * healthcare facilities" bağlantısı (Hakkımızda `#authorized-facilities`). Verilmezse (admin önizleme) gösterilmez.
    */
   intermediary?: { shortLabel: string; facilitiesLink: string } | null;
+  /**
+   * Paket AI — hizmet mega menüsü, "Find your treatment" ve "Book a consultation" metinleri (`dict.services`).
+   * Verilmezse (admin önizleme, eski testler) EN kaynak metin kullanılır ve veri CTA'sı yoksa varsayılan CTA çizilmez.
+   */
+  services?: ServicesStrings;
 }
+
+/** Paket AI — veri CTA etiketi "Appointment" ya da boşsa sözlükteki "Book a consultation" gösterilir. */
+export const DEFAULT_CTA_PATH = "/request";
 
 /**
  * design-notes-theme-typography.md §3.2 — `buttonStyle` CSS custom property DEĞİL, yapısal bir
@@ -151,6 +162,8 @@ interface NavNode {
   href: string;
   label: string;
   children: { id: string; href: string; label: string }[];
+  /** Paket AI: alt öğeler veride yok, aktif uzmanlıklardan otomatik dolduruldu (yalnızca bu durumda mega menü çizilir). */
+  autoFilled?: boolean;
 }
 
 /**
@@ -168,8 +181,9 @@ function buildNavTree(items: NavigationItemDto[], physiciansLabel: string, speci
       .sort((a, b) => a.order - b.order)
       .map((child) => ({ id: child.id, href: child.href, label: labelOf(child) }));
     // Paket AH — "Health Tourism Services" (`/specialties`) veride alt öğe taşımıyorsa aktif uzmanlıklarla dolar.
-    const autoChildren = children.length === 0 && isSpecialtiesListHref(root.href) ? specialtiesToNavChildren(specialties) : children;
-    return { id: root.id, href: root.href, label: labelOf(root), children: autoChildren };
+    const autoFilled = children.length === 0 && isSpecialtiesListHref(root.href);
+    const autoChildren = autoFilled ? specialtiesToNavChildren(specialties) : children;
+    return { id: root.id, href: root.href, label: labelOf(root), children: autoChildren, autoFilled };
   });
 }
 
@@ -314,7 +328,9 @@ export function SiteHeader({
   navSpecialties = [],
   support = null,
   intermediary = null,
+  services,
 }: SiteHeaderProps) {
+  const svc: ServicesStrings = services ?? enServicesStrings;
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
   // rozet sessizce 0 gösterir, hata fırlatmaz.
@@ -354,7 +370,11 @@ export function SiteHeader({
           { id: "fallback-blog", href: "/blog", label: "Blog", children: [] },
         ];
 
-  const showCta = Boolean(ctaLabel && ctaHref);
+  // Paket AI — birincil CTA: veri "Appointment" ya da boşsa sözlükteki "Book a consultation" (→ /request).
+  const dataCtaLabel = ctaLabel?.trim() ?? "";
+  const effectiveCtaLabel = dataCtaLabel === "" || dataCtaLabel.toLowerCase() === "appointment" ? (services ? svc.bookConsultation : dataCtaLabel) : dataCtaLabel;
+  const effectiveCtaHref = ctaHref?.trim() ? ctaHref : services ? DEFAULT_CTA_PATH : "";
+  const showCta = Boolean(effectiveCtaLabel && effectiveCtaHref);
   const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname) && !isDoctorSession;
   const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "en";
   const localize = (path: string) =>
@@ -604,6 +624,21 @@ export function SiteHeader({
           {visibleNav.map((link) => {
             if (link.children.length > 0) {
               const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
+              if (link.autoFilled && navSpecialties.length > 0) {
+                return (
+                  <ServicesMegaMenu
+                    key={link.id}
+                    link={link}
+                    localize={localize}
+                    active={hasActiveChild || isNavLinkActive(pathname, localize(link.href))}
+                    specialties={navSpecialties}
+                    strings={svc}
+                    contactTopic={settings.siteName}
+                    triggerClassName={NAV_LINK_TEXT_CLASSES}
+                    activeTriggerClassName={NAV_LINK_ACTIVE_TEXT_CLASS}
+                  />
+                );
+              }
               return (
                 <NavDropdown
                   key={link.id}
@@ -650,24 +685,24 @@ export function SiteHeader({
           )}
         </div>
 
-        {/* Masaüstü sağ: ikincil "Request a consultation" (dar düzende yalnızca ikon) + birincil CTA ("Appointment"). */}
+        {/* Masaüstü sağ: ikincil "Find your treatment" (dar düzende yalnızca ikon) + birincil CTA ("Book a consultation"). */}
         <div className={cn("hidden shrink-0 items-center gap-2 lg:flex", shrinkOnScroll)} data-testid="site-header-actions">
           <Link
-            href={localize("/request")}
-            data-testid="header-request-consultation"
-            title={dict.requestConsultation}
+            href={localize(FIND_YOUR_TREATMENT_PATH)}
+            data-testid="header-find-treatment"
+            title={svc.findYourTreatment}
             className={cn(
               "inline-flex h-10 min-h-10 items-center justify-center gap-2 rounded-[var(--site-radius)] border border-[var(--site-primary)] text-sm font-semibold text-[var(--site-primary)] transition-colors hover:bg-[var(--site-primary)]/5 motion-reduce:transition-none",
               findDisplay === "icon" ? "w-11 px-0" : findDisplay === "auto" ? "w-11 px-0 xl:w-auto xl:px-4" : "px-4"
             )}
           >
-            <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className={findDisplay === "icon" ? "sr-only" : findDisplay === "auto" ? "sr-only xl:not-sr-only" : undefined}>{dict.requestConsultation}</span>
+            <Compass className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className={findDisplay === "icon" ? "sr-only" : findDisplay === "auto" ? "sr-only xl:not-sr-only" : undefined}>{svc.findYourTreatment}</span>
           </Link>
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text`; `buttonStyle` yapısal sınıf varyantı.
-            <Link href={localize(ctaHref as string)} className={cn(ctaClassName, "inline-flex h-10 items-center px-4 text-[15px] whitespace-nowrap")}>
-              {ctaLabel}
+            <Link href={localize(effectiveCtaHref)} data-testid="header-book-consultation" className={cn(ctaClassName, "inline-flex h-10 items-center px-4 text-[15px] whitespace-nowrap")}>
+              {effectiveCtaLabel}
             </Link>
           )}
         </div>
@@ -686,13 +721,13 @@ export function SiteHeader({
               <ChevronDown className="h-3.5 w-3.5" />
             </span>
             <span data-measure="find-full" className="inline-flex h-10 items-center gap-2 border px-4 text-sm font-semibold">
-              <ClipboardList className="h-4 w-4" />
-              {dict.requestConsultation}
+              <Compass className="h-4 w-4" />
+              {svc.findYourTreatment}
             </span>
             <span data-measure="find-icon" className="inline-flex h-10 w-11" />
             {showCta && (
               <span data-measure="cta" className="inline-flex h-10 items-center px-4 text-[15px] font-semibold">
-                {ctaLabel}
+                {effectiveCtaLabel}
               </span>
             )}
           </div>
@@ -703,10 +738,10 @@ export function SiteHeader({
         <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
           {showCta && (
             <Link
-              href={localize(ctaHref as string)}
+              href={localize(effectiveCtaHref)}
               className={cn(ctaClassName, "inline-flex min-h-11 items-center px-3 text-xs whitespace-nowrap sm:px-3.5 sm:text-sm")}
             >
-              {ctaLabel}
+              {effectiveCtaLabel}
             </Link>
           )}
           {showLanguage && activeLocale && (
@@ -764,16 +799,26 @@ export function SiteHeader({
               </div>
 
               <div className="flex flex-col gap-3 p-3">
-                {/* Paket AH — "Request a consultation" mobil menünün en üstünde, belirgin düğme (talep formu). */}
+                {/* Paket AI — mobil menünün en üstünde iki düğme: "Find your treatment" + birincil CTA ("Book a consultation"). */}
                 <Link
-                    href={localize("/request")}
-                    onClick={closeMobileMenu}
-                    data-testid="mobile-menu-request-consultation"
-                    className="flex min-h-12 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] border-2 border-[var(--site-primary,var(--color-primary))] px-4 text-base font-semibold text-[var(--site-primary,var(--color-primary))] hover:bg-[var(--site-primary,var(--color-primary))]/5"
-                  >
-                    <ClipboardList className="h-5 w-5" aria-hidden="true" />
-                    {dict.requestConsultation}
+                  href={localize(FIND_YOUR_TREATMENT_PATH)}
+                  onClick={closeMobileMenu}
+                  data-testid="mobile-menu-find-treatment"
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] border-2 border-[var(--site-primary,var(--color-primary))] px-4 text-base font-semibold text-[var(--site-primary,var(--color-primary))] hover:bg-[var(--site-primary,var(--color-primary))]/5"
+                >
+                  <Compass className="h-5 w-5" aria-hidden="true" />
+                  {svc.findYourTreatment}
                 </Link>
+                {showCta && (
+                  <Link
+                    href={localize(effectiveCtaHref)}
+                    onClick={closeMobileMenu}
+                    data-testid="mobile-menu-book-consultation"
+                    className={cn(ctaClassName, "flex min-h-12 items-center justify-center px-4 text-base")}
+                  >
+                    {effectiveCtaLabel}
+                  </Link>
+                )}
                 <ul className="flex flex-col gap-0.5">
                   {navTree.map((link) => {
                     if (link.children.length > 0) {
@@ -786,58 +831,69 @@ export function SiteHeader({
                                 <span className="flex-1">{link.label}</span>
                               </AccordionTrigger>
                               <AccordionPanel>
-                                <ul className="flex flex-col gap-0.5 pb-1 ps-3">
-                                  {groupSpecialtyNavChildren(link.children, navSpecialties).map((child) => {
-                                    const href = localize(child.href);
-                                    const active = isNavLinkActive(pathname, href);
-                                    return (
-                                      <li key={child.id}>
-                                        <Link
-                                          href={href}
-                                          aria-current={active ? "page" : undefined}
-                                          onClick={closeMobileMenu}
-                                          className={cn(
-                                            "flex min-h-11 items-center rounded-lg px-3 py-2 text-sm hover:bg-surface-muted",
-                                            active ? "font-medium text-[var(--site-header-link-active)]" : "text-foreground/80"
-                                          )}
-                                        >
-                                          {child.label}
-                                        </Link>
-                                        {child.procedures.length > 0 && (
-                                          <div
-                                            data-testid="mobile-nav-procedures"
-                                            className="flex flex-wrap items-center gap-x-1 pb-1 ps-6 pe-3 text-[13px] text-foreground/60"
+                                {link.autoFilled && navSpecialties.length > 0 ? (
+                                  <ServicesMobileGroups
+                                    specialties={navSpecialties}
+                                    localize={localize}
+                                    strings={svc}
+                                    viewAllHref={localize(link.href)}
+                                    onNavigate={closeMobileMenu}
+                                    isActive={(href) => isNavLinkActive(pathname, href)}
+                                  />
+                                ) : (
+                                  <ul className="flex flex-col gap-0.5 pb-1 ps-3">
+                                    {groupSpecialtyNavChildren(link.children, navSpecialties).map((child) => {
+                                      const href = localize(child.href);
+                                      const active = isNavLinkActive(pathname, href);
+                                      return (
+                                        <li key={child.id}>
+                                          <Link
+                                            href={href}
+                                            aria-current={active ? "page" : undefined}
+                                            onClick={closeMobileMenu}
+                                            className={cn(
+                                              "flex min-h-11 items-center rounded-lg px-3 py-2 text-sm hover:bg-surface-muted",
+                                              active ? "font-medium text-[var(--site-header-link-active)]" : "text-foreground/80"
+                                            )}
                                           >
-                                            <span className="font-medium">{dict.specialtyProceduresTitle}:</span>
-                                            {child.procedures.map((proc, index) => (
-                                              <span key={proc.id} className="inline-flex items-center gap-1">
-                                                <Link
-                                                  href={localize(proc.href)}
-                                                  onClick={closeMobileMenu}
-                                                  className="inline-flex min-h-11 items-center px-1 font-semibold text-[var(--site-primary)] hover:underline"
-                                                >
-                                                  {proc.label}
-                                                </Link>
-                                                {index < child.procedures.length - 1 && <span aria-hidden="true">·</span>}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
+                                            {child.label}
+                                          </Link>
+                                          {child.procedures.length > 0 && (
+                                            <div
+                                              data-testid="mobile-nav-procedures"
+                                              className="flex flex-wrap items-center gap-x-1 pb-1 ps-6 pe-3 text-[13px] text-foreground/60"
+                                            >
+                                              <span className="font-medium">{dict.specialtyProceduresTitle}:</span>
+                                              {child.procedures.map((proc, index) => (
+                                                <span key={proc.id} className="inline-flex items-center gap-1">
+                                                  <Link
+                                                    href={localize(proc.href)}
+                                                    onClick={closeMobileMenu}
+                                                    className="inline-flex min-h-11 items-center px-1 font-semibold text-[var(--site-primary)] hover:underline"
+                                                  >
+                                                    {proc.label}
+                                                  </Link>
+                                                  {index < child.procedures.length - 1 && <span aria-hidden="true">·</span>}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                    {isSpecialtiesListHref(link.href) && (
+                                      <li>
+                                        <Link
+                                          href={localize(link.href)}
+                                          onClick={closeMobileMenu}
+                                          className="flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-semibold text-[var(--site-primary)] hover:bg-surface-muted"
+                                        >
+                                          {dict.allServices}
+                                        </Link>
                                       </li>
-                                    );
-                                  })}
-                                  {isSpecialtiesListHref(link.href) && (
-                                    <li>
-                                      <Link
-                                        href={localize(link.href)}
-                                        onClick={closeMobileMenu}
-                                        className="flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-semibold text-[var(--site-primary)] hover:bg-surface-muted"
-                                      >
-                                        {dict.allServices}
-                                      </Link>
-                                    </li>
-                                  )}
-                                </ul>
+                                    )}
+                                  </ul>
+                                )}
                               </AccordionPanel>
                             </AccordionItem>
                           </Accordion>

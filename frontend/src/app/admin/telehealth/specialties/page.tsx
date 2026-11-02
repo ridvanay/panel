@@ -33,6 +33,7 @@ import type { TextTranslations } from "@/lib/api/types";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { Select } from "@/components/ui/select";
+import { SERVICE_GROUP_KEYS } from "@/lib/service-groups";
 import { AlertCircle, Pencil, Stethoscope, X } from "lucide-react";
 
 /**
@@ -50,7 +51,19 @@ const specialtyFormSchema = z.object({
   isActive: z.boolean(),
   /** Paket AG — üst uzmanlık id'si; boş = üst seviye. */
   parentId: z.string().optional(),
+  /** Paket AI: hizmet grubu anahtarı; boş = Other. Alt uzmanlıkta gönderilmez (grup üstten miras alınır). */
+  serviceGroup: z.string().optional(),
+  /** Paket AI: tek satır kısa açıklama (menü ve hizmet kartları), en çok 120 karakter. */
+  shortDescription: z.string().max(120, "Kısa açıklama en fazla 120 karakter olabilir.").optional(),
 });
+
+/** Paket AI: hizmet grubu seçenekleri (admin etiketleri; sıra mega menüdeki grup sırasıdır). */
+const SERVICE_GROUP_LABELS: Record<(typeof SERVICE_GROUP_KEYS)[number], string> = {
+  "surgery-oncology": "Surgery & Oncology",
+  "digestive-interventional": "Digestive & Interventional",
+  "aesthetic-dental-hair": "Aesthetic, Dental & Hair",
+  fertility: "Fertility",
+};
 
 type SpecialtyFormValues = z.infer<typeof specialtyFormSchema>;
 
@@ -75,7 +88,7 @@ function specialtyImageAsMedia(specialty: Specialty): Media | null {
   } as Media;
 }
 
-const EMPTY_FORM: SpecialtyFormValues = { name: "", slug: "", icon: "", description: "", order: 0, isActive: true, parentId: "" };
+const EMPTY_FORM: SpecialtyFormValues = { name: "", slug: "", icon: "", description: "", order: 0, isActive: true, parentId: "", serviceGroup: "", shortDescription: "" };
 
 /** Paket AG — üst uzmanlıklar, her birinin altında alt uzmanlıkları (listede girintili gösterim için). */
 export function orderSpecialtiesWithChildren(list: Specialty[]): Specialty[] {
@@ -118,6 +131,8 @@ export default function AdminTelehealthSpecialtiesPage() {
   // Dil sekmelerinde EN metni yer tutucu olarak gösterilir.
   const canonicalName = useWatch({ control, name: "name" });
   const canonicalDescription = useWatch({ control, name: "description" });
+  const canonicalShortDescription = useWatch({ control, name: "shortDescription" });
+  const watchedParentId = useWatch({ control, name: "parentId" });
 
   const load = useCallback(async () => {
     try {
@@ -153,6 +168,8 @@ export default function AdminTelehealthSpecialtiesPage() {
       order: specialty.order,
       isActive: specialty.isActive,
       parentId: specialty.parentId ?? "",
+      serviceGroup: specialty.serviceGroup ?? "",
+      shortDescription: specialty.shortDescription ?? "",
     });
     setImage(specialtyImageAsMedia(specialty));
     setTranslations(specialty.translations ?? {});
@@ -176,6 +193,9 @@ export default function AdminTelehealthSpecialtiesPage() {
         order: values.order ?? 0,
         isActive: values.isActive,
         parentId: values.parentId ? values.parentId : null,
+        // Alt uzmanlığa grup yazılmaz (üstten miras); boş seçim = null (Other).
+        serviceGroup: values.parentId ? null : values.serviceGroup ? values.serviceGroup : null,
+        shortDescription: values.shortDescription?.trim() ? values.shortDescription.trim() : null,
         imageMediaId: image?.id ?? null,
         translations,
       };
@@ -193,6 +213,11 @@ export default function AdminTelehealthSpecialtiesPage() {
       if (fieldErrors.parentId) {
         // Paket AG — backend 422 mesajı "Üst uzmanlık" alanında gösterilir.
         setFormError("parentId", { type: "server", message: fieldErrors.parentId });
+      } else if (fieldErrors.serviceGroup) {
+        setFormError("serviceGroup", { type: "server", message: fieldErrors.serviceGroup });
+      } else if (fieldErrors.shortDescription) {
+        setFormError("shortDescription", { type: "server", message: fieldErrors.shortDescription });
+        setContentLocale(CANONICAL_LOCALE_CODE);
       } else {
         toast.error(friendlyErrorMessage(err));
       }
@@ -339,7 +364,7 @@ export default function AdminTelehealthSpecialtiesPage() {
                 locales={translationLocales}
                 value={contentLocale}
                 onValueChange={setContentLocale}
-                entries={[{ translations, fields: ["name", "description"] }]}
+                entries={[{ translations, fields: ["name", "description", "shortDescription"] }]}
               />
             </div>
 
@@ -393,6 +418,50 @@ export default function AdminTelehealthSpecialtiesPage() {
                 </Select>
               )}
             </Field>
+            </div>
+
+            <div className="sm:col-span-2">
+              <Field
+                id="specialty-service-group"
+                label="Hizmet grubu"
+                error={errors.serviceGroup?.message}
+                hint={
+                  watchedParentId
+                    ? "Alt uzmanlık grubunu üst uzmanlıktan devralır."
+                    : "Mega menüde ve Hizmetler sayfasında bu grubun altında listelenir. Boş = Other."
+                }
+              >
+                {(inputProps) => (
+                  <Select {...inputProps} {...register("serviceGroup")} disabled={Boolean(watchedParentId)}>
+                    <option value="">— Boş (Other) —</option>
+                    {SERVICE_GROUP_KEYS.map((key) => (
+                      <option key={key} value={key}>
+                        {SERVICE_GROUP_LABELS[key]}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+
+            <div className="sm:col-span-2">
+              {canonicalLocale ? (
+                <Field key="short-en" id="specialty-short-description" label="Kısa açıklama" error={errors.shortDescription?.message} hint="Tek satır, en fazla 120 karakter. Menüde ve hizmet kartlarında görünür; tıbbi iddia, fiyat veya başarı oranı yazmayın.">
+                  {(inputProps) => <Input {...inputProps} maxLength={120} {...register("shortDescription")} />}
+                </Field>
+              ) : (
+                <Field key={`short-${contentLocale}`} id={`specialty-short-description-${contentLocale}`} label={`Kısa açıklama (${contentLocale.toUpperCase()})`} hint="Boş bırakılırsa EN kısa açıklama gösterilir.">
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={getTranslation(translations, contentLocale, "shortDescription")}
+                      onChange={(e) => setTranslations((prev) => setTranslation(prev, contentLocale, "shortDescription", e.target.value))}
+                      placeholder={canonicalShortDescription ?? ""}
+                      maxLength={120}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
 
             <div className="sm:col-span-2">

@@ -17,6 +17,10 @@ export interface NavSpecialty {
   imageUrl: string | null;
   /** Paket AG — alt uzmanlıkta üst uzmanlığın slug'ı; üst seviyede/eski API'de `null`/`undefined`. */
   parentSlug?: string | null;
+  /** Paket AI — hizmet grubu anahtarı (mega menü gruplaması); yok/`null` → "Other". */
+  serviceGroup?: string | null;
+  /** Paket AI — tek satır kısa açıklama (yerelleştirilmiş); yoksa mega menüde gösterilmez. */
+  shortDescription?: string | null;
 }
 
 export interface NavDropdownLink {

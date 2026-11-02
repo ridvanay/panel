@@ -20,7 +20,7 @@ vi.mock("next/navigation", () => ({
     back: nav.back,
     replace: vi.fn(),
   }),
-  usePathname: () => "/tr/find-a-physician",
+  usePathname: () => "/tr/find-your-treatment",
   useSearchParams: () => nav.params,
 }));
 vi.mock("@/context/locale-alternates-context", () => ({ useActiveLocaleCode: () => "tr", useLocalizePath: () => (p: string) => `/tr${p}` }));
@@ -128,6 +128,29 @@ describe("sözlük (9 dil)", () => {
     expect(JSON.stringify(MATCHER_DICTIONARIES.ro)).not.toMatch(/[şţ]/);
   });
 
+  it("Paket AI — başlık, alt başlık ve zorunlu uyarı 8 dilde dolu; EN metinleri sözleşmeye birebir uyar; tr = EN", () => {
+    expect(en.entryButton).toBe("Find your treatment");
+    expect(en.pageTitle).toBe("Which treatment is right for me?");
+    expect(en.pageIntro).toBe("Answer a few questions about your concern and we'll suggest the right health tourism service.");
+    expect(en.disclaimer).toBe(
+      "This tool does not provide a diagnosis or medical advice. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities."
+    );
+    for (const lang of ["en", "es", "de", "ar", "ru", "ro", "fr", "sr-latn"]) {
+      const dict = MATCHER_DICTIONARIES[lang]!;
+      // Uyarı iki cümle (tanı değil + değerlendirmeyi yetkili kuruluşlardaki hekimler yapar); diğer dillerde EN'den farklı çeviri.
+      expect(dict.disclaimer.length, lang).toBeGreaterThan(90);
+      if (lang !== "en") {
+        expect(dict.disclaimer, lang).not.toBe(en.disclaimer);
+        expect(dict.pageTitle, lang).not.toBe(en.pageTitle);
+        expect(dict.pageIntro, lang).not.toBe(en.pageIntro);
+        expect(dict.bookOnline, lang).not.toBe(en.bookOnline);
+      }
+      expect(dict.bookOnlineFor, lang).toContain("{service}");
+    }
+    expect(MATCHER_DICTIONARIES.tr!.disclaimer).toBe(en.disclaimer);
+    expect(MATCHER_DICTIONARIES.tr!.pageTitle).toBe(en.pageTitle);
+  });
+
   it("ön yüz ve backend arama normalleştirmesi birebir aynı", () => {
     const body = (file: string) => fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n").replace(/^\/\*\*[\s\S]*?\*\/\n/, "");
     expect(body(path.resolve(__dirname, "../../src/lib/matcher/text.ts"))).toBe(body(path.resolve(__dirname, "../../../backend/src/lib/matcher-text.ts")));
@@ -177,6 +200,14 @@ describe("sihirbaz akışı", () => {
     expect(api.progress).toHaveBeenCalledWith("red_flag_continue");
   });
 
+  it("Paket AI — başlangıç ekranında zorunlu uyarı görünür (tanı değildir + değerlendirmeyi yetkili kuruluşlardaki hekimler yapar)", async () => {
+    nav.params = new URLSearchParams("step=1");
+    render(<PhysicianMatcher mode="page" />);
+    const note = await screen.findByTestId("matcher-disclaimer");
+    expect(note).toHaveTextContent("does not provide a diagnosis or medical advice");
+    expect(note).toHaveTextContent("physicians at authorized healthcare facilities");
+  });
+
   it("serbest metinde kırmızı bayrak: devam edince acil ekranı (TR → 112)", async () => {
     const user = userEvent.setup();
     render(<PhysicianMatcher mode="page" />);
@@ -217,13 +248,21 @@ describe("sihirbaz akışı", () => {
     const request = within(card).getByTestId("matcher-request");
     expect(request).toHaveAttribute("href", "/tr/request?service=gastroenterology");
     expect(request.getAttribute("href")).not.toMatch(/topic|reflux|mide/);
-    expect(request).toHaveTextContent("Request a consultation for Gastroenteroloji");
-    expect(screen.getByTestId("matcher-disclaimer")).toHaveTextContent("Bu araç tanı koymaz ve tıbbi tavsiye vermez.");
+    expect(request).toHaveTextContent("Request a consultation");
+    expect(request).toHaveAccessibleName("Request a consultation for Gastroenteroloji");
+    // Paket AI — sonuç kartında iki düğme: "Book an online consultation" + "Request a consultation" (ikisi de ?service=).
+    const book = within(card).getByTestId("matcher-book-online");
+    expect(book).toHaveAttribute("href", "/tr/request?service=gastroenterology");
+    expect(book).toHaveTextContent("Book an online consultation");
+    expect(within(card).getAllByRole("link")).toHaveLength(2);
+    expect(screen.getByTestId("matcher-disclaimer")).toHaveTextContent(
+      "This tool does not provide a diagnosis or medical advice. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities."
+    );
     expect(screen.getByRole("link", { name: "WhatsApp’tan yazın" })).toHaveAttribute("href", "https://wa.me/905551112233");
     expect(api.recommend).toHaveBeenCalledWith({ topicIds: ["t1"], preferredLanguage: "tr", locale: "tr", preference: "online" });
 
     // URL'de yalnızca adım; CRM olaylarında kişisel veri/şikayet yok.
-    for (const [url] of nav.push.mock.calls) expect(url).toMatch(/^\/tr\/find-a-physician\?step=[1-5]$/);
+    for (const [url] of nav.push.mock.calls) expect(url).toMatch(/^\/tr\/find-your-treatment\?step=[1-5]$/);
     const tracked = JSON.stringify(track.mock.calls);
     expect(tracked).not.toMatch(/Ayşe|yanma|reflux|mide/i);
     expect(track.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(["matcher_start", "matcher_step", "matcher_result"]));

@@ -16,10 +16,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 /**
- * Paket W — `/[lang]/find-a-physician`: "Find my physician" sihirbazının ayrı sayfası (aynı bileşen
+ * Paket W — `/[lang]/find-your-treatment`: "Find your treatment" sihirbazının ayrı sayfası (aynı bileşen
  * sayfa içi modalda da çalışır). Adım `?step=` ile URL'de; kişisel veri URL'ye girmez.
  */
-export default async function FindAPhysicianPage({ params }: PageProps) {
+export default async function FindYourTreatmentPage({ params }: PageProps) {
   const { lang } = await params;
   if (!(await isModuleEnabledServer("telehealth"))) notFound();
   const m = matcherStringsFor(lang);

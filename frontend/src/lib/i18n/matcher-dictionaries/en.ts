@@ -4,17 +4,17 @@
  * `consentHealth`, `consentContact`, `redFlagTitle`/`redFlagText`, `disclaimer`.
  */
 export const matcherStrings = {
-  entryButton: "Find the right service",
-  pageTitle: "Find the right service",
-  pageIntro: "Answer a few short questions. We will suggest the right service — this is not a diagnosis.",
-  metaTitle: "Find the right service for your concern",
-  metaDescription: "Tell us what you need help with and get a suggestion for the right health tourism service.",
+  entryButton: "Find your treatment",
+  pageTitle: "Which treatment is right for me?",
+  pageIntro: "Answer a few questions about your concern and we'll suggest the right health tourism service.",
+  metaTitle: "Find your treatment",
+  metaDescription: "Answer a few questions about your concern and we'll suggest the right health tourism service.",
   heroQuestion: "What do you need help with?",
   heroPlaceholder: "e.g. neck pain, hiatal hernia, dental abscess",
   heroSubmit: "Find a service",
   ctaTitle: "Not sure which service you need?",
   ctaText: "Answer a few short questions and we will suggest the right service.",
-  dialogTitle: "Find the right service",
+  dialogTitle: "Find your treatment",
   progress: "Step {current} of {total}",
   back: "Back",
   continue: "Continue",
@@ -134,9 +134,11 @@ export const matcherStrings = {
   consentHealthGuardian: "I confirm that I am the patient’s parent or legal guardian and, on their behalf, give explicit consent to the processing of their health information (complaint and answers) so that a suitable service can be suggested.",
   callbackConsentNote: "By pressing this button you agree that our coordinator may contact you about this request.",
   noContactNote: "Without this permission we do not save your name, phone number, email or health details; you will only see your suggestion.",
-  disclaimer: "This tool does not provide a diagnosis or medical advice.",
+  disclaimer: "This tool does not provide a diagnosis or medical advice. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.",
   requestFor: "Request a consultation for {service}",
   requestGeneric: "Request a consultation",
+  bookOnline: "Book an online consultation",
+  bookOnlineFor: "Book an online consultation: {service}",
 } as const;
 
 type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };

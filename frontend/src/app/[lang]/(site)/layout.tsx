@@ -115,8 +115,18 @@ export default async function SiteLayout({
             headerStickyBlurEnabled={appearance.headerStickyBlurEnabled}
             telehealthModuleEnabled={telehealthModuleEnabled}
             // Açılır menüde uzmanlık görseli/ikonu — yalnızca menünün kullandığı alanlar.
-            navSpecialties={navSpecialties.map(({ slug, name, icon, imageUrl, parentSlug }) => ({ slug, name, icon, imageUrl, parentSlug: parentSlug ?? null }))}
+            navSpecialties={navSpecialties.map(({ slug, name, icon, imageUrl, parentSlug, serviceGroup, shortDescription }) => ({
+              slug,
+              name,
+              icon,
+              imageUrl,
+              parentSlug: parentSlug ?? null,
+              serviceGroup: serviceGroup ?? null,
+              shortDescription: shortDescription ?? null,
+            }))}
             dict={dict.nav}
+            // Paket AI — hizmet mega menüsü + "Find your treatment" / "Book a consultation" metinleri.
+            services={dict.services}
             // Paket AB — üst şerit: "Support in N languages · Free interpreter" (Paket V ayarı).
             support={support ? { count: support.languages.length, interpreterIncluded: support.interpreterIncluded } : null}
             // Paket AH — üst şerit: kısa ibare + "Treatments by authorized healthcare facilities" (Hakkımızda #authorized-facilities).

@@ -110,6 +110,7 @@ describe("yan panel görünürlüğü (hariç tutulan yollar)", () => {
     "/hesabim",
     "/siparislerim",
     "/interpreter",
+    "/find-your-treatment",
     "/find-a-physician",
     "/review/token123",
     "/physicians/dr-a",

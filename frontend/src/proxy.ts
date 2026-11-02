@@ -8,6 +8,7 @@ import { CACHE_TAGS } from "@/lib/cache-tags";
 import { SITE_LOCALE_COOKIE, SITE_LOCALE_COOKIE_MAX_AGE, resolveAuthLocale } from "@/lib/i18n/auth-locale";
 import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 import { legacyPhysiciansPath } from "@/lib/i18n/physicians-path";
+import { legacyFindTreatmentPath } from "@/lib/i18n/legacy-matcher-path";
 import { removedLocaleRedirectPath } from "@/lib/i18n/removed-locale-path";
 
 /**
@@ -263,6 +264,14 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
   if (physiciansPath) {
     const url = request.nextUrl.clone();
     url.pathname = physiciansPath;
+    return NextResponse.redirect(url, 301);
+  }
+
+  // Paket AI (FE2) — eski sihirbaz adresi `/find-a-physician` kalıcı olarak `/find-your-treatment`'a (301, sorgu dizesi korunur).
+  const findTreatmentPath = legacyFindTreatmentPath(pathname, defaultLocale.code, localeCodes);
+  if (findTreatmentPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = findTreatmentPath;
     return NextResponse.redirect(url, 301);
   }
 

@@ -237,7 +237,7 @@ test.describe("Ziyaretçide doktor yok", () => {
     ["blog yazısı", () => `/blog/${postSlug}`],
     ["içerik standartları", () => "/content-standards"],
     ["talep formu", () => "/request"],
-    ["sihirbaz", () => "/find-a-physician"],
+    ["sihirbaz", () => "/find-your-treatment"],
     ["AR ana sayfa", () => "/ar"],
     ["AR Hakkımızda", () => "/ar/about"],
     ["DE Health Tourism Services", () => "/de/specialties"],
@@ -426,14 +426,14 @@ test.describe("Dil seçici ve menü", () => {
       await expect(desktop.getByRole("link", { name: label, exact: true }).or(desktop.getByRole("button", { name: label })).first()).toBeVisible();
     }
     await expect(page.getByText(/Find my physician/i)).toHaveCount(0);
-    const cta = page.getByTestId("header-request-consultation");
+    const cta = page.getByTestId("header-find-treatment");
     await expect(cta).toBeVisible();
-    await expect(cta).toHaveAttribute("href", /\/request$/);
-    await expect(cta).toContainText(/Request a consultation/i);
+    await expect(cta).toHaveAttribute("href", /\/find-your-treatment$/);
+    await expect(cta).toContainText(/Find your treatment/i);
     // Açılır menü: etkin üst bölümler + "All services".
     const services = desktop.getByRole("link", { name: "Health Tourism Services", exact: true }).or(desktop.getByRole("button", { name: "Health Tourism Services" })).first();
     await services.click();
-    await expect(page.getByRole("menuitem", { name: /^All services$/i }).or(page.getByRole("link", { name: /^All services$/i })).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("menuitem", { name: /^View all services$/i }).or(page.getByRole("link", { name: /^View all services$/i })).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(`a[href$="/specialties/${PARENT_SLUG}"]`).first()).toBeVisible();
   });
 
@@ -467,7 +467,7 @@ test.describe("Kimlik ibaresi", () => {
     await expect(page.getByTestId("site-header-topbar")).toBeHidden();
     await page.getByRole("button", { name: /menu/i }).first().click();
     await expect(page.getByTestId("mobile-menu-intermediary")).toContainText(SHORT_LABEL);
-    await expect(page.getByTestId("mobile-menu-request-consultation")).toBeVisible();
+    await expect(page.getByTestId("mobile-menu-find-treatment")).toBeVisible();
   });
 
   test("footer: kısa ibare + açıklama; belge numarası boşken belge satırı YOK", async ({ page }) => {

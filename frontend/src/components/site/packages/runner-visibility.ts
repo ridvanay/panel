@@ -14,7 +14,7 @@ const HIDDEN_AFTER_LOCALE: RegExp[] = [
   /^\/consultation(?:\/|$)/,
   /^\/(?:patient|hesabim|siparislerim)(?:\/|$)/,
   /^\/interpreter(?:\/|$)/,
-  /^\/find-a-physician(?:\/|$)/,
+  /^\/find-(?:your-treatment|a-physician)(?:\/|$)/,
   /^\/review(?:\/|$)/,
   /^\/(?:admin|dashboard|doctor)(?:\/|$)/,
   /^\/(?:login|register|forgot-password|reset-password|verify-email|activate-account|invitations)(?:\/|$)/,

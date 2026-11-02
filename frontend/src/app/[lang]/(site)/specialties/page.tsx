@@ -4,7 +4,8 @@ import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { topLevelSpecialties } from "@/lib/specialty-hierarchy";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
-import { SpecialtyCard } from "@/components/site/telehealth/specialty-card";
+import { ServiceCard, ServicesProcessStrip } from "@/components/site/services/service-card";
+import { groupServices, serviceGroupTitle } from "@/lib/service-groups";
 import { EmptyState } from "@/components/ui/empty-state";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
@@ -61,20 +62,25 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
 
 export default async function SpecialtiesIndexPage({ params }: SpecialtiesPageProps) {
   const { lang } = await params;
-  const [specialties, locales, dict, settings] = await Promise.all([
-    fetchSpecialtiesServer(lang).then(topLevelSpecialties),
+  const [allSpecialties, locales, dict, settings] = await Promise.all([
+    fetchSpecialtiesServer(lang),
     fetchLocalesServer(),
     getSiteDictionary(lang),
     fetchSiteSettingsServer(),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+  // Paket AI: gruplu bölümler (sabit grup sırası, boş grup yok); alt uzmanlıklar üst kartta çip olur.
+  const groups = groupServices(allSpecialties);
+  const hasServices = topLevelSpecialties(allSpecialties).length > 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
       <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">{dict.telehealth.specialtiesPageTitle}</h1>
       <p className="mt-2 text-foreground/60">{dict.telehealth.specialtiesPageSubtitle}</p>
 
-      {specialties.length === 0 ? (
+      <ServicesProcessStrip strings={dict.services} />
+
+      {!hasServices ? (
         <EmptyState
           icon={Tag}
           title={dict.telehealth.specialtiesEmptyTitle}
@@ -82,14 +88,25 @@ export default async function SpecialtiesIndexPage({ params }: SpecialtiesPagePr
           className="mt-10"
         />
       ) : (
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {specialties.map((specialty) => (
-            <SpecialtyCard
-              key={specialty.id}
-              specialty={specialty}
-              activeLocaleCode={lang}
-              defaultLocaleCode={defaultLocaleCode}
-            />
+        <div className="mt-10 space-y-10">
+          {groups.map((group) => (
+            <section key={group.id} aria-labelledby={`services-group-${group.id}`} data-testid={`services-section-${group.id}`}>
+              <h2 id={`services-group-${group.id}`} className="font-heading text-xl font-semibold text-foreground">
+                {serviceGroupTitle(group.id, dict.services)}
+              </h2>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((item) => (
+                  <ServiceCard
+                    key={item.id}
+                    service={item}
+                    subServices={item.children}
+                    strings={dict.services}
+                    activeLocaleCode={lang}
+                    defaultLocaleCode={defaultLocaleCode}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

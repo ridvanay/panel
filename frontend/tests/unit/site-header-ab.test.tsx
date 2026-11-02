@@ -69,14 +69,14 @@ describe("üst bilgi şeridi", () => {
 });
 
 describe("ana bar", () => {
-  it("menü ortada, aria-current; sağda ikincil 'Request a consultation' (ikon + ad) ve birincil 'Appointment' (Paket AH)", () => {
+  it("menü ortada, aria-current; sağda ikincil 'Find your treatment' (ikon + ad) ve birincil 'Appointment' (Paket AI)", () => {
     renderHeader();
     const desktop = screen.getByTestId("site-header-desktop");
     expect(within(desktop).getByRole("link", { name: "About" })).toHaveAttribute("aria-current", "page");
     const actions = screen.getByTestId("site-header-actions");
-    const find = within(actions).getByTestId("header-request-consultation");
-    expect(find).toHaveAccessibleName("Request a consultation");
-    expect(find).toHaveAttribute("href", "/request");
+    const find = within(actions).getByTestId("header-find-treatment");
+    expect(find).toHaveAccessibleName("Find your treatment");
+    expect(find).toHaveAttribute("href", "/find-your-treatment");
     expect(within(actions).queryByTestId("matcher-launch")).not.toBeInTheDocument();
     // Ölçülmemişken (SSR/jsdom) kırılım: 1280 altında yalnızca ikon.
     expect(find.className).toContain("xl:w-auto");
@@ -109,12 +109,12 @@ describe("ana bar", () => {
     expect(header).not.toHaveAttribute("data-scrolled");
   });
 
-  it("mobil menünün en üstünde belirgin 'Request a consultation' düğmesi (Paket AH)", async () => {
+  it("mobil menünün en üstünde belirgin 'Find your treatment' düğmesi, hemen altında birincil CTA (Paket AI)", async () => {
     const user = userEvent.setup();
     renderHeader();
     await user.click(screen.getByRole("button", { name: en.openMenu }));
-    const find = await screen.findByTestId("mobile-menu-request-consultation");
-    expect(find).toHaveAttribute("href", "/request");
+    const find = await screen.findByTestId("mobile-menu-find-treatment");
+    expect(find).toHaveAttribute("href", "/find-your-treatment");
     expect(screen.queryByTestId("mobile-menu-find-physician")).not.toBeInTheDocument();
     const panel = find.parentElement!;
     expect(panel.firstElementChild).toBe(find);

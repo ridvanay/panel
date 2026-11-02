@@ -140,7 +140,7 @@ export function MatcherLaunchButton({
     </>
   );
   const element = !ctx ? (
-    <Link href={localize("/find-a-physician")} className={classes} data-testid="matcher-launch">
+    <Link href={localize("/find-your-treatment")} className={classes} data-testid="matcher-launch">
       {content}
     </Link>
   ) : (

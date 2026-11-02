@@ -79,7 +79,7 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
     ""
   );
 
-  out.push("## Health tourism services", "", `- [All services](${url(data, "/specialties")})`);
+  out.push("## Health tourism services", "", `- [All services](${url(data, "/specialties")})`, `- [Find your treatment](${url(data, "/find-your-treatment")}): answer a few questions and get a suggestion for the right service`);
   for (const s of specialties) {
     const sentence = firstSentence(s.description);
     out.push(`- [${s.name}](${url(data, `/specialties/${s.slug}`)})${sentence ? `: ${sentence}` : ""}`);
@@ -93,7 +93,7 @@ export function buildLlmsTxt(data: LlmsData, { full = false }: { full?: boolean 
   out.push(
     "## How it works",
     "",
-    `1. Choose a service: [Health Tourism Services](${url(data, "/specialties")}).`,
+    `1. Choose a service: [Health Tourism Services](${url(data, "/specialties")}), or use [Find your treatment](${url(data, "/find-your-treatment")}).`,
     `2. Send a consultation request: [Request a consultation](${url(data, "/request")}).`,
     "3. A patient coordinator contacts you within 1 business day and plans your treatment, travel and stay.",
     "4. Treatment is performed at an authorized healthcare facility; the coordinator supports you before, during and after your visit.",

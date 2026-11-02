@@ -130,6 +130,8 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       const specialties = data.specialties.filter((s) => s.isActive !== false);
       if (specialties.length === 0) return [];
       const entries = expand(data, allLocaleVariants(data, "/specialties"));
+      // Paket AI — "Find your treatment" sihirbazı (eski /find-a-physician 301 ile buraya gider).
+      entries.push(...expand(data, allLocaleVariants(data, "/find-your-treatment")));
       for (const s of specialties) entries.push(...expand(data, allLocaleVariants(data, `/specialties/${s.slug}`), (s as { updatedAt?: string }).updatedAt));
       // "Tüm yorumlar" sayfası hizmet bölümleriyle birlikte yayında.
       entries.push(...expand(data, allLocaleVariants(data, "/reviews")));

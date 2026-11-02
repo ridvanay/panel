@@ -3914,6 +3914,10 @@ export interface Specialty {
   /** Paket AG — üst uzmanlık (tek seviye). Eski API'de alan yoksa `undefined` → üst seviye sayılır. */
   parentId?: string | null;
   parentSlug?: string | null;
+  /** Paket AI — hizmet grubu anahtarı (`SERVICE_GROUP_KEYS`); `null`/yok (eski API) → "Other". */
+  serviceGroup?: string | null;
+  /** Paket AI — tek satır kısa açıklama (en çok 120 karakter, yerelleştirilmiş); yoksa gösterilmez. */
+  shortDescription?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3931,6 +3935,10 @@ export interface CreateSpecialtyRequest {
   translations?: TextTranslations;
   /** Paket AG — üst uzmanlık id'si; `null`/boş = üst seviye. Hata: 422 alan `parentId`. */
   parentId?: string | null;
+  /** Paket AI — izinli hizmet grubu anahtarı ya da `null` ("Other"). Hata: 422 alan `serviceGroup`. */
+  serviceGroup?: string | null;
+  /** Paket AI — en çok 120 karakter; EN kanonik, diğer diller `translations[dil].shortDescription`. */
+  shortDescription?: string | null;
 }
 
 export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;

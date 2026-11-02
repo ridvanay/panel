@@ -287,7 +287,7 @@ describe("Top destinations", () => {
     view([DEST]);
     expect(screen.getByAltText("Bosphorus")).toBeInTheDocument();
     expect(screen.getByTestId("destinations-explore-packages")).toHaveAttribute("href", "/en/packages");
-    expect(screen.getByRole("link", { name: /find the right service/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /find your treatment/i })).toHaveAttribute("href", "/find-your-treatment");
   });
 });
 

@@ -62,7 +62,7 @@ function renderHeader(extra: Partial<Parameters<typeof SiteHeader>[0]> = {}) {
 }
 
 describe("header — menü ve düğmeler", () => {
-  it("5 öğe; 'Find my physician' yok; 'Request a consultation' ve 'Appointment' talep formuna gider", () => {
+  it("5 öğe; 'Find my physician' yok; 'Find your treatment' sihirbaza, 'Appointment' talep formuna gider", () => {
     renderHeader({ telehealthModuleEnabled: true });
     const desktop = screen.getByTestId("site-header-desktop");
     expect(within(desktop).getByRole("link", { name: "Home" })).toBeInTheDocument();
@@ -72,13 +72,13 @@ describe("header — menü ve düğmeler", () => {
     expect(within(desktop).getByRole("link", { name: "Contact" })).toBeInTheDocument();
     const actions = screen.getByTestId("site-header-actions");
     expect(within(actions).queryByText(/Find my physician/i)).not.toBeInTheDocument();
-    expect(within(actions).getByRole("link", { name: "Request a consultation" })).toHaveAttribute("href", "/request");
+    expect(within(actions).getByRole("link", { name: "Find your treatment" })).toHaveAttribute("href", "/find-your-treatment");
     expect(within(actions).getByRole("link", { name: "Appointment" })).toHaveAttribute("href", "/request");
   });
 
-  it("'Request a consultation' telehealth modülü kapalıyken de görünür (talep formu modülden bağımsız)", () => {
+  it("'Find your treatment' telehealth modülü kapalıyken de görünür", () => {
     renderHeader({ telehealthModuleEnabled: false });
-    expect(screen.getByTestId("header-request-consultation")).toBeInTheDocument();
+    expect(screen.getByTestId("header-find-treatment")).toBeInTheDocument();
   });
 
   it("üst şerit: kısa ibare + 'Treatments by authorized healthcare facilities' → /about#authorized-facilities", () => {
@@ -101,7 +101,7 @@ describe("header — menü ve düğmeler", () => {
     // Alt bölüm ayrı kart değil, Gastroenterology altında "Procedures" satırında.
     const procedures = within(menu).getByTestId("nav-procedures");
     expect(within(procedures).getByRole("menuitem", { name: "Obesity Surgery" })).toHaveAttribute("href", "/specialties/obesity-surgery");
-    expect(within(menu).getByRole("menuitem", { name: "All services" })).toHaveAttribute("href", "/specialties");
+    expect(within(menu).getByRole("menuitem", { name: "View all services" })).toHaveAttribute("href", "/specialties");
     expect(within(menu).queryByRole("menuitem", { name: /physician|doctor/i })).not.toBeInTheDocument();
   });
 

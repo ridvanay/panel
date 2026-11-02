@@ -67,7 +67,7 @@ import { MATCHER_FREE_TEXT_MAX, MATCHER_MAX_TOPICS, emergencyNumberFor, prepareT
 import { cn } from "@/lib/utils";
 
 /**
- * Paket W — "Find my physician" sihirbazı (sayfa `/[lang]/find-a-physician` ve sayfa içi modal).
+ * Paket W/AI — "Find your treatment" sihirbazı (sayfa `/[lang]/find-your-treatment` ve sayfa içi modal).
  * TANI KOYMAZ: yalnızca uzmanlık ve hekim önerir. Adım bilgisi URL'de (`?step=` / modalda `?finder=`),
  * geri tuşu çalışır; KİŞİSEL VERİ URL'YE GİRMEZ (şikayet, ad, iletişim yalnızca bellek + POST gövdesi).
  * Adımlar: 1 şikayet → 2 kimin için/süre → 3 tercihler → 4 iletişim → 5 sonuç. Admin ayarı
@@ -1037,14 +1037,26 @@ export function PhysicianMatcher({
                     <li key={s.id} className="flex flex-col rounded-[var(--site-radius)] border border-border bg-surface p-4" data-testid="matcher-specialty-card">
                       <p className="font-semibold text-foreground">{s.name}</p>
                       {s.description && <p className="mt-1 line-clamp-3 text-xs text-foreground/70">{s.description}</p>}
-                      <Link
-                        href={`${localize("/request")}?service=${encodeURIComponent(s.slug)}`}
-                        onClick={() => trackMatcher("matcher_request_click", { position: index + 1 })}
-                        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
-                        data-testid="matcher-request"
-                      >
-                        {fmt(m.requestFor, { service: s.name })}
-                      </Link>
+                      <div className="mt-4 flex flex-col gap-2">
+                        <Link
+                          href={`${localize("/request")}?service=${encodeURIComponent(s.slug)}`}
+                          onClick={() => trackMatcher("matcher_book_click", { position: index + 1 })}
+                          aria-label={fmt(m.bookOnlineFor, { service: s.name })}
+                          className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-[var(--site-primary)] px-4 text-center text-sm font-semibold text-white hover:opacity-90"
+                          data-testid="matcher-book-online"
+                        >
+                          {m.bookOnline}
+                        </Link>
+                        <Link
+                          href={`${localize("/request")}?service=${encodeURIComponent(s.slug)}`}
+                          onClick={() => trackMatcher("matcher_request_click", { position: index + 1 })}
+                          aria-label={fmt(m.requestFor, { service: s.name })}
+                          className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-border px-4 text-center text-sm font-semibold text-foreground hover:bg-surface-muted"
+                          data-testid="matcher-request"
+                        >
+                          {m.requestGeneric}
+                        </Link>
+                      </div>
                     </li>
                   ))}
                 </ul>
