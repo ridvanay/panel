@@ -764,3 +764,30 @@ Kenar çubuğuna "Hizmet Masası" grubu eklenir. "Görüşmelerim" öğesi `isSe
 - **S12 — Bağlantı yenileme:** 60 dk hatırlatmasında yeni bağlantı üretilip eskisinin geçersiz kılınması öneriliyor (düz belirteç saklanmadığı için). Alternatif: bağlantıyı AES-GCM ile şifreli saklamak; bağlantı değişmez ama DB ve anahtar sızıntısında katılım bağlantıları açığa çıkar. Öneri: yenileme.
 - **S13 — Bekleme kuralı:** Hasta, koordinatör odaya girene kadar bekler (`autoAdmitGuests=false`). Koordinatör geç kalırsa, örneğin 10 dk sonra hastaya "Your coordinator is running late; we will contact you" mesajı ve admin uyarısı gitsin mi?
 - **S14 — Hukuk kontrol listesi:** `service-consultation-v1` rıza metinleri (8 dil), "This is not a medical examination" notu ve aydınlatma metnine "koordinatörle görüntülü ön görüşme" amacının eklenmesi (`docs/legal/` bu turda değişmez) hukuk onayına gider. Uygun mu?
+
+---
+
+## 15. Ek (2026-11-03): eski randevu arayüzünün birebir yeniden kullanımı ve hızlı ilk sürüm
+
+Kullanıcı notu: eski doktor online randevu ekranının tarzı aynen geri istendi. Doktor yerine "hizmet" ve "Patient Coordinator" gelecek; doktor adı ve unvanı hiçbir yerde görünmeyecek.
+
+### 15.1 Yeniden kullanılan parçalar
+Takvim (`availability-calendar.tsx`, gün durumları, saat dilimi bandı, 12/24 saat tercihi), adım göstergesi (`booking-stepper-bar.tsx`), çift saat gösterimi (`dual-time.tsx`), bilgiler adımı (`booking-intake-step.tsx`), özet kartı (`booking-summary-card.tsx`), müsaitlik açıklaması ve sihirbaz iskeleti (`booking-wizard.tsx`). Bileşenler kopyalanmaz. Yalnızca geriye uyumlu opsiyonel prop'lar eklenir: dışarıdan slot kaynağı ve doktor alanlarını gizleyen mod. Doktor akışı aynen kalır. E-postalar mevcut kurumsal şablonla (`renderBrandedEmail`) ve AH talep e-postası deseniyle yazılır.
+
+### 15.2 Süreye etkisi
+| Kalem | §13 tahmini | Yeniden kullanım + hızlı kapsam |
+|---|---|---|
+| Ziyaretçi rezervasyon arayüzü | 2,5–3 gün (sıfırdan sihirbaz) | ~1 gün (mevcut bileşenler + adaptör) |
+| Backend | 2,5–3 gün | ~1,5 gün (tek masa, eşleme/izin/sonuç süpürücüsü/portal yok) |
+| Admin ekranları | (frontend içinde) ~1 gün | ~0,5 gün (tek masa ekranı, mevcut haftalık saat deseni) |
+| AG uyarlamaları | 0,5 gün | ~0,3 gün (yalnız ad, amaç, bayrak) |
+| E2E + güvenlik/KVKK | 1 gün | ~0,5–1 gün |
+| **Toplam** | **7–8 gün** (AG İş 3 tamamlandıktan sonra) | **~3,5–4 gün**. AG İş 3'ün tamamı beklenmez; yalnız gereken kısmı tamamlanır. |
+
+### 15.3 En hızlı canlıya alınabilecek ilk sürüm (HIZLI SÜRÜM — uygulanan kapsam)
+- Tek genel masa. Admin koordinatörleri atar (EDITOR personel), haftalık saatleri ve tatil günlerini girer. Slot 30 dk, en erken 2 saat, en fazla 30 gün.
+- Ödemesiz. Onay ve hatırlatma e-postaları (24 saat ve 60 dk) 8 dilde. Admin bildirimi kişisel veri içermez. Hasta yönetim bağlantısıyla iptal ve saat değişikliği yapar.
+- Görüşme AG `meet_` odasında yapılır: koordinatör ev sahibi, hasta misafir, kayıt yok. Genel harici toplantı ekranları bayrakla kapalıdır.
+- Koordinatör paneli: "Bugünkü görüşmelerim" ve "Görüşmeye katıl". Mesajı görmek için 2FA gerekir ve her görüntüleme audit'e yazılır.
+- Sonraya kalanlar: birden fazla masa, hizmet→masa eşlemesi, koordinatör bazında saat ve izin, hesaplı hasta portal sekmesi, otomatik sonuç, admin ekranından saat değiştirme ve yeniden atama, harici toplantı misafir yönetimi, raporlama, ücretli seçenek.
+- Bağlayıcı uygulama kontratı: dal `feat/ai3-coordinator-booking-nov03`. Sonuç ve testler `docs/prompts/2026-11-03-AI-IS3-HIZLI-RAPOR.md` içinde.
