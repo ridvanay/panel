@@ -43,7 +43,8 @@ export async function createAuthenticatedPageAs(
   email: string,
   password: string
 ): Promise<{ page: Page; close: () => Promise<void> }> {
-  const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100" });
+  // Paket AH — giriş sayfası Accept-Language'e göre dilleniyor; Türkçe etiketler için tr-TR.
+  const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100", locale: "tr-TR" });
   const page = await context.newPage();
   await page.goto("/login");
   await page.getByLabel("E-posta").fill(email);

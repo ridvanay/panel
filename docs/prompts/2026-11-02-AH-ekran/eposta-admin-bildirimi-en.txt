@@ -1,0 +1,15 @@
+Subject: New consultation request #REQ-01024 — Gastroenterology
+
+A new consultation request has been received.
+Request: #REQ-01024
+Service: Gastroenterology
+Country: Germany (DE)
+Contact language: German (de)
+Interpreter: yes
+Preferred dates: 2026-12-01 - 2026-12-15
+Contact details and the message are only visible in the admin panel after signing in.
+Open request (/admin/crm/leads/00000000-0000-4000-8000-000000000002)
+----
+Global TeleHealth
+Internal notification — for authorised staff only.
+This email was sent automatically.

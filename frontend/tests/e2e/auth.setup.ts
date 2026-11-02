@@ -3,6 +3,10 @@ import { ensureAdminSession } from "./support/api";
 
 const ADMIN_STORAGE_STATE = "tests/e2e/.auth/admin.json";
 
+// Paket AH — giriş sayfası Accept-Language'e göre dilleniyor ve varsayılan site dili EN oldu; aşağıdaki
+// Türkçe etiketler ("E-posta", "Şifre", "Giriş yap") için tarayıcı dili Türkçeye sabitlenir.
+setup.use({ locale: "tr-TR" });
+
 /**
  * Playwright "setup" projesi (bkz. `playwright.config.ts` — `chromium` projesi buna bağımlı).
  * Access token yalnızca bellekte tutulduğu için (`context/auth-context.tsx`) `storageState`'e

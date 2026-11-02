@@ -1,0 +1,157 @@
+##### npx tsx scripts/switch-default-locale-to-en.ts --dry-run
+[switch-default-locale-to-en] target="en" dryRun=true
+[bilgi] mevcut varsayılan: "tr" -> "en"
+[dry-run] "tr" isDefault=false, "en" isDefault=true yapılacaktı (hiçbir şey YAZILMADI).
+
+##### npx tsx scripts/switch-default-locale-to-en.ts --target en
+[switch-default-locale-to-en] target="en" dryRun=false
+[bilgi] mevcut varsayılan: "tr" -> "en"
+[fix] varsayılan dil "tr" -> "en" olarak devredildi.
+[durum] SELECT code, "isDefault" FROM locales;
+  tr	false
+  en	true
+  ar	false
+  de	false
+
+[UYARI — KASITLI DAVRANIŞ DEĞİŞİKLİĞİ] Sitenin prefix'siz (varsayılan) dili artık "en". Önceden prefix'siz servis edilen eski varsayılan dilin URL'leri artık prefix ALACAK (ör. `/tr/...`); yeni varsayılanın URL'leri artık prefix'SİZ servis edilecek. Bu, ISR/CDN önbelleği ve dış bağlantılar (SEO) için önemli bir geçiş anlamına gelir.
+
+##### npx tsx scripts/disable-site-locale.ts
+[disable-site-locale] mod=KURU ÇALIŞTIRMA dil="tr"
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[bilgi] varsayılan dil: "en" (değişmez).
+[plan] "tr" enabled=true -> false (çeviriler, slug'lar ve içerik KORUNUR).
+[kuru] hiçbir şey yazılmadı.
+[durum] code | enabled | isDefault
+  tr	true	false
+  en	true	true
+  ar	true	false
+  de	true	false
+
+##### npx tsx scripts/disable-site-locale.ts --confirm=disable-site-locale --operator=qa
+[disable-site-locale] mod=YAZ dil="tr"
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[bilgi] varsayılan dil: "en" (değişmez).
+[plan] "tr" enabled=true -> false (çeviriler, slug'lar ve içerik KORUNUR).
+[yedek] C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\locales-2026-11-02T15-54-26-968Z.json
+[fix] "tr" kapatıldı (enabled=false).
+[durum] code | enabled | isDefault
+  tr	false	false
+  en	true	true
+  ar	true	false
+  de	true	false
+[geri al] npx tsx scripts/disable-site-locale.ts --restore=C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\locales-2026-11-02T15-54-26-968Z.json --confirm=disable-site-locale --operator=<ad>
+
+##### npx tsx scripts/setup-intermediary-nav.ts
+[setup-intermediary-nav] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[mevcut] header: Ana Sayfa (/) | Doktorlar (/doctors) | Branşlar (/doctors) | Nasıl Çalışır? (/)
+[SİLİNECEK] kök öğe: Ana Sayfa (/)
+[SİLİNECEK] alt öğe: Kardiyoloji (/doctors?specialty=kardiyoloji)
+[SİLİNECEK] kök öğe: Doktorlar (/doctors)
+[SİLİNECEK] alt öğe: Dermatoloji (/doctors?specialty=dermatoloji)
+[SİLİNECEK] kök öğe: Branşlar (/doctors)
+[SİLİNECEK] alt öğe: Nöroloji (/doctors?specialty=noroloji)
+[SİLİNECEK] kök öğe: Nasıl Çalışır? (/)
+[SİLİNECEK] alt öğe: Psikiyatri (/doctors?specialty=psikiyatri)
+[SİLİNECEK] alt öğe: Aile Hekimliği (/doctors?specialty=aile-hekimligi)
+[SİLİNECEK] alt öğe: Çocuk Sağlığı (/doctors?specialty=cocuk-sagligi)
+[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header CTA: "Appointment" -> /request 
+[plan] etiket dilleri: en, de, ar, ru, fr, es, ro, sr-latn
+[uyarı] footer'da href="/blog" bağlantısı yok — "Health Guides" header'dan çıkınca hiçbir yerde kalmaz. add-blog-nav-item.ts ile footer'a ekleyin ya da panelden elle ekleyin.
+[kuru] hiçbir şey yazılmadı.
+
+##### npx tsx scripts/setup-intermediary-nav.ts --confirm=setup-intermediary-nav --operator=qa
+[setup-intermediary-nav] mod=YAZ
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[mevcut] header: Ana Sayfa (/) | Doktorlar (/doctors) | Branşlar (/doctors) | Nasıl Çalışır? (/)
+[SİLİNECEK] kök öğe: Ana Sayfa (/)
+[SİLİNECEK] alt öğe: Kardiyoloji (/doctors?specialty=kardiyoloji)
+[SİLİNECEK] kök öğe: Doktorlar (/doctors)
+[SİLİNECEK] alt öğe: Dermatoloji (/doctors?specialty=dermatoloji)
+[SİLİNECEK] kök öğe: Branşlar (/doctors)
+[SİLİNECEK] alt öğe: Nöroloji (/doctors?specialty=noroloji)
+[SİLİNECEK] kök öğe: Nasıl Çalışır? (/)
+[SİLİNECEK] alt öğe: Psikiyatri (/doctors?specialty=psikiyatri)
+[SİLİNECEK] alt öğe: Aile Hekimliği (/doctors?specialty=aile-hekimligi)
+[SİLİNECEK] alt öğe: Çocuk Sağlığı (/doctors?specialty=cocuk-sagligi)
+[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header CTA: "Appointment" -> /request 
+[plan] etiket dilleri: en, de, ar, ru, fr, es, ro, sr-latn
+[uyarı] footer'da href="/blog" bağlantısı yok — "Health Guides" header'dan çıkınca hiçbir yerde kalmaz. add-blog-nav-item.ts ile footer'a ekleyin ya da panelden elle ekleyin.
+[yedek] C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\intermediary-nav-2026-11-02T15-54-29-037Z.json
+[fix] header menüsü yazıldı (5 öğe yazıldı, 10 eski öğe SİLİNDİ), CTA güncellendi.
+[geri al] npx tsx scripts/setup-intermediary-nav.ts --restore=C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\intermediary-nav-2026-11-02T15-54-29-037Z.json --confirm=setup-intermediary-nav --operator=<ad>
+
+##### npx tsx scripts/localize-footer-english.ts
+[localize-footer-english] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[plan] sütun "Branşlar" -> "Services" (+8 dil)
+[plan] sütun "Yasal" -> "Legal" (+8 dil)
+[plan] bağlantı ÇIKARILIR: "Doktorlar" /doctors (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "KVKK Aydınlatma Metni" /kvkk-aydinlatma-metni (TR yasal sayfa)
+[plan] bağlantı ÇIKARILIR: "Açık Rıza Metni" /acik-riza-metni (TR yasal sayfa)
+[plan] bağlantı ÇIKARILIR: "Kullanım Koşulları" /kullanim-kosullari (TR yasal sayfa)
+[plan] bağlantı ÇIKARILIR: "Mesafeli Hizmet Sözleşmesi" /mesafeli-hizmet-sozlesmesi (TR yasal sayfa)
+[plan] slogan Türkçe -> null (site varsayılanı)
+[plan] telif metni Türkçe -> null (site varsayılanı: © yıl ad. All rights reserved)
+[uyarı] sözlükte yok, DEĞİŞTİRİLMEDİ: bağlantı: Nöroloji (/doctors?specialty=noroloji)
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[kuru] hiçbir şey yazılmadı.
+
+##### npx tsx scripts/localize-footer-english.ts --confirm=localize-footer-english --operator=qa
+[localize-footer-english] mod=YAZ
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[plan] sütun "Branşlar" -> "Services" (+8 dil)
+[plan] sütun "Yasal" -> "Legal" (+8 dil)
+[plan] bağlantı ÇIKARILIR: "Doktorlar" /doctors (hekim adresi (301))
+[plan] bağlantı ÇIKARILIR: "KVKK Aydınlatma Metni" /kvkk-aydinlatma-metni (TR yasal sayfa)
+[plan] bağlantı ÇIKARILIR: "Açık Rıza Metni" /acik-riza-metni (TR yasal sayfa)
+[plan] bağlantı ÇIKARILIR: "Kullanım Koşulları" /kullanim-kosullari (TR yasal sayfa)
+[plan] bağlantı ÇIKARILIR: "Mesafeli Hizmet Sözleşmesi" /mesafeli-hizmet-sozlesmesi (TR yasal sayfa)
+[plan] slogan Türkçe -> null (site varsayılanı)
+[plan] telif metni Türkçe -> null (site varsayılanı: © yıl ad. All rights reserved)
+[uyarı] sözlükte yok, DEĞİŞTİRİLMEDİ: bağlantı: Nöroloji (/doctors?specialty=noroloji)
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[yedek] C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\footer-2026-11-02T15-54-31-127Z.json
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[fix] footer güncellendi (sütun=2, bağlantı=0, çıkarılan=5).
+[geri al] npx tsx scripts/localize-footer-english.ts --restore=C:\Users\Ridonei\Desktop\claude code proje\backend\storage\backups\footer-2026-11-02T15-54-31-127Z.json --confirm=localize-footer-english --operator=<ad>
+
+##### İDEMPOTENS KONTROLÜ (script'ler uygulandıktan sonra tekrar kuru çalışma)
+##### npx tsx scripts/switch-default-locale-to-en.ts --dry-run
+[switch-default-locale-to-en] target="en" dryRun=true
+[ok] "en" zaten isDefault=true — değişiklik gerekmiyor.
+[durum] SELECT code, "isDefault" FROM locales;
+  tr	false
+  en	true
+  ar	false
+##### npx tsx scripts/disable-site-locale.ts
+[disable-site-locale] mod=KURU ÇALIŞTIRMA dil="tr"
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[bilgi] varsayılan dil: "en" (değişmez).
+[atla] "tr" zaten enabled=false — değişiklik gerekmiyor.
+[durum] code | enabled | isDefault
+  tr	false	false
+  en	true	true
+  ar	true	false
+##### npx tsx scripts/setup-intermediary-nav.ts
+[setup-intermediary-nav] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[mevcut] header: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[SİLİNECEK] kök öğe: Home (/)
+[SİLİNECEK] kök öğe: About (/about)
+[SİLİNECEK] kök öğe: Health Tourism Services (/specialties)
+[SİLİNECEK] kök öğe: VIP Accommodation & Transfer (/vip-accommodation-transfer)
+[SİLİNECEK] kök öğe: Contact (/contact)
+[plan] header kökleri: Home (/) | About (/about) | Health Tourism Services (/specialties) | VIP Accommodation & Transfer (/vip-accommodation-transfer) | Contact (/contact)
+[plan] header CTA: "Appointment" -> /request 
+[plan] etiket dilleri: en, de, ar, ru, fr, es, ro, sr-latn
+[uyarı] footer'da href="/blog" bağlantısı yok — "Health Guides" header'dan çıkınca hiçbir yerde kalmaz. add-blog-nav-item.ts ile footer'a ekleyin ya da panelden elle ekleyin.
+[kuru] hiçbir şey yazılmadı.
+##### npx tsx scripts/localize-footer-english.ts
+[localize-footer-english] mod=KURU ÇALIŞTIRMA
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[uyarı] sözlükte yok, DEĞİŞTİRİLMEDİ: bağlantı: Nöroloji (/doctors?specialty=noroloji)
+[uyarı] footer'da EN gizlilik/aydınlatma (Privacy Notice/Policy) bağlantısı KALMADI — panelden EN yasal sayfaya bağlantı ekleyin.
+[bilgi] Yapılacak değişiklik yok (idempotent).
