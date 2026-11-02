@@ -11,9 +11,11 @@ export const commonStrings = {
   contactUsCta: "Contact us",
   talkToUsCta: "Talk to us",
   /** Paket V — anasayfa destek bandı (yalnızca `supportLanguages` doluysa görünür). */
-  supportBandTitle: "Speak with a patient coordinator in your language — at no extra cost.",
+  supportBandTitle: "Speak with a patient coordinator in your language — free of charge",
   /** Yalnızca `interpreterIncluded=true` iken gösterilir. */
-  supportInterpreterIncluded: "Interpreter support during your video consultation is included free of charge.",
+  supportInterpreterIncluded: "Free online video consultation with a patient coordinator — interpreter included.",
+  /** Paket AJ — destek bandı açıklaması (her zaman görünür; tercüman cümlesi ayrı). */
+  supportBandText: "Meet your patient coordinator in a free online video consultation. Our coordinators support you from your first enquiry to your return home — at no extra cost.",
   supportLanguagesLabel: "Supported languages",
   supportHoursLabel: "Support hours",
   /** Doktor profili ve randevu sihirbazı rozeti; `{count}` desteklenen dil sayısı. */

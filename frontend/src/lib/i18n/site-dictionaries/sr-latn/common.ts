@@ -5,8 +5,10 @@ export const commonStrings: CommonStrings = {
   liveChatCta: "Ćaskanje uživo",
   contactUsCta: "Kontaktirajte nas",
   talkToUsCta: "Razgovarajte sa nama",
-  supportBandTitle: "Razgovarajte sa koordinatorom pacijenata na svom jeziku — bez dodatnih troškova.",
-  supportInterpreterIncluded: "Podrška prevodioca tokom video konsultacije je uključena besplatno.",
+  supportBandTitle: "Razgovarajte sa koordinatorom pacijenata na svom jeziku — besplatno",
+  supportInterpreterIncluded: "Besplatna video konsultacija putem interneta sa koordinatorom pacijenata — prevodilac uključen.",
+  /** Paket AJ — destek bandı açıklaması (her zaman görünür; tercüman cümlesi ayrı). */
+  supportBandText: "Upoznajte svog koordinatora pacijenata na besplatnoj video konsultaciji putem interneta. Naši koordinatori vas prate od prvog upita do povratka kući — bez dodatnih troškova.",
   supportLanguagesLabel: "Podržani jezici",
   supportHoursLabel: "Radno vreme podrške",
   supportBadge: "Podrška na {count} jezika",

@@ -30,10 +30,10 @@ import type { DoctorProfile, PublicAccreditation, SiteSettings, Specialty, Teleh
  * kaynakta eski site yolu kalmaması (tarama testi).
  */
 /** Paket X — band ContactCta kullanır; kanallar sitenin layout sağlayıcısından gelir. */
-function withChannels(ui: React.ReactNode, lang: string, chatEnabled: boolean, contactHref: string) {
+function withChannels(ui: React.ReactNode, lang: string, chatEnabled: boolean, contactHref: string, whatsapp: { number: string; message: string } | null = null) {
   return (
     <LocaleAlternatesProvider activeLocaleCode={lang} defaultLocaleCode="en">
-      <ContactChannelsProvider value={{ whatsapp: null, chatEnabled, contactHref }}>{ui}</ContactChannelsProvider>
+      <ContactChannelsProvider value={{ whatsapp, chatEnabled, contactHref }}>{ui}</ContactChannelsProvider>
     </LocaleAlternatesProvider>
   );
 }
@@ -103,6 +103,26 @@ describe("kendi dilinizde destek — doğruluk kuralı", () => {
     const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en", "tr", "de"], supportHours: {}, interpreterIncluded: false }), "en");
     expect(support?.languages.map((l) => l.code)).toEqual(["en", "de"]);
     expect(resolveLanguageSupport(settingsWith({ supportLanguages: ["tr"], supportHours: {}, interpreterIncluded: false }), "en")).toBeNull();
+  });
+
+  it("AJ-1: iki kolon; açıklama + eşit ızgara çipleri; dikey düğmeler (WhatsApp birincil, Live chat, call back, Book a consultation)", () => {
+    const support = resolveLanguageSupport(settingsWith({ supportLanguages: ["en", "de", "ar", "ru"], supportHours: {}, interpreterIncluded: true }), "en");
+    render(
+      withChannels(<SupportLanguagesBand support={support} dict={en.common} bookHref="/en/request" bookLabel="Book a consultation" />, "en", true, "/en/contact", { number: "+905550000000", message: "Hi" })
+    );
+    const band = screen.getByTestId("support-languages-band");
+    expect(within(band).getByRole("heading", { level: 2 })).toHaveTextContent("Speak with a patient coordinator in your language — free of charge");
+    expect(band).toHaveTextContent(en.common.supportBandText);
+    expect(band).toHaveTextContent("Free online video consultation with a patient coordinator — interpreter included.");
+    expect(band).not.toHaveTextContent(/doctor|physician/i);
+    const list = within(band).getByRole("list", { name: "Supported languages" });
+    expect(list).toHaveClass("grid");
+    const cta = within(band).getByTestId("contact-cta");
+    expect(cta).toHaveClass("flex-col");
+    const order = Array.from(cta.querySelectorAll("a,button")).map((e) => e.getAttribute("data-testid"));
+    expect(order).toEqual(["contact-cta-whatsapp", "contact-cta-chat", "contact-cta-callback", "support-band-book"]);
+    expect(within(band).getByTestId("support-band-book")).toHaveAttribute("href", "/en/request");
+    expect(band.textContent).not.toMatch(/Türkçe/);
   });
 
   it("bant hero ile aynı genişlikte: aynı kapsayıcı sınıfı, renkli alan kapsayıcının içinde", () => {

@@ -5,8 +5,10 @@ export const commonStrings: CommonStrings = {
   liveChatCta: "Live-Chat",
   contactUsCta: "Kontakt",
   talkToUsCta: "Sprechen Sie mit uns",
-  supportBandTitle: "Sprechen Sie mit einer Patientenkoordinatorin oder einem Patientenkoordinator in Ihrer Sprache – ohne Aufpreis.",
-  supportInterpreterIncluded: "Dolmetscherunterstützung während Ihrer Videosprechstunde ist kostenlos inbegriffen.",
+  supportBandTitle: "Sprechen Sie mit einem Patientenkoordinator in Ihrer Sprache – kostenlos",
+  supportInterpreterIncluded: "Kostenlose Online-Videoberatung mit einem Patientenkoordinator – Dolmetscher inklusive.",
+  /** Paket AJ — destek bandı açıklaması (her zaman görünür; tercüman cümlesi ayrı). */
+  supportBandText: "Lernen Sie Ihren Patientenkoordinator in einer kostenlosen Online-Videoberatung kennen. Unsere Koordinatoren begleiten Sie von der ersten Anfrage bis zur Heimreise – ohne Zusatzkosten.",
   supportLanguagesLabel: "Unterstützte Sprachen",
   supportHoursLabel: "Supportzeiten",
   supportBadge: "Support in {count} Sprachen",

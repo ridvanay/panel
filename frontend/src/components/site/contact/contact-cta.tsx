@@ -28,6 +28,8 @@ export interface ContactCtaProps {
   /** `compact` — yalnızca simge + kısa etiket (üst şerit). */
   size?: "default" | "compact";
   className?: string;
+  /** Paket AJ — çağrı düğmesinden sonra, aktarım uyarısından önce çizilen ek eylem (ör. Book a consultation). */
+  trailing?: React.ReactNode;
 }
 
 /**
@@ -35,7 +37,7 @@ export interface ContactCtaProps {
  * bağlamla), "Sizi arayalım". Dokunma alanı en az 44 px (compact hariç). WhatsApp tıklaması CRM izleyicisi
  * tarafından (yalnızca analitik onayı varsa) "aday talep" olarak kaydedilir; mesajda kişisel/sağlık verisi yoktur.
  */
-export function ContactCta({ topic, onCallback, tone = "default", size = "default", className }: ContactCtaProps) {
+export function ContactCta({ topic, onCallback, tone = "default", size = "default", className, trailing }: ContactCtaProps) {
   const t = useContactCtaStrings();
   const noteId = useId();
   const { whatsapp, chatEnabled, contactHref } = useContactChannels();
@@ -78,6 +80,7 @@ export function ContactCta({ topic, onCallback, tone = "default", size = "defaul
           {t.callback}
         </Link>
       )}
+      {trailing}
       {/* Aktarım uyarısı: WhatsApp görünürken. Normal boyutta görünür küçük metin; compact'ta yalnızca title + aria-describedby. */}
       {whatsapp && (
         <p id={noteId} className={cn("basis-full text-xs", tone === "onPrimary" ? "text-white/85" : "text-foreground/70", size === "compact" && "sr-only")} data-testid="contact-cta-whatsapp-note">

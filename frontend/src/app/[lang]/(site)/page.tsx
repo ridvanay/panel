@@ -144,6 +144,8 @@ export default async function RootPage({ params }: PageProps) {
           support={support}
           dict={dict.common}
           topic={settings.siteName}
+          bookHref={withLocalePrefix("/request", lang, defaultLocaleCode)}
+          bookLabel={dict.services.bookConsultation}
         />
         <AccreditationStrip
           badges={accreditations}
