@@ -129,6 +129,29 @@ describe("alt uzmanlık (Paket AG)", () => {
     });
   });
 
+  describe("eşzamanlılık ve DB kısıtı", () => {
+    it("iki eşzamanlı PATCH (A->B altına, B->A altına) tek seviye kuralını birlikte aşamaz", async () => {
+      const a = (await createSpecialty({ name: "Yarış A", slug: "yaris-a", order: 30 })).json().data.id as string;
+      const b = (await createSpecialty({ name: "Yarış B", slug: "yaris-b", order: 31 })).json().data.id as string;
+      const [r1, r2] = await Promise.all([
+        app.inject({ method: "PATCH", url: `${ADMIN_URL}/${a}`, headers: auth(adminToken), payload: { parentId: b } }),
+        app.inject({ method: "PATCH", url: `${ADMIN_URL}/${b}`, headers: auth(adminToken), payload: { parentId: a } }),
+      ]);
+      expect([r1.statusCode, r2.statusCode].filter((c) => c === 200)).toHaveLength(1);
+      expect([r1.statusCode, r2.statusCode]).toContain(422);
+      const rows = await app.prisma.specialty.findMany({ where: { id: { in: [a, b] } } });
+      expect(rows.filter((r) => r.parentId !== null)).toHaveLength(1);
+      // Sonraki testlerin sıralı beklentilerini bozmasın.
+      await app.prisma.specialty.updateMany({ where: { id: { in: [a, b] } }, data: { parentId: null } });
+      await app.prisma.specialty.deleteMany({ where: { id: { in: [a, b] } } });
+    });
+
+    it("DB CHECK: bir uzmanlık kendisinin üstü olamaz", async () => {
+      await expect(app.prisma.specialty.update({ where: { id: cardId }, data: { parentId: cardId } })).rejects.toThrow();
+      expect((await app.prisma.specialty.findUniqueOrThrow({ where: { id: cardId } })).parentId).toBeNull();
+    });
+  });
+
   describe("public uçlar", () => {
     it("GET /specialties: tüm aktif uzmanlıklar + parentId/parentSlug (filtre yok)", async () => {
       const res = await app.inject({ method: "GET", url: "/api/v1/specialties" });
@@ -159,6 +182,20 @@ describe("alt uzmanlık (Paket AG)", () => {
 
       const plain = (await app.inject({ method: "GET", url: "/api/v1/specialties/cardiology" })).json().data;
       expect(plain).toMatchObject({ parent: null, children: [], parentId: null });
+    });
+
+    it("üst uzmanlık PASİFSE alt uzmanlığın parentId/parentSlug/parent alanları public uçlarda null döner (admin gerçeği görür)", async () => {
+      const parent = (await createSpecialty({ name: "Pasif Üst", slug: "pasif-ust", order: 20, isActive: false })).json().data;
+      const child = (await createSpecialty({ name: "Alt Of Pasif", slug: "alt-of-pasif", order: 21, parentId: parent.id })).json().data;
+      expect(child.parentId).toBe(parent.id);
+
+      const list = (await app.inject({ method: "GET", url: "/api/v1/specialties" })).json().data as { slug: string; parentId: string | null; parentSlug: string | null }[];
+      expect(list.find((x) => x.slug === "alt-of-pasif")).toMatchObject({ parentId: null, parentSlug: null });
+      const detail = (await app.inject({ method: "GET", url: "/api/v1/specialties/alt-of-pasif" })).json().data;
+      expect(detail).toMatchObject({ parentId: null, parentSlug: null, parent: null });
+
+      const admin = (await app.inject({ method: "GET", url: ADMIN_URL, headers: auth(adminToken) })).json().data as { slug: string; parentId: string | null }[];
+      expect(admin.find((x) => x.slug === "alt-of-pasif")?.parentId).toBe(parent.id);
     });
 
     it("GET /doctors?specialtySlug=esd DEĞİŞMEZ: yalnızca kendi hekimleri (üstünkiler gelmez)", async () => {

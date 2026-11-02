@@ -75,7 +75,7 @@ describe("set-specialty-parents", () => {
     expect(again.entries.map((e) => e.action)).toEqual(["skip", "skip", "skip"]);
     expect(formatSpecialtyParentPlan(again)).toContain("[atla] esd -> gastroenterology: zaten bağlı.");
     expect(formatSpecialtyParentPlan(again)).toContain("Bağlanacak uzmanlık yok.");
-    expect(await applySpecialtyParentPlan(app.prisma, again, CONFIRMED)).toEqual({ updated: [] });
+    expect(await applySpecialtyParentPlan(app.prisma, again, CONFIRMED)).toEqual({ updated: [], skipped: [] });
     expect(await app.prisma.auditLog.count({ where: { action: SET_SPECIALTY_PARENTS_AUDIT_ACTION } })).toBe(1);
   });
 
@@ -127,7 +127,7 @@ describe("set-specialty-parents", () => {
     const parsed = parseSpecialtyParentBackup(fs.readFileSync(file, "utf8"));
     await expect(restoreSpecialtyParents(app.prisma, parsed, OP)).rejects.toThrow(SetSpecialtyParentsError);
     const result = await restoreSpecialtyParents(app.prisma, parsed, CONFIRMED);
-    expect(result).toEqual({ restored: ["esd", "poem"], missing: ["ercp"] });
+    expect(result).toEqual({ restored: ["esd", "poem"], missing: ["ercp"], skipped: [] });
     expect(await parentOf("esd")).toBeNull();
     expect(await parentOf("poem")).toBeNull();
     expect(await app.prisma.specialty.count()).toBe(4);
@@ -135,5 +135,56 @@ describe("set-specialty-parents", () => {
 
     expect(() => parseSpecialtyParentBackup("{")).toThrow(/JSON/);
     expect(() => parseSpecialtyParentBackup(JSON.stringify({ version: 2, entries: [] }))).toThrow(/biçim/);
+  });
+
+  it("yedek doğrulaması: previousParentId string|null, newParentId string olmalı", () => {
+    const entry = { slug: "esd", id: "x", previousParentId: null, newParentId: "y" };
+    const ok = (e: unknown) => JSON.stringify({ version: 1, createdAt: "t", entries: [e] });
+    expect(parseSpecialtyParentBackup(ok(entry)).entries).toHaveLength(1);
+    expect(() => parseSpecialtyParentBackup(ok({ ...entry, previousParentId: 5 }))).toThrow(/biçim/);
+    expect(() => parseSpecialtyParentBackup(ok({ ...entry, previousParentId: undefined }))).toThrow(/biçim/);
+    expect(() => parseSpecialtyParentBackup(ok({ ...entry, newParentId: null }))).toThrow(/biçim/);
+  });
+
+  it("restore: mevcut parentId yedekteki 'yeni' değerle eşleşmiyorsa o kayıt atlanır (sonradan yapılan değişiklik ezilmez)", async () => {
+    const plan = await buildSpecialtyParentPlan(app.prisma);
+    const backup = buildSpecialtyParentBackup(plan);
+    await applySpecialtyParentPlan(app.prisma, plan, CONFIRMED);
+    // poem sonradan başka bir üst uzmanlığa (cardiology) taşındı
+    const cardiology = await app.prisma.specialty.findUniqueOrThrow({ where: { slug: "cardiology" } });
+    await app.prisma.specialty.update({ where: { slug: "poem" }, data: { parentId: cardiology.id } });
+
+    const result = await restoreSpecialtyParents(app.prisma, backup, CONFIRMED);
+    expect(result.restored).toEqual(["esd", "ercp"]);
+    expect(result.skipped.map((x) => x.slug)).toEqual(["poem"]);
+    expect(await parentOf("poem")).toBe(cardiology.id);
+    expect(await parentOf("esd")).toBeNull();
+  });
+
+  it("restore sonrası tek seviye kuralı bozulacaksa tüm işlem geri alınır", async () => {
+    const plan = await buildSpecialtyParentPlan(app.prisma, [{ child: "esd", parent: "gastroenterology" }]);
+    const backup = buildSpecialtyParentBackup(plan);
+    // esd'nin ÖNCEKİ üstü cardiology idi (yedeğe elle yazıldı); sonra cardiology başka bir uzmanlığın altına alındı.
+    const [cardiology, ercp] = await Promise.all([
+      app.prisma.specialty.findUniqueOrThrow({ where: { slug: "cardiology" } }),
+      app.prisma.specialty.findUniqueOrThrow({ where: { slug: "ercp" } }),
+    ]);
+    await applySpecialtyParentPlan(app.prisma, plan, CONFIRMED);
+    await app.prisma.specialty.update({ where: { slug: "cardiology" }, data: { parentId: ercp.id } });
+    backup.entries[0]!.previousParentId = cardiology.id;
+
+    await expect(restoreSpecialtyParents(app.prisma, backup, CONFIRMED)).rejects.toThrow(/tek seviye/);
+    expect(await parentOf("esd")).toBe((await app.prisma.specialty.findUniqueOrThrow({ where: { slug: "gastroenterology" } })).id);
+  });
+
+  it("uygulama sırasında durum değiştiyse (üst uzmanlık artık alt uzmanlık) kayıt atlanır, yazılmaz", async () => {
+    const plan = await buildSpecialtyParentPlan(app.prisma, [{ child: "esd", parent: "gastroenterology" }]);
+    const ercp = await app.prisma.specialty.findUniqueOrThrow({ where: { slug: "ercp" } });
+    // Plan çıkarıldıktan sonra gastroenterology başka bir uzmanlığın altına alındı.
+    await app.prisma.specialty.update({ where: { slug: "gastroenterology" }, data: { parentId: ercp.id } });
+    const result = await applySpecialtyParentPlan(app.prisma, plan, CONFIRMED);
+    expect(result.updated).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(await parentOf("esd")).toBeNull();
   });
 });

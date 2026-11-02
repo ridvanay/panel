@@ -5333,7 +5333,8 @@ paths:
       summary: Site ayarlarını oku (authenticated)
       description: >
         **Paket AG (2026-11-02):** yanıt `AdminSiteSettings`'tir (= `SiteSettings` + `bookingNotificationRecipients`
-        + `bookingNotificationRecipientsEffective`). Alıcı adresleri public `GET /settings`'te ASLA dönmez.
+        + `bookingNotificationRecipientsEffective`). Alıcı adresleri public `GET /settings`'te ASLA dönmez ve bu uçta
+        YALNIZCA `SiteRole=ADMIN`'e dolu gelir (MANAGER/EDITOR için `null` ve `[]`).
       responses:
         "200":
           description: OK

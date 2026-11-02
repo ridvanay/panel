@@ -5,7 +5,8 @@
 export const DEFAULT_BOOKING_NOTIFICATION_RECIPIENT = "admin@wmhealthistanbul.com";
 export const MAX_BOOKING_NOTIFICATION_RECIPIENTS = 10;
 
-const SINGLE_EMAIL = /^[^\s@,<>"';?]+@[^\s@,<>"';?]+\.[^\s@,<>"';?]+$/;
+// Sıkılaştırılmış dot-atom (küçük harfe çevrilmiş adres): yerel kısım yalnız harf/rakam/_+- (nokta ayrımlı); : ( \ | % ! vb. reddedilir.
+const SINGLE_EMAIL = /^[a-z0-9_+-]+(?:\.[a-z0-9_+-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 export type RecipientsValidation = { ok: true; list: string[] } | { ok: false; message: string };
 

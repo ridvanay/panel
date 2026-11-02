@@ -99,14 +99,15 @@ export function formatSpecialtyParentPlan(plan: SpecialtyParentPlan): string {
 export interface SpecialtyParentBackup {
   version: 1;
   createdAt: string;
-  entries: { slug: string; id: string; previousParentId: string | null }[];
+  /** `previousParentId`: geri yüklenecek değer; `newParentId`: betiğin yazdığı değer (restore yalnızca hâlâ bu değerdeyse geri alır). */
+  entries: { slug: string; id: string; previousParentId: string | null; newParentId: string }[];
 }
 
 export function buildSpecialtyParentBackup(plan: SpecialtyParentPlan, now = new Date()): SpecialtyParentBackup {
   return {
     version: 1,
     createdAt: now.toISOString(),
-    entries: plan.entries.filter((e) => e.action === "set").map((e) => ({ slug: e.child, id: e.childId!, previousParentId: e.previousParentId ?? null })),
+    entries: plan.entries.filter((e) => e.action === "set").map((e) => ({ slug: e.child, id: e.childId!, previousParentId: e.previousParentId ?? null, newParentId: e.parentId! })),
   };
 }
 
@@ -128,13 +129,42 @@ function assertConfirmed(options: ApplyOptions): void {
   if (!options.operator.trim()) throw new SetSpecialtyParentsError('--operator="Ad Soyad" zorunludur.');
 }
 
-export async function applySpecialtyParentPlan(db: Db, plan: SpecialtyParentPlan, options: ApplyOptions): Promise<{ updated: string[] }> {
+/**
+ * Tek seviye / döngüsüzlük denetimi (yazma ile AYNI Serializable transaction içinde çağrılır; TOCTOU yok).
+ * `childId` için `parentId` atanabilir mi? Atanamazsa nedeni döner.
+ */
+async function parentAssignmentProblem(tx: Pick<PrismaClient, "specialty">, childId: string, parentId: string): Promise<string | null> {
+  if (childId === parentId) return "uzmanlık kendisinin altına bağlanamaz";
+  const parent = await tx.specialty.findUnique({ where: { id: parentId }, select: { parentId: true } });
+  if (!parent) return "üst uzmanlık bulunamadı";
+  if (parent.parentId) return "üst uzmanlık zaten bir alt uzmanlık (yalnızca tek seviye)";
+  if ((await tx.specialty.count({ where: { parentId: childId } })) > 0) return "uzmanlığın kendi alt uzmanlıkları var (taşınamaz)";
+  return null;
+}
+
+const SERIALIZABLE = { isolationLevel: "Serializable" as const };
+
+export async function applySpecialtyParentPlan(db: Db, plan: SpecialtyParentPlan, options: ApplyOptions): Promise<{ updated: string[]; skipped: { child: string; reason: string }[] }> {
   assertConfirmed(options);
   const toSet = plan.entries.filter((e) => e.action === "set");
-  if (toSet.length === 0) return { updated: [] };
+  if (toSet.length === 0) return { updated: [], skipped: [] };
 
+  const updated: string[] = [];
+  const skipped: { child: string; reason: string }[] = [];
   await db.$transaction(async (tx) => {
-    for (const e of toSet) await tx.specialty.update({ where: { id: e.childId! }, data: { parentId: e.parentId! } });
+    updated.length = 0;
+    skipped.length = 0;
+    for (const e of toSet) {
+      // Plan çıkarıldıktan sonra durum değişmiş olabilir: kural yazmayla AYNI transaction'da yeniden denetlenir.
+      const problem = await parentAssignmentProblem(tx, e.childId!, e.parentId!);
+      if (problem) {
+        skipped.push({ child: e.child, reason: problem });
+        continue;
+      }
+      await tx.specialty.update({ where: { id: e.childId! }, data: { parentId: e.parentId! } });
+      updated.push(e.child);
+    }
+    if (updated.length === 0) return;
     await tx.auditLog.create({
       data: {
         actorId: null,
@@ -146,13 +176,13 @@ export async function applySpecialtyParentPlan(db: Db, plan: SpecialtyParentPlan
           operator: options.operator,
           osUser: options.osUser,
           hostname: options.hostname,
-          pairs: toSet.map((e) => ({ child: e.child, parent: e.parent, previousParentId: e.previousParentId ?? null })),
+          pairs: toSet.filter((e) => updated.includes(e.child)).map((e) => ({ child: e.child, parent: e.parent, previousParentId: e.previousParentId ?? null })),
         },
       },
     });
-  });
-  if (options.revalidate !== false) await triggerTagRevalidation(appLike(db), [CACHE_TAGS.specialties, CACHE_TAGS.doctors, CACHE_TAGS.blog]);
-  return { updated: toSet.map((e) => e.child) };
+  }, SERIALIZABLE);
+  if (updated.length > 0 && options.revalidate !== false) await triggerTagRevalidation(appLike(db), [CACHE_TAGS.specialties, CACHE_TAGS.doctors, CACHE_TAGS.blog]);
+  return { updated, skipped };
 }
 
 export function parseSpecialtyParentBackup(raw: string): SpecialtyParentBackup {
@@ -163,26 +193,57 @@ export function parseSpecialtyParentBackup(raw: string): SpecialtyParentBackup {
     throw new SetSpecialtyParentsError("Yedek dosyası geçerli JSON değil.");
   }
   const b = data as Partial<SpecialtyParentBackup> | null;
-  if (!b || b.version !== 1 || !Array.isArray(b.entries) || b.entries.some((e) => typeof e?.id !== "string" || typeof e?.slug !== "string")) {
+  if (
+    !b ||
+    b.version !== 1 ||
+    !Array.isArray(b.entries) ||
+    b.entries.some(
+      (e) =>
+        typeof e?.id !== "string" ||
+        typeof e?.slug !== "string" ||
+        typeof e?.newParentId !== "string" ||
+        !(e.previousParentId === null || typeof e.previousParentId === "string")
+    )
+  ) {
     throw new SetSpecialtyParentsError("Geçersiz yedek dosyası biçimi.");
   }
   return b as SpecialtyParentBackup;
 }
 
 /** Yedekteki her uzmanlığın `parentId` değerini yedekteki önceki değere döndürür; bulunamayanlar atlanır, hiçbiri silinmez. */
-export async function restoreSpecialtyParents(db: Db, backup: SpecialtyParentBackup, options: ApplyOptions): Promise<{ restored: string[]; missing: string[] }> {
+export async function restoreSpecialtyParents(
+  db: Db,
+  backup: SpecialtyParentBackup,
+  options: ApplyOptions
+): Promise<{ restored: string[]; missing: string[]; skipped: { slug: string; reason: string }[] }> {
   assertConfirmed(options);
   const restored: string[] = [];
   const missing: string[] = [];
+  const skipped: { slug: string; reason: string }[] = [];
   await db.$transaction(async (tx) => {
+    restored.length = 0;
+    missing.length = 0;
+    skipped.length = 0;
     for (const e of backup.entries) {
-      const exists = await tx.specialty.findUnique({ where: { id: e.id }, select: { id: true } });
-      if (!exists) {
+      const current = await tx.specialty.findUnique({ where: { id: e.id }, select: { parentId: true } });
+      if (!current) {
         missing.push(e.slug);
+        continue;
+      }
+      // Betik yazdıktan sonra başkası (ör. admin) bağlantıyı değiştirdiyse onun değişikliği ezilmez.
+      if (current.parentId !== e.newParentId) {
+        skipped.push({ slug: e.slug, reason: "mevcut üst uzmanlık yedekteki 'yeni' değerle eşleşmiyor (sonradan değişmiş)" });
         continue;
       }
       await tx.specialty.update({ where: { id: e.id }, data: { parentId: e.previousParentId } });
       restored.push(e.slug);
+    }
+    // Geri yükleme sonrası tek seviye / döngüsüzlük: ihlal varsa tüm işlem geri alınır.
+    for (const e of backup.entries.filter((x) => restored.includes(x.slug) && x.previousParentId)) {
+      const row = await tx.specialty.findUnique({ where: { id: e.id }, select: { id: true, parentId: true, parent: { select: { parentId: true } }, _count: { select: { children: true } } } });
+      if (row?.parentId && (row.parentId === row.id || row.parent?.parentId || row._count.children > 0)) {
+        throw new SetSpecialtyParentsError(`Geri yükleme tek seviye kuralını bozacak (${e.slug}); işlem geri alındı.`);
+      }
     }
     await tx.auditLog.create({
       data: {
@@ -191,10 +252,10 @@ export async function restoreSpecialtyParents(db: Db, backup: SpecialtyParentBac
         action: SET_SPECIALTY_PARENTS_RESTORE_AUDIT_ACTION,
         targetType: "Specialty",
         targetId: null,
-        metadata: { operator: options.operator, osUser: options.osUser, hostname: options.hostname, restored, missing },
+        metadata: { operator: options.operator, osUser: options.osUser, hostname: options.hostname, restored, missing, skipped: skipped.map((x) => x.slug) },
       },
     });
-  });
-  if (options.revalidate !== false) await triggerTagRevalidation(appLike(db), [CACHE_TAGS.specialties, CACHE_TAGS.doctors, CACHE_TAGS.blog]);
-  return { restored, missing };
+  }, SERIALIZABLE);
+  if (restored.length > 0 && options.revalidate !== false) await triggerTagRevalidation(appLike(db), [CACHE_TAGS.specialties, CACHE_TAGS.doctors, CACHE_TAGS.blog]);
+  return { restored, missing, skipped };
 }

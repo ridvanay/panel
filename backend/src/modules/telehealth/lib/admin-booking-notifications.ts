@@ -10,11 +10,14 @@ import { buildBookingNotificationEmail, paymentLabel, type BookingNotificationEm
  * Paket AG (Is 2) - her kesinlesen/iptal edilen/saati degisen randevuda admin alicilarina bildirim.
  *
  * - Cagri NOKTALARI mevcut akislarin SONUNDA (commit sonrasi) tek satirdir; bu modul ASLA firlatmaz.
+ * - Istek BLOKLANMAZ: kayit senkron yazilir, ilk gonderim denemesi istegin disinda (arka plan promise'i) calisir;
+ *   testler/kapanis `waitForAdminNotifications()` ile bekler.
  * - Idempotency: `AdminNotification.eventKey` tekil. Ayni olay ikinci kez gelirse (webhook tekrari vb.) kayit zaten
  *   vardir -> hicbir sey yapilmaz (cift gonderim yok).
- * - Kuyruk/yeniden deneme: kayit once `pending` (+2 dk kira) yazilir, hemen gonderim denenir. Basari -> `sent`.
- *   Hata -> `pending` + `attempts++` + `nextAttemptAt` (1, 5, 15 dk); 4. denemeden sonra `failed`. Alici listesi bossa
- *   `skipped`. Sweeper (`registerAdminNotificationSweeper`) `pending && nextAttemptAt <= now` olanlari yeniden dener.
+ * - Alici basina AYRI e-posta; basarili aliclar `payload.deliveredTo`'ya hemen yazilir, retry yalniz kalanlara gider.
+ * - Kuyruk/yeniden deneme: kayit once `pending` (+kira) yazilir. Tum aliclar basarili -> `sent`. Hata -> `pending` +
+ *   `attempts++` + `nextAttemptAt` (1, 5, 15 dk); 4. denemeden sonra `failed`. Alici listesi bossa `skipped`.
+ *   Sweeper (`registerAdminNotificationSweeper`) `pending && nextAttemptAt <= now` olanlari yeniden dener.
  * - Icerik gonderim aninda DB'den okunur; hasta adi/e-postasi/telefonu/sikayeti HIC okunmaz (select'te yok).
  */
 export type BookingNotificationEvent =
@@ -25,7 +28,10 @@ export type BookingNotificationEvent =
 export const ADMIN_NOTIFICATION_MAX_ATTEMPTS = 4;
 /** attempts (az once tamamlanan deneme sayisi) -> sonraki denemeye kadar bekleme. */
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000];
-const LEASE_MS = 2 * 60_000;
+/** Kira, SMTP zaman asimlarinin (`SMTP_TIMEOUT_MS`=15 sn, alici basina) cok USTUNDE: 10 alici x olasi zaman asimi < kira. */
+const LEASE_MS = 10 * 60_000;
+/** `sent`/`skipped`/`failed` kayitlari bu sureden sonra sweeper icinde silinir. */
+const RETENTION_MS = 90 * 24 * 60 * 60_000;
 export const ADMIN_NOTIFICATION_SWEEP_INTERVAL_MS = 60_000;
 const SETTINGS_ID = "singleton";
 
@@ -33,6 +39,8 @@ interface NotificationPayload {
   oldStartsAt?: string;
   oldEndsAt?: string;
   newStartsAt?: string;
+  /** Basariyla gonderilmis alici adresleri (kucuk harf) - retry'da tekrar gonderilmez. */
+  deliveredTo?: string[];
 }
 
 export function bookingEventKey(event: BookingNotificationEvent): string {
@@ -42,7 +50,8 @@ export function bookingEventKey(event: BookingNotificationEvent): string {
     case "cancelled":
       return event.appointmentId ? `appointment:${event.appointmentId}:cancelled` : `booking:${event.bookingId}:cancelled`;
     case "rescheduled":
-      return `appointment:${event.appointmentId}:rescheduled:${event.newStartsAt.toISOString()}`;
+      // Eski + yeni baslangic: A->B->C->B zincirinde ucuncu olay (C->B) onceki B olayiyla carpismaz.
+      return `appointment:${event.appointmentId}:rescheduled:${event.oldStartsAt.toISOString()}:${event.newStartsAt.toISOString()}`;
   }
 }
 
@@ -139,29 +148,37 @@ async function loadEmailData(app: FastifyInstance, row: NotificationRow): Promis
   };
 }
 
-/** Tek gonderim denemesi: sonucu satira yazar. Firlatmaz. */
+/** Tek gonderim denemesi (alici basina ayri e-posta): sonucu satira yazar. Firlatmaz. */
 async function attemptDelivery(app: FastifyInstance, row: NotificationRow): Promise<"sent" | "pending" | "failed" | "skipped"> {
   const now = new Date();
+  const payload: NotificationPayload = { ...((row.payload ?? {}) as NotificationPayload) };
+  const delivered = new Set((payload.deliveredTo ?? []).map((a) => a.toLowerCase()));
+  let firstError: unknown = null;
   try {
     const recipients = await resolveBookingNotificationRecipients(app);
     if (recipients.length === 0) {
       await app.prisma.adminNotification.update({ where: { id: row.id }, data: { status: "skipped", nextAttemptAt: null } });
       return "skipped";
     }
-    const mail = buildBookingNotificationEmail(await loadEmailData(app, row));
-    await sendBrandedMail(app, {
-      to: recipients.join(", "),
-      subject: mail.subject,
-      locale: "en",
-      audience: "staff",
-      preheader: mail.preheader,
-      title: mail.title,
-      bodyHtml: mail.bodyHtml,
-      cta: mail.cta,
-    });
+    const remaining = recipients.filter((a) => !delivered.has(a));
+    if (remaining.length > 0) {
+      const mail = buildBookingNotificationEmail(await loadEmailData(app, row));
+      for (const to of remaining) {
+        try {
+          await sendBrandedMail(app, { to, subject: mail.subject, locale: "en", audience: "staff", preheader: mail.preheader, title: mail.title, bodyHtml: mail.bodyHtml, cta: mail.cta });
+          delivered.add(to);
+          payload.deliveredTo = [...delivered];
+          // Basari hemen kalici yazilir: surec cokse bile bu aliciya tekrar gonderilmez.
+          await app.prisma.adminNotification.update({ where: { id: row.id }, data: { payload: payload as unknown as Prisma.InputJsonValue } });
+        } catch (err) {
+          firstError ??= err;
+        }
+      }
+    }
+    if (firstError) throw firstError;
     await app.prisma.adminNotification.update({
       where: { id: row.id },
-      data: { status: "sent", attempts: row.attempts + 1, sentAt: new Date(), nextAttemptAt: null, lastError: null },
+      data: { status: "sent", attempts: row.attempts + 1, sentAt: new Date(), nextAttemptAt: null, lastError: null, payload: { ...payload, deliveredTo: [...delivered] } as unknown as Prisma.InputJsonValue },
     });
     return "sent";
   } catch (err) {
@@ -183,22 +200,26 @@ async function attemptDelivery(app: FastifyInstance, row: NotificationRow): Prom
   }
 }
 
+const inflight = new Set<Promise<unknown>>();
+
+/** Arka planda calisan gonderim denemelerinin bitmesini bekler (testler ve kapanis icin). */
+export async function waitForAdminNotifications(): Promise<void> {
+  while (inflight.size > 0) await Promise.allSettled([...inflight]);
+}
+
 /**
- * Olayi kaydeder ve hemen gondermeyi dener. ASLA firlatmaz, akisi/yaniti degistirmez.
- * Donus: gonderim sonucu (testler/log icin); kayit zaten varsa `"duplicate"`.
+ * Olayi senkron KAYDEDER; ilk gonderim denemesi istegin disinda (arka planda) calisir - yanit SMTP'yi beklemez.
+ * ASLA firlatmaz, akisi/yaniti degistirmez. Donus: `"queued"`; kayit zaten varsa `"duplicate"`.
  */
-export async function notifyAdminsOfBookingEvent(
-  app: FastifyInstance,
-  event: BookingNotificationEvent
-): Promise<"sent" | "pending" | "failed" | "skipped" | "duplicate" | "error"> {
+export async function notifyAdminsOfBookingEvent(app: FastifyInstance, event: BookingNotificationEvent): Promise<"queued" | "duplicate" | "error"> {
   try {
     const eventKey = bookingEventKey(event);
     const bookingId = event.kind === "rescheduled" ? null : event.bookingId;
     const appointmentId = event.kind === "rescheduled" ? event.appointmentId : event.kind === "cancelled" ? (event.appointmentId ?? null) : null;
-    const payload: NotificationPayload | null =
+    const payload: NotificationPayload =
       event.kind === "rescheduled"
         ? { oldStartsAt: event.oldStartsAt.toISOString(), oldEndsAt: event.oldEndsAt.toISOString(), newStartsAt: event.newStartsAt.toISOString() }
-        : null;
+        : {};
 
     let row: NotificationRow;
     try {
@@ -210,7 +231,7 @@ export async function notifyAdminsOfBookingEvent(
           appointmentId,
           status: "pending",
           nextAttemptAt: new Date(Date.now() + LEASE_MS),
-          ...(payload ? { payload: payload as unknown as Prisma.InputJsonValue } : {}),
+          payload: payload as unknown as Prisma.InputJsonValue,
         },
         select: { id: true, kind: true, bookingId: true, appointmentId: true, attempts: true, payload: true },
       });
@@ -218,7 +239,11 @@ export async function notifyAdminsOfBookingEvent(
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return "duplicate";
       throw err;
     }
-    return await attemptDelivery(app, row);
+    const task: Promise<unknown> = attemptDelivery(app, row)
+      .catch((err) => app.log.error({ reason: safeError(err) }, "Admin randevu bildirimi arka plan denemesi basarisiz."))
+      .finally(() => inflight.delete(task));
+    inflight.add(task);
+    return "queued";
   } catch (err) {
     app.log.error({ reason: safeError(err) }, "Admin randevu bildirimi kaydedilemedi (best-effort).");
     return "error";
@@ -234,6 +259,10 @@ export interface AdminNotificationSweepResult {
 /** `pending && nextAttemptAt <= now` olanlari yeniden dener (elle cagrilabilir; testler bunu kullanir). */
 export async function runAdminNotificationSweep(app: FastifyInstance, now: Date = new Date()): Promise<AdminNotificationSweepResult> {
   const result: AdminNotificationSweepResult = { retried: 0, sent: 0, failed: 0 };
+  // Eski sonuclanmis kayitlari temizle (pending'e dokunulmaz).
+  await app.prisma.adminNotification
+    .deleteMany({ where: { status: { in: ["sent", "skipped", "failed"] }, createdAt: { lt: new Date(now.getTime() - RETENTION_MS) } } })
+    .catch((err) => app.log.error({ reason: safeError(err) }, "Eski admin bildirim kayitlari temizlenemedi."));
   const due = await app.prisma.adminNotification.findMany({
     where: { status: "pending", nextAttemptAt: { lte: now } },
     orderBy: { createdAt: "asc" },
@@ -269,7 +298,8 @@ export function registerAdminNotificationSweeper(app: FastifyInstance): void {
   run();
   const timer = setInterval(run, ADMIN_NOTIFICATION_SWEEP_INTERVAL_MS);
   timer.unref();
-  app.addHook("onClose", () => {
+  app.addHook("onClose", async () => {
     clearInterval(timer);
+    await waitForAdminNotifications();
   });
 }

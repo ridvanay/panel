@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useT } from "@/context/i18n-context";
+import { useAuthOptional } from "@/context/auth-context";
 import type { SiteTemplate } from "@/lib/api/types";
 import {
   AlertCircle,
@@ -155,6 +156,8 @@ function SectionHeader({
 
 export default function AdminSettingsPage() {
   const t = useT();
+  // Paket AG - randevu bildirimi alıcıları yalnızca ADMIN'e gösterilir/gönderilir (sunucu diğer rollerde boş döner).
+  const isAdmin = useAuthOptional()?.user?.role === "ADMIN";
   const [activeTab, setActiveTab] = useState("general");
 
   const [loaded, setLoaded] = useState(false);
@@ -349,7 +352,7 @@ export default function AdminSettingsPage() {
   async function handleSave() {
     setSaveError(null);
     setSaved(false);
-    if (!recipientsUseDefault) {
+    if (isAdmin && !recipientsUseDefault) {
       const check = validateBookingRecipients(recipientsText);
       if (!check.ok) {
         setRecipientsError(check.message);
@@ -377,7 +380,7 @@ export default function AdminSettingsPage() {
         liveChatRequirePhone,
         liveChatRequireEmail,
         liveChatPosition,
-        bookingNotificationRecipients: recipientsUseDefault ? null : recipientsText.trim(),
+        ...(isAdmin ? { bookingNotificationRecipients: recipientsUseDefault ? null : recipientsText.trim() } : {}),
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
@@ -809,6 +812,7 @@ export default function AdminSettingsPage() {
               </Card>
             </motion.div>
             {/* Paket AG — randevu bildirimi alıcıları (kayıt `Kaydet` ile birlikte yapılır). */}
+            {isAdmin && (
             <motion.div variants={cardVariants} className="lg:col-span-3">
               <BookingRecipientsCard
                 useDefault={recipientsUseDefault}
@@ -826,6 +830,7 @@ export default function AdminSettingsPage() {
                 }}
               />
             </motion.div>
+            )}
           </motion.div>
 
           <motion.div

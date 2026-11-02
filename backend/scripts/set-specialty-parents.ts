@@ -30,7 +30,18 @@ function arg(name: string): string | undefined {
   return process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length);
 }
 
+/** Hedef veritabanı: host:port/db (kullanıcı adı ve şifre ASLA yazdırılmaz). */
+function describeTarget(): string {
+  try {
+    const url = new URL(process.env.DATABASE_URL ?? "");
+    return `${url.hostname}${url.port ? `:${url.port}` : ""}${url.pathname}`;
+  } catch {
+    return "(DATABASE_URL okunamadı)";
+  }
+}
+
 async function main() {
+  console.log(`[set-specialty-parents] hedef veritabanı: ${describeTarget()}`);
   const prisma = new PrismaClient();
   try {
     const confirm = arg("confirm");
@@ -56,6 +67,7 @@ async function main() {
       }
       const result = await restoreSpecialtyParents(prisma, backup, options);
       for (const slug of result.missing) console.warn(`[uyari] ${slug}: kayıt bulunamadı; atlandı.`);
+      for (const item of result.skipped) console.warn(`[atla] ${item.slug}: ${item.reason}.`);
       console.log(`[fix] geri yüklendi: ${result.restored.join(", ") || "-"}`);
       return;
     }
@@ -80,7 +92,8 @@ async function main() {
     console.log(`[yedek] ${file}`);
 
     const result = await applySpecialtyParentPlan(prisma, plan, options);
-    console.log(`\nBağlandı: ${result.updated.join(", ")}`);
+    for (const item of result.skipped) console.warn(`[uyari] ${item.child}: ${item.reason}; yazma sırasında atlandı.`);
+    console.log(`\nBağlandı: ${result.updated.join(", ") || "-"}`);
     console.log(`[geri al] npx tsx scripts/set-specialty-parents.ts --restore=${file} --confirm=${SET_SPECIALTY_PARENTS_CONFIRM_KEY} --operator="Ad Soyad"`);
   } catch (err) {
     if (err instanceof SetSpecialtyParentsError) {

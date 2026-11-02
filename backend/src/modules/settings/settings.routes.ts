@@ -154,9 +154,15 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 
-  server.get("/", { schema: { response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } } }, async (_request, reply) => {
-    const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { bookingNotificationRecipients: true } });
-    return reply.send(ok(toAdminSettingsDto(row, await readSettings(app))));
+  server.get("/", { schema: { response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } } }, async (request, reply) => {
+    // Alıcı adresleri yalnızca ADMIN'e dolu döner (MANAGER/EDITOR: null / []).
+    const row =
+      request.user?.role === "ADMIN"
+        ? await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { bookingNotificationRecipients: true } })
+        : null;
+    const dto = toAdminSettingsDto(row, await readSettings(app));
+    if (request.user?.role !== "ADMIN") return reply.send(ok({ ...dto, bookingNotificationRecipients: null, bookingNotificationRecipientsEffective: [] }));
+    return reply.send(ok(dto));
   });
 
   server.patch(

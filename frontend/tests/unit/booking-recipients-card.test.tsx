@@ -15,6 +15,9 @@ describe("validateBookingRecipients", () => {
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.message).toContain("bozuk");
     expect(validateBookingRecipients("a@x.com;b@y.com").ok).toBe(false);
+    for (const bad of ["a:b@x.com", "a(b)@x.com", "a\b@x.com", "a|b@x.com", "a%b@x.com", "a!b@x.com"]) {
+      expect(validateBookingRecipients(bad).ok, bad).toBe(false);
+    }
     expect(validateBookingRecipients(Array.from({ length: 11 }, (_, i) => `u${i}@x.com`).join(",")).ok).toBe(false);
     expect(validateBookingRecipients(Array.from({ length: 10 }, (_, i) => `u${i}@x.com`).join(",")).ok).toBe(true);
   });

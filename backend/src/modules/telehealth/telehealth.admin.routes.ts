@@ -206,17 +206,18 @@ const WITH_SPECIALTY_IMAGE = { imageMedia: true, parent: { select: { slug: true 
 
 /**
  * Paket AG — üst uzmanlık kuralları (tek seviye, döngüsüz). DB'de değil API'de zorlanır (`NavigationItem` deseni).
- * `specialtyId` yeni kayıtta undefined. Hepsi 422 `parentId` alanı.
+ * `specialtyId` yeni kayıtta undefined. Hepsi 422 `parentId` alanı. Doğrulama + yazma AYNI Serializable transaction'da
+ * çağrılır (`runSerializable`) - eşzamanlı iki isteğin kuralı birlikte aşması (TOCTOU) engellenir.
  */
-async function assertValidSpecialtyParent(app: FastifyInstance, parentId: string, specialtyId: string | undefined): Promise<void> {
+async function assertValidSpecialtyParent(db: Pick<Prisma.TransactionClient, "specialty">, parentId: string, specialtyId: string | undefined): Promise<void> {
   const fail = (message: string): never => {
     throw new ValidationError(message, { parentId: [message] });
   };
   if (specialtyId && parentId === specialtyId) fail("Bir uzmanlık kendisinin alt uzmanlığı olamaz.");
-  const parent = await app.prisma.specialty.findUnique({ where: { id: parentId }, select: { id: true, parentId: true } });
+  const parent = await db.specialty.findUnique({ where: { id: parentId }, select: { id: true, parentId: true } });
   if (!parent) return fail("Üst uzmanlık bulunamadı.");
   if (parent.parentId) fail("Üst uzmanlık zaten bir alt uzmanlık; yalnızca tek seviyeye izin verilir.");
-  if (specialtyId && (await app.prisma.specialty.count({ where: { parentId: specialtyId } })) > 0) {
+  if (specialtyId && (await db.specialty.count({ where: { parentId: specialtyId } })) > 0) {
     fail("Bu uzmanlığın alt uzmanlıkları var; başka bir uzmanlığın altına taşınamaz.");
   }
 }
@@ -270,20 +271,22 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { name, slug, icon, description, order, isActive, imageMediaId, translations, parentId } = request.body;
       if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
-      if (parentId) await assertValidSpecialtyParent(app, parentId, undefined);
-      const specialty = await app.prisma.specialty.create({
-        data: {
-          name,
-          slug: slug ? slugify(slug) : slugify(name),
-          icon,
-          description: description ?? null,
-          order: order ?? 0,
-          isActive: isActive ?? true,
-          imageMediaId: imageMediaId ?? null,
-          parentId: parentId ?? null,
-          translations: translations ?? {},
-        },
-        include: WITH_SPECIALTY_IMAGE,
+      const specialty = await runSerializable(app, async (tx) => {
+        if (parentId) await assertValidSpecialtyParent(tx, parentId, undefined);
+        return tx.specialty.create({
+          data: {
+            name,
+            slug: slug ? slugify(slug) : slugify(name),
+            icon,
+            description: description ?? null,
+            order: order ?? 0,
+            isActive: isActive ?? true,
+            imageMediaId: imageMediaId ?? null,
+            parentId: parentId ?? null,
+            translations: translations ?? {},
+          },
+          include: WITH_SPECIALTY_IMAGE,
+        });
       });
       if (specialty.parentId) await logSpecialtyParentAudit(app, request, specialty.id, null, specialty.parentId);
       return reply.code(201).send(ok(toSpecialtyDto(specialty)));
@@ -304,14 +307,14 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       const { slug, description, imageMediaId, parentId, ...rest } = request.body;
       if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
       let previousParentId: string | null = null;
-      if (parentId !== undefined) {
-        const current = await app.prisma.specialty.findUnique({ where: { id: request.params.specialtyId }, select: { parentId: true } });
-        if (!current) throw new NotFoundError("Uzmanlık bulunamadı.");
-        previousParentId = current.parentId;
-        if (parentId) await assertValidSpecialtyParent(app, parentId, request.params.specialtyId);
-      }
-      const specialty = await app.prisma.specialty
-        .update({
+      const specialty = await runSerializable(app, async (tx) => {
+        if (parentId !== undefined) {
+          const current = await tx.specialty.findUnique({ where: { id: request.params.specialtyId }, select: { parentId: true } });
+          if (!current) throw new NotFoundError("Uzmanlık bulunamadı.");
+          previousParentId = current.parentId;
+          if (parentId) await assertValidSpecialtyParent(tx, parentId, request.params.specialtyId);
+        }
+        return tx.specialty.update({
           where: { id: request.params.specialtyId },
           data: {
             ...rest,
@@ -321,10 +324,13 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
             ...(imageMediaId !== undefined ? { imageMediaId } : {}),
           },
           include: WITH_SPECIALTY_IMAGE,
-        })
-        .catch(() => {
-          throw new NotFoundError("Uzmanlık bulunamadı.");
         });
+      }).catch((err: unknown) => {
+        // Doğrulama/404 hataları ve serileştirme çakışması olduğu gibi yükselir; diğerleri önceki davranış gibi 404.
+        if (err instanceof ValidationError || err instanceof NotFoundError) throw err;
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") throw err;
+        throw new NotFoundError("Uzmanlık bulunamadı.");
+      });
       if (parentId !== undefined && previousParentId !== parentId) {
         await logSpecialtyParentAudit(app, request, specialty.id, previousParentId, parentId);
       }

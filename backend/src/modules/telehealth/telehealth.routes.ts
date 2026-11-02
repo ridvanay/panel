@@ -336,10 +336,11 @@ export async function telehealthRoutes(app: FastifyInstance) {
       const rows = await app.prisma.specialty.findMany({
         where: { isActive: true },
         orderBy: { order: "asc" },
-        include: { imageMedia: true, parent: { select: { slug: true } } },
+        include: { imageMedia: true, parent: { select: { slug: true, isActive: true } } },
       });
       const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
-      return reply.send(ok(rows.map((row) => toSpecialtyDto(localizeSpecialty(row, contentLocale)))));
+      // Üst uzmanlık pasifse alt uzmanlık public yüzeyde üst seviye gibi görünür (parentId/parentSlug null).
+      return reply.send(ok(rows.map((row) => toSpecialtyDto(localizeSpecialty(row.parent && !row.parent.isActive ? { ...row, parentId: null, parent: null } : row, contentLocale)))));
     }
   );
 
@@ -368,9 +369,11 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
       const parentRow = specialty.parent && specialty.parent.isActive ? localizeSpecialty(specialty.parent, contentLocale) : null;
+      // Üst uzmanlık pasifse parentId/parentSlug de null döner (yalnızca `parent` değil).
+      const publicSpecialty = specialty.parent && !specialty.parent.isActive ? { ...specialty, parentId: null, parent: null } : specialty;
       return reply.send(
         ok(
-          toSpecialtyWithDoctorCountDto(localizeSpecialty(specialty, contentLocale), doctorCount, {
+          toSpecialtyWithDoctorCountDto(localizeSpecialty(publicSpecialty, contentLocale), doctorCount, {
             parent: parentRow ? { slug: parentRow.slug, name: parentRow.name } : null,
             children: childRows.map((child) => {
               const localized = localizeSpecialty(child, contentLocale);

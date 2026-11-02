@@ -26,6 +26,30 @@ describe("booking-notification-recipients", () => {
   });
 });
 
+describe("alici dogrulamasi (sikilastirilmis dot-atom)", () => {
+  it.each([
+    "a:b@x.com",
+    "a(b)@x.com",
+    "a\\b@x.com",
+    "a|b@x.com",
+    "a%b@x.com",
+    "a!b@x.com",
+    "a..b@x.com",
+    ".a@x.com",
+    "a@x",
+    "a@-x.com",
+    "a@x.c",
+    "a b@x.com",
+    "<a@x.com>",
+  ])("%s reddedilir", (address) => {
+    expect(parseBookingNotificationRecipients(address).ok).toBe(false);
+  });
+
+  it.each(["a@x.com", "ad.soyad+etiket@alt.alan-adi.org", "ops_1@x.co.uk"])("%s kabul edilir", (address) => {
+    expect(parseBookingNotificationRecipients(address)).toEqual({ ok: true, list: [address] });
+  });
+});
+
 describe("booking-notification-email", () => {
   const base = {
     bookingId: "11111111-1111-4111-8111-111111111111",
@@ -73,6 +97,12 @@ describe("booking-notification-email", () => {
       bookingEventKey({ kind: "cancelled", bookingId: "b1", appointmentId: "a1" }),
       bookingEventKey({ kind: "cancelled", bookingId: "b1" }),
       bookingEventKey({ kind: "rescheduled", appointmentId: "a1", oldStartsAt: at, oldEndsAt: at, newStartsAt: at }),
-    ]).toEqual(["booking:b1:confirmed", "appointment:a1:cancelled", "booking:b1:cancelled", "appointment:a1:rescheduled:2026-11-12T10:30:00.000Z"]);
+    ]).toEqual(["booking:b1:confirmed", "appointment:a1:cancelled", "booking:b1:cancelled", "appointment:a1:rescheduled:2026-11-12T10:30:00.000Z:2026-11-12T10:30:00.000Z"]);
+  });
+
+  it("rescheduled anahtari eski+yeni baslangic icerir: A->B ve C->B farkli anahtar uretir", () => {
+    const at = (h: number) => new Date(`2026-11-12T${String(h).padStart(2, "0")}:00:00Z`);
+    const key = (from: number, to: number) => bookingEventKey({ kind: "rescheduled", appointmentId: "a1", oldStartsAt: at(from), oldEndsAt: at(from), newStartsAt: at(to) });
+    expect(new Set([key(9, 11), key(11, 12), key(12, 11)]).size).toBe(3);
   });
 });

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, InjectOptions } from "fastify";
 
 /**
  * Paket AG (Is 2) - her randevuda admin bildirimi. `sendMail` spy (matcher.test.ts deseni) + `sendTemplateEmail` mock
@@ -13,12 +13,19 @@ vi.mock("../../src/modules/email-templates/email-templates.service", () => ({
 }));
 const mailSpy = vi.hoisted(() => vi.fn());
 let mailShouldFail = false;
+/** Yalnızca bu adreslere gönderim başarısız olur (kısmi red simülasyonu). */
+const failFor = new Set<string>();
+/** Doluysa sendMail bu promise çözülene kadar bekler (isteğin SMTP'yi beklemediğini kanıtlamak için). */
+let mailGate: Promise<void> | null = null;
 vi.mock("../../src/lib/mail", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/lib/mail")>();
+  const { EmailDeliveryError } = await import("../../src/lib/errors");
   return {
     ...actual,
     sendMail: async (...args: unknown[]) => {
-      if (mailShouldFail) throw new actual.EmailDeliveryError("E-posta gönderilemedi, lütfen daha sonra tekrar deneyin.");
+      if (mailGate) await mailGate;
+      const to = (args[1] as { to: string }).to;
+      if (mailShouldFail || failFor.has(to)) throw new EmailDeliveryError("E-posta gönderilemedi, lütfen daha sonra tekrar deneyin.");
       mailSpy(...args);
       return { messageId: "test" };
     },
@@ -29,7 +36,15 @@ import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { stripe } from "../../src/lib/stripe";
 import { env } from "../../src/config/env";
-import { runAdminNotificationSweep } from "../../src/modules/telehealth/lib/admin-booking-notifications";
+import { runAdminNotificationSweep, waitForAdminNotifications } from "../../src/modules/telehealth/lib/admin-booking-notifications";
+
+/** Bildirim gönderimi istek dışında (arka planda) çalışır: yanıttan sonra deterministik olarak beklenir. */
+let drain: () => Promise<void> = waitForAdminNotifications;
+async function inject(app: FastifyInstance, opts: InjectOptions) {
+  const res = await app.inject(opts);
+  await drain();
+  return res;
+}
 
 const PATIENT_NAME = "Zeynep Yilmaz Ozkan";
 const PATIENT_EMAIL_PREFIX = "zeynep.ozkan";
@@ -78,7 +93,7 @@ function nextMondayNineAmUtc(): Date {
 }
 
 async function createBooking(app: FastifyInstance, doctorSlug: string, slots: Date[]) {
-  const res = await app.inject({
+  const res = await inject(app, {
     method: "POST",
     url: "/api/v1/appointments/bookings",
     payload: {
@@ -108,7 +123,7 @@ async function createAdmin(app: FastifyInstance, role: "ADMIN" | "MANAGER" | "US
       emailVerifiedAt: new Date(),
     },
   });
-  const res = await app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email: user.email, password: "Sifre12345!" } });
+  const res = await inject(app, { method: "POST", url: "/api/v1/auth/login", payload: { email: user.email, password: "Sifre12345!" } });
   expect(res.statusCode).toBe(200);
   return { id: user.id, token: res.json().data.tokens.accessToken as string };
 }
@@ -138,7 +153,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
 
   async function postWebhook(eventBody: unknown) {
     const payloadString = JSON.stringify(eventBody);
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/api/v1/webhooks/stripe",
       headers: {
@@ -162,6 +177,8 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
 
   beforeEach(async () => {
     mailShouldFail = false;
+    failFor.clear();
+    mailGate = null;
     mailSpy.mockClear();
     sendTemplateEmailMock.mockClear();
     app = await buildTestApp();
@@ -170,6 +187,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
   });
 
   afterEach(async () => {
+    await waitForAdminNotifications();
     await resetDatabase(app.prisma);
     await app.close();
   });
@@ -225,7 +243,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
     expect(sent()).toHaveLength(0);
 
-    const paid = await app.inject({
+    const paid = await inject(app, {
       method: "POST",
       url: `/api/v1/admin/telehealth/bookings/${booking.bookingId}/mark-paid`,
       headers: bearer(admin.token),
@@ -235,7 +253,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     expect(sent()).toHaveLength(1);
     expect(sent()[0]!.text).toContain("Paid (manual)");
 
-    const resend = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/resend-link` });
+    const resend = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/resend-link` });
     expect(resend.statusCode).toBe(202);
     expect(sent()).toHaveLength(1);
     expect(await app.prisma.adminNotification.count()).toBe(1);
@@ -246,14 +264,14 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     const { booking } = await paidScheduledBooking({ admin });
     mailSpy.mockClear();
 
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${booking.appointments[0]!.id}/cancel`, headers: bearer(admin.token), payload: { reason: "hasta istedi" } });
+    const res = await inject(app, { method: "POST", url: `/api/v1/appointments/${booking.appointments[0]!.id}/cancel`, headers: bearer(admin.token), payload: { reason: "hasta istedi" } });
     expect(res.statusCode).toBe(200);
     expect(sent()).toHaveLength(1);
     expect(sent()[0]!.subject).toBe(`Appointment #${booking.bookingNumber} cancelled`);
     expect(sent()[0]!.html).toContain(`/admin/telehealth/bookings/${booking.bookingId}`);
     expect(sent()[0]!.text).not.toContain("hasta istedi");
 
-    const second = await app.inject({ method: "POST", url: `/api/v1/appointments/${booking.appointments[0]!.id}/cancel`, headers: bearer(admin.token) });
+    const second = await inject(app, { method: "POST", url: `/api/v1/appointments/${booking.appointments[0]!.id}/cancel`, headers: bearer(admin.token) });
     expect(second.statusCode).toBe(409);
     expect(sent()).toHaveLength(1);
     expect(await app.prisma.adminNotification.findFirst({ where: { eventKey: `appointment:${booking.appointments[0]!.id}:cancelled` } })).not.toBeNull();
@@ -263,7 +281,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     const admin = await createAdmin(app);
     const { booking } = await paidScheduledBooking({ admin });
     mailSpy.mockClear();
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/cancel`, headers: bearer(admin.token) });
+    const res = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/cancel`, headers: bearer(admin.token) });
     expect(res.statusCode).toBe(200);
     expect(sent()).toHaveLength(1);
     expect(sent()[0]!.subject).toBe(`Appointment #${booking.bookingNumber} cancelled`);
@@ -272,7 +290,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     mailSpy.mockClear();
     const { doctor } = await createDoctorWithAvailability(app);
     const pending = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
-    const cancelPending = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${pending.bookingId}/cancel?t=${pending.accessToken}` });
+    const cancelPending = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${pending.bookingId}/cancel?t=${pending.accessToken}` });
     expect(cancelPending.statusCode).toBe(200);
     expect(sent()).toHaveLength(0);
   });
@@ -283,7 +301,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     mailSpy.mockClear();
     const appointmentId = booking.appointments[0]!.id;
 
-    const res = await app.inject({
+    const res = await inject(app, {
       method: "PATCH",
       url: `/api/v1/admin/telehealth/appointments/${appointmentId}/reschedule`,
       headers: bearer(admin.token),
@@ -307,7 +325,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
   describe("alici ayari", () => {
     it('ayar "" (bilerek bos) -> e-posta GITMEZ, kayit skipped', async () => {
       const admin = await createAdmin(app);
-      const patch = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: "" } });
+      const patch = await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: "" } });
       expect(patch.statusCode).toBe(200);
       expect(patch.json().data.bookingNotificationRecipients).toBe("");
       expect(patch.json().data.bookingNotificationRecipientsEffective).toEqual([]);
@@ -319,7 +337,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
 
     it("coklu adres: normalize edilir (kucuk harf, tekrarsiz) ve hepsine gider; null -> varsayilana doner", async () => {
       const admin = await createAdmin(app);
-      const patch = await app.inject({
+      const patch = await inject(app, {
         method: "PATCH",
         url: "/api/v1/admin/settings",
         headers: bearer(admin.token),
@@ -330,10 +348,11 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
       expect(patch.json().data.bookingNotificationRecipientsEffective).toEqual(["ops@example.com", "koordinator@example.com"]);
 
       await paidScheduledBooking({ admin });
-      expect(sent()).toHaveLength(1);
-      expect(sent()[0]!.to).toBe("ops@example.com, koordinator@example.com");
+      // Alıcı başına AYRI e-posta (tek `to` adresi).
+      expect(sent().map((m) => m.to).sort()).toEqual(["koordinator@example.com", "ops@example.com"]);
+      expect((await app.prisma.adminNotification.findFirstOrThrow()).status).toBe("sent");
 
-      const reset = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: null } });
+      const reset = await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: null } });
       expect(reset.json().data.bookingNotificationRecipients).toBeNull();
       expect(reset.json().data.bookingNotificationRecipientsEffective).toEqual(["admin@wmhealthistanbul.com"]);
 
@@ -344,7 +363,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
 
     it("gecersiz adres -> 422 (alan bookingNotificationRecipients, hangi adres) ve deger KAYDEDILMEZ", async () => {
       const admin = await createAdmin(app);
-      const res = await app.inject({
+      const res = await inject(app, {
         method: "PATCH",
         url: "/api/v1/admin/settings",
         headers: bearer(admin.token),
@@ -361,21 +380,21 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     it("11 adres -> 422; public GET /settings alici listesini SIZDIRMAZ, admin GET doner", async () => {
       const admin = await createAdmin(app);
       const many = Array.from({ length: 11 }, (_, i) => `a${i}@example.com`).join(",");
-      const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: many } });
+      const res = await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: many } });
       expect(res.statusCode).toBe(422);
 
-      await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: "gizli@example.com" } });
-      const pub = await app.inject({ method: "GET", url: "/api/v1/settings" });
+      await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: "gizli@example.com" } });
+      const pub = await inject(app, { method: "GET", url: "/api/v1/settings" });
       expect(pub.statusCode).toBe(200);
       expect(JSON.stringify(pub.json())).not.toContain("gizli@example.com");
       expect(pub.json().data).not.toHaveProperty("bookingNotificationRecipients");
-      const adm = await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: bearer(admin.token) });
+      const adm = await inject(app, { method: "GET", url: "/api/v1/admin/settings", headers: bearer(admin.token) });
       expect(adm.json().data.bookingNotificationRecipients).toBe("gizli@example.com");
     });
 
     it("yalnizca ADMIN ayari degistirebilir (MANAGER 403)", async () => {
       const manager = await createAdmin(app, "MANAGER");
-      const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(manager.token), payload: { bookingNotificationRecipients: "x@example.com" } });
+      const res = await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(manager.token), payload: { bookingNotificationRecipients: "x@example.com" } });
       expect(res.statusCode).toBe(403);
     });
   });
@@ -429,6 +448,105 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     });
   });
 
+  describe("istek bloklanmaz, alici basina gonderim, saklama, rol gorunurlugu", () => {
+    it("SMTP askidayken webhook YANITI beklemez (kayit senkron yazilir, gonderim arka planda); kapi acilinca gonderilir", async () => {
+      const { doctor } = await createDoctorWithAvailability(app);
+      const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
+      let release!: () => void;
+      mailGate = new Promise<void>((resolve) => (release = resolve));
+
+      const payloadString = JSON.stringify(checkoutEvent(booking.bookingId));
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/webhooks/stripe",
+        headers: { "content-type": "application/json", "stripe-signature": stripe.webhooks.generateTestHeaderString({ payload: payloadString, secret: env.STRIPE_WEBHOOK_SECRET }) },
+        payload: payloadString,
+      });
+      // Yanit SMTP kapisi KAPALIYKEN dondu; kayit hazir, e-posta henuz gitmedi.
+      expect(res.statusCode).toBe(200);
+      expect(sent()).toHaveLength(0);
+      expect(await app.prisma.adminNotification.count({ where: { eventKey: `booking:${booking.bookingId}:confirmed` } })).toBe(1);
+
+      release();
+      await waitForAdminNotifications();
+      expect(sent()).toHaveLength(1);
+      expect((await app.prisma.adminNotification.findFirstOrThrow()).status).toBe("sent");
+    });
+
+    it("kismi red: basarili alici payload.deliveredTo'ya yazilir; retry YALNIZ basarisiz aliciya gider (cift gonderim yok)", async () => {
+      const admin = await createAdmin(app);
+      await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: "a@example.com, b@example.com" } });
+      failFor.add("b@example.com");
+      await paidScheduledBooking({ admin });
+
+      expect(sent().map((m) => m.to)).toEqual(["a@example.com"]);
+      const pending = await app.prisma.adminNotification.findFirstOrThrow();
+      expect(pending.status).toBe("pending");
+      expect(pending.attempts).toBe(1);
+      expect((pending.payload as { deliveredTo: string[] }).deliveredTo).toEqual(["a@example.com"]);
+
+      failFor.clear();
+      const result = await runAdminNotificationSweep(app, new Date(Date.now() + 10 * 60_000));
+      expect(result).toMatchObject({ retried: 1, sent: 1 });
+      expect(sent().map((m) => m.to)).toEqual(["a@example.com", "b@example.com"]);
+      const done = await app.prisma.adminNotification.findFirstOrThrow();
+      expect(done.status).toBe("sent");
+      expect((done.payload as { deliveredTo: string[] }).deliveredTo.sort()).toEqual(["a@example.com", "b@example.com"]);
+    });
+
+    it("A->B->C->B saat degisikligi zincirinde UCUNCU olay da bildirilir (eventKey eski+yeni baslangic icerir)", async () => {
+      const admin = await createAdmin(app);
+      const { booking } = await paidScheduledBooking({ admin });
+      mailSpy.mockClear();
+      const appointmentId = booking.appointments[0]!.id;
+      const date = nextMondayNineAmUtc().toISOString().slice(0, 10);
+      for (const time of ["11:00", "12:00", "11:00"]) {
+        const res = await inject(app, { method: "PATCH", url: `/api/v1/admin/telehealth/appointments/${appointmentId}/reschedule`, headers: bearer(admin.token), payload: { newDate: date, newStartTime: time } });
+        expect(res.statusCode).toBe(200);
+      }
+      expect(sent()).toHaveLength(3);
+      const keys = (await app.prisma.adminNotification.findMany({ where: { kind: "rescheduled" } })).map((r) => r.eventKey);
+      expect(new Set(keys).size).toBe(3);
+    });
+
+    it("B-4: 90 gunden eski sent/skipped/failed kayitlar sweeper'da silinir; pending ve yeni kayitlar kalir", async () => {
+      const old = new Date(Date.now() - 100 * 24 * 60 * 60_000);
+      await app.prisma.adminNotification.createMany({
+        data: [
+          { eventKey: "k:old-sent", kind: "confirmed", status: "sent", createdAt: old },
+          { eventKey: "k:old-skipped", kind: "confirmed", status: "skipped", createdAt: old },
+          { eventKey: "k:old-failed", kind: "confirmed", status: "failed", createdAt: old },
+          { eventKey: "k:old-pending", kind: "confirmed", status: "pending", createdAt: old, nextAttemptAt: new Date(Date.now() + 3_600_000) },
+          { eventKey: "k:new-sent", kind: "confirmed", status: "sent" },
+        ],
+      });
+      await runAdminNotificationSweep(app);
+      expect((await app.prisma.adminNotification.findMany({ orderBy: { eventKey: "asc" } })).map((r) => r.eventKey)).toEqual(["k:new-sent", "k:old-pending"]);
+    });
+
+    it("GET /admin/settings: alici adresleri yalniz ADMIN'e dolu doner; MANAGER icin null / []", async () => {
+      const admin = await createAdmin(app);
+      const manager = await createAdmin(app, "MANAGER");
+      await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: "gizli@example.com" } });
+      const asAdmin = (await inject(app, { method: "GET", url: "/api/v1/admin/settings", headers: bearer(admin.token) })).json().data;
+      expect(asAdmin.bookingNotificationRecipients).toBe("gizli@example.com");
+      expect(asAdmin.bookingNotificationRecipientsEffective).toEqual(["gizli@example.com"]);
+      const asManager = await inject(app, { method: "GET", url: "/api/v1/admin/settings", headers: bearer(manager.token) });
+      expect(asManager.statusCode).toBe(200);
+      expect(asManager.json().data.bookingNotificationRecipients).toBeNull();
+      expect(asManager.json().data.bookingNotificationRecipientsEffective).toEqual([]);
+      expect(JSON.stringify(asManager.json())).not.toContain("gizli@example.com");
+    });
+
+    it("sikilastirilmis dogrulama: PATCH ':' '(' backslash '|' '%' '!' iceren adresleri 422 ile reddeder", async () => {
+      const admin = await createAdmin(app);
+      for (const bad of ["a:b@example.com", "a(b)@example.com", "a\\b@example.com", "a|b@example.com", "a%b@example.com", "a!b@example.com", "a..b@example.com"]) {
+        const res = await inject(app, { method: "PATCH", url: "/api/v1/admin/settings", headers: bearer(admin.token), payload: { bookingNotificationRecipients: bad } });
+        expect(res.statusCode, bad).toBe(422);
+      }
+    });
+  });
+
   describe("GET /admin/telehealth/bookings/:id (bildirim baglantisinin hedefi)", () => {
     it("ADMIN/MANAGER detayi gorur (tercuman dili dahil); USER 403; oturumsuz 401; olmayan 404", async () => {
       const admin = await createAdmin(app);
@@ -437,15 +555,15 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
       const { booking } = await paidScheduledBooking({ admin, interpreterLanguage: "ar" });
       const url = `/api/v1/admin/telehealth/bookings/${booking.bookingId}`;
 
-      const ok = await app.inject({ method: "GET", url, headers: bearer(admin.token) });
+      const ok = await inject(app, { method: "GET", url, headers: bearer(admin.token) });
       expect(ok.statusCode).toBe(200);
       expect(ok.json().data).toMatchObject({ id: booking.bookingId, bookingNumber: booking.bookingNumber, interpreterLanguage: "ar", locale: "tr", paymentStatus: "PAID", paidBy: "stripe" });
       expect(ok.json().data.patientName).toBe(PATIENT_NAME);
 
-      expect((await app.inject({ method: "GET", url, headers: bearer(manager.token) })).statusCode).toBe(200);
-      expect((await app.inject({ method: "GET", url, headers: bearer(user.token) })).statusCode).toBe(403);
-      expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
-      expect((await app.inject({ method: "GET", url: `/api/v1/admin/telehealth/bookings/${crypto.randomUUID()}`, headers: bearer(admin.token) })).statusCode).toBe(404);
+      expect((await inject(app, { method: "GET", url, headers: bearer(manager.token) })).statusCode).toBe(200);
+      expect((await inject(app, { method: "GET", url, headers: bearer(user.token) })).statusCode).toBe(403);
+      expect((await inject(app, { method: "GET", url })).statusCode).toBe(401);
+      expect((await inject(app, { method: "GET", url: `/api/v1/admin/telehealth/bookings/${crypto.randomUUID()}`, headers: bearer(admin.token) })).statusCode).toBe(404);
     });
   });
 });
@@ -458,6 +576,8 @@ describe("admin randevu bildirimi - demo odeme yolu (ENABLE_DEMO_PAYMENTS=true)"
     process.env.ENABLE_DEMO_PAYMENTS = "true";
     vi.resetModules();
     ({ buildApp } = await import("../../src/app"));
+    // resetModules sonrası bildirim modülü YENİ bir örnektir: bekleme fonksiyonu da oradan alınır.
+    drain = (await import("../../src/modules/telehealth/lib/admin-booking-notifications")).waitForAdminNotifications;
   });
   beforeEach(async () => {
     mailShouldFail = false;
@@ -468,10 +588,12 @@ describe("admin randevu bildirimi - demo odeme yolu (ENABLE_DEMO_PAYMENTS=true)"
     await setTelehealthModuleEnabled(app, true);
   });
   afterEach(async () => {
+    await drain();
     await resetDatabase(app.prisma);
     await app.close();
   });
   afterAll(() => {
+    drain = waitForAdminNotifications;
     delete process.env.ENABLE_DEMO_PAYMENTS;
     vi.resetModules();
   });
@@ -479,12 +601,12 @@ describe("admin randevu bildirimi - demo odeme yolu (ENABLE_DEMO_PAYMENTS=true)"
   it("demo odeme: tek e-posta ('Paid (demo)'); ikinci demo odeme 409 ve ek e-posta yok", async () => {
     const { doctor } = await createDoctorWithAvailability(app);
     const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}` });
+    const res = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}` });
     expect(res.statusCode).toBe(200);
     expect(sent()).toHaveLength(1);
     expect(sent()[0]!.text).toContain("Paid (demo)");
 
-    const again = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}` });
+    const again = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}` });
     expect(again.statusCode).toBe(409);
     expect(sent()).toHaveLength(1);
   });

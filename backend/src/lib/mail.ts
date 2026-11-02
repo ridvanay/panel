@@ -114,8 +114,16 @@ export async function buildTransporterFromEmailSettingsRow(row: EmailSettingsRow
     port: row.smtpPort,
     secure: row.smtpSecure,
     auth: row.smtpUser ? { user: row.smtpUser, pass } : undefined,
+    ...SMTP_TIMEOUTS,
   });
 }
+
+/**
+ * Paket AG - SMTP zaman asimlari (askida kalan baglanti istegi/sweeper'i sonsuz bloklamasin). Admin bildirimi kirasi
+ * (`admin-booking-notifications.ts::LEASE_MS`) bu surelerin USTUNDE kalmalidir.
+ */
+export const SMTP_TIMEOUT_MS = 15_000;
+const SMTP_TIMEOUTS = { connectionTimeout: SMTP_TIMEOUT_MS, greetingTimeout: SMTP_TIMEOUT_MS, socketTimeout: SMTP_TIMEOUT_MS } as const;
 
 interface ResolvedEmailConfig {
   source: EmailEffectiveSource;
@@ -163,6 +171,7 @@ async function buildTransporterForSource(app: FastifyInstance, config: ResolvedE
       port: env.SMTP_PORT,
       secure: env.SMTP_SECURE,
       auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+      ...SMTP_TIMEOUTS,
     });
   }
 
@@ -180,6 +189,7 @@ async function buildTransporterForSource(app: FastifyInstance, config: ResolvedE
       port: testAccount.smtp.port,
       secure: testAccount.smtp.secure,
       auth: { user: testAccount.user, pass: testAccount.pass },
+      ...SMTP_TIMEOUTS,
     });
   }
 
