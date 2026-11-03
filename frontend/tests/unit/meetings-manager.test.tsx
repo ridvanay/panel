@@ -449,6 +449,35 @@ describe("ADMIN gözetimi (S4)", () => {
   });
 });
 
+describe("hizmete bağlı toplantılar (AI İş 3)", () => {
+  const linked = (o: Partial<Meeting> = {}) => meeting({ id: "svc1", title: "Hizmet görüşmesi", serviceConsultation: { consultationNumber: "SVC-2026-0042" }, ...o });
+
+  it("'Service consultation · SVC-…' rozeti; düzenle / iptal / yeni bağlantı gizli, ev sahibine Katıl var", async () => {
+    api.listMeetings.mockResolvedValue(page([linked({ startsAt: new Date(Date.now() + 5 * 60_000).toISOString() })]));
+    await renderManager();
+    const row = screen.getByTestId("meeting-row");
+    expect(within(row).getByTestId("meeting-service-badge")).toHaveTextContent("Service consultation · SVC-2026-0042");
+    expect(within(row).getByTestId("meeting-service-note")).toBeInTheDocument();
+    expect(within(row).getByTestId("meeting-join")).toBeInTheDocument();
+    for (const id of ["meeting-edit", "meeting-cancel", "meeting-new-link"]) expect(within(row).queryByTestId(id)).not.toBeInTheDocument();
+  });
+
+  it("ADMIN 'Tüm toplantılar' görünümünde hizmete bağlı satır: rozet var, iptal ve katıl yok; bağlantısız satırda iptal sürer", async () => {
+    mockUser = { id: "admin1", role: "ADMIN", canHostMeetings: true, twoFactorEnabled: true, doctorProfileId: null };
+    api.listAdminMeetings.mockResolvedValue(page([linked({ hostName: "Ada K." }), meeting({ id: "plain1", title: "Düz toplantı", hostName: "Elif" })]));
+    await renderManager();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Tüm toplantılar" }));
+    });
+    const [svcRow, plainRow] = screen.getAllByTestId("meeting-row");
+    expect(within(svcRow!).getByTestId("meeting-service-badge")).toBeInTheDocument();
+    expect(within(svcRow!).queryByTestId("meeting-cancel")).not.toBeInTheDocument();
+    expect(within(svcRow!).queryByTestId("meeting-join")).not.toBeInTheDocument();
+    expect(within(plainRow!).queryByTestId("meeting-service-badge")).not.toBeInTheDocument();
+    expect(within(plainRow!).getByTestId("meeting-cancel")).toBeInTheDocument();
+  });
+});
+
 describe("2FA önerisi (S2) ve yetki kapısı", () => {
   it("2FA'sı olmayan ev sahibine zorunlu olmayan bilgilendirme gösterilir; liste yine yüklenir", async () => {
     mockUser = { id: "u1", role: "EDITOR", canHostMeetings: true, twoFactorEnabled: false, doctorProfileId: null };

@@ -3,8 +3,8 @@ import { filterVisibleNavItems, navItems } from "@/components/admin/sidebar";
 import type { SiteRole } from "@/lib/api/types";
 
 /**
- * Paket AG İş 3 — "Toplantılar" menü kuralları, genel harici toplantı özelliği AÇIKKEN (AI İş 3 hızlı sürümde bayrak
- * kapalıdır; bu dosya bayrağı yalnızca test içinde açar, böylece AG davranışı korunur).
+ * Paket AG İş 3 — "Toplantılar" menü kuralları, genel harici toplantı özelliği AÇIKKEN (varsayılan artık açık; bayrak burada
+ * yine de açıkça mock'lanır, böylece kural varsayılandan bağımsız doğrulanır).
  */
 vi.mock("@/lib/feature-flags", () => ({ EXTERNAL_MEETINGS_ENABLED: true }));
 

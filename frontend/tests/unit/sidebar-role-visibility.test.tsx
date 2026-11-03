@@ -16,9 +16,9 @@ function visibleCoordinatorHrefs(role: SiteRole, isServiceCoordinator: boolean |
 }
 
 describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
-  it("ADMIN sidebar'daki HER öğeyi görür (bayrakla kapalı Toplantılar ve koordinatöre özel Görüşmelerim hariç)", () => {
+  it("ADMIN sidebar'daki HER öğeyi görür (koordinatöre özel Görüşmelerim hariç; Toplantılar bayrak açıkken ADMIN'e görünür)", () => {
     const visible = visibleHrefsFor("ADMIN");
-    expect(visible).toEqual(navItems.map((item) => item.href).filter((href) => href !== "/admin/meetings" && href !== "/admin/my-consultations"));
+    expect(visible).toEqual(navItems.map((item) => item.href).filter((href) => href !== "/admin/my-consultations"));
   });
 
   it("MANAGER: Kullanıcılar/Ayarlar/Sistem Sağlığı/Loglar/İçe Aktarma GİZLİ, geri kalan panel operasyonu görünür", () => {
@@ -67,12 +67,13 @@ describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
     expect(visible).not.toContain("/admin/telehealth/appointments");
   });
 
-  // AI İş 3 hızlı sürüm — genel harici toplantı özelliği kapalı: "Toplantılar" hiç kimseye görünmez
-  // (bayrak açıkken davranış `sidebar-external-meetings-flag-on.test.tsx` içinde).
-  it("Toplantılar: EXTERNAL_MEETINGS_ENABLED kapalıyken ADMIN ve yetkili kullanıcılar için de GİZLİ", () => {
-    expect(visibleHrefsFor("ADMIN")).not.toContain("/admin/meetings");
+  // AG İş 3 — EXTERNAL_MEETINGS_ENABLED varsayılanı açık: "Toplantılar" ADMIN'e ve canHostMeetings yetkilisine görünür
+  // (kapalı durum `external-meetings-flag-off.test.tsx`, ayrıntılı kurallar `sidebar-external-meetings-flag-on.test.tsx` içinde).
+  it("Toplantılar: varsayılan bayrak açık — ADMIN ve yetkili kullanıcı görür, yetkisiz MANAGER/EDITOR görmez", () => {
+    expect(visibleHrefsFor("ADMIN")).toContain("/admin/meetings");
     for (const role of ["MANAGER", "EDITOR"] as const) {
-      expect(visibleHrefsFor(role, true), role).not.toContain("/admin/meetings");
+      expect(visibleHrefsFor(role, true), role).toContain("/admin/meetings");
+      expect(visibleHrefsFor(role, false), role).not.toContain("/admin/meetings");
     }
   });
 

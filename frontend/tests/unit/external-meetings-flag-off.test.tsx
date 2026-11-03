@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 /**
- * AI İş 3 hızlı sürüm — `EXTERNAL_MEETINGS_ENABLED = false`: AG ekranları (admin Toplantılar, doktor portalı toplantıları)
- * `notFound()` döner. Bayrak değeri gerçek modülden okunur (sabit `false`), mock'lanmaz.
+ * `EXTERNAL_MEETINGS_ENABLED = false` (kapatma anahtarı): AG ekranları (admin Toplantılar, doktor portalı toplantıları)
+ * `notFound()` döner. Varsayılan artık `true` olduğundan kapalı durum bayrak mock'lanarak korunur.
  */
+vi.mock("@/lib/feature-flags", () => ({ EXTERNAL_MEETINGS_ENABLED: false }));
+
 class NotFoundError extends Error {}
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -20,7 +22,7 @@ import AdminMeetingsPage from "@/app/admin/meetings/page";
 import DoctorMeetingsPage from "@/app/[lang]/(doctor)/doctor/meetings/page";
 
 describe("harici toplantılar bayrağı kapalı", () => {
-  it("varsayılan olarak kapalıdır", () => {
+  it("mock bayrak kapalıdır", () => {
     expect(EXTERNAL_MEETINGS_ENABLED).toBe(false);
   });
 
