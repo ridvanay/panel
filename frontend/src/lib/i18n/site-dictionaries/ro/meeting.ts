@@ -119,7 +119,7 @@ export const meetingStrings: MeetingStrings = {
   hostBadge: "Gazdă",
   removeGuest: "Scoateți",
   removeGuestAria: "Scoateți-l pe {name} din întâlnire",
-  guestRemovedToast: "{name} a fost scos.",
+  guestRemovedToast: "{name} a fost scos. Pentru a-l împiedica să revină, creați un link nou pentru invitați.",
 
   leave: "Părăsiți",
   leaveAria: "Părăsiți întâlnirea",

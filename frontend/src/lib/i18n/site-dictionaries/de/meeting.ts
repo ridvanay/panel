@@ -119,7 +119,7 @@ export const meetingStrings: MeetingStrings = {
   hostBadge: "Gastgeber",
   removeGuest: "Entfernen",
   removeGuestAria: "{name} aus dem Meeting entfernen",
-  guestRemovedToast: "{name} wurde entfernt.",
+  guestRemovedToast: "{name} wurde entfernt. Um ein erneutes Beitreten zu verhindern, erstellen Sie einen neuen Gastlink.",
 
   leave: "Verlassen",
   leaveAria: "Meeting verlassen",

@@ -119,7 +119,7 @@ export const meetingStrings: MeetingStrings = {
   hostBadge: "Ev sahibi",
   removeGuest: "Çıkar",
   removeGuestAria: "{name} kişisini toplantıdan çıkar",
-  guestRemovedToast: "{name} çıkarıldı.",
+  guestRemovedToast: "{name} çıkarıldı. Yeniden katılmasını engellemek için yeni misafir bağlantısı üretin.",
 
   leave: "Ayrıl",
   leaveAria: "Toplantıdan ayrıl",

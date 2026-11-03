@@ -119,7 +119,7 @@ export const meetingStrings: MeetingStrings = {
   hostBadge: "Организатор",
   removeGuest: "Удалить",
   removeGuestAria: "Удалить участника {name} из встречи",
-  guestRemovedToast: "Участник {name} удалён.",
+  guestRemovedToast: "Участник {name} удалён. Чтобы он не смог вернуться, создайте новую гостевую ссылку.",
 
   leave: "Выйти",
   leaveAria: "Выйти из встречи",
