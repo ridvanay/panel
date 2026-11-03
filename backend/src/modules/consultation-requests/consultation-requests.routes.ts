@@ -4,7 +4,6 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { ok } from "../../lib/envelope";
 import { ValidationError } from "../../lib/errors";
-import { encryptSecret } from "../../lib/crypto";
 import { COUNTRY_CODES } from "../../lib/country-codes";
 import { LOCALE_CODE_PATTERN } from "../../lib/localization";
 import { CONTACT_SUBMIT_RATE_LIMIT } from "../../lib/rate-limit";
@@ -13,6 +12,7 @@ import { normalizeEmail, normalizePhone } from "../crm/crm.leads";
 import { sanitizeText } from "../crm/crm.privacy";
 import { pickLocale, type PackageText } from "../packages/packages.shared";
 import { notifyAdminsOfBookingEvent, trackAdminBackgroundTask } from "../telehealth/lib/admin-booking-notifications";
+import { createLeadAndConsultationRequest } from "./consultation-requests.records";
 import { buildConsultationConfirmationEmail, formatRequestNumber } from "./consultation-request-email";
 
 /**
@@ -152,54 +152,30 @@ export async function consultationRequestsPublicRoutes(app: FastifyInstance) {
       });
       if (duplicate) return reply.status(201).send(ok({ requestNumber: formatRequestNumber(duplicate.seq) }));
 
-      const requestId = crypto.randomUUID();
-      const created = await app.prisma.$transaction(async (tx) => {
-        const lead = await tx.crmLead.create({
-          data: {
-            channel: "CONSULTATION_REQUEST",
-            status: "NEW",
-            name: fullName,
-            email,
-            phone,
-            country: body.country,
-            language: body.contactLanguage,
-            specialtyId: specialty?.id ?? null,
-            specialtyName: serviceName,
-            landingPath: "/request",
-            sourceRefId: requestId,
-            nextActionAt: now,
-          },
-        });
-        const created = await tx.consultationRequest.create({
-          data: {
-            id: requestId,
-            leadId: lead.id,
-            specialtyId: specialty?.id ?? null,
-            packageId: pkg?.id ?? null,
-            serviceName,
-            preferredFrom: toDate(body.preferredFrom),
-            preferredTo: toDate(body.preferredTo),
-            country: body.country,
-            contactLanguage: body.contactLanguage,
-            needsInterpreter: body.needsInterpreter,
-            preferredContactChannel: body.preferredContactChannel ?? null,
-            fullName,
-            email,
-            phone,
-            // Mesaj saglik verisi icerebilir: yalniz saglik rizasiyla, AES-256-GCM sifreli saklanir.
-            messageEncrypted: message && body.healthDataConsent ? encryptSecret(message) : null,
-            contactConsentAt: now,
-            // Veri minimizasyonu: saglik rizasi yalnizca mesaj yazildiysa kayda gecer.
-            healthDataConsentAt: message && body.healthDataConsent ? now : null,
-            consentTextVersion: body.consentTextVersion && CONSULTATION_CONSENT_TEXT_VERSIONS.includes(body.consentTextVersion) ? body.consentTextVersion : CONSULTATION_CONSENT_TEXT_VERSION,
-            locale: body.locale,
-            ipAddress: request.ip ?? null,
-            userAgent: sanitizeText(request.headers["user-agent"], 300) || null,
-          },
-          select: { id: true, seq: true },
-        });
-        return created;
-      });
+      const created = await app.prisma.$transaction((tx) =>
+        createLeadAndConsultationRequest(tx, {
+          fullName,
+          email,
+          phone,
+          country: body.country,
+          contactLanguage: body.contactLanguage,
+          specialtyId: specialty?.id ?? null,
+          packageId: pkg?.id ?? null,
+          serviceName,
+          landingPath: "/request",
+          preferredFrom: toDate(body.preferredFrom),
+          preferredTo: toDate(body.preferredTo),
+          needsInterpreter: body.needsInterpreter,
+          preferredContactChannel: body.preferredContactChannel ?? null,
+          message,
+          healthDataConsent: body.healthDataConsent,
+          consentTextVersion: body.consentTextVersion && CONSULTATION_CONSENT_TEXT_VERSIONS.includes(body.consentTextVersion) ? body.consentTextVersion : CONSULTATION_CONSENT_TEXT_VERSION,
+          locale: body.locale,
+          ipAddress: request.ip ?? null,
+          userAgent: sanitizeText(request.headers["user-agent"], 300) || null,
+          now,
+        })
+      );
       const requestNumber = formatRequestNumber(created.seq);
 
       // Bildirimler istegin DISINDA (arka planda) calisir; hata yutulur, yanit SMTP'yi/sayaclari beklemez.

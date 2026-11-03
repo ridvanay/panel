@@ -109,6 +109,10 @@ import { matcherPublicRoutes } from "./modules/matcher/matcher.routes";
 import { matcherAdminRoutes } from "./modules/matcher/matcher.admin.routes";
 import { reviewsPublicRoutes } from "./modules/reviews/reviews.routes";
 import { packagesPublicRoutes } from "./modules/packages/packages.routes";
+import { registerServiceConsultationReminderSweeper } from "./modules/service-consultations/service-consultation-reminders";
+import { coordinatorRoutes } from "./modules/service-consultations/coordinator.routes";
+import { serviceDeskAdminRoutes } from "./modules/service-consultations/service-desk.admin.routes";
+import { serviceConsultationsPublicRoutes } from "./modules/service-consultations/service-consultations.routes";
 import { consultationRequestsPublicRoutes } from "./modules/consultation-requests/consultation-requests.routes";
 import { adminContactChannelsRoutes, adminDestinationsRoutes, adminPackagesRoutes } from "./modules/packages/packages.admin.routes";
 import { reviewsPatientRoutes } from "./modules/reviews/reviews.patient.routes";
@@ -420,6 +424,11 @@ export function buildApp() {
       api.register(packagesPublicRoutes);
       // Paket AH - bölüm/paket bazlı danışma talebi formu (randevu/ödeme yerine).
       api.register(consultationRequestsPublicRoutes);
+      // Paket AI (İş 3, hızlı sürüm) — hizmet bazlı online ön görüşme (hasta koordinatörü): herkese açık rezervasyon/yönetim
+      // bağlantısı uçları, koordinatör ve hizmet masası admin uçları. Görüşme AG `meet_` odalarında yapılır.
+      api.register(serviceConsultationsPublicRoutes, { prefix: "/service-consultations" });
+      api.register(coordinatorRoutes, { prefix: "/coordinator" });
+      api.register(serviceDeskAdminRoutes, { prefix: "/admin/service-desk" });
       api.register(adminPackagesRoutes, { prefix: "/admin/packages" });
       api.register(adminDestinationsRoutes, { prefix: "/admin/destinations" });
       api.register(adminContactChannelsRoutes, { prefix: "/admin/telehealth/settings/contact-channels" });
@@ -547,6 +556,14 @@ export function buildApp() {
       registerAppointmentReminderSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu hatırlatma (appointment-reminders) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket AI (İş 3) — hizmet görüşmesi hatırlatmaları (24 saat bağlantısız, 60 dk yeni katılım bağlantısıyla). Test
+      // ortamında kayıt edilmez: testler `runServiceConsultationReminderSweep`'i elle çağırır.
+      if (env.NODE_ENV !== "test") registerServiceConsultationReminderSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Hizmet görüşmesi hatırlatma scheduler kurulumu başarısız oldu.");
     }
 
     try {

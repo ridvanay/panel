@@ -166,10 +166,11 @@ export async function assertNotServiceManaged(app: FastifyInstance, meetingId: s
 }
 
 export interface CancelContext {
-  actorId: string;
-  actorEmail: string;
+  /** Hasta yonetim baglantisiyla iptalde (`source: "service"`) kisi yoktur. */
+  actorId: string | null;
+  actorEmail: string | null;
   ipAddress: string | null;
-  source: "host" | "admin";
+  source: "host" | "admin" | "service";
 }
 
 /**
@@ -183,6 +184,12 @@ export async function cancelMeeting(app: FastifyInstance, meeting: ExternalMeeti
     where: { id: meeting.id },
     data: { status: "CANCELLED", cancelledAt: now, cancelledById: ctx.actorId, guestTokenHash: null, guestTokenCreatedAt: null },
   });
+  await afterMeetingCancelled(app, updated, ctx);
+  return updated;
+}
+
+/** Iptal sonrasi adimlar (audit + odadakileri best-effort atma); durum guncellemesi cagirana aittir (AI hizmet masasi kendi islemiyle yazar). */
+export async function afterMeetingCancelled(app: FastifyInstance, meeting: ExternalMeeting, ctx: CancelContext): Promise<void> {
   await logAudit(app, {
     actorId: ctx.actorId,
     actorEmail: ctx.actorEmail,
@@ -197,5 +204,4 @@ export async function cancelMeeting(app: FastifyInstance, meeting: ExternalMeeti
   } catch (err) {
     app.log.warn({ err, meetingId: meeting.id }, "İptal edilen toplantının odası hemen boşaltılamadı; süpürücü tekrar deneyecek.");
   }
-  return updated;
 }

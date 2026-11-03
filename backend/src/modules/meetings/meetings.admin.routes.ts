@@ -60,6 +60,7 @@ export async function adminMeetingsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const meeting = await app.prisma.externalMeeting.findUnique({ where: { id: request.params.id }, include: { host: HOST_SELECT } });
       if (!meeting) throw new MeetingNotFoundError();
+      await assertNotServiceManaged(app, meeting.id);
       if (meeting.status !== "CANCELLED" && computePhase(meeting) === "ended") throw new MeetingNotEditableError("Biten bir toplantı iptal edilemez.");
       const updated = await cancelMeeting(app, meeting, {
         actorId: request.user!.id,

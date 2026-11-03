@@ -136,6 +136,8 @@ export const GuestPreflightResponseSchema = z.object({
   startsAt: z.string(),
   endsAt: z.string(),
   phase: z.enum(["upcoming", "open"]),
+  /** AI İş 3: hizmet görüşmesine bağlı toplantıda `service_consultation` (misafir ekranı amaç metinlerini seçer). */
+  purpose: z.enum(["general", "service_consultation"]),
 });
 
 export const GuestJoinResponseSchema = z.discriminatedUnion("status", [

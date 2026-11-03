@@ -25,6 +25,7 @@ import { buildPackageConfirmationEmail, buildPackageInquiryNotice, toPackageEmai
 import { buildBookingNotificationEmail, type BookingNotificationEmailData } from "../telehealth/lib/booking-notification-email";
 import { buildConsultationAdminEmail, buildConsultationConfirmationEmail } from "../consultation-requests/consultation-request-email";
 import { buildMeetingInviteEmail } from "../telehealth/lib/meeting-invite-email";
+import { buildPatientServiceEmail, buildStaffServiceEmail } from "../service-consultations/service-consultation-email";
 import { renderTemplatePreviewOrTest } from "./email-templates.service";
 
 /**
@@ -81,6 +82,13 @@ const CODE_ENTRIES: SystemEmailEntry[] = [
   { id: "code:consultation-request-confirmation", label: "Danışma talebi alındı (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
   { id: "code:consultation-request-admin", label: "Yeni danışma talebi bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
   { id: "code:meeting-invite", label: "Görüntülü toplantı daveti (dış katılımcı)", audience: "user", source: "code", languages: "8" },
+  { id: "code:service-consultation-confirmed", label: "Online görüşme onayı (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
+  { id: "code:service-consultation-rescheduled", label: "Online görüşme saat değişikliği (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
+  { id: "code:service-consultation-reminder-24h", label: "Online görüşme hatırlatması - 24 saat (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
+  { id: "code:service-consultation-reminder-60m", label: "Online görüşme hatırlatması - 60 dk, yeni bağlantı (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
+  { id: "code:service-consultation-cancelled", label: "Online görüşme iptali (ziyaretçi)", audience: "patient", source: "code", languages: "8" },
+  { id: "code:service-consultation-admin", label: "Yeni online görüşme bildirimi (yönetici)", audience: "staff", source: "code", languages: "en" },
+  { id: "code:service-consultation-coordinator", label: "Online görüşme koordinatör ataması", audience: "staff", source: "code", languages: "en" },
   { id: "code:smtp-test", label: "SMTP yapılandırma testi", audience: "staff", source: "code", languages: "tr" },
 ];
 
@@ -216,6 +224,52 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
         joinUrl: `${base}/${toCustomerEmailLocale(locale)}/meet/join#mg_sample`,
       });
       return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, afterCtaHtml: mail.afterCtaHtml };
+    }
+    case "code:service-consultation-confirmed":
+    case "code:service-consultation-rescheduled":
+    case "code:service-consultation-reminder-24h":
+    case "code:service-consultation-reminder-60m":
+    case "code:service-consultation-cancelled": {
+      const kind = id.endsWith("confirmed")
+        ? "confirmed"
+        : id.endsWith("rescheduled")
+          ? "rescheduled"
+          : id.endsWith("24h")
+            ? "reminder24h"
+            : id.endsWith("60m")
+              ? "reminder60m"
+              : "cancelled";
+      const loc = toCustomerEmailLocale(locale);
+      const mail = buildPatientServiceEmail({
+        kind,
+        locale,
+        consultationNumber: "SVC-00042",
+        startsAt: SAMPLE_DATE,
+        durationMin: 30,
+        patientTimeZone: "Europe/Berlin",
+        joinUrl: `${base}/${loc}/meet/join#mg_sample`,
+        manageUrl: `${base}/${loc}/book-consultation/manage#sc_sample`,
+        bookAgainUrl: `${base}/${loc}/book-consultation`,
+      });
+      return { subject: mail.subject, bodyHtml: mail.bodyHtml, ...(mail.cta ? { cta: mail.cta } : {}), ...(mail.afterCtaHtml ? { afterCtaHtml: mail.afterCtaHtml } : {}) };
+    }
+    case "code:service-consultation-admin":
+    case "code:service-consultation-coordinator": {
+      const mail = buildStaffServiceEmail({
+        event: "booked",
+        audience: id.endsWith("admin") ? "admin" : "coordinator",
+        consultationNumber: "SVC-00042",
+        serviceName: "Gastroenterology",
+        startsAt: SAMPLE_DATE,
+        durationMin: 30,
+        coordinatorName: "Mina K.",
+        contactLanguage: "ar",
+        needsInterpreter: false,
+        interpreterLanguage: null,
+        consultationId: "00000000-0000-4000-8000-000000000000",
+        frontendUrl: base,
+      });
+      return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta };
     }
     case "code:smtp-test":
       return { subject: TEST_EMAIL_SUBJECT, bodyHtml: TEST_EMAIL_HTML };
