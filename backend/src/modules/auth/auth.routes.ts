@@ -181,7 +181,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
       const user = await app.prisma.user.findUnique({
         where: { id: userId },
-        include: { doctorProfile: { select: { id: true } } },
+        include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
       });
       if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
         throw new UnauthorizedError();

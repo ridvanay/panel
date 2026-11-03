@@ -213,7 +213,7 @@ export function toUserDto(user: UserWithDoctorLink): UserDto {
     canUseAdvancedBuilder: canUseAdvancedBuilder(user),
     // Paket AG (İş 3) — bkz. lib/meeting-host.ts (TEK türetme kaynağı).
     canHostMeetings: canHostMeetings(user),
-    // Paket AI (İş 3) — TÜRETİLMİŞ: aktif CoordinatorProfile (yalnızca /users/me ilişkiyi yükler; diğer yerlerde false).
+    // Paket AI (İş 3) — TÜRETİLMİŞ: aktif CoordinatorProfile (/users/me ve auth me/login/refresh ilişkiyi yükler; yüklemeyen yerlerde false).
     isServiceCoordinator: Boolean(user.coordinatorProfile?.isActive) && !user.doctorProfile && (user.role === "EDITOR" || user.role === "MANAGER"),
     doctorProfileId: user.doctorProfile?.id ?? null,
   };

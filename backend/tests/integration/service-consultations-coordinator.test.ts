@@ -72,6 +72,8 @@ describe("Paket AI - koordinator, misafir katilimi, hatirlatmalar", () => {
       expect((await api("GET", "/coordinator/consultations")).statusCode).toBe(401);
       expect((await api("GET", "/users/me", undefined, bearer(editor))).json().data.isServiceCoordinator).toBe(false);
       expect((await api("GET", "/users/me", undefined, bearer(c1))).json().data.isServiceCoordinator).toBe(true);
+      // Frontend oturum bağlamı /auth/me kullanır (e2e bulgusu B1): bayrak orada da türetilmeli.
+      expect((await api("GET", "/auth/me", undefined, bearer(c1))).json().data.user.isServiceCoordinator).toBe(true);
       await app.prisma.coordinatorProfile.update({ where: { id: c1.profileId }, data: { isActive: false } });
       expect((await api("GET", "/users/me", undefined, bearer(c1))).json().data.isServiceCoordinator).toBe(false);
       expect((await api("GET", "/coordinator/consultations", undefined, bearer(c1))).statusCode).toBe(403);

@@ -4,7 +4,7 @@ import type { User } from "@prisma/client";
 
 // [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto`'nun gerektirdiği `doctorProfile`
 // İLİŞKİSİ ile GENİŞLETİLMİŞ `User` — `mappers/index.ts::UserWithDoctorLink` İLE AYNI şekil.
-type UserWithDoctorLink = User & { doctorProfile: { id: string } | null };
+type UserWithDoctorLink = User & { doctorProfile: { id: string } | null; coordinatorProfile?: { isActive: boolean } | null };
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { signAccessToken, signChallengeToken } from "../../lib/jwt";
@@ -173,7 +173,7 @@ export async function login(
 ): Promise<LoginResult> {
   const user = await app.prisma.user.findUnique({
     where: { email: input.email.toLowerCase() },
-    include: { doctorProfile: { select: { id: true } } },
+    include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
   });
   // E-posta ve şifre hatalarını ayırt etmiyoruz: hangi alanın yanlış olduğunu sızdırmamak için.
   if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
@@ -228,7 +228,7 @@ export async function verifyEmail(
 ): Promise<{ user: UserWithDoctorLink; tokens: TokenIssue }> {
   const user = await app.prisma.user.findUnique({
     where: { email: input.email.toLowerCase() },
-    include: { doctorProfile: { select: { id: true } } },
+    include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
   });
 
   // §4.3/security-review §4.3 netleştirmesi — `userId === null` OLSA BİLE gerçek bir
@@ -242,7 +242,7 @@ export async function verifyEmail(
   const verifiedUser = await app.prisma.user.update({
     where: { id: user.id },
     data: { emailVerifiedAt: new Date() },
-    include: { doctorProfile: { select: { id: true } } },
+    include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
   });
 
   const tokens = await issueTokenPair(app, verifiedUser, meta);
@@ -346,7 +346,7 @@ export async function activateAccount(
 
   const activatedUser = await app.prisma.user.findUniqueOrThrow({
     where: { id: user.id },
-    include: { doctorProfile: { select: { id: true } } },
+    include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
   });
 
   const tokens = await issueTokenPair(app, activatedUser, meta);
@@ -504,7 +504,7 @@ export async function resetPassword(app: FastifyInstance, rawToken: string, newP
 export async function getSession(app: FastifyInstance, userId: string) {
   const user = await app.prisma.user.findUnique({
     where: { id: userId },
-    include: { doctorProfile: { select: { id: true } } },
+    include: { doctorProfile: { select: { id: true } }, coordinatorProfile: { select: { isActive: true } } },
   });
   if (!user) {
     throw new NotFoundError("Kullanıcı bulunamadı.");
