@@ -186,8 +186,8 @@ describe("preflight", () => {
     const res = await post("preflight", { t: live.token });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
-    expect(Object.keys(data).sort()).toEqual(["endsAt", "hostName", "phase", "startsAt", "title"]);
-    expect(data).toMatchObject({ title: "Koordinasyon görüşmesi", hostName: "Ev Sahibi Hesap", phase: "upcoming" });
+    expect(Object.keys(data).sort()).toEqual(["endsAt", "hostName", "phase", "purpose", "startsAt", "title"]);
+    expect(data).toMatchObject({ title: "Koordinasyon görüşmesi", hostName: "Ev Sahibi Hesap", phase: "upcoming", purpose: "general" });
     expect(res.body).not.toMatch(/ÇOK-GİZLİ|example\.com|meet_|mg_|"id"/);
     expect((await post("preflight", { t: (await seed({ startsInMin: 5 })).token })).json().data.phase).toBe("open");
     // preflight misafir kaydı oluşturmaz
