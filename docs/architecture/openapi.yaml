@@ -72,6 +72,8 @@ x-site-rbac:
     değiştirilmez.
 
 tags:
+  - name: ServiceConsultations
+    description: Paket AI (İş 3) — hizmet bazlı ücretsiz online ön görüşme (hasta koordinatörü), koordinatör ve hizmet masası uçları.
   - name: CRM
     description: Paket N — ziyaretçi analitiği, talep yönetimi, hasta yolculuğu, Google entegrasyonları.
   - name: Auth
@@ -4982,6 +4984,399 @@ paths:
                       data: { $ref: "#/components/schemas/CreateConsultationRequestResponse" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /service-consultations/config:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Paket AI — hizmet bazlı online ön görüşme: rezervasyon açık mı (public, 60 sn önbellek)"
+      description: >
+        `enabled` = `SiteSettings.serviceBookingEnabled` AÇIK && ≥1 aktif koordinatör (ACTIVE kullanıcı, doktor profili yok)
+        && ≥1 çalışma saati. Kapalıyken arayüz düğmeleri `/request` talep formuna yönlenir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [enabled, timeZone, durationMin, minNoticeMin, horizonDays]
+                        properties:
+                          enabled: { type: boolean }
+                          timeZone: { type: string, example: Europe/Istanbul }
+                          durationMin: { type: integer, example: 30 }
+                          minNoticeMin: { type: integer, example: 120 }
+                          horizonDays: { type: integer, example: 30 }
+
+  /service-consultations/slots:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Uygun görüşme slotları (masa diliminde gün aralığı, ≤ 31 gün; koordinatör bilgisi DÖNMEZ)"
+      description: Rate limit 60/dk IP. Kapalıyken 404 `SERVICE_NOT_BOOKABLE`. `days[].status`= available | full | closed (masa diliminde).
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [timeZone, durationMin, slots, days]
+                        properties:
+                          timeZone: { type: string }
+                          durationMin: { type: integer }
+                          slots:
+                            type: array
+                            items:
+                              type: object
+                              required: [startsAt, endsAt]
+                              properties: { startsAt: { type: string, format: date-time }, endsAt: { type: string, format: date-time } }
+                          days:
+                            type: array
+                            items:
+                              type: object
+                              required: [date, status]
+                              properties: { date: { type: string, format: date }, status: { type: string, enum: [available, full, closed] } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /service-consultations:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Online ön görüşme rezervasyonu (ücretsiz; oturum isteğe bağlı)"
+      description: >
+        Gövde = `POST /consultation-requests` gövdesi (aynı alanlar ve kurallar; `specialtySlug`, `serviceSlug` takma adıdır) +
+        `startsAt` (ISO, ofsetli), `patientTimeZone` (IANA), `interpreterLanguage?`. Hizmet ZORUNLU. Tek Serializable işlemde:
+        CrmLead + ConsultationRequest (kişisel veri, rızalar `service-consultation-v1`) + ExternalMeeting (`meet_`, genel başlık,
+        `autoAdmitGuests=false`, `maxParticipants=3`) + ServiceConsultation + koordinatör `lastAssignedAt`. Koordinatör sunucuda
+        atanır (dil → o gün en az görüşme → en eski lastAssignedAt → rastgele). Yanıtta bağlantı/belirteç YOKTUR; katılım
+        (`/{lang}/meet/join#mg_…`) ve yönetim (`/{lang}/book-consultation/manage#sc_…`) bağlantıları yalnızca e-postaya gider.
+        Konu satırında hizmet adı yoktur. Honeypot (`website`) doluysa sahte 201. Rate limit: 5/dk IP + IP başına günde 10.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [country, contactLanguage, needsInterpreter, fullName, email, contactConsent, locale, startsAt, patientTimeZone]
+              properties:
+                serviceSlug: { type: string, description: "Uzmanlık slug'ı (takma ad: specialtySlug)" }
+                packageSlug: { type: string, nullable: true }
+                country: { type: string }
+                contactLanguage: { type: string, enum: [en, de, ar, ru, fr, es, ro, sr-latn] }
+                needsInterpreter: { type: boolean }
+                interpreterLanguage: { type: string, nullable: true }
+                preferredContactChannel: { type: string, enum: [email, whatsapp, phone], nullable: true }
+                fullName: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string, nullable: true }
+                message: { type: string, nullable: true, maxLength: 1000 }
+                contactConsent: { type: boolean }
+                healthDataConsent: { type: boolean }
+                locale: { type: string }
+                website: { type: string, description: Honeypot }
+                startsAt: { type: string, format: date-time }
+                patientTimeZone: { type: string }
+      responses:
+        "201":
+          description: Rezervasyon oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [consultationNumber, startsAt, endsAt, durationMin, joinOpensAt]
+                        properties:
+                          consultationNumber: { type: string, example: SVC-00012 }
+                          startsAt: { type: string, format: date-time }
+                          endsAt: { type: string, format: date-time }
+                          durationMin: { type: integer }
+                          joinOpensAt: { type: string, format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /service-consultations/manage/lookup:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Yönetim bağlantısıyla görüşme özeti (geçersiz belirteç → tek tip 404)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [t], properties: { t: { type: string, description: "sc_… yönetim belirteci" } } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          consultationNumber: { type: string }
+                          status: { type: string, enum: [PENDING_PAYMENT, SCHEDULED, COMPLETED, CANCELLED, NO_SHOW] }
+                          startsAt: { type: string, format: date-time }
+                          endsAt: { type: string, format: date-time }
+                          durationMin: { type: integer }
+                          serviceName: { type: string }
+                          canCancel: { type: boolean, description: "SCHEDULED ve başlangıca ≥ 2 saat" }
+                          canReschedule: { type: boolean }
+                          joinOpensAt: { type: string, format: date-time }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /service-consultations/manage/cancel:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Hasta iptali (ExternalMeeting iptal edilir, katılım bağlantısı geçersiz olur; idempotent)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [t], properties: { t: { type: string } } }
+      responses:
+        "200":
+          description: İptal edildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { type: object, properties: { status: { type: string, enum: [CANCELLED] } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /service-consultations/manage/reschedule:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Hasta saat değişikliği (en çok 3; yeni katılım bağlantısı e-postayla, eskisi geçersiz)"
+      description: 409 `SLOT_TAKEN` | `CONSULTATION_NOT_CHANGEABLE`. Yanıt `manage/lookup` verisiyle aynı şekildedir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [t, startsAt, patientTimeZone]
+              properties:
+                t: { type: string }
+                startsAt: { type: string, format: date-time }
+                patientTimeZone: { type: string }
+      responses:
+        "200": { description: Güncellendi }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /coordinator/consultations:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Koordinatörün kendi görüşmeleri (scope=today|upcoming; today = masa diliminde bugün)"
+      description: >
+        Oturum + aktif CoordinatorProfile (ACTIVE kullanıcı, panel rolü, doktor profili yok); değilse 403
+        `SERVICE_COORDINATOR_FORBIDDEN`. Alanlar: id, consultationNumber, startsAt, endsAt, status, serviceName, patientName,
+        country, contactLanguage, needsInterpreter, interpreterLanguage, preferredContactChannel, hasMessage, patientTimeZone,
+        joinOpensAt, canJoin. `GET /users/me` yanıtında türetilmiş `isServiceCoordinator`.
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [today, upcoming], default: today } }
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /coordinator/consultations/{id}:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Görüşme detayı (+ e-posta, telefon; audit service_consultation.viewed). Başkasının kaydı/ADMIN → 404"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /coordinator/consultations/{id}/message:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Talep mesajı (2FA açık olmalı; her görüntüleme audit; Cache-Control no-store)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { type: object, properties: { message: { type: string, nullable: true } } }
+        "403": { description: "TWO_FACTOR_REQUIRED (hesapta 2FA kapalı)" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /coordinator/consultations/{id}/host-token:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Koordinatör katılım token'ı (AG POST /meetings/{id}/host-token ile AYNI yanıt biçimi)"
+      description: >
+        Pencere: başlangıç − 15 dk … bitiş (409 `MEETING_NOT_OPEN`, `details.reason`). Token adı
+        `Patient Coordinator · <displayName>`; ekran paylaşımı açık; kayıt/oda yönetimi yetkisi yok. 10/dk.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [token, serverUrl, roomName, expiresAt]
+                        properties:
+                          token: { type: string }
+                          serverUrl: { type: string }
+                          roomName: { type: string }
+                          expiresAt: { type: string, format: date-time }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/service-desk:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Hizmet masası özeti (ADMIN + MANAGER): masa, anahtar, saatler, yaklaşan tatiller, istatistik"
+      responses:
+        "200": { description: "{ desk, serviceBookingEnabled, hours[], closures[], stats{activeCoordinators,next7DaysSlots} }" }
+    patch:
+      tags: [ServiceConsultations]
+      summary: "Masa ayarları (durationMin 15–60 ve 5'in katı, minNoticeMin, horizonDays, maxParticipants, timeZone); serviceBookingEnabled yalnızca ADMIN"
+      description: "`paidEnabled: true` → 422 `PAID_CONSULTATIONS_DISABLED`."
+      responses:
+        "200": { description: Güncel özet }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/service-desk/hours:
+    put:
+      tags: [ServiceConsultations]
+      summary: "Haftalık çalışma saatlerinin tamamını değiştir (normalizeWeeklyRules/findWeeklyOverlaps)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hours]
+              properties:
+                hours:
+                  type: array
+                  items:
+                    type: object
+                    required: [dayOfWeek, startMinute, endMinute]
+                    properties: { dayOfWeek: { type: integer, minimum: 1, maximum: 7 }, startMinute: { type: integer }, endMinute: { type: integer } }
+      responses:
+        "200": { description: "{ hours: [...] }" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/service-desk/closures:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Tatil günü ekle (masa diliminde tam gün). O günde SCHEDULED görüşme varsa 409 CLOSURE_HAS_CONSULTATIONS (details.count)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [date], properties: { date: { type: string, format: date }, note: { type: string, nullable: true } } }
+      responses:
+        "201": { description: Eklendi }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/service-desk/closures/{id}:
+    delete:
+      tags: [ServiceConsultations]
+      summary: Tatil gününü sil
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Silindi }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/service-desk/coordinators:
+    get:
+      tags: [ServiceConsultations]
+      summary: Koordinatörler
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [ServiceConsultations]
+      summary: "Koordinatör ekle ({ userId, displayName?, languages[] }); doktor profilli/uygun olmayan kullanıcı → 422 COORDINATOR_NOT_ELIGIBLE"
+      responses:
+        "201": { description: Eklendi }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/service-desk/coordinator-candidates:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Aday kullanıcılar (aktif EDITOR/MANAGER, doktor profili yok, henüz koordinatör değil)"
+      responses:
+        "200": { description: OK }
+
+  /admin/service-desk/coordinators/{id}:
+    patch:
+      tags: [ServiceConsultations]
+      summary: "Koordinatör güncelle ({ displayName?, languages?, isActive? }); gelecek görüşmesi varken pasifleştirme → 409 COORDINATOR_HAS_UPCOMING_CONSULTATIONS (details.count)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/service-desk/consultations:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Görüşmeler (hasta adı yalnızca baş harfli); ?from&to&status&page&pageSize; meta {page,pageSize,total,hasNext}"
+      responses:
+        "200": { description: OK }
+
+  /admin/service-desk/consultations/{id}:
+    get:
+      tags: [ServiceConsultations]
+      summary: "Görüşme detayı (kişisel veri dahil; audit service_consultation.admin_viewed)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/service-desk/consultations/{id}/cancel:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Yönetici iptali ({ reason? }); hasta iptal e-postası + bildirim"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ status: CANCELLED }" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /admin/import/jobs:
     get:
