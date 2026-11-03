@@ -198,6 +198,8 @@ describe("Paket AI - koordinator, misafir katilimi, hatirlatmalar", () => {
       const res = await api("POST", "/meet/guest/preflight", { t: row.joinToken });
       expect(res.statusCode).toBe(200);
       expect(res.json().data).toMatchObject({ purpose: "service_consultation", hostName: "Patient Coordinator · Ayşe K.", title: "WM Health online consultation" });
+      // AG güvenlik düzeltmesi (B1): genel toplantı bağlantısı yalnızca ev sahibi hâlâ meeting-host yetkiliyse çalışır.
+      await app.prisma.user.update({ where: { id: c1.id }, data: { meetingHostGrantedAt: new Date() } });
       const generic = await app.prisma.externalMeeting.create({
         data: { hostUserId: c1.id, title: "Genel", startsAt: inMin(60), endsAt: inMin(90), durationMin: 30, roomName: `meet_${"b".repeat(32)}`, guestTokenHash: hashToken(`mg_${"G".repeat(43)}`) },
       });

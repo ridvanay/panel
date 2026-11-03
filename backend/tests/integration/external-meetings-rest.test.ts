@@ -37,6 +37,7 @@ import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { bearer, mkCoordinator, mkUser, nextIp, openDesk, seedConsultation } from "../helpers/service-desk";
 import { generateGuestToken } from "../../src/modules/meetings/meeting-tokens";
+import { inviteUserLimiter } from "../../src/modules/meetings/meetings.routes";
 
 let app: FastifyInstance;
 
@@ -186,5 +187,69 @@ describe("S5 — sonradan e-posta daveti", () => {
     const audits = await app.prisma.auditLog.findMany({ where: { action: "meeting.guest_link.created", targetId: id } });
     expect(audits.some((a) => (a.metadata as { via?: string } | null)?.via === "invite_email")).toBe(true);
     expect(JSON.stringify(await app.prisma.auditLog.findMany())).not.toMatch(/Konuk|mg_/);
+  });
+});
+
+describe("güvenlik inceleme bulguları", () => {
+  const preflight = (token: string) => app.inject({ method: "POST", url: "/api/v1/meet/guest/preflight", payload: { t: token }, remoteAddress: nextIp("10.90") });
+
+  it("B1: ev sahibi artık ev sahibi olamıyorsa (yetki geri alındı / rol düştü) misafir bağlantısı tek tip 404 verir", async () => {
+    const editor = await mkUser(app, "EDITOR", { meetingHostGrantedAt: new Date() });
+    const g = await seedGeneral(editor.id, 60);
+    expect((await preflight(g.token)).statusCode).toBe(200);
+    await app.prisma.user.update({ where: { id: editor.id }, data: { meetingHostGrantedAt: null } });
+    const res = await preflight(g.token);
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("MEETING_LINK_INVALID");
+
+    // hizmet görüşmesi: koordinatör uygunluğu (EDITOR/MANAGER + aktif profil + doktor profili yok); yetki damgası gerekmez
+    const coord = await mkCoordinator(app, { role: "EDITOR" });
+    const svc = await seedConsultation(app, { coordinatorProfileId: coord.profileId, coordinatorUserId: coord.id, startsAt: new Date(Date.now() + 3 * 3600_000) });
+    expect((await preflight(svc.joinToken)).statusCode).toBe(200);
+    await app.prisma.coordinatorProfile.update({ where: { id: coord.profileId }, data: { isActive: false } });
+    expect((await preflight(svc.joinToken)).statusCode).toBe(404);
+  });
+
+  it("B1: rol düşürme / askıya alma / silme sonrası gelecek GENEL toplantılar iptal edilir (hizmete bağlılar hariç), audit düşer", async () => {
+    const admin = await mkUser(app, "ADMIN");
+    for (const action of ["role", "suspend", "delete"] as const) {
+      const coord = await mkCoordinator(app, { role: "EDITOR" });
+      await app.prisma.user.update({ where: { id: coord.id }, data: { meetingHostGrantedAt: new Date() } });
+      const svc = await seedConsultation(app, { coordinatorProfileId: coord.profileId, coordinatorUserId: coord.id, startsAt: new Date(Date.now() + 3 * 3600_000) });
+      const general = await seedGeneral(coord.id, 120);
+      lk.rooms.set(general.meeting.roomName, ["meet-host:x"]);
+
+      const res =
+        action === "role"
+          ? await call("PATCH", `/admin/users/${coord.id}/role`, admin, { role: "CUSTOMER" })
+          : action === "suspend"
+            ? await call("PATCH", `/admin/users/${coord.id}/status`, admin, { status: "SUSPENDED" })
+            : await call("DELETE", `/admin/users/${coord.id}`, admin);
+      expect(res.statusCode, action).toBe(200);
+
+      expect((await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: general.meeting.id } })).status, action).toBe("CANCELLED");
+      expect((await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: svc.meeting.id } })).status, action).toBe("SCHEDULED");
+      const audit = await app.prisma.auditLog.findFirstOrThrow({ where: { action: "meeting.cancelled", targetId: general.meeting.id } });
+      expect(audit.metadata).toEqual({ source: "host_ineligible" });
+    }
+  });
+
+  it("B2: davet sınırı kullanıcı id'sine bağlı (IP değişince kaçılamaz) ve ev sahibi başına günlük 50", async () => {
+    const host = await mkUser(app, "ADMIN");
+    const created = await call("POST", "/meetings", host, { title: "Haftalık koordinasyon", startsAt: new Date(Date.now() + 3600_000).toISOString(), durationMin: 30 });
+    const id = created.json().data.meeting.id as string;
+    const guestLink = created.json().data.guestLink as string;
+    inviteUserLimiter.reset();
+    for (let i = 0; i < 5; i += 1) expect((await call("POST", `/meetings/${id}/invite-email`, host, { guestLink, email: `k${i}@example.com` })).statusCode).toBe(202);
+    const sixth = await call("POST", `/meetings/${id}/invite-email`, host, { guestLink, email: "k6@example.com" });
+    expect(sixth.statusCode).toBe(429);
+    expect(sixth.json().error.code).toBe("RATE_LIMITED");
+
+    inviteUserLimiter.reset();
+    await app.prisma.auditLog.deleteMany({ where: { action: "meeting.invite.sent" } });
+    await app.prisma.auditLog.createMany({ data: Array.from({ length: 50 }, () => ({ actorId: host.id, action: "meeting.invite.sent", targetType: "ExternalMeeting", targetId: id })) });
+    const capped = await call("POST", `/meetings/${id}/invite-email`, host, { guestLink, email: "gunluk@example.com" });
+    expect(capped.statusCode).toBe(429);
+    expect(lk.mail.some((m) => (m as { to: string }).to === "gunluk@example.com")).toBe(false);
   });
 });

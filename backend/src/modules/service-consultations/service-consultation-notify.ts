@@ -7,6 +7,7 @@ import { notifyAdminsOfBookingEvent, trackAdminBackgroundTask } from "../telehea
 import { buildGuestLink } from "../meetings/meeting-tokens";
 import { buildPatientServiceEmail, buildStaffServiceEmail, type ServiceEmailKind } from "./service-consultation-email";
 import { buildManageLink, formatConsultationNumber } from "./service-consultation-tokens";
+import { safeErrorMessage } from "../../lib/log-safe";
 
 /** Posta bombasina karsi: YALNIZ adres basina saatte 3 onay e-postasi (site geneli tavan YOK: gercek hastanin onayi engellenmesin). */
 export const CONFIRMATIONS_PER_ADDRESS_PER_HOUR = 3;
@@ -47,7 +48,7 @@ export async function sendPatientServiceEmail(
     });
     return true;
   } catch (err) {
-    app.log.warn({ err: (err as Error).message, consultationId: c.id, kind: params.kind }, "Hizmet görüşmesi hasta e-postası gönderilemedi (best-effort).");
+    app.log.warn({ err: safeErrorMessage(err), consultationId: c.id, kind: params.kind }, "Hizmet görüşmesi hasta e-postası gönderilemedi (best-effort).");
     return false;
   }
 }
@@ -109,7 +110,7 @@ export function notifyStaffOfServiceEvent(
         });
       }
       await sendCoordinatorEmails(app, params);
-    })().catch((err) => app.log.warn({ err: (err as Error).message }, "Hizmet görüşmesi personel bildirimi gönderilemedi (best-effort).")),
+    })().catch((err) => app.log.warn({ err: safeErrorMessage(err) }, "Hizmet görüşmesi personel bildirimi gönderilemedi (best-effort).")),
   );
 }
 

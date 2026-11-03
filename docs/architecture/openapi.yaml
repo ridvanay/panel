@@ -14956,7 +14956,7 @@ paths:
         (audience `user`): başlık, ev sahibinin görünen adı, zaman ve bağlantı; not, ev sahibi e-postası ve PII YOK.
         E-posta dili müşteri kuralına uyar: `tr` -> `en` (Türkçe e-posta gitmez), aracı kuruluş ibareli kurumsal alt bilgi. Alıcı adresi saklanmaz ve audit'e yazılmaz. Gönderim hatası 202'yi bozmaz (`sent: false`).
         Toplantı başına en çok 10 davet (`409 MEETING_LIMIT_REACHED`). Audit: `meeting.invite.sent` (`{count:1}`,
-        yalnız başarıda). **Hız sınırı:** 5 / dakika.
+        yalnız başarıda). **Hız sınırı:** 5 / dakika (IP) + kullanıcı id'si başına 5 / dakika + ev sahibi başına günlük 50 davet (429 `RATE_LIMITED`).
       requestBody:
         required: true
         content:

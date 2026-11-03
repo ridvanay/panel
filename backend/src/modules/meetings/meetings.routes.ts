@@ -7,6 +7,7 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { canHostMeetings } from "../../lib/meeting-host";
 import {
+  ApiError,
   ConflictError,
   LiveKitNotConfiguredError,
   MeetingLimitReachedError,
@@ -16,6 +17,8 @@ import {
   ValidationError,
 } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
+import { safeErrorMessage } from "../../lib/log-safe";
+import { MemoryRateLimiter } from "../../lib/memory-rate-limit";
 import { runSerializable } from "../../lib/serializable-tx";
 import { sendBrandedMail } from "../../lib/branded-mail";
 import { toCustomerEmailLocale } from "../../lib/branded-email";
@@ -62,6 +65,10 @@ import {
 
 /** Bekleme yoklaması bu süreden eski görülmüşse misafir artık "bekleyen" sayılmaz (sekme kapanmış). */
 const WAITING_FRESH_MS = 30_000;
+/** Davet e-postası: kullanıcı id'si anahtarlı dakikalık sınır (IP sınırına EK; ortak IP/NAT arkasında başkasının hakkını yemez) ve ev sahibi başına günlük tavan. */
+const INVITE_PER_USER_PER_MINUTE = 5;
+const INVITE_PER_HOST_PER_DAY = 50;
+export const inviteUserLimiter = new MemoryRateLimiter(INVITE_PER_USER_PER_MINUTE, 60_000);
 
 const HostMetaSchema = z.object({ nextCursor: z.string().nullable(), host: z.object({ twoFactorEnabled: z.boolean() }) });
 
@@ -416,6 +423,15 @@ export async function meetingsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
+      if (!inviteUserLimiter.tryConsume(`invite:${host.id}`)) {
+        throw new ApiError(429, "RATE_LIMITED", "Çok fazla davet isteği. Lütfen biraz sonra tekrar deneyin.", { retryAfterSeconds: ["60"] });
+      }
+      const sentToday = await app.prisma.auditLog.count({
+        where: { actorId: host.id, action: "meeting.invite.sent", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60_000) } },
+      });
+      if (sentToday >= INVITE_PER_HOST_PER_DAY) {
+        throw new ApiError(429, "RATE_LIMITED", `Günlük davet sınırına (${INVITE_PER_HOST_PER_DAY}) ulaşıldı.`, { retryAfterSeconds: ["3600"] });
+      }
       const meeting = await loadOwnManageableMeeting(app, request.params.id, host.id);
       const phase = computePhase(meeting);
       if (phase === "cancelled" || phase === "ended") throw new MeetingNotEditableError();
@@ -478,7 +494,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
         sent = true;
       } catch (err) {
         // Alıcı adresi saklanmaz / audit'e yazılmaz; yalnızca sonuç loglanır.
-        app.log.warn({ err: (err as Error).message, meetingId: meeting.id }, "Toplantı daveti e-postası gönderilemedi.");
+        app.log.warn({ err: safeErrorMessage(err), meetingId: meeting.id }, "Toplantı daveti e-postası gönderilemedi.");
       }
       if (sent) {
         await logAudit(app, {

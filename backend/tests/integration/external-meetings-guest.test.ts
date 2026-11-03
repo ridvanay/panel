@@ -32,6 +32,7 @@ vi.mock("../../src/modules/telehealth/lib/livekit", async (importOriginal) => {
 
 import { buildTestApp } from "../helpers/build-test-app";
 import { setExternalMeetingsEnabledForTests } from "../../src/lib/feature-flags";
+import { guestSessionIpLimiter } from "../../src/modules/meetings/meetings.guest.routes";
 import { resetDatabase } from "../helpers/reset-db";
 import { signAccessToken } from "../../src/lib/jwt";
 import { env } from "../../src/config/env";
@@ -314,6 +315,32 @@ describe("join — pencere, bekleme, kapasite, token", () => {
     expect(await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } })).toBe(50);
   });
 
+  it("B4: tavan yalnız çıkarılmamış ve son 24 saatteki oturumları sayar; IP başına toplantı başına en çok 10 yeni oturum", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, autoAdmit: true });
+    const old = new Date(Date.now() - 25 * 3600_000);
+    await app.prisma.externalMeetingGuest.createMany({
+      data: [
+        ...Array.from({ length: 30 }, (_, i) => ({ meetingId: meeting.id, displayName: `Çıkarılmış ${i}`, removedAt: new Date() })),
+        ...Array.from({ length: 30 }, (_, i) => ({ meetingId: meeting.id, displayName: `Eski ${i}`, createdAt: old })),
+      ],
+    });
+    // 60 satır var ama hiçbiri sayılmaz -> yeni oturum açılabilir
+    const okRes = await join(token, { name: "Yeni" });
+    expect(okRes.statusCode).toBe(200);
+
+    // IP başına 10: aynı IP'den 9 daha (toplam 10) olur, 11. reddedilir; başka IP etkilenmez
+    const ip = nextIp();
+    guestSessionIpLimiter.reset();
+    for (let i = 0; i < 10; i += 1) expect((await join(token, { name: `Ada ${i}` }, ip)).statusCode).toBe(200);
+    const blocked = await join(token, { name: "Ada fazla" }, ip);
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe("MEETING_FULL");
+    expect((await join(token, { name: "Başka IP" }, nextIp())).statusCode).toBe(200);
+    // yeniden bağlanma (mevcut oturum) sınırdan etkilenmez
+    const session = (await join(token, { name: "Kalıcı" }, nextIp())).json().data.guestSession as string;
+    expect((await join(token, { guestSession: session }, ip)).statusCode).toBe(200);
+  });
+
   it("ad zorunlu ve doğrulanır (422); toplantı bitişinde (endsAt) yeni katılım kapanır (404)", async () => {
     const { token } = await seed({ startsInMin: 0, autoAdmit: true });
     expect((await join(token)).statusCode).toBe(422);
@@ -406,8 +433,10 @@ describe("oran sınırı", () => {
   it("join: 30/dk IP (31. istek 429 RATE_LIMITED + Retry-After); başka IP etkilenmez", async () => {
     const { token } = await seed({ startsInMin: 0 });
     const ip = nextIp();
-    for (let i = 0; i < 30; i += 1) expect((await join(token, { name: "Ada" }, ip)).statusCode).toBe(200);
-    const blocked = await join(token, { name: "Ada" }, ip);
+    // Yoklama gibi mevcut oturumla çağrılar (yeni oturum açmaz; B4 IP-oturum sınırına takılmaz).
+    const session = (await join(token, { name: "Ada" }, ip)).json().data.guestSession as string;
+    for (let i = 1; i < 30; i += 1) expect((await join(token, { guestSession: session }, ip)).statusCode).toBe(200);
+    const blocked = await join(token, { guestSession: session }, ip);
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json().error.code).toBe("RATE_LIMITED");
     expect(blocked.headers["retry-after"]).toBeDefined();

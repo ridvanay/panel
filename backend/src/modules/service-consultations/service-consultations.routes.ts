@@ -39,6 +39,7 @@ import {
   ServiceSlotsQuerySchema,
   ServiceSlotsResponseSchema,
 } from "./service-consultations.schemas";
+import { safeErrorMessage } from "../../lib/log-safe";
 
 const SLOTS_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
 const BOOK_RATE_LIMIT = { max: 5, timeWindow: "1 minute", keyGenerator: (request: { ip: string }) => `svc-book:${ipRateKey(request.ip)}` };
@@ -198,7 +199,7 @@ export async function serviceConsultationsPublicRoutes(app: FastifyInstance) {
             await sendPatientEmailOrAlert(app, { consultation: c, email, kind: "confirmed", joinToken: booked.joinToken, manageToken: booked.manageToken });
           }
           await warnIfBookingVolumeHigh(app, now);
-        })().catch((err) => app.log.warn({ err: (err as Error).message }, "Hizmet görüşmesi onay e-postası gönderilemedi (best-effort).")),
+        })().catch((err) => app.log.warn({ err: safeErrorMessage(err) }, "Hizmet görüşmesi onay e-postası gönderilemedi (best-effort).")),
       );
       notifyStaffOfServiceEvent(app, { consultationId: c.id, event: "booked" });
 

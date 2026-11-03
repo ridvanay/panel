@@ -193,4 +193,58 @@ describe("meeting-sweeper (Paket AG İş 3)", () => {
     const later = await runMeetingGuestRetention(app, new Date(Date.now() + 2 * 24 * 60 * MIN));
     expect(later.deleted).toBe(1);
   });
+
+  it("KVKK: iptal edilen toplantının misafirleri iptalden 90 gün sonra silinir (bitiş = min(endsAt, cancelledAt)); not 365 gün sonra null'lanır, başlık kalır", async () => {
+    const DAY = 24 * 60 * MIN;
+    // endsAt ileride ama 91 gün önce iptal edilmiş
+    const cancelledOld = await app.prisma.externalMeeting.create({
+      data: {
+        hostUserId: hostId,
+        title: "İptal edilmiş eski",
+        note: "gizli",
+        startsAt: new Date(Date.now() + 10 * DAY),
+        endsAt: new Date(Date.now() + 10 * DAY + 30 * MIN),
+        durationMin: 30,
+        roomName: `meet_${crypto.randomBytes(16).toString("hex")}`,
+        status: "CANCELLED",
+        cancelledAt: new Date(Date.now() - 91 * DAY),
+        closedAt: new Date(),
+      },
+    });
+    const cancelledRecent = await app.prisma.externalMeeting.create({
+      data: {
+        hostUserId: hostId,
+        title: "İptal edilmiş yakın",
+        startsAt: new Date(Date.now() + 10 * DAY),
+        endsAt: new Date(Date.now() + 10 * DAY + 30 * MIN),
+        durationMin: 30,
+        roomName: `meet_${crypto.randomBytes(16).toString("hex")}`,
+        status: "CANCELLED",
+        cancelledAt: new Date(Date.now() - 10 * DAY),
+        closedAt: new Date(),
+      },
+    });
+    await app.prisma.externalMeetingGuest.createMany({
+      data: [
+        { meetingId: cancelledOld.id, displayName: "Eski iptal" },
+        { meetingId: cancelledRecent.id, displayName: "Yakın iptal" },
+      ],
+    });
+    const r1 = await runMeetingGuestRetention(app);
+    expect(r1.deleted).toBe(1);
+    expect(await app.prisma.externalMeetingGuest.count({ where: { meetingId: cancelledRecent.id } })).toBe(1);
+
+    // not: 364 gün önce biten toplantıda kalır, 366 gün önce bitende null'lanır
+    const noteKept = await seed({ startsMinAgo: 364 * 24 * 60 });
+    const noteCleared = await seed({ startsMinAgo: 366 * 24 * 60 });
+    await app.prisma.externalMeeting.updateMany({ where: { id: { in: [noteKept.id, noteCleared.id] } }, data: { note: "kisisel not" } });
+    const r2 = await runMeetingGuestRetention(app);
+    expect(r2.notesCleared).toBe(1); // yalnız noteCleared (cancelledOld iptali 91 gün önce: not 365 güne dek kalır)
+    expect((await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: noteCleared.id } })).note).toBeNull();
+    expect((await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: cancelledOld.id } })).note).toBe("gizli");
+    const kept = await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: noteKept.id } });
+    expect(kept.note).toBe("kisisel not");
+    expect(kept.title).toBe("Süpürücü toplantısı");
+    expect((await app.prisma.externalMeeting.findUniqueOrThrow({ where: { id: noteCleared.id } })).title).toBe("Süpürücü toplantısı");
+  });
 });

@@ -137,11 +137,25 @@ export async function runMeetingSweep(app: FastifyInstance, options: MeetingSwee
   return result;
 }
 
-/** Misafir adı saklama süresi (S6): toplantı bitişinden 90 gün sonra misafir satırlarını siler. Toplantı satırı KALIR. */
-export async function runMeetingGuestRetention(app: FastifyInstance, now: Date = new Date()): Promise<{ deleted: number }> {
-  const cutoff = new Date(now.getTime() - MEETING_GUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  const { count } = await app.prisma.externalMeetingGuest.deleteMany({ where: { meeting: { endsAt: { lt: cutoff } } } });
-  return { deleted: count };
+export const MEETING_NOTE_RETENTION_DAYS = 365;
+
+/**
+ * Saklama süreleri. Bitiş = min(endsAt, cancelledAt) (iptal edilen toplantı iptalinden itibaren sayılır).
+ *  - S6: misafir adı satırları bitişten 90 gün sonra silinir (toplantı satırı KALIR).
+ *  - KVKK: ev sahibi `note` alanı bitişten 365 gün sonra null'lanır (başlık kalır).
+ */
+export async function runMeetingGuestRetention(app: FastifyInstance, now: Date = new Date()): Promise<{ deleted: number; notesCleared: number }> {
+  const day = 24 * 60 * 60 * 1000;
+  const guestCutoff = new Date(now.getTime() - MEETING_GUEST_RETENTION_DAYS * day);
+  const noteCutoff = new Date(now.getTime() - MEETING_NOTE_RETENTION_DAYS * day);
+  const { count } = await app.prisma.externalMeetingGuest.deleteMany({
+    where: { meeting: { OR: [{ endsAt: { lt: guestCutoff } }, { cancelledAt: { lt: guestCutoff } }] } },
+  });
+  const notes = await app.prisma.externalMeeting.updateMany({
+    where: { note: { not: null }, OR: [{ endsAt: { lt: noteCutoff } }, { cancelledAt: { lt: noteCutoff } }] },
+    data: { note: null },
+  });
+  return { deleted: count, notesCleared: notes.count };
 }
 
 /** Dakikalık kadans; test ortamında zamanlayıcı kurulmaz (testler `runMeetingSweep` / `runMeetingGuestRetention`'ı doğrudan çağırır). */
@@ -161,8 +175,8 @@ export function registerMeetingSweeper(app: FastifyInstance): void {
   };
   const runRetention = () => {
     runMeetingGuestRetention(app)
-      .then(({ deleted }) => {
-        if (deleted > 0) app.log.info({ deleted }, "Süresi dolan toplantı misafir kayıtları silindi (meeting-sweeper)");
+      .then(({ deleted, notesCleared }) => {
+        if (deleted > 0 || notesCleared > 0) app.log.info({ deleted, notesCleared }, "Süresi dolan toplantı misafir kayıtları silindi (meeting-sweeper)");
       })
       .catch((err) => app.log.error({ err }, "Toplantı misafir saklama temizliği başarısız oldu"));
   };

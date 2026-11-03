@@ -4,7 +4,11 @@ import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { LiveKitNotConfiguredError, MeetingFullError, MeetingLinkInvalidError, MeetingNotOpenError, ValidationError } from "../../lib/errors";
+import crypto from "node:crypto";
 import { hashToken } from "../../lib/tokens";
+import { canHostMeetings } from "../../lib/meeting-host";
+import { MemoryRateLimiter } from "../../lib/memory-rate-limit";
+import { ipRateKey } from "../service-consultations/service-ip";
 import { logAudit } from "../../lib/audit";
 import { isLiveKitConfigured } from "../telehealth/lib/livekit";
 import {
@@ -21,6 +25,11 @@ import { GuestJoinRequestSchema, GuestJoinResponseSchema, GuestPreflightRequestS
 import { MAX_GUEST_SESSIONS_PER_MEETING, hostDisplayName, meetingOpensAt, serviceCoordinatorLabel } from "./meetings.service";
 
 const POLL_AFTER_SEC = 5;
+/** Misafir oturumu sayımı yalnızca bu pencerede oluşturulanları sayar (bot doldurma tavanı süresiz kilitlemesin). */
+const GUEST_SESSION_WINDOW_MS = 24 * 60 * 60_000;
+/** IP başına toplantı başına en çok bu kadar YENİ misafir oturumu (24 sa). IP saklanmaz: bellek içi, anahtar özetlenir. */
+const SESSIONS_PER_IP_PER_MEETING = 10;
+export const guestSessionIpLimiter = new MemoryRateLimiter(SESSIONS_PER_IP_PER_MEETING, GUEST_SESSION_WINDOW_MS);
 
 /**
  * `/meet/guest` prefix'i altında bağlanır. Paket AG (İş 3) — herkese açık misafir uçları (oturum YOK). Erişim
@@ -51,11 +60,13 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
           select: {
             name: true,
             status: true,
-            doctorProfile: { select: { fullName: true, publicName: true, isFounder: true } },
+            role: true,
+            meetingHostGrantedAt: true,
+            doctorProfile: { select: { id: true, fullName: true, publicName: true, isFounder: true } },
           },
         },
         // AI İş 3: hizmet görüşmesine bağlıysa ev sahibi adı "Patient Coordinator · <displayName>" olur.
-        serviceConsultation: { select: { coordinator: { select: { displayName: true } } } },
+        serviceConsultation: { select: { coordinator: { select: { displayName: true, isActive: true } } } },
       },
     });
     // Bulunan kayıtta ayrıca sabit zamanlı özet doğrulaması; bulunamayınca sahte karşılaştırma (süre dengesi).
@@ -63,6 +74,13 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
     if (!meeting || !valid || meeting.status !== "SCHEDULED" || Date.now() >= meeting.endsAt.getTime() || meeting.host.status !== "ACTIVE") {
       throw new MeetingLinkInvalidError();
     }
+    // Ev sahibinin YETKİSİ de aranır (geri alınmış / rolü düşmüş ev sahibinin bağlantısı çalışmaz; tek tip 404).
+    // Hizmet görüşmesinde kural AI İş 3 koordinatör uygunluğudur: EDITOR/MANAGER + aktif CoordinatorProfile + doktor profili yok.
+    const host = meeting.host;
+    const hostStillAllowed = meeting.serviceConsultation
+      ? (host.role === "EDITOR" || host.role === "MANAGER") && !host.doctorProfile && meeting.serviceConsultation.coordinator.isActive
+      : canHostMeetings(host);
+    if (!hostStillAllowed) throw new MeetingLinkInvalidError();
     return meeting;
   }
 
@@ -125,8 +143,13 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
         if (name === undefined) throw new ValidationError("Name is required.", { name: ["Name is required."] });
         const normalized = normalizeGuestName(name);
         if (!normalized.ok) throw new ValidationError(normalized.reason, { name: [normalized.reason] });
-        const sessions = await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } });
+        // Tavan yalnızca çıkarılmamış ve son 24 saatte açılmış oturumları sayar; ek olarak IP başına toplantı başına 10.
+        const sessions = await app.prisma.externalMeetingGuest.count({
+          where: { meetingId: meeting.id, removedAt: null, createdAt: { gte: new Date(now.getTime() - GUEST_SESSION_WINDOW_MS) } },
+        });
         if (sessions >= MAX_GUEST_SESSIONS_PER_MEETING) throw new MeetingFullError("The meeting is full.");
+        const ipKey = crypto.createHash("sha256").update(`${meeting.id}|${ipRateKey(request.ip)}`).digest("hex");
+        if (!guestSessionIpLimiter.tryConsume(ipKey, now.getTime())) throw new MeetingFullError("The meeting is full.");
         const created = await app.prisma.externalMeetingGuest.create({
           data: { meetingId: meeting.id, displayName: normalized.name, lastSeenAt: now },
           select: { id: true },

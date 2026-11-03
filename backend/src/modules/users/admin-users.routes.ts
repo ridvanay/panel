@@ -32,7 +32,7 @@ import { env } from "../../config/env";
 import { runSerializable } from "../../lib/serializable-tx";
 import { externalMeetingsEnabled } from "../../lib/feature-flags";
 import { isMeetingHostEligible } from "../../lib/meeting-host";
-import { kickAllMeetingParticipants } from "../telehealth/lib/meeting-livekit";
+import { afterHostMeetingsCancelled, cancelFutureGeneralMeetings, cancelGeneralMeetingsIfNoLongerHost } from "../meetings/meetings.service";
 import { decryptSecret } from "../../lib/crypto";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { verifyAndConsumeTotp, TOTP_REUSED_MESSAGE } from "../../lib/two-factor";
@@ -289,6 +289,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         metadata: { from: previousRole, to: role },
         ipAddress: request.ip,
       });
+      await cancelGeneralMeetingsIfNoLongerHost(app, user.id, { actorId: request.user!.id, actorEmail: request.user!.email, ipAddress: request.ip });
 
       return reply.send(ok(toAdminUserDto(user)));
     }
@@ -315,8 +316,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         const { enabled } = request.body;
         const now = new Date();
         let from = false;
-        let cancelledMeetingIds: string[] = [];
-        let cancelledRooms: string[] = [];
+        let cancelled: { ids: string[]; rooms: string[] } = { ids: [], rooms: [] };
 
         const user = await runSerializable(app, async (tx) => {
           const target = await tx.user.findUnique({ where: { id: request.params.userId }, include: { doctorProfile: { select: { id: true } } } });
@@ -326,20 +326,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           if (target.role === "ADMIN" || from === enabled) return target;
           if (enabled && !isMeetingHostEligible(target)) throw new MeetingHostNotEligibleError();
 
-          if (!enabled) {
-            const upcoming = await tx.externalMeeting.findMany({
-              where: { hostUserId: target.id, status: "SCHEDULED", endsAt: { gt: now }, serviceConsultation: null },
-              select: { id: true, roomName: true },
-            });
-            cancelledMeetingIds = upcoming.map((m) => m.id);
-            cancelledRooms = upcoming.map((m) => m.roomName);
-            if (cancelledMeetingIds.length > 0) {
-              await tx.externalMeeting.updateMany({
-                where: { id: { in: cancelledMeetingIds } },
-                data: { status: "CANCELLED", cancelledAt: now, cancelledById: request.user!.id, guestTokenHash: null, guestTokenCreatedAt: null },
-              });
-            }
-          }
+          if (!enabled) cancelled = await cancelFutureGeneralMeetings(tx, target.id, request.user!.id, now);
           return tx.user.update({
             where: { id: target.id },
             data: enabled ? { meetingHostGrantedAt: now, meetingHostGrantedById: request.user!.id } : { meetingHostGrantedAt: null, meetingHostGrantedById: null },
@@ -354,28 +341,10 @@ export async function adminUsersRoutes(app: FastifyInstance) {
             action: enabled ? "user.meeting_host_granted" : "user.meeting_host_revoked",
             targetType: "User",
             targetId: user.id,
-            metadata: { from, to: enabled, ...(enabled ? {} : { cancelledMeetings: cancelledMeetingIds.length }) },
+            metadata: { from, to: enabled, ...(enabled ? {} : { cancelledMeetings: cancelled.ids.length }) },
             ipAddress: request.ip,
           });
-          for (const meetingId of cancelledMeetingIds) {
-            await logAudit(app, {
-              actorId: request.user!.id,
-              actorEmail: request.user!.email,
-              action: "meeting.cancelled",
-              targetType: "ExternalMeeting",
-              targetId: meetingId,
-              metadata: { source: "host_revoked" },
-              ipAddress: request.ip,
-            });
-          }
-          // Açık oda varsa hemen boşalt (best-effort); kesin kapanışı + `closedAt`'i meeting-sweeper yazar.
-          for (const roomName of cancelledRooms) {
-            try {
-              await kickAllMeetingParticipants(roomName);
-            } catch (err) {
-              app.log.warn({ err }, "Yetkisi geri alınan ev sahibinin toplantı odası hemen boşaltılamadı; süpürücü tekrar deneyecek.");
-            }
-          }
+          await afterHostMeetingsCancelled(app, { actorId: request.user!.id, actorEmail: request.user!.email, ipAddress: request.ip }, cancelled, "host_revoked");
         }
 
         return reply.send(ok(toAdminUserDto(user)));
@@ -431,6 +400,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         metadata: { from: previousStatus, to: status },
         ipAddress: request.ip,
       });
+      await cancelGeneralMeetingsIfNoLongerHost(app, user.id, { actorId: request.user!.id, actorEmail: request.user!.email, ipAddress: request.ip });
 
       return reply.send(ok(toAdminUserDto(user)));
     }
@@ -735,6 +705,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         metadata: { email: user.email },
         ipAddress: request.ip,
       });
+      await cancelGeneralMeetingsIfNoLongerHost(app, user.id, { actorId: request.user!.id, actorEmail: request.user!.email, ipAddress: request.ip });
 
       return reply.send(ok(toAdminUserDto(user)));
     }

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { ExternalMeeting, Prisma, SiteRole } from "@prisma/client";
+import type { ExternalMeeting, Prisma, PrismaClient, SiteRole } from "@prisma/client";
 import { canHostMeetings } from "../../lib/meeting-host";
 import { logAudit } from "../../lib/audit";
 import { MeetingHostForbiddenError, MeetingManagedByServiceDeskError, MeetingNotFoundError } from "../../lib/errors";
@@ -234,4 +234,80 @@ export async function afterMeetingCancelled(app: FastifyInstance, meeting: Exter
   } catch (err) {
     app.log.warn({ err, meetingId: meeting.id }, "İptal edilen toplantının odası hemen boşaltılamadı; süpürücü tekrar deneyecek.");
   }
+}
+
+// --- Ev sahibi artık ev sahibi olamıyorsa (S3 genişletmesi): gelecek GENEL toplantıların toplu iptali ---
+
+export interface HostMeetingsCancellation {
+  ids: string[];
+  rooms: string[];
+}
+
+/**
+ * Kullanıcının gelecekteki (bitmemiş, iptal edilmemiş) GENEL toplantılarını iptal eder. Hizmete bağlı toplantılar
+ * HARİÇTİR (onlar Hizmet Masası kurallarıyla yönetilir). `db`: işlem istemcisi veya `app.prisma`.
+ */
+export async function cancelFutureGeneralMeetings(
+  db: Pick<PrismaClient, "externalMeeting">,
+  userId: string,
+  actorId: string | null,
+  now: Date
+): Promise<HostMeetingsCancellation> {
+  const upcoming = await db.externalMeeting.findMany({
+    where: { hostUserId: userId, status: "SCHEDULED", endsAt: { gt: now }, serviceConsultation: null },
+    select: { id: true, roomName: true },
+  });
+  if (upcoming.length > 0) {
+    await db.externalMeeting.updateMany({
+      where: { id: { in: upcoming.map((m) => m.id) } },
+      data: { status: "CANCELLED", cancelledAt: now, cancelledById: actorId, guestTokenHash: null, guestTokenCreatedAt: null },
+    });
+  }
+  return { ids: upcoming.map((m) => m.id), rooms: upcoming.map((m) => m.roomName) };
+}
+
+/** İptal sonrası: toplantı başına audit (`meeting.cancelled`) + odaları best-effort boşaltma (kesin kapanışı sweeper yazar). */
+export async function afterHostMeetingsCancelled(
+  app: FastifyInstance,
+  ctx: { actorId: string | null; actorEmail: string | null; ipAddress: string | null },
+  cancelled: HostMeetingsCancellation,
+  source: string
+): Promise<void> {
+  for (const meetingId of cancelled.ids) {
+    await logAudit(app, {
+      actorId: ctx.actorId,
+      actorEmail: ctx.actorEmail,
+      action: "meeting.cancelled",
+      targetType: "ExternalMeeting",
+      targetId: meetingId,
+      metadata: { source },
+      ipAddress: ctx.ipAddress,
+    });
+  }
+  for (const roomName of cancelled.rooms) {
+    try {
+      await kickAllMeetingParticipants(roomName);
+    } catch (err) {
+      app.log.warn({ err }, "Ev sahibi yetkisini yitiren toplantının odası hemen boşaltılamadı; süpürücü tekrar deneyecek.");
+    }
+  }
+}
+
+/**
+ * Rol değişimi / askıya alma / silme sonrası: kullanıcı artık ev sahibi olamıyorsa (ACTIVE değil veya
+ * `canHostMeetings` yanlış) gelecek GENEL toplantıları iptal eder + odaları boşaltır + audit yazar. Hâlâ ev sahibiyse no-op.
+ */
+export async function cancelGeneralMeetingsIfNoLongerHost(
+  app: FastifyInstance,
+  userId: string,
+  ctx: { actorId: string | null; actorEmail: string | null; ipAddress: string | null }
+): Promise<number> {
+  const user = await app.prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, status: true, meetingHostGrantedAt: true, doctorProfile: { select: { id: true } } },
+  });
+  if (user && user.status === "ACTIVE" && canHostMeetings(user)) return 0;
+  const cancelled = await cancelFutureGeneralMeetings(app.prisma, userId, ctx.actorId, new Date());
+  await afterHostMeetingsCancelled(app, ctx, cancelled, "host_ineligible");
+  return cancelled.ids.length;
 }

@@ -43,6 +43,7 @@ vi.mock("../../src/lib/branded-mail", async (importOriginal) => {
 
 import { buildTestApp } from "../helpers/build-test-app";
 import { setExternalMeetingsEnabledForTests } from "../../src/lib/feature-flags";
+import { inviteUserLimiter } from "../../src/modules/meetings/meetings.routes";
 import { resetDatabase } from "../helpers/reset-db";
 import { signAccessToken } from "../../src/lib/jwt";
 import { env } from "../../src/config/env";
@@ -157,6 +158,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  inviteUserLimiter.reset();
   lk.rooms.clear();
   lk.removed.length = 0;
   lk.mail.length = 0;
@@ -745,8 +747,10 @@ describe("e-postayla davet (yalnızca oluşturma anındaki bağlantıyla)", () =
 
     // 1 deneme harcandı; 9 daha → 10; 11. → 409 (5/dk sınırı için IP değiştirilir)
     for (let i = 0; i < 9; i += 1) {
+      inviteUserLimiter.reset();
       expect((await call("POST", `/meetings/${id}/invite-email`, editor, { guestLink, email: `k${i}@example.com` })).statusCode).toBe(202);
     }
+    inviteUserLimiter.reset();
     const over = await call("POST", `/meetings/${id}/invite-email`, editor, { guestLink, email: "fazla@example.com" });
     expect(over.statusCode).toBe(409);
     expect(over.json().error.code).toBe("MEETING_LIMIT_REACHED");
