@@ -1869,6 +1869,834 @@ This email was sent automatically.",
 }
 `;
 
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-admin · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New online consultation SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>New online consultation.</p><p style="margin:0 0 8px;"><strong>Consultation:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Service:</strong> Gastroenterology</p><p style="margin:0 0 8px;"><strong>Time:</strong> 2026-11-12 13:30 (Europe/Istanbul)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Coordinator:</strong> Mina K.</p><p style="margin:0 0 8px;"><strong>Contact language:</strong> Arabic (ar)</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> no</p><p style="margin:12px 0 0;">Contact details and the message are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/service-desk/consultations/00000000-0000-4000-8000-000000000000" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open consultation</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">إشعار داخلي — مخصص للموظفين المصرح لهم فقط.</p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New online consultation SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "New online consultation.
+Consultation: SVC-00042
+Service: Gastroenterology
+Time: 2026-11-12 13:30 (Europe/Istanbul)
+Duration: 30 min
+Coordinator: Mina K.
+Contact language: Arabic (ar)
+Interpreter: no
+Contact details and the message are only visible in the admin panel after signing in.
+Open consultation (http://localhost:3000/admin/service-desk/consultations/00000000-0000-4000-8000-000000000000)
+----
+WM Health Istanbul
+إشعار داخلي — مخصص للموظفين المصرح لهم فقط.
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-admin · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New online consultation SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>New online consultation.</p><p style="margin:0 0 8px;"><strong>Consultation:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Service:</strong> Gastroenterology</p><p style="margin:0 0 8px;"><strong>Time:</strong> 2026-11-12 13:30 (Europe/Istanbul)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Coordinator:</strong> Mina K.</p><p style="margin:0 0 8px;"><strong>Contact language:</strong> Arabic (ar)</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> no</p><p style="margin:12px 0 0;">Contact details and the message are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/service-desk/consultations/00000000-0000-4000-8000-000000000000" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open consultation</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Internal notification — for authorised staff only.</p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New online consultation SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "New online consultation.
+Consultation: SVC-00042
+Service: Gastroenterology
+Time: 2026-11-12 13:30 (Europe/Istanbul)
+Duration: 30 min
+Coordinator: Mina K.
+Contact language: Arabic (ar)
+Interpreter: no
+Contact details and the message are only visible in the admin panel after signing in.
+Open consultation (http://localhost:3000/admin/service-desk/consultations/00000000-0000-4000-8000-000000000000)
+----
+WM Health Istanbul
+Internal notification — for authorised staff only.
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-admin · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New online consultation SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>New online consultation.</p><p style="margin:0 0 8px;"><strong>Consultation:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Service:</strong> Gastroenterology</p><p style="margin:0 0 8px;"><strong>Time:</strong> 2026-11-12 13:30 (Europe/Istanbul)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Coordinator:</strong> Mina K.</p><p style="margin:0 0 8px;"><strong>Contact language:</strong> Arabic (ar)</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> no</p><p style="margin:12px 0 0;">Contact details and the message are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/service-desk/consultations/00000000-0000-4000-8000-000000000000" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open consultation</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Kurum içi bildirim — yalnızca yetkili personel içindir.</p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New online consultation SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "New online consultation.
+Consultation: SVC-00042
+Service: Gastroenterology
+Time: 2026-11-12 13:30 (Europe/Istanbul)
+Duration: 30 min
+Coordinator: Mina K.
+Contact language: Arabic (ar)
+Interpreter: no
+Contact details and the message are only visible in the admin panel after signing in.
+Open consultation (http://localhost:3000/admin/service-desk/consultations/00000000-0000-4000-8000-000000000000)
+----
+WM Health Istanbul
+Kurum içi bildirim — yalnızca yetkili personel içindir.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-cancelled · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">تم إلغاء استشارتك عبر الإنترنت SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><div dir="rtl" lang="ar"><p>تم إلغاء استشارتك عبر الإنترنت.</p><p style="margin:0 0 8px;"><strong>رقم الاستشارة:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>التاريخ والوقت:</strong> الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)</p><p style="margin:0 0 8px;"><strong>المدة:</strong> 30 دقيقة</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/book-consultation" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">احجز موعدًا جديدًا</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">وسيط دولي في السياحة العلاجية</strong></p><p style="margin:0 0 6px;">WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "تم إلغاء استشارتك عبر الإنترنت SVC-00042",
+  "text": "تم إلغاء استشارتك عبر الإنترنت.
+رقم الاستشارة: SVC-00042
+التاريخ والوقت: الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)
+المدة: 30 دقيقة
+
+احجز موعدًا جديدًا (http://localhost:3000/ar/book-consultation)
+----
+WM Health Istanbul
+وسيط دولي في السياحة العلاجية
+WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-cancelled · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation SVC-00042 has been cancelled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Your online consultation has been cancelled.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/book-consultation" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Book a new time</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation SVC-00042 has been cancelled",
+  "text": "Your online consultation has been cancelled.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+
+Book a new time (http://localhost:3000/en/book-consultation)
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-cancelled · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation SVC-00042 has been cancelled</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Your online consultation has been cancelled.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/book-consultation" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Book a new time</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation SVC-00042 has been cancelled",
+  "text": "Your online consultation has been cancelled.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+
+Book a new time (http://localhost:3000/en/book-consultation)
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-confirmed · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">تم تأكيد استشارتك عبر الإنترنت - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><div dir="rtl" lang="ar"><p>تم تأكيد استشارتك المجانية عبر الإنترنت مع منسّق المرضى في WM Health.</p><p style="margin:0 0 8px;"><strong>رقم الاستشارة:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>التاريخ والوقت:</strong> الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)</p><p style="margin:0 0 8px;"><strong>المدة:</strong> 30 دقيقة</p><p>يمكنك الانضمام قبل موعد البدء بـ 15 دقيقة؛ تُفتح الغرفة عندما ينضم المنسّق. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاستشارة. هذا الرابط شخصي، يُرجى عدم تحويله.</p><p>هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">الانضمام إلى الاستشارة</a></td></tr></table><div dir="rtl" lang="ar"><p>هل تريد الإلغاء أو تغيير الموعد؟ <a href="http://localhost:3000/ar/book-consultation/manage#sc_sample">إدارة حجزك</a></p></div></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">وسيط دولي في السياحة العلاجية</strong></p><p style="margin:0 0 6px;">WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "تم تأكيد استشارتك عبر الإنترنت - SVC-00042",
+  "text": "تم تأكيد استشارتك المجانية عبر الإنترنت مع منسّق المرضى في WM Health.
+رقم الاستشارة: SVC-00042
+التاريخ والوقت: الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)
+المدة: 30 دقيقة
+يمكنك الانضمام قبل موعد البدء بـ 15 دقيقة؛ تُفتح الغرفة عندما ينضم المنسّق. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاستشارة. هذا الرابط شخصي، يُرجى عدم تحويله.
+هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.
+
+الانضمام إلى الاستشارة (http://localhost:3000/ar/meet/join#mg_sample)
+هل تريد الإلغاء أو تغيير الموعد؟ إدارة حجزك (http://localhost:3000/ar/book-consultation/manage#sc_sample)
+
+----
+WM Health Istanbul
+وسيط دولي في السياحة العلاجية
+WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-confirmed · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation is confirmed - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Your free online consultation with a WM Health patient coordinator is confirmed.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table><div dir="ltr" lang="en"><p>Need to cancel or change the time? <a href="http://localhost:3000/en/book-consultation/manage#sc_sample">Manage your booking</a></p></div></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation is confirmed - SVC-00042",
+  "text": "Your free online consultation with a WM Health patient coordinator is confirmed.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+Need to cancel or change the time? Manage your booking (http://localhost:3000/en/book-consultation/manage#sc_sample)
+
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-confirmed · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation is confirmed - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Your free online consultation with a WM Health patient coordinator is confirmed.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table><div dir="ltr" lang="en"><p>Need to cancel or change the time? <a href="http://localhost:3000/en/book-consultation/manage#sc_sample">Manage your booking</a></p></div></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation is confirmed - SVC-00042",
+  "text": "Your free online consultation with a WM Health patient coordinator is confirmed.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+Need to cancel or change the time? Manage your booking (http://localhost:3000/en/book-consultation/manage#sc_sample)
+
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-coordinator · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New online consultation assigned to you SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><p>New online consultation assigned to you.</p><p style="margin:0 0 8px;"><strong>Consultation:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Service:</strong> Gastroenterology</p><p style="margin:0 0 8px;"><strong>Time:</strong> 2026-11-12 13:30 (Europe/Istanbul)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Coordinator:</strong> Mina K.</p><p style="margin:0 0 8px;"><strong>Contact language:</strong> Arabic (ar)</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> no</p><p style="margin:12px 0 0;">Contact details and the message are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/my-consultations" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open my consultations</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">إشعار داخلي — مخصص للموظفين المصرح لهم فقط.</p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New online consultation assigned to you SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "New online consultation assigned to you.
+Consultation: SVC-00042
+Service: Gastroenterology
+Time: 2026-11-12 13:30 (Europe/Istanbul)
+Duration: 30 min
+Coordinator: Mina K.
+Contact language: Arabic (ar)
+Interpreter: no
+Contact details and the message are only visible in the admin panel after signing in.
+Open my consultations (http://localhost:3000/admin/my-consultations)
+----
+WM Health Istanbul
+إشعار داخلي — مخصص للموظفين المصرح لهم فقط.
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-coordinator · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New online consultation assigned to you SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>New online consultation assigned to you.</p><p style="margin:0 0 8px;"><strong>Consultation:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Service:</strong> Gastroenterology</p><p style="margin:0 0 8px;"><strong>Time:</strong> 2026-11-12 13:30 (Europe/Istanbul)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Coordinator:</strong> Mina K.</p><p style="margin:0 0 8px;"><strong>Contact language:</strong> Arabic (ar)</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> no</p><p style="margin:12px 0 0;">Contact details and the message are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/my-consultations" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open my consultations</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Internal notification — for authorised staff only.</p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New online consultation assigned to you SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "New online consultation assigned to you.
+Consultation: SVC-00042
+Service: Gastroenterology
+Time: 2026-11-12 13:30 (Europe/Istanbul)
+Duration: 30 min
+Coordinator: Mina K.
+Contact language: Arabic (ar)
+Interpreter: no
+Contact details and the message are only visible in the admin panel after signing in.
+Open my consultations (http://localhost:3000/admin/my-consultations)
+----
+WM Health Istanbul
+Internal notification — for authorised staff only.
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-coordinator · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="tr" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">New online consultation assigned to you SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><p>New online consultation assigned to you.</p><p style="margin:0 0 8px;"><strong>Consultation:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Service:</strong> Gastroenterology</p><p style="margin:0 0 8px;"><strong>Time:</strong> 2026-11-12 13:30 (Europe/Istanbul)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 min</p><p style="margin:0 0 8px;"><strong>Coordinator:</strong> Mina K.</p><p style="margin:0 0 8px;"><strong>Contact language:</strong> Arabic (ar)</p><p style="margin:0 0 8px;"><strong>Interpreter:</strong> no</p><p style="margin:12px 0 0;">Contact details and the message are only visible in the admin panel after signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/admin/my-consultations" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Open my consultations</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;">Kurum içi bildirim — yalnızca yetkili personel içindir.</p><p style="margin:0 0 6px;">Bu e-posta otomatik olarak gönderilmiştir.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "New online consultation assigned to you SVC-00042 - 2026-11-12 13:30 (Europe/Istanbul)",
+  "text": "New online consultation assigned to you.
+Consultation: SVC-00042
+Service: Gastroenterology
+Time: 2026-11-12 13:30 (Europe/Istanbul)
+Duration: 30 min
+Coordinator: Mina K.
+Contact language: Arabic (ar)
+Interpreter: no
+Contact details and the message are only visible in the admin panel after signing in.
+Open my consultations (http://localhost:3000/admin/my-consultations)
+----
+WM Health Istanbul
+Kurum içi bildirim — yalnızca yetkili personel içindir.
+Bu e-posta otomatik olarak gönderilmiştir.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-reminder-24h · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">تذكير: استشارتك عبر الإنترنت غدًا - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><div dir="rtl" lang="ar"><p>هذا تذكير باستشارتك عبر الإنترنت مع منسّق المرضى في WM Health.</p><p style="margin:0 0 8px;"><strong>رقم الاستشارة:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>التاريخ والوقت:</strong> الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)</p><p style="margin:0 0 8px;"><strong>المدة:</strong> 30 دقيقة</p><p>سيصلك رابط الانضمام الشخصي قبل موعد البدء بنحو ساعة واحدة.</p><p>هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">الانضمام إلى الاستشارة</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">وسيط دولي في السياحة العلاجية</strong></p><p style="margin:0 0 6px;">WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "تذكير: استشارتك عبر الإنترنت غدًا - SVC-00042",
+  "text": "هذا تذكير باستشارتك عبر الإنترنت مع منسّق المرضى في WM Health.
+رقم الاستشارة: SVC-00042
+التاريخ والوقت: الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)
+المدة: 30 دقيقة
+سيصلك رابط الانضمام الشخصي قبل موعد البدء بنحو ساعة واحدة.
+هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.
+
+الانضمام إلى الاستشارة (http://localhost:3000/ar/meet/join#mg_sample)
+----
+WM Health Istanbul
+وسيط دولي في السياحة العلاجية
+WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-reminder-24h · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Reminder: your online consultation is tomorrow - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>This is a reminder of your online consultation with a WM Health patient coordinator.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>Your personal join link will be sent to you about 1 hour before the start time.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Reminder: your online consultation is tomorrow - SVC-00042",
+  "text": "This is a reminder of your online consultation with a WM Health patient coordinator.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+Your personal join link will be sent to you about 1 hour before the start time.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-reminder-24h · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Reminder: your online consultation is tomorrow - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>This is a reminder of your online consultation with a WM Health patient coordinator.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>Your personal join link will be sent to you about 1 hour before the start time.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Reminder: your online consultation is tomorrow - SVC-00042",
+  "text": "This is a reminder of your online consultation with a WM Health patient coordinator.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+Your personal join link will be sent to you about 1 hour before the start time.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-reminder-60m · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">تبدأ استشارتك عبر الإنترنت بعد نحو ساعة - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><div dir="rtl" lang="ar"><p>ستبدأ قريبًا استشارتك عبر الإنترنت مع منسّق المرضى في WM Health.</p><p style="margin:0 0 8px;"><strong>رقم الاستشارة:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>التاريخ والوقت:</strong> الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)</p><p style="margin:0 0 8px;"><strong>المدة:</strong> 30 دقيقة</p><p>يحلّ هذا الرابط محل الروابط السابقة. تُفتح الغرفة قبل موعد البدء بـ 15 دقيقة.</p><p>هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">الانضمام إلى الاستشارة</a></td></tr></table></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">وسيط دولي في السياحة العلاجية</strong></p><p style="margin:0 0 6px;">WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "تبدأ استشارتك عبر الإنترنت بعد نحو ساعة - SVC-00042",
+  "text": "ستبدأ قريبًا استشارتك عبر الإنترنت مع منسّق المرضى في WM Health.
+رقم الاستشارة: SVC-00042
+التاريخ والوقت: الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)
+المدة: 30 دقيقة
+يحلّ هذا الرابط محل الروابط السابقة. تُفتح الغرفة قبل موعد البدء بـ 15 دقيقة.
+هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.
+
+الانضمام إلى الاستشارة (http://localhost:3000/ar/meet/join#mg_sample)
+----
+WM Health Istanbul
+وسيط دولي في السياحة العلاجية
+WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-reminder-60m · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation starts in about 1 hour - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Your online consultation with a WM Health patient coordinator starts soon.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>This link replaces previous links. The room opens 15 minutes before the start time.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation starts in about 1 hour - SVC-00042",
+  "text": "Your online consultation with a WM Health patient coordinator starts soon.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+This link replaces previous links. The room opens 15 minutes before the start time.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-reminder-60m · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation starts in about 1 hour - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>Your online consultation with a WM Health patient coordinator starts soon.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>This link replaces previous links. The room opens 15 minutes before the start time.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation starts in about 1 hour - SVC-00042",
+  "text": "Your online consultation with a WM Health patient coordinator starts soon.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+This link replaces previous links. The room opens 15 minutes before the start time.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-rescheduled · ar 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">موعد جديد لاستشارتك عبر الإنترنت - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="rtl" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="right" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:right;"><div dir="rtl" lang="ar"><p>تغيّر موعد استشارتك عبر الإنترنت. لم يعد رابط الانضمام السابق صالحًا؛ يُرجى استخدام الرابط الجديد أدناه.</p><p style="margin:0 0 8px;"><strong>رقم الاستشارة:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>التاريخ والوقت:</strong> الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)</p><p style="margin:0 0 8px;"><strong>المدة:</strong> 30 دقيقة</p><p>يمكنك الانضمام قبل موعد البدء بـ 15 دقيقة؛ تُفتح الغرفة عندما ينضم المنسّق. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاستشارة. هذا الرابط شخصي، يُرجى عدم تحويله.</p><p>هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/ar/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">الانضمام إلى الاستشارة</a></td></tr></table><div dir="rtl" lang="ar"><p>هل تريد الإلغاء أو تغيير الموعد؟ <a href="http://localhost:3000/ar/book-consultation/manage#sc_sample">إدارة حجزك</a></p></div></td></tr>
+      <tr><td dir="rtl" align="right" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:right;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">وسيط دولي في السياحة العلاجية</strong></p><p style="margin:0 0 6px;">WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/ar/contact" style="color:#6b7280;text-decoration:underline;">تواصل معنا</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">إشعار الخصوصية</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">سياسة الخصوصية</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).</strong></p><p style="margin:0 0 6px;">تم إرسال هذا البريد تلقائيا.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "موعد جديد لاستشارتك عبر الإنترنت - SVC-00042",
+  "text": "تغيّر موعد استشارتك عبر الإنترنت. لم يعد رابط الانضمام السابق صالحًا؛ يُرجى استخدام الرابط الجديد أدناه.
+رقم الاستشارة: SVC-00042
+التاريخ والوقت: الخميس، 12 نوفمبر 2026 في 11:30 ص (بتوقيتك, Berlin) / الخميس، 12 نوفمبر 2026 في 1:30 م (بتوقيت إسطنبول)
+المدة: 30 دقيقة
+يمكنك الانضمام قبل موعد البدء بـ 15 دقيقة؛ تُفتح الغرفة عندما ينضم المنسّق. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاستشارة. هذا الرابط شخصي، يُرجى عدم تحويله.
+هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.
+
+الانضمام إلى الاستشارة (http://localhost:3000/ar/meet/join#mg_sample)
+هل تريد الإلغاء أو تغيير الموعد؟ إدارة حجزك (http://localhost:3000/ar/book-consultation/manage#sc_sample)
+
+----
+WM Health Istanbul
+وسيط دولي في السياحة العلاجية
+WM Health منظمة وسيطة دولية في مجال السياحة العلاجية، وليست جهة مقدِّمة للرعاية الصحية. تُجرى جميع العلاجات الطبية في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية الصادرة عن وزارة الصحة في الجمهورية التركية.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · تواصل معنا (http://localhost:3000/ar/contact)
+إشعار الخصوصية (http://localhost:3000/en/privacy-notice) · سياسة الخصوصية (http://localhost:3000/en/privacy-policy)
+في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).
+تم إرسال هذا البريد تلقائيا.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-rescheduled · en 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation has a new time - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>The time of your online consultation has changed. Your previous join link no longer works; please use the new link below.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table><div dir="ltr" lang="en"><p>Need to cancel or change the time? <a href="http://localhost:3000/en/book-consultation/manage#sc_sample">Manage your booking</a></p></div></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation has a new time - SVC-00042",
+  "text": "The time of your online consultation has changed. Your previous join link no longer works; please use the new link below.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+Need to cancel or change the time? Manage your booking (http://localhost:3000/en/book-consultation/manage#sc_sample)
+
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
+exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:service-consultation-rescheduled · tr 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="color-scheme" content="light" /><title>WM Health Istanbul</title></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your online consultation has a new time - SVC-00042</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" dir="ltr" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr><td style="height:4px;line-height:4px;font-size:0;background-color:#0f766e;" bgcolor="#0f766e">&nbsp;</td></tr>
+      <tr><td align="left" style="padding:24px 32px 8px;"><img src="https://cdn.example.com/logo.png" alt="WM Health Istanbul" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0;outline:none;text-decoration:none;" /></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1f2937;text-align:left;"><div dir="ltr" lang="en"><p>The time of your online consultation has changed. Your previous join link no longer works; please use the new link below.</p><p style="margin:0 0 8px;"><strong>Consultation number:</strong> SVC-00042</p><p style="margin:0 0 8px;"><strong>Date and time:</strong> Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)</p><p style="margin:0 0 8px;"><strong>Duration:</strong> 30 minutes</p><p>You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.</p><p>This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.</p></div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td align="center" bgcolor="#0f766e" style="padding:12px 24px;border-radius:6px;background-color:#0f766e;"><a href="http://localhost:3000/en/meet/join#mg_sample" target="_blank" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">Join the consultation</a></td></tr></table><div dir="ltr" lang="en"><p>Need to cancel or change the time? <a href="http://localhost:3000/en/book-consultation/manage#sc_sample">Manage your booking</a></p></div></td></tr>
+      <tr><td dir="ltr" align="left" style="padding:20px 32px 28px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;text-align:left;"><p style="margin:0 0 6px;"><strong style="color:#374151;">WM Health Istanbul</strong></p><p style="margin:0 0 6px;"><strong style="color:#374151;">International Health Tourism Intermediary</strong></p><p style="margin:0 0 6px;">WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.</p><p style="margin:0 0 6px;">Sample St. 1, Istanbul</p><p style="margin:0 0 6px;">+90 212 000 00 00 &middot; <a href="mailto:info@example.com" style="color:#6b7280;text-decoration:underline;">info@example.com</a> &middot; <a href="http://localhost:3000/en/contact" style="color:#6b7280;text-decoration:underline;">Contact us</a></p><p style="margin:0 0 6px;"><a href="http://localhost:3000/en/privacy-notice" style="color:#6b7280;text-decoration:underline;">Privacy Notice</a> &middot; <a href="http://localhost:3000/en/privacy-policy" style="color:#6b7280;text-decoration:underline;">Privacy Policy</a></p><p style="margin:0 0 6px;"><strong style="color:#b91c1c;">In an emergency, call 112 (or your local emergency number).</strong></p><p style="margin:0 0 6px;">This email was sent automatically.</p></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>",
+  "subject": "Your online consultation has a new time - SVC-00042",
+  "text": "The time of your online consultation has changed. Your previous join link no longer works; please use the new link below.
+Consultation number: SVC-00042
+Date and time: Thursday, 12 November 2026 at 11:30 (your time, Berlin) / Thursday, 12 November 2026 at 13:30 (Istanbul time)
+Duration: 30 minutes
+You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.
+This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.
+
+Join the consultation (http://localhost:3000/en/meet/join#mg_sample)
+Need to cancel or change the time? Manage your booking (http://localhost:3000/en/book-consultation/manage#sc_sample)
+
+----
+WM Health Istanbul
+International Health Tourism Intermediary
+WM Health is an international health tourism intermediary organization, not a healthcare provider. All medical treatments are performed by healthcare facilities holding an International Health Tourism Authorization Certificate issued by the Republic of Türkiye Ministry of Health.
+Sample St. 1, Istanbul
++90 212 000 00 00 · info@example.com · Contact us (http://localhost:3000/en/contact)
+Privacy Notice (http://localhost:3000/en/privacy-notice) · Privacy Policy (http://localhost:3000/en/privacy-policy)
+In an emergency, call 112 (or your local emergency number).
+This email was sent automatically.",
+}
+`;
+
 exports[`sistem e-postaları — snapshot (TR/EN/AR) > code:smtp-test · ar 1`] = `
 {
   "html": "<!doctype html>

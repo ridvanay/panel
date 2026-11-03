@@ -12,6 +12,7 @@ import { logAudit } from "../../lib/audit";
 import { TimeZoneSchema } from "../../lib/dual-time";
 import {
   ClosureHasConsultationsError,
+  ConsultationNotChangeableError,
   ConflictError,
   CoordinatorHasUpcomingConsultationsError,
   CoordinatorNotEligibleError,
@@ -25,11 +26,12 @@ import { findWeeklyOverlaps, normalizeWeeklyRules } from "../telehealth/lib/week
 import { addCalendarDays, getStartOfCalendarDayInTimeZone } from "../telehealth/lib/timezone";
 import { parseIsoCalendarDate } from "../telehealth/lib/availability";
 import { MEETING_JOIN_LEAD_MS } from "../telehealth/lib/meeting-livekit";
-import { computeSlotsForRange, getOrCreateDesk, loadActiveCoordinators } from "./service-desk";
+import { COORDINATOR_ROLES, computeSlotsForRange, getOrCreateDesk, loadActiveCoordinators } from "./service-desk";
 import { dateKeyInZone } from "./service-slots";
 import { cancelServiceConsultation, loadManagedById } from "./service-booking";
 import { notifyStaffOfServiceEvent, sendPatientServiceEmail } from "./service-consultation-notify";
-import { formatConsultationNumber } from "./service-consultation-tokens";
+import { formatConsultationNumber, generateManageToken } from "./service-consultation-tokens";
+import { generateGuestToken } from "../meetings/meeting-tokens";
 
 const SETTINGS_ID = "singleton";
 const WRITE_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
@@ -221,7 +223,7 @@ export async function serviceDeskAdminRoutes(app: FastifyInstance) {
       const key = (d: { year: number; month: number; day: number }) => `${String(d.year).padStart(4, "0")}-${String(d.month).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`;
       const result = await computeSlotsForRange(
         app.prisma,
-        { desk, hours: hours.map((h) => ({ id: h.id, dayOfWeek: h.dayOfWeek, startMinute: h.startMinute, endMinute: h.endMinute })), closureDates, coordinators, flagOn: true },
+        { desk, hours: hours.map((h) => ({ id: h.id, dayOfWeek: h.dayOfWeek, startMinute: h.startMinute, endMinute: h.endMinute })), closureDates, coordinators, flagOn: true, infraReady: true },
         todayKey,
         key(end),
         now
@@ -380,7 +382,7 @@ export async function serviceDeskAdminRoutes(app: FastifyInstance) {
       });
       if (!user) throw new NotFoundError("Kullanıcı bulunamadı.");
       if (user.coordinatorProfile) throw new ConflictError("Bu kullanıcı zaten koordinatör.");
-      if (user.status !== "ACTIVE" || user.doctorProfile || !(["EDITOR", "MANAGER"] as string[]).includes(user.role)) {
+      if (user.status !== "ACTIVE" || user.doctorProfile || !(COORDINATOR_ROLES as readonly string[]).includes(user.role)) {
         throw new CoordinatorNotEligibleError(
           user.doctorProfile ? "Doktor profili olan kullanıcı koordinatör olamaz." : "Koordinatör, aktif bir EDITOR veya MANAGER kullanıcı olmalıdır."
         );
@@ -400,6 +402,13 @@ export async function serviceDeskAdminRoutes(app: FastifyInstance) {
       const existing = await app.prisma.coordinatorProfile.findUnique({ where: { id: request.params.id } });
       if (!existing) throw new NotFoundError("Koordinatör bulunamadı.");
       const body = request.body;
+      if (body.isActive === true && !existing.isActive) {
+        // Yeniden etkinlestirme uygunlugu yeniden dogrular (rol/durum/doktor profili degismis olabilir).
+        const u = await app.prisma.user.findUnique({ where: { id: existing.userId }, select: { role: true, status: true, doctorProfile: { select: { id: true } } } });
+        if (!u || u.status !== "ACTIVE" || u.doctorProfile || !(COORDINATOR_ROLES as readonly string[]).includes(u.role)) {
+          throw new CoordinatorNotEligibleError("Koordinatör, aktif bir EDITOR veya MANAGER kullanıcı olmalı ve doktor profili olmamalıdır.");
+        }
+      }
       if (body.isActive === false && existing.isActive) {
         const upcoming = await app.prisma.serviceConsultation.count({ where: { coordinatorId: existing.id, status: "SCHEDULED", endsAt: { gt: new Date() } } });
         if (upcoming > 0) throw new CoordinatorHasUpcomingConsultationsError(upcoming);
@@ -493,6 +502,44 @@ export async function serviceDeskAdminRoutes(app: FastifyInstance) {
           createdAt: row.createdAt.toISOString(),
         })
       );
+    }
+  );
+
+  /**
+   * Hasta e-postasi ulasmadiysa: YENI `sc_` ve YENI `mg_` uretir (eskileri gecersiz), onay e-postasini kayitli adrese yeniden
+   * gonderir. Once gonderir, yalniz basariliysa ozetleri degistirir (basarisizsa eski baglantilar gecerli kalir -> sent:false).
+   */
+  server.post(
+    "/consultations/:id/resend-links",
+    {
+      config: { rateLimit: { max: 5, timeWindow: "1 hour", keyGenerator: (request: { params?: unknown }) => `svc-resend:${(request.params as { id?: string } | undefined)?.id ?? "x"}` } },
+      schema: { params: IdParamSchema, response: { 202: ApiSuccessSchema(z.object({ sent: z.boolean() })) } },
+    },
+    async (request, reply) => {
+      const c = await loadManagedById(app, request.params.id);
+      if (!c) throw new NotFoundError("Görüşme bulunamadı.");
+      if (c.status !== "SCHEDULED" || c.endsAt.getTime() <= Date.now()) throw new ConsultationNotChangeableError();
+      const email = c.request?.email ?? null;
+      if (!email) throw new ValidationError("Kayıtlı e-posta adresi yok (kayıt anonimleştirilmiş).", { email: ["Kayıtlı e-posta adresi yok."] });
+      const join = generateGuestToken();
+      const manage = generateManageToken();
+      const sentOk = await sendPatientServiceEmail(app, { consultation: c, email, kind: "confirmed", joinToken: join.token, manageToken: manage.token });
+      if (sentOk) {
+        await app.prisma.$transaction([
+          app.prisma.externalMeeting.update({ where: { id: c.meetingId }, data: { guestTokenHash: join.hash, guestTokenCreatedAt: new Date() } }),
+          app.prisma.serviceConsultation.update({ where: { id: c.id }, data: { manageTokenHash: manage.hash } }),
+        ]);
+      }
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "service_desk.links_resent",
+        targetType: "ServiceConsultation",
+        targetId: c.id,
+        metadata: { sent: sentOk },
+        ipAddress: request.ip,
+      });
+      return reply.code(202).send(ok({ sent: sentOk }));
     }
   );
 

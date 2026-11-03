@@ -7,6 +7,7 @@ import { SERVICE_CONSULTATION_EMAIL, buildPatientServiceEmail, buildStaffService
 import { MANAGE_TOKEN_REGEX, buildManageLink, generateManageToken } from "../../src/modules/service-consultations/service-consultation-tokens";
 import { normalizeGuestName } from "../../src/modules/meetings/meeting-guest-name";
 import { hashToken } from "../../src/lib/tokens";
+import { ipRateKey } from "../../src/modules/service-consultations/service-ip";
 
 const base = {
   timeZone: "Europe/Istanbul",
@@ -198,5 +199,40 @@ describe("migration ve kod taramasi", () => {
       const text = fs.readFileSync(path.join(dir, f), "utf8");
       expect(text, f).not.toMatch(/startRoomCompositeRecording|createMeetingToken\b|livekit-egress/);
     }
+  });
+});
+
+describe("ipRateKey (IPv6 /64)", () => {
+  it("IPv4 tam adres; IPv4-eslemeli IPv6 IPv4 sayilir; IPv6 ilk 64 bit", () => {
+    expect(ipRateKey("203.0.113.9")).toBe("203.0.113.9");
+    expect(ipRateKey("::ffff:203.0.113.9")).toBe("203.0.113.9");
+    expect(ipRateKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe("v6:2001:0db8:0001:0002");
+    expect(ipRateKey("2001:db8:1:2::1")).toBe(ipRateKey("2001:db8:1:2:ffff::9"));
+    expect(ipRateKey("2001:db8:1:3::1")).not.toBe(ipRateKey("2001:db8:1:2::1"));
+    expect(ipRateKey("::1")).toBe("v6:0000:0000:0000:0000");
+    expect(ipRateKey("")).toBe("unknown");
+  });
+});
+
+describe("misafir adi taklit korumasi (NFKC + harf disi at + katla)", () => {
+  it.each(["Ｃｏｏｒｄｉｎａｔｏｒ Bob", "C.o.o.r.d.i.n.a.t.o.r", "Ayse (Coordinator)", "WM-Health Team", "Customer Support", "Site Admin", "Koordinatör Ali", "Cооrdinаtor", "Sup port"])(
+    "%s reddedilir",
+    (name) => {
+      const r = normalizeGuestName(name);
+      // "Sup port" boslukla bolunmus: harf disi atildigi icin 'support' olur
+      expect(r.ok, name).toBe(false);
+    }
+  );
+  it("normal adlar gecer (Radmila, Adminov-benzeri olmayanlar)", () => {
+    for (const n of ["Radmila Petrovic", "Hans Mueller", "Maria Garcia", "Ali Veli"]) expect(normalizeGuestName(n).ok, n).toBe(true);
+  });
+});
+
+describe("e-posta metni davranisla uyumlu (B7)", () => {
+  it("8 dilde 'admit' yok; EN: oda koordinator katilinca acilir", () => {
+    const en = SERVICE_CONSULTATION_EMAIL.en.joinNote;
+    expect(en).toContain("the room opens when your coordinator joins");
+    expect(en).toContain("15 minutes before");
+    for (const [loc, s] of Object.entries(SERVICE_CONSULTATION_EMAIL)) expect(s.joinNote, loc).not.toMatch(/admit|zulassen|допуст|admettra|dará acceso|admite|primi/i);
   });
 });

@@ -68,7 +68,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "your time",
     joinCta: "Join the consultation",
     joinNote:
-      "The room opens 15 minutes before the start time. No account is needed; you will be asked for your name and your coordinator will admit you. The consultation is not recorded. This link is personal, please do not forward it.",
+      "You can join from 15 minutes before the start time; the room opens when your coordinator joins. No account is needed; you will be asked for your name. The consultation is not recorded. This link is personal, please do not forward it.",
     manageLead: "Need to cancel or change the time?",
     manageCta: "Manage your booking",
     notMedical: "This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.",
@@ -95,7 +95,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "Ihre Zeit",
     joinCta: "An der Beratung teilnehmen",
     joinNote:
-      "Der Raum öffnet 15 Minuten vor Beginn. Ein Konto ist nicht nötig; Sie werden nach Ihrem Namen gefragt und Ihre Koordination lässt Sie ein. Die Beratung wird nicht aufgezeichnet. Dieser Link ist persönlich, bitte nicht weiterleiten.",
+      "Sie können ab 15 Minuten vor Beginn beitreten; der Raum öffnet, sobald Ihre Koordination beitritt. Ein Konto ist nicht nötig; beim Beitritt wird nach Ihrem Namen gefragt. Die Beratung wird nicht aufgezeichnet. Dieser Link ist persönlich, bitte nicht weiterleiten.",
     manageLead: "Möchten Sie absagen oder den Termin ändern?",
     manageCta: "Buchung verwalten",
     notMedical: "Dies ist keine ärztliche Untersuchung. Medizinische Beurteilungen und Behandlungsentscheidungen treffen Ärztinnen und Ärzte in zugelassenen Gesundheitseinrichtungen.",
@@ -122,7 +122,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "بتوقيتك",
     joinCta: "الانضمام إلى الاستشارة",
     joinNote:
-      "تُفتح الغرفة قبل موعد البدء بـ 15 دقيقة. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك وسيسمح لك المنسّق بالدخول. لا يتم تسجيل الاستشارة. هذا الرابط شخصي، يُرجى عدم تحويله.",
+      "يمكنك الانضمام قبل موعد البدء بـ 15 دقيقة؛ تُفتح الغرفة عندما ينضم المنسّق. لا حاجة إلى حساب؛ سيُطلب منك إدخال اسمك. لا يتم تسجيل الاستشارة. هذا الرابط شخصي، يُرجى عدم تحويله.",
     manageLead: "هل تريد الإلغاء أو تغيير الموعد؟",
     manageCta: "إدارة حجزك",
     notMedical: "هذه ليست فحصًا طبيًا. يتخذ الأطباء في المنشآت الصحية المرخّصة القرارات الطبية وقرارات العلاج.",
@@ -149,7 +149,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "ваше время",
     joinCta: "Присоединиться к консультации",
     joinNote:
-      "Комната открывается за 15 минут до начала. Аккаунт не нужен; вас попросят указать имя, а координатор допустит вас в комнату. Консультация не записывается. Ссылка персональная, пожалуйста, не пересылайте её.",
+      "Присоединиться можно за 15 минут до начала; комната открывается, когда подключится ваш координатор. Аккаунт не нужен; вас попросят указать имя. Консультация не записывается. Ссылка персональная, пожалуйста, не пересылайте её.",
     manageLead: "Нужно отменить или перенести консультацию?",
     manageCta: "Управление записью",
     notMedical: "Это не медицинский осмотр. Медицинские заключения и решения о лечении принимают врачи в авторизованных медицинских учреждениях.",
@@ -176,7 +176,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "votre heure",
     joinCta: "Rejoindre la consultation",
     joinNote:
-      "La salle ouvre 15 minutes avant le début. Aucun compte n’est nécessaire ; votre nom vous sera demandé et votre coordinateur vous admettra. La consultation n’est pas enregistrée. Ce lien est personnel, merci de ne pas le transférer.",
+      "Vous pouvez vous connecter dès 15 minutes avant le début ; la salle s’ouvre lorsque votre coordinateur la rejoint. Aucun compte n’est nécessaire ; votre nom vous sera demandé. La consultation n’est pas enregistrée. Ce lien est personnel, merci de ne pas le transférer.",
     manageLead: "Besoin d’annuler ou de modifier l’horaire ?",
     manageCta: "Gérer votre réservation",
     notMedical: "Il ne s’agit pas d’un examen médical. Les évaluations médicales et les décisions de traitement relèvent de médecins exerçant dans des établissements de santé autorisés.",
@@ -203,7 +203,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "su hora",
     joinCta: "Unirse a la consulta",
     joinNote:
-      "La sala se abre 15 minutos antes del inicio. No necesita una cuenta; se le pedirá su nombre y su coordinador le dará acceso. La consulta no se graba. Este enlace es personal, por favor no lo reenvíe.",
+      "Puede unirse desde 15 minutos antes del inicio; la sala se abre cuando su coordinador se une. No necesita una cuenta; se le pedirá su nombre. La consulta no se graba. Este enlace es personal, por favor no lo reenvíe.",
     manageLead: "¿Necesita cancelar o cambiar el horario?",
     manageCta: "Gestionar su reserva",
     notMedical: "Esto no es un examen médico. La evaluación médica y las decisiones de tratamiento corresponden a médicos de centros sanitarios autorizados.",
@@ -230,7 +230,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "ora dumneavoastră",
     joinCta: "Intrați în consultație",
     joinNote:
-      "Camera se deschide cu 15 minute înainte de început. Nu aveți nevoie de cont; vi se va cere numele, iar coordonatorul vă va admite. Consultația nu este înregistrată. Acest link este personal, vă rugăm să nu îl redirecționați.",
+      "Vă puteți alătura cu 15 minute înainte de început; camera se deschide când se alătură coordonatorul dumneavoastră. Nu aveți nevoie de cont; vi se va cere numele. Consultația nu este înregistrată. Acest link este personal, vă rugăm să nu îl redirecționați.",
     manageLead: "Doriți să anulați sau să schimbați ora?",
     manageCta: "Gestionați rezervarea",
     notMedical: "Aceasta nu este un consult medical. Evaluarea medicală și deciziile de tratament sunt luate de medici din unități sanitare autorizate.",
@@ -257,7 +257,7 @@ export const SERVICE_CONSULTATION_EMAIL: Record<IntermediaryLocale, Strings> = {
     yourTime: "vaše vreme",
     joinCta: "Pridružite se konsultaciji",
     joinNote:
-      "Soba se otvara 15 minuta pre početka. Nalog nije potreban; biće vam zatraženo ime, a koordinator će vas primiti. Konsultacija se ne snima. Ovaj link je lični, molimo vas da ga ne prosleđujete.",
+      "Možete se pridružiti 15 minuta pre početka; soba se otvara kada se koordinator pridruži. Nalog nije potreban; biće vam zatraženo ime. Konsultacija se ne snima. Ovaj link je lični, molimo vas da ga ne prosleđujete.",
     manageLead: "Želite da otkažete ili promenite termin?",
     manageCta: "Upravljajte rezervacijom",
     notMedical: "Ovo nije medicinski pregled. Medicinske procene i odluke o lečenju donose lekari u ovlašćenim zdravstvenim ustanovama.",

@@ -8,7 +8,6 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { decryptSecret } from "../../lib/crypto";
 import { logAudit } from "../../lib/audit";
-import { ROLES_PANEL } from "../../lib/site-roles";
 import { LiveKitNotConfiguredError, MeetingNotOpenError, NotFoundError, ServiceCoordinatorForbiddenError, TwoFactorRequiredError } from "../../lib/errors";
 import { isLiveKitConfigured } from "../telehealth/lib/livekit";
 import { MEETING_JOIN_LEAD_MS, createMeetingHostToken, ensureMeetingRoom } from "../telehealth/lib/meeting-livekit";
@@ -16,7 +15,7 @@ import { addCalendarDays, getStartOfCalendarDayInTimeZone } from "../telehealth/
 import { parseIsoCalendarDate } from "../telehealth/lib/availability";
 import { MeetingTokenResponseSchema } from "../meetings/meetings.schemas";
 import { computePhase, meetingOpensAt, serviceCoordinatorLabel } from "../meetings/meetings.service";
-import { getOrCreateDesk } from "./service-desk";
+import { COORDINATOR_ROLES, getOrCreateDesk } from "./service-desk";
 import { dateKeyInZone } from "./service-slots";
 import { formatConsultationNumber } from "./service-consultation-tokens";
 
@@ -94,7 +93,7 @@ export async function requireCoordinator(app: FastifyInstance, request: FastifyR
     user &&
     user.status === "ACTIVE" &&
     !user.doctorProfile &&
-    (ROLES_PANEL as readonly string[]).includes(user.role) &&
+    (COORDINATOR_ROLES as readonly string[]).includes(user.role) &&
     user.coordinatorProfile?.isActive === true;
   if (!ok_) {
     if (opts.hideAsNotFound && user?.role === "ADMIN") throw new NotFoundError("Görüşme bulunamadı.");

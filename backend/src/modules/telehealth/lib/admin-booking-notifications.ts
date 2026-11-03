@@ -34,6 +34,9 @@ export type BookingNotificationEvent =
   // Paket AI (Is 3) - hizmet gorusmesi olaylari (ayni altyapi). Bilgi `payload.serviceConsultationId`; PII YOK.
   | { kind: "service_consultation_booked"; consultationId: string }
   | { kind: "service_consultation_cancelled"; consultationId: string }
+  // Hasta onay/saat degisikligi e-postasi gonderilemedi (PII yok) ve saatlik rezervasyon tavani uyarisi (saatte en cok 1).
+  | { kind: "service_consultation_email_failed"; consultationId: string; emailKind: "confirmed" | "rescheduled"; minuteBucket: string }
+  | { kind: "service_consultation_cap_reached"; hourBucket: string }
   | { kind: "service_consultation_rescheduled"; consultationId: string; oldStartsAt: Date; newStartsAt: Date };
 
 export const ADMIN_NOTIFICATION_MAX_ATTEMPTS = 4;
@@ -56,6 +59,8 @@ interface NotificationPayload {
   hourBucket?: string;
   /** Yalniz service_consultation_*: ServiceConsultation.id. */
   serviceConsultationId?: string;
+  /** Yalniz service_consultation_email_failed. */
+  emailKind?: string;
   /** Basariyla gonderilmis alici adresleri (kucuk harf) - retry'da tekrar gonderilmez. */
   deliveredTo?: string[];
 }
@@ -74,6 +79,10 @@ export function bookingEventKey(event: BookingNotificationEvent): string {
       return `svc:${event.consultationId}:booked`;
     case "service_consultation_cancelled":
       return `svc:${event.consultationId}:cancelled`;
+    case "service_consultation_email_failed":
+      return `svc:${event.consultationId}:email-failed:${event.emailKind}:${event.minuteBucket}`;
+    case "service_consultation_cap_reached":
+      return `svc-cap:${event.hourBucket}`;
     case "service_consultation_rescheduled":
       return `svc:${event.consultationId}:rescheduled:${event.oldStartsAt.toISOString()}:${event.newStartsAt.toISOString()}`;
     case "rescheduled":
@@ -218,6 +227,16 @@ async function loadConsultationMail(app: FastifyInstance, row: NotificationRow):
 /** Paket AI (Is 3) - hizmet gorusmesi bildirimi: yalniz PII'siz alanlar okunur (ad/e-posta/telefon/mesaj select'te YOK). */
 async function loadServiceConsultationMail(app: FastifyInstance, row: NotificationRow): Promise<AdminMail> {
   const payload = (row.payload ?? {}) as NotificationPayload;
+  if (row.kind === "service_consultation_cap_reached") {
+    const subject = "Online consultation booking volume is high";
+    return {
+      subject,
+      preheader: subject,
+      title: subject,
+      bodyHtml: "<p>More than 20 online consultations were booked within the last hour. Bookings are NOT blocked; please check the consultations list for unusual activity.</p><p>This warning is sent at most once per hour.</p>",
+      cta: { label: "Open consultations", url: `${env.FRONTEND_URL.replace(/\/$/, "")}/admin/service-desk/consultations` },
+    };
+  }
   if (!payload.serviceConsultationId) throw new MissingEntityError();
   const c = await app.prisma.serviceConsultation.findUnique({
     where: { id: payload.serviceConsultationId },
@@ -234,6 +253,17 @@ async function loadServiceConsultationMail(app: FastifyInstance, row: Notificati
     },
   });
   if (!c) throw new MissingEntityError();
+  if (row.kind === "service_consultation_email_failed") {
+    const label = payload.emailKind === "rescheduled" ? "reschedule" : "confirmation";
+    const subject = `${formatConsultationNumber(c.seq)} ${label} e-mail failed`;
+    return {
+      subject,
+      preheader: subject,
+      title: subject,
+      bodyHtml: `<p>The ${label} e-mail for online consultation ${formatConsultationNumber(c.seq)} could not be delivered to the patient. Open the consultation and use "Resend links" to send fresh links to the registered address.</p>`,
+      cta: { label: "Open consultation", url: `${env.FRONTEND_URL.replace(/\/$/, "")}/admin/service-desk/consultations/${c.id}` },
+    };
+  }
   const event = row.kind === "service_consultation_booked" ? "booked" : row.kind === "service_consultation_cancelled" ? "cancelled" : "rescheduled";
   const durationMin = Math.round((c.endsAt.getTime() - c.startsAt.getTime()) / 60_000);
   return buildStaffServiceEmail({
@@ -336,6 +366,8 @@ export async function notifyAdminsOfBookingEvent(app: FastifyInstance, event: Bo
       event.kind === "consultation_cap_reached" ||
       event.kind === "service_consultation_booked" ||
       event.kind === "service_consultation_cancelled" ||
+      event.kind === "service_consultation_email_failed" ||
+      event.kind === "service_consultation_cap_reached" ||
       event.kind === "service_consultation_rescheduled"
         ? null
         : event.bookingId;
@@ -347,7 +379,11 @@ export async function notifyAdminsOfBookingEvent(app: FastifyInstance, event: Bo
           ? { requestId: event.requestId }
           : event.kind === "consultation_cap_reached"
             ? { hourBucket: event.hourBucket }
-            : event.kind === "service_consultation_booked" || event.kind === "service_consultation_cancelled"
+            : event.kind === "service_consultation_cap_reached"
+              ? { hourBucket: event.hourBucket }
+              : event.kind === "service_consultation_email_failed"
+                ? { serviceConsultationId: event.consultationId, emailKind: event.emailKind }
+                : event.kind === "service_consultation_booked" || event.kind === "service_consultation_cancelled"
               ? { serviceConsultationId: event.consultationId }
               : event.kind === "service_consultation_rescheduled"
                 ? { serviceConsultationId: event.consultationId, oldStartsAt: event.oldStartsAt.toISOString(), newStartsAt: event.newStartsAt.toISOString() }

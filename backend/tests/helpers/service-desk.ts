@@ -49,6 +49,7 @@ export async function openDesk(app: FastifyInstance, opts: { hours?: Array<[numb
   await app.prisma.serviceDeskHours.deleteMany({ where: { deskId: "main" } });
   const hours = opts.hours ?? [1, 2, 3, 4, 5, 6, 7].map((d) => [d, 9 * 60, 17 * 60] as [number, number, number]);
   await app.prisma.serviceDeskHours.createMany({ data: hours.map(([dayOfWeek, startMinute, endMinute]) => ({ deskId: "main", dayOfWeek, startMinute, endMinute })) });
+  await app.prisma.siteModule.upsert({ where: { key: "telehealth" }, create: { key: "telehealth", enabled: true }, update: { enabled: true } });
   await app.prisma.siteSettings.upsert({
     where: { id: "singleton" },
     create: { id: "singleton", serviceBookingEnabled: opts.enabled ?? true },

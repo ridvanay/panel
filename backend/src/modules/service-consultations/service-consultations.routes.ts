@@ -24,9 +24,10 @@ import {
   lookupFlags,
   rescheduleServiceConsultation,
 } from "./service-booking";
-import { confirmationAllowed, notifyStaffOfServiceEvent, sendPatientServiceEmail } from "./service-consultation-notify";
+import { confirmationAllowed, notifyStaffOfServiceEvent, sendPatientEmailOrAlert, sendPatientServiceEmail, warnIfBookingVolumeHigh } from "./service-consultation-notify";
 import { trackAdminBackgroundTask } from "../telehealth/lib/admin-booking-notifications";
 import { formatConsultationNumber } from "./service-consultation-tokens";
+import { ipRateKey } from "./service-ip";
 import {
   CreateServiceConsultationResponseSchema,
   CreateServiceConsultationSchema,
@@ -40,7 +41,7 @@ import {
 } from "./service-consultations.schemas";
 
 const SLOTS_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
-const BOOK_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+const BOOK_RATE_LIMIT = { max: 5, timeWindow: "1 minute", keyGenerator: (request: { ip: string }) => `svc-book:${ipRateKey(request.ip)}` };
 const MANAGE_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
 /** IP basina 24 saatte en cok bu kadar rezervasyon (takvim doldurmaya karsi). */
 export const BOOKINGS_PER_IP_PER_DAY = 10;
@@ -143,9 +144,14 @@ export async function serviceConsultationsPublicRoutes(app: FastifyInstance) {
 
       // IP basina gunluk tavan (kayitli hizmet rezervasyonlari).
       if (request.ip) {
-        const today = await app.prisma.consultationRequest.count({
-          where: { ipAddress: request.ip, createdAt: { gte: new Date(now.getTime() - 86_400_000) }, serviceConsultation: { isNot: null } },
+        // IPv4 tam adres, IPv6 /64 oneki: ayni onekteki tum adresler tek sayilir.
+        const key = ipRateKey(request.ip);
+        const recent = await app.prisma.consultationRequest.findMany({
+          where: { ipAddress: { not: null }, createdAt: { gte: new Date(now.getTime() - 86_400_000) }, serviceConsultation: { isNot: null } },
+          select: { ipAddress: true },
+          take: 5000,
         });
+        const today = recent.filter((r) => ipRateKey(r.ipAddress) === key).length;
         if (today >= BOOKINGS_PER_IP_PER_DAY) throw new ApiError(429, "RATE_LIMITED", "Günlük rezervasyon sınırına ulaşıldı.", { retryAfterSeconds: ["3600"] });
       }
 
@@ -189,8 +195,9 @@ export async function serviceConsultationsPublicRoutes(app: FastifyInstance) {
       trackAdminBackgroundTask(
         (async () => {
           if (await confirmationAllowed(app, email, now)) {
-            await sendPatientServiceEmail(app, { consultation: c, email, kind: "confirmed", joinToken: booked.joinToken, manageToken: booked.manageToken });
+            await sendPatientEmailOrAlert(app, { consultation: c, email, kind: "confirmed", joinToken: booked.joinToken, manageToken: booked.manageToken });
           }
+          await warnIfBookingVolumeHigh(app, now);
         })().catch((err) => app.log.warn({ err: (err as Error).message }, "Hizmet görüşmesi onay e-postası gönderilemedi (best-effort).")),
       );
       notifyStaffOfServiceEvent(app, { consultationId: c.id, event: "booked" });
@@ -262,7 +269,7 @@ export async function serviceConsultationsPublicRoutes(app: FastifyInstance) {
       const updated = result.consultation;
       const desk = await loadDeskContext(app.prisma);
       trackAdminBackgroundTask(
-        sendPatientServiceEmail(app, {
+        sendPatientEmailOrAlert(app, {
           consultation: updated,
           email: c.request?.email ?? null,
           kind: "rescheduled",

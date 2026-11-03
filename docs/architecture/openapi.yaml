@@ -4990,7 +4990,7 @@ paths:
       tags: [ServiceConsultations]
       summary: "Paket AI — hizmet bazlı online ön görüşme: rezervasyon açık mı (public, 60 sn önbellek)"
       description: >
-        `enabled` = `SiteSettings.serviceBookingEnabled` AÇIK && ≥1 aktif koordinatör (ACTIVE kullanıcı, doktor profili yok)
+        `enabled` = `SiteSettings.serviceBookingEnabled` AÇIK && telehealth modülü açık && LiveKit yapılandırılmış && ≥1 aktif koordinatör (ACTIVE EDITOR/MANAGER, doktor profili yok)
         && ≥1 çalışma saati. Kapalıyken arayüz düğmeleri `/request` talep formuna yönlenir.
       responses:
         "200":
@@ -5367,6 +5367,31 @@ paths:
       responses:
         "200": { description: OK }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/service-desk/consultations/{id}/resend-links:
+    post:
+      tags: [ServiceConsultations]
+      summary: "Hasta bağlantılarını yeniden gönder (ADMIN + MANAGER; SCHEDULED ve bitmemiş)"
+      description: >
+        YENİ `sc_` yönetim ve YENİ `mg_` katılım belirteci üretir, onay e-postasını kayıtlı adrese gönderir; eski bağlantılar
+        geçersiz olur (gönderim başarısızsa özetler DEĞİŞMEZ ve `sent: false` döner). Audit `service_desk.links_resent`.
+        Kayıt başına 5/saat. Onay veya saat değişikliği e-postası gönderilemezse yöneticilere PII'siz
+        "SVC-00012 confirmation e-mail failed" bildirimi gider.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "202":
+          description: İşlendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { type: object, properties: { sent: { type: boolean } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/service-desk/consultations/{id}/cancel:
     post:

@@ -1,5 +1,6 @@
 import type { CoordinatorProfile, Prisma, PrismaClient, ServiceDesk } from "@prisma/client";
 import { ConflictError, ServiceNotBookableError } from "../../lib/errors";
+import { isLiveKitConfigured } from "../telehealth/lib/livekit";
 import { computeDeskSlots, freeCoordinatorsForStart, type BusyInterval, type DeskSlotInput } from "./service-slots";
 
 export const SERVICE_DESK_ID = "main";
@@ -7,6 +8,8 @@ export const SERVICE_CONSULTATION_CONSENT_VERSION = "service-consultation-v1";
 export const SERVICE_CONSULTATION_HOST_TITLE = "WM Health online consultation";
 export const MAX_SLOT_RANGE_DAYS = 31;
 const SETTINGS_ID = "singleton";
+/** Koordinatör olabilen roller: ADMIN koordinatör SAYILMAZ (atama havuzu ve koordinatör uçları). */
+export const COORDINATOR_ROLES = ["EDITOR", "MANAGER"] as const;
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -22,7 +25,7 @@ export interface ActiveCoordinator extends Pick<CoordinatorProfile, "id" | "user
 /** Aktif koordinatörler: profil aktif + kullanıcı ACTIVE + doktor profili YOK. */
 export async function loadActiveCoordinators(db: Db): Promise<ActiveCoordinator[]> {
   const rows = await db.coordinatorProfile.findMany({
-    where: { isActive: true, user: { status: "ACTIVE", doctorProfile: null } },
+    where: { isActive: true, user: { status: "ACTIVE", doctorProfile: null, role: { in: [...COORDINATOR_ROLES] } } },
     select: { id: true, userId: true, displayName: true, languages: true, lastAssignedAt: true, user: { select: { email: true } } },
     orderBy: { createdAt: "asc" },
   });
@@ -40,17 +43,21 @@ export interface DeskContext {
   closureDates: Set<string>;
   coordinators: ActiveCoordinator[];
   flagOn: boolean;
+  /** Telehealth modülü açık VE LiveKit yapılandırılmış: görüşme odası kurulamıyorsa rezervasyon kapalı. */
+  infraReady: boolean;
 }
 
 const dateKey = (d: Date) => d.toISOString().slice(0, 10);
 
 export async function loadDeskContext(db: Db): Promise<DeskContext> {
   const desk = await getOrCreateDesk(db);
-  const [hours, closures, coordinators, flagOn] = await Promise.all([
+  const [hours, closures, coordinators, flagOn, telehealth] = await Promise.all([
+
     db.serviceDeskHours.findMany({ where: { deskId: desk.id }, orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] }),
     db.serviceDeskClosure.findMany({ where: { deskId: desk.id }, select: { date: true } }),
     loadActiveCoordinators(db),
     isBookingFlagOn(db),
+    db.siteModule.findUnique({ where: { key: "telehealth" }, select: { enabled: true } }),
   ]);
   return {
     desk,
@@ -58,12 +65,13 @@ export async function loadDeskContext(db: Db): Promise<DeskContext> {
     closureDates: new Set(closures.map((c) => dateKey(c.date))),
     coordinators,
     flagOn,
+    infraReady: Boolean(telehealth?.enabled) && isLiveKitConfigured(),
   };
 }
 
 /** Rezerve edilebilir mi: bayrak açık, en az bir aktif koordinatör ve en az bir çalışma saati var. */
 export function isBookable(ctx: DeskContext): boolean {
-  return ctx.flagOn && ctx.coordinators.length > 0 && ctx.hours.length > 0;
+  return ctx.flagOn && ctx.infraReady && ctx.coordinators.length > 0 && ctx.hours.length > 0;
 }
 
 export function assertBookable(ctx: DeskContext): void {

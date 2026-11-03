@@ -8,9 +8,10 @@ import { buildGuestLink } from "../meetings/meeting-tokens";
 import { buildPatientServiceEmail, buildStaffServiceEmail, type ServiceEmailKind } from "./service-consultation-email";
 import { buildManageLink, formatConsultationNumber } from "./service-consultation-tokens";
 
-/** Posta bombasina karsi (AH ile ayni): adres basina saatte 3, site genelinde saatte 50 onay e-postasi. */
+/** Posta bombasina karsi: YALNIZ adres basina saatte 3 onay e-postasi (site geneli tavan YOK: gercek hastanin onayi engellenmesin). */
 export const CONFIRMATIONS_PER_ADDRESS_PER_HOUR = 3;
-export const CONFIRMATIONS_PER_HOUR_GLOBAL = 50;
+/** Site genelinde saatlik rezervasyon uyari esigi: asilirsa adminlere saatte en cok 1 uyari gider (rezervasyon ENGELLENMEZ). */
+export const BOOKINGS_PER_HOUR_WARN = 20;
 
 type EmailConsultation = Pick<ServiceConsultation, "id" | "seq" | "startsAt" | "endsAt" | "locale" | "patientTimeZone">;
 
@@ -54,11 +55,35 @@ export async function sendPatientServiceEmail(
 /** Onay e-postasi icin posta bombasi tavani (AH kurali). */
 export async function confirmationAllowed(app: FastifyInstance, email: string, now: Date = new Date()): Promise<boolean> {
   const hourAgo = new Date(now.getTime() - 3_600_000);
-  const [perAddress, global] = await Promise.all([
-    app.prisma.serviceConsultation.count({ where: { createdAt: { gte: hourAgo }, request: { email } } }),
-    app.prisma.serviceConsultation.count({ where: { createdAt: { gte: hourAgo } } }),
-  ]);
-  return perAddress <= CONFIRMATIONS_PER_ADDRESS_PER_HOUR && global <= CONFIRMATIONS_PER_HOUR_GLOBAL;
+  const perAddress = await app.prisma.serviceConsultation.count({ where: { createdAt: { gte: hourAgo }, request: { email } } });
+  return perAddress <= CONFIRMATIONS_PER_ADDRESS_PER_HOUR;
+}
+
+/**
+ * Onay / saat degisikligi e-postasi: gonderilemezse PII'siz admin uyarisi (AdminNotification) yazar. Adres yoksa
+ * (anonimlestirilmis) uyari gerekmez. Firlatmaz.
+ */
+export async function sendPatientEmailOrAlert(
+  app: FastifyInstance,
+  params: { consultation: EmailConsultation; email: string | null; kind: "confirmed" | "rescheduled"; joinToken?: string; manageToken?: string }
+): Promise<boolean> {
+  if (!params.email) return false;
+  const sentOk = await sendPatientServiceEmail(app, params);
+  if (!sentOk) {
+    await notifyAdminsOfBookingEvent(app, {
+      kind: "service_consultation_email_failed",
+      consultationId: params.consultation.id,
+      emailKind: params.kind,
+      minuteBucket: new Date().toISOString().slice(0, 16),
+    });
+  }
+  return sentOk;
+}
+
+/** Saatlik rezervasyon tavani asildiysa adminlere (saatte en cok 1) uyari; rezervasyonu ENGELLEMEZ. */
+export async function warnIfBookingVolumeHigh(app: FastifyInstance, now: Date = new Date()): Promise<void> {
+  const lastHour = await app.prisma.serviceConsultation.count({ where: { createdAt: { gte: new Date(now.getTime() - 3_600_000) } } });
+  if (lastHour > BOOKINGS_PER_HOUR_WARN) await notifyAdminsOfBookingEvent(app, { kind: "service_consultation_cap_reached", hourBucket: now.toISOString().slice(0, 13) });
 }
 
 export type StaffServiceEvent = "booked" | "cancelled" | "rescheduled";
