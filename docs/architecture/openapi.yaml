@@ -14946,10 +14946,12 @@ paths:
         schema: { type: string }
     post:
       tags: [Meetings]
-      summary: Misafir bağlantısını e-postayla gönder (ev sahibi; yalnızca güncel bağlantıyla)
+      summary: Misafir bağlantısını e-postayla gönder (oluşturma anındaki bağlantıyla veya yeni bağlantı üreterek)
       description: >
-        Düz belirteç saklanmadığı için istemci, oluşturma / yeniden üretme yanıtındaki bağlantıyı (`guestLink`) bu
-        istekte geri gönderir. Belirtecin SHA-256 özeti mevcut `guestTokenHash` ile eşleşmezse (yenilenmiş / iptal
+        **S5.** (a) Oluşturma kartında: düz belirteç saklanmadığı için istemci, oluşturma / yeniden üretme
+        yanıtındaki bağlantıyı (`guestLink`) bu istekte geri gönderir; (b) sonradan gönderimde `guestLink` ALANI
+        GÖNDERİLMEZ: sunucu YENİ bağlantı üretir, eskisi anında geçersiz olur ve yeni bağlantı yanıtta (`guestLink`)
+        döner (ekranda açık uyarı gösterilmeli; gönderim başarısız olsa da yeni bağlantı döner). Bağlantı verildiyse: Belirtecin SHA-256 özeti mevcut `guestTokenHash` ile eşleşmezse (yenilenmiş / iptal
         edilmiş) → `409 CONFLICT`, e-posta GİTMEZ. Bağlantı e-postaya SUNUCUDA yeniden kurulur. Kurumsal şablon
         (audience `user`): başlık, ev sahibinin görünen adı, zaman ve bağlantı; not, ev sahibi e-postası ve PII YOK.
         E-posta dili müşteri kuralına uyar: `tr` -> `en` (Türkçe e-posta gitmez), aracı kuruluş ibareli kurumsal alt bilgi. Alıcı adresi saklanmaz ve audit'e yazılmaz. Gönderim hatası 202'yi bozmaz (`sent: false`).
@@ -14973,6 +14975,10 @@ paths:
                         type: object
                         properties:
                           sent: { type: boolean }
+                          guestLink:
+                            type: string
+                            nullable: true
+                            description: "Yalnızca sunucu yeni bağlantı ürettiyse (istekte `guestLink` yoktu) dolu; aksi `null`."
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
           description: "Yetki yok veya geri alınmış (`error.code: MEETING_HOST_FORBIDDEN`)"
@@ -16501,7 +16507,7 @@ components:
     Meeting:
       type: object
       description: "Hiçbir zaman belirteç veya özet taşımaz."
-      required: [id, title, note, startsAt, endsAt, durationMin, maxParticipants, autoAdmitGuests, status, phase, hostJoinedAt, guestLinkActive, opensAt, createdAt]
+      required: [id, title, note, startsAt, endsAt, durationMin, maxParticipants, autoAdmitGuests, status, phase, hostJoinedAt, guestLinkActive, opensAt, createdAt, serviceConsultation]
       properties:
         id: { type: string }
         title: { type: string, description: "Misafire görünür." }
@@ -16520,12 +16526,22 @@ components:
         guestLinkActive: { type: boolean }
         opensAt: { type: string, format: date-time, description: "Pencere açılışı (startsAt − 15 dk)." }
         createdAt: { type: string, format: date-time }
+        serviceConsultation:
+          type: object
+          nullable: true
+          required: [consultationNumber]
+          properties:
+            consultationNumber: { type: string, example: SVC-00012 }
+          description: >
+            Hizmete (AI İş 3 ServiceConsultation) bağlı toplantıda dolu, genel toplantıda `null`. Bağlı toplantıda
+            düzenle / iptal / misafir bağlantısı / davet uçları ve ADMIN iptali `409 MEETING_MANAGED_BY_SERVICE_DESK`
+            döner (yönetim Hizmet Masası'ndan); FE bu alanla rozet gösterir ve eylemleri gizler.
 
     AdminMeeting:
       description: "`Meeting` − `note` + ev sahibi (misafir adları hiçbir zaman yer almaz)."
       allOf:
         - type: object
-          required: [id, title, startsAt, endsAt, durationMin, maxParticipants, autoAdmitGuests, status, phase, hostJoinedAt, guestLinkActive, opensAt, createdAt, host]
+          required: [id, title, startsAt, endsAt, durationMin, maxParticipants, autoAdmitGuests, status, phase, hostJoinedAt, guestLinkActive, opensAt, createdAt, serviceConsultation, hostName, host]
           properties:
             id: { type: string }
             title: { type: string }
@@ -16540,6 +16556,12 @@ components:
             guestLinkActive: { type: boolean }
             opensAt: { type: string, format: date-time }
             createdAt: { type: string, format: date-time }
+            serviceConsultation:
+              type: object
+              nullable: true
+              properties:
+                consultationNumber: { type: string }
+            hostName: { type: string, description: "Unvansız görünen ad; hizmete bağlıysa 'Patient Coordinator · <displayName>'." }
             host:
               type: object
               properties:
@@ -16597,11 +16619,11 @@ components:
 
     InviteEmailRequest:
       type: object
-      required: [guestLink, email]
+      required: [email]
       properties:
-        guestLink: { type: string, description: "Oluşturma / yeniden üretme yanıtındaki bağlantı (veya çıplak `mg_…` belirteci)." }
+        guestLink: { type: string, description: "Oluşturma / yeniden üretme yanıtındaki bağlantı (veya çıplak `mg_…` belirteci). VERİLMEZSE sunucu yeni bağlantı üretir ve eskisini geçersiz kılar." }
         email: { type: string, format: email }
-        locale: { type: string, default: en, description: "E-posta dili (9 dil; bilinmeyen → en) ve bağlantı dil öneki." }
+        locale: { type: string, default: en, description: "E-posta dili (8 dil; `tr` ve bilinmeyen → en) ve bağlantı dil öneki." }
 
     MeetingGuestPreflight:
       type: object

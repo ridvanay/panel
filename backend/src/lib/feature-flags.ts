@@ -1,12 +1,12 @@
 /**
- * Paket AI (İş 3, hızlı sürüm) — derleme zamanı özellik bayrakları.
+ * Derleme zamanı özellik bayrakları.
  *
  * EXTERNAL_MEETINGS_ENABLED: AG genel harici toplantı özelliği (ev sahibi uçları `/meetings`, ADMIN gözetimi
- * `/admin/meetings`, `PATCH /admin/users/:id/meeting-host`). Bu sürümde KAPALI: uçlar KAYDEDİLMEZ (404).
- * Misafir uçları (`/meet/guest/*`) ve `meeting-sweeper` bayraktan bağımsız KAYITLIDIR: hizmet görüşmesinde hasta
- * katılımı ve oda kapanışı bunlara dayanır. AG İş 3'ün kalanı bu sabiti açacaktır.
+ * `/admin/meetings`, `PATCH /admin/users/:id/meeting-host`). AG İş 3 tamamlandığında AÇILDI (true). `false`
+ * yapılırsa bu uçlar KAYDEDİLMEZ (404). Misafir uçları (`/meet/guest/*`) ve `meeting-sweeper` bayraktan
+ * bağımsız HER ZAMAN kayıtlıdır: hizmet görüşmesinde hasta katılımı ve oda kapanışı bunlara dayanır.
  */
-export const EXTERNAL_MEETINGS_ENABLED = false;
+export const EXTERNAL_MEETINGS_ENABLED = true;
 
 let testOverride: boolean | null = null;
 

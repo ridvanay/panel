@@ -31,8 +31,21 @@ export function meetingOpensAt(meeting: Pick<ExternalMeeting, "startsAt">): Date
   return new Date(meeting.startsAt.getTime() - MEETING_JOIN_LEAD_MS);
 }
 
-/** Hiçbir zaman belirteç veya özet taşımaz. */
-export function toMeetingDto(meeting: ExternalMeeting, now: Date = new Date()) {
+/** Liste/ayrıntı sorgularına eklenen ilişki: hizmete (AI İş 3) bağlı toplantıyı ayırt etmek için. */
+export const SERVICE_LINK_INCLUDE = { serviceConsultation: { select: { seq: true } } } as const;
+
+type MeetingWithLink = ExternalMeeting & { serviceConsultation?: { seq: number } | null };
+
+/** `SVC-00012` — ServiceConsultation görünen numarası (service-consultation-tokens ile aynı biçim). */
+function consultationNumber(seq: number): string {
+  return `SVC-${String(seq).padStart(5, "0")}`;
+}
+
+/**
+ * Hiçbir zaman belirteç veya özet taşımaz. `serviceConsultation`: hizmete bağlı toplantıda `{ consultationNumber }`
+ * (FE rozeti; düzenle/iptal/bağlantı eylemleri gizlenir), değilse `null`.
+ */
+export function toMeetingDto(meeting: MeetingWithLink, now: Date = new Date()) {
   return {
     id: meeting.id,
     title: meeting.title,
@@ -48,13 +61,30 @@ export function toMeetingDto(meeting: ExternalMeeting, now: Date = new Date()) {
     guestLinkActive: meeting.guestTokenHash !== null && meeting.status === "SCHEDULED" && now.getTime() < meeting.endsAt.getTime(),
     opensAt: meetingOpensAt(meeting).toISOString(),
     createdAt: meeting.createdAt.toISOString(),
+    serviceConsultation: meeting.serviceConsultation ? { consultationNumber: consultationNumber(meeting.serviceConsultation.seq) } : null,
   };
 }
 
-/** Admin gözetimi: ev sahibinin NOTU ve misafir adları yoktur. */
-export function toAdminMeetingDto(meeting: ExternalMeeting & { host: { id: string; name: string } }, now: Date = new Date()) {
+/** Admin listesi sorgusu: ev sahibi adı (doktorsa kısaltılmış görünen ad) + hizmete bağlıysa koordinatör etiketi için. */
+export const ADMIN_MEETING_INCLUDE = {
+  host: { select: { id: true, name: true, doctorProfile: { select: { fullName: true, publicName: true, isFounder: true } } } },
+  serviceConsultation: { select: { seq: true, coordinator: { select: { displayName: true } } } },
+} as const;
+
+type AdminMeetingRow = ExternalMeeting & {
+  host: { id: string; name: string; doctorProfile?: { fullName: string; publicName: string | null; isFounder: boolean } | null };
+  serviceConsultation?: { seq: number; coordinator?: { displayName: string } | null } | null;
+};
+
+/**
+ * Admin gözetimi: ev sahibinin NOTU ve misafir adları yoktur. `hostName`: unvansız görünen ad; hizmete bağlıysa
+ * "Patient Coordinator · <displayName>". `host` ({id,name}) geriye dönük uyumluluk için kalır.
+ */
+export function toAdminMeetingDto(meeting: AdminMeetingRow, now: Date = new Date()) {
   const { note: _note, ...rest } = toMeetingDto(meeting, now);
-  return { ...rest, host: { id: meeting.host.id, name: meeting.host.name } };
+  const coordinator = meeting.serviceConsultation?.coordinator;
+  const hostName = coordinator ? serviceCoordinatorLabel(coordinator.displayName) : hostDisplayName(meeting.host);
+  return { ...rest, hostName, host: { id: meeting.host.id, name: meeting.host.name } };
 }
 
 // --- Liste imleci: (startsAt, seq) anahtarlı; seq tek başına startsAt sıralamasıyla uyuşmaz. ---
@@ -147,8 +177,8 @@ export function serviceCoordinatorLabel(displayName: string): string {
 }
 
 /** Başkasının (ADMIN dahil) veya olmayan toplantı → 404 (varlık sızdırılmaz). */
-export async function loadOwnMeeting(app: FastifyInstance, id: string, hostUserId: string): Promise<ExternalMeeting> {
-  const meeting = await app.prisma.externalMeeting.findFirst({ where: { id, hostUserId } });
+export async function loadOwnMeeting(app: FastifyInstance, id: string, hostUserId: string): Promise<MeetingWithLink> {
+  const meeting = await app.prisma.externalMeeting.findFirst({ where: { id, hostUserId }, include: SERVICE_LINK_INCLUDE });
   if (!meeting) throw new MeetingNotFoundError();
   return meeting;
 }
@@ -156,7 +186,7 @@ export async function loadOwnMeeting(app: FastifyInstance, id: string, hostUserI
 /** Düzenle/iptal/bağlantı/davet uçları için: hizmete bağlı toplantı AG uçlarından yönetilemez (409). */
 export async function loadOwnManageableMeeting(app: FastifyInstance, id: string, hostUserId: string): Promise<ExternalMeeting> {
   const meeting = await loadOwnMeeting(app, id, hostUserId);
-  await assertNotServiceManaged(app, meeting.id);
+  if (meeting.serviceConsultation) throw new MeetingManagedByServiceDeskError();
   return meeting;
 }
 

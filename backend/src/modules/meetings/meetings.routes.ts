@@ -47,6 +47,7 @@ import {
   MAX_FUTURE_MEETINGS_PER_HOST,
   MAX_INVITE_EMAILS_PER_MEETING,
   START_MAX_AHEAD_MS,
+  SERVICE_LINK_INCLUDE,
   START_PAST_TOLERANCE_MS,
   buildMeetingListQuery,
   cancelMeeting,
@@ -107,6 +108,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
         where: { AND: [{ hostUserId: host.id }, query.where] },
         orderBy: query.orderBy,
         take: limit + 1,
+        include: SERVICE_LINK_INCLUDE,
       });
       const page = rows.slice(0, limit);
       const nextCursor = rows.length > limit ? encodeMeetingCursor(page[page.length - 1]!) : null;
@@ -410,7 +412,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
     {
       // E-posta spam rölesi olmasın: 5/dk + toplantı başına en çok 10.
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
-      schema: { params: MeetingIdParamSchema, body: InviteEmailRequestSchema, response: { 202: ApiSuccessSchema(z.object({ sent: z.boolean() })) } },
+      schema: { params: MeetingIdParamSchema, body: InviteEmailRequestSchema, response: { 202: ApiSuccessSchema(z.object({ sent: z.boolean(), guestLink: z.string().nullable() })) } },
     },
     async (request, reply) => {
       const host = await requireMeetingHost(app, request.user!.id);
@@ -418,13 +420,16 @@ export async function meetingsRoutes(app: FastifyInstance) {
       const phase = computePhase(meeting);
       if (phase === "cancelled" || phase === "ended") throw new MeetingNotEditableError();
 
-      // Düz belirteç SAKLANMAZ: istemci, oluşturma/yeniden üretme yanıtındaki bağlantıyı bu istekte geri gönderir;
-      // özeti mevcut özetle eşleşmiyorsa (yenilenmiş / iptal edilmiş) gönderilmez. Bağlantı sunucuda yeniden kurulur
-      // (istemcinin verdiği URL e-postaya konmaz).
-      const token = extractGuestToken(request.body.guestLink);
-      if (!token) throw new ValidationError("Geçersiz misafir bağlantısı.", { guestLink: ["Geçersiz misafir bağlantısı."] });
-      if (!verifyGuestToken(token, meeting.guestTokenHash)) {
-        throw new ConflictError("Bu bağlantı artık geçerli değil (yenilenmiş veya iptal edilmiş). Güncel bağlantıyı kullanın.");
+      // S5: Düz belirteç SAKLANMAZ. (a) İstemci oluşturma/yeniden üretme yanıtındaki bağlantıyı geri gönderir: özeti
+      // mevcut özetle eşleşmiyorsa (yenilenmiş / iptal edilmiş) gönderilmez. (b) Bağlantı verilmezse (sonradan gönderim)
+      // sunucu YENİ bağlantı üretir ve eskisi geçersiz olur. Bağlantı her durumda sunucuda kurulur (istemci URL'si e-postaya konmaz).
+      let token: string | null = null;
+      if (request.body.guestLink !== undefined) {
+        token = extractGuestToken(request.body.guestLink);
+        if (!token) throw new ValidationError("Geçersiz misafir bağlantısı.", { guestLink: ["Geçersiz misafir bağlantısı."] });
+        if (!verifyGuestToken(token, meeting.guestTokenHash)) {
+          throw new ConflictError("Bu bağlantı artık geçerli değil (yenilenmiş veya iptal edilmiş). Güncel bağlantıyı kullanın.");
+        }
       }
 
       const reserved = await app.prisma.externalMeeting.updateMany({
@@ -432,6 +437,23 @@ export async function meetingsRoutes(app: FastifyInstance) {
         data: { inviteCount: { increment: 1 } },
       });
       if (reserved.count === 0) throw new MeetingLimitReachedError(`Bir toplantı için en çok ${MAX_INVITE_EMAILS_PER_MEETING} e-posta daveti gönderilebilir.`);
+
+      let regeneratedLink: string | null = null;
+      if (token === null) {
+        const fresh = generateGuestToken();
+        await app.prisma.externalMeeting.update({ where: { id: meeting.id }, data: { guestTokenHash: fresh.hash, guestTokenCreatedAt: new Date() }, select: { id: true } });
+        await logAudit(app, {
+          actorId: host.id,
+          actorEmail: host.email,
+          action: "meeting.guest_link.created",
+          targetType: "ExternalMeeting",
+          targetId: meeting.id,
+          metadata: { regenerated: true, via: "invite_email" },
+          ipAddress: request.ip,
+        });
+        token = fresh.token;
+        regeneratedLink = buildGuestLink(fresh.token, request.body.locale);
+      }
 
       const mail = buildMeetingInviteEmail({
         locale: request.body.locale,
@@ -469,7 +491,7 @@ export async function meetingsRoutes(app: FastifyInstance) {
           ipAddress: request.ip,
         });
       }
-      return reply.code(202).send(ok({ sent }));
+      return reply.code(202).send(ok({ sent, guestLink: regeneratedLink }));
     }
   );
 }

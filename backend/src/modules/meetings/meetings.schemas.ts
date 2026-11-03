@@ -71,8 +71,11 @@ export const ListAdminMeetingsQuerySchema = z.object({
 });
 
 export const InviteEmailRequestSchema = z.object({
-  /** Oluşturma / yeniden üretme yanıtındaki bağlantı (veya çıplak `mg_…` belirteci) — yalnızca o an bellekte durur. */
-  guestLink: z.string().min(40).max(600),
+  /**
+   * Oluşturma / yeniden üretme yanıtındaki bağlantı (veya çıplak `mg_…` belirteci) — yalnızca o an bellekte durur (S5).
+   * VERİLMEZSE (sonradan gönderim): sunucu YENİ bağlantı üretir, eskisi geçersiz olur; yeni bağlantı yanıtta döner.
+   */
+  guestLink: z.string().min(40).max(600).optional(),
   email: z.string().trim().email().max(254),
   locale: LocaleSchema.default("en"),
 });
@@ -104,9 +107,13 @@ export const MeetingSchema = z.object({
   /** Pencere açılış anı (başlangıçtan 15 dk önce) — istemci "Katıl" düğmesini buna göre etkinleştirir. */
   opensAt: z.string(),
   createdAt: z.string(),
+  /** AI İş 3: hizmete bağlı toplantıda `{ consultationNumber: "SVC-00012" }` (düzenle/iptal/bağlantı eylemleri gizlenir), değilse `null`. */
+  serviceConsultation: z.object({ consultationNumber: z.string() }).nullable(),
 });
 
 export const AdminMeetingSchema = MeetingSchema.omit({ note: true }).extend({
+  /** Unvansız görünen ad; hizmete bağlıysa "Patient Coordinator · <displayName>". */
+  hostName: z.string(),
   host: z.object({ id: z.string(), name: z.string() }),
 });
 

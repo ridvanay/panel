@@ -699,7 +699,7 @@ describe("e-postayla davet (yalnızca oluşturma anındaki bağlantıyla)", () =
     const guestLink = created.json().data.guestLink as string;
     const res = await call("POST", `/meetings/${id}/invite-email`, editor, { guestLink, email: "Konuk@Example.com", locale: "de" });
     expect(res.statusCode).toBe(202);
-    expect(res.json().data).toEqual({ sent: true });
+    expect(res.json().data).toEqual({ sent: true, guestLink: null });
     expect(lk.mail).toHaveLength(1);
     const mail = lk.mail[0] as { to: string; audience: string; locale: string; cta: { url: string }; bodyHtml: string };
     expect(mail.to).toBe("Konuk@Example.com");
@@ -739,7 +739,7 @@ describe("e-postayla davet (yalnızca oluşturma anındaki bağlantıyla)", () =
     lk.mailFails = true;
     const failed = await call("POST", `/meetings/${id}/invite-email`, editor, { guestLink, email: "a@example.com" });
     expect(failed.statusCode).toBe(202);
-    expect(failed.json().data).toEqual({ sent: false });
+    expect(failed.json().data).toEqual({ sent: false, guestLink: null });
     expect(await app.prisma.auditLog.count({ where: { action: "meeting.invite.sent" } })).toBe(0);
     lk.mailFails = false;
 

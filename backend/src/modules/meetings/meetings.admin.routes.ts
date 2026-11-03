@@ -10,10 +10,9 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { MeetingNotEditableError, MeetingNotFoundError } from "../../lib/errors";
 import { AdminMeetingSchema, ListAdminMeetingsQuerySchema, MeetingIdParamSchema } from "./meetings.schemas";
-import { assertNotServiceManaged, buildMeetingListQuery, cancelMeeting, computePhase, encodeMeetingCursor, toAdminMeetingDto } from "./meetings.service";
+import { ADMIN_MEETING_INCLUDE, assertNotServiceManaged, buildMeetingListQuery, cancelMeeting, computePhase, encodeMeetingCursor, toAdminMeetingDto } from "./meetings.service";
 
 const ADMIN_MEETINGS_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
-const HOST_SELECT = { select: { id: true, name: true } } as const;
 
 /**
  * `/admin/meetings` prefix'i altında bağlanır. Paket AG (İş 3, S4) — ADMIN gözetimi: tüm toplantıları listeler
@@ -43,7 +42,7 @@ export async function adminMeetingsRoutes(app: FastifyInstance) {
         where: { AND: [hostUserId ? { hostUserId } : {}, query.where] },
         orderBy: query.orderBy,
         take: limit + 1,
-        include: { host: HOST_SELECT },
+        include: ADMIN_MEETING_INCLUDE,
       });
       const page = rows.slice(0, limit);
       const nextCursor = rows.length > limit ? encodeMeetingCursor(page[page.length - 1]!) : null;
@@ -58,7 +57,7 @@ export async function adminMeetingsRoutes(app: FastifyInstance) {
       schema: { params: MeetingIdParamSchema, response: { 200: ApiSuccessSchema(AdminMeetingSchema) } },
     },
     async (request, reply) => {
-      const meeting = await app.prisma.externalMeeting.findUnique({ where: { id: request.params.id }, include: { host: HOST_SELECT } });
+      const meeting = await app.prisma.externalMeeting.findUnique({ where: { id: request.params.id }, include: ADMIN_MEETING_INCLUDE });
       if (!meeting) throw new MeetingNotFoundError();
       await assertNotServiceManaged(app, meeting.id);
       if (meeting.status !== "CANCELLED" && computePhase(meeting) === "ended") throw new MeetingNotEditableError("Biten bir toplantı iptal edilemez.");
@@ -68,7 +67,7 @@ export async function adminMeetingsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
         source: "admin",
       });
-      return reply.send(ok(toAdminMeetingDto({ ...updated, host: meeting.host })));
+      return reply.send(ok(toAdminMeetingDto({ ...updated, host: meeting.host, serviceConsultation: meeting.serviceConsultation })));
     }
   );
 }
