@@ -789,7 +789,7 @@ export default function AdminUsersPage() {
                               </option>
                             )}
                           </Select>
-                          {EXTERNAL_MEETINGS_ENABLED && telehealthEnabled && <MeetingHostToggle user={user} onChanged={() => void load()} />}
+                          {EXTERNAL_MEETINGS_ENABLED && telehealthEnabled && <MeetingHostToggle user={user} onChanged={() => void load(search.trim() || undefined)} />}
                         </TableCell>
                         <TableCell className="w-28">
                           <Badge tone={statusBadgeTone[user.status]}>{statusLabels[user.status]}</Badge>
