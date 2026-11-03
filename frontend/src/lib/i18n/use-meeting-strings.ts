@@ -53,6 +53,8 @@ export function meetingErrorMessage(err: unknown, t: MeetingStrings): string {
       return t.errNotEditable;
     case "MEETING_LIMIT_REACHED":
       return t.errLimit;
+    case "MEETING_MANAGED_BY_SERVICE_DESK":
+      return t.errManagedByServiceDesk;
     case "MEETING_NOT_OPEN":
       return t.errNotOpen;
     case "MEETING_HOST_NOT_ELIGIBLE":

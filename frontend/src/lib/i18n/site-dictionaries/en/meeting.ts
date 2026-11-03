@@ -184,6 +184,9 @@ export const meetingStrings = {
   hostAccessConfirmRevoke: "Remove access",
   hostAccessGrantedToast: "Meeting access granted.",
   hostAccessRevokedToast: "Meeting access removed.",
+  serviceConsultationBadge: "Service consultation · {number}",
+  serviceManagedNote: "Managed from the Service Desk: edit and cancel there.",
+  errManagedByServiceDesk: "This meeting is managed from the Service Desk.",
 } as const;
 
 export type MeetingStrings = Record<keyof typeof meetingStrings, string>;

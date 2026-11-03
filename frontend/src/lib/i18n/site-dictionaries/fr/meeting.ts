@@ -171,4 +171,7 @@ export const meetingStrings: MeetingStrings = {
   hostAccessConfirmRevoke: "Retirer l'autorisation",
   hostAccessGrantedToast: "Autorisation de réunion accordée.",
   hostAccessRevokedToast: "Autorisation de réunion retirée.",
+  serviceConsultationBadge: "Service consultation · {number}",
+  serviceManagedNote: "Managed from the Service Desk: edit and cancel there.",
+  errManagedByServiceDesk: "This meeting is managed from the Service Desk.",
 };

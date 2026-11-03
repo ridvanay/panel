@@ -6,4 +6,4 @@
  * gizlenir ve sayfalar `notFound()` doner. Misafir katilim sayfalari (`/meet/join`) ve hizmet masasi
  * odalari bu bayraktan ETKILENMEZ.
  */
-export const EXTERNAL_MEETINGS_ENABLED = false;
+export const EXTERNAL_MEETINGS_ENABLED = true;

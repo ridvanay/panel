@@ -276,7 +276,11 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
           <ul className="space-y-3" data-testid="meetings-list">
             {items.map((m) => {
               const inWindow = m.status === "SCHEDULED" && isInJoinWindow(m.startsAt, m.endsAt, now);
-              const cancellable = m.status === "SCHEDULED" && m.phase !== "ended" && m.phase !== "cancelled";
+              const active = m.status === "SCHEDULED" && m.phase !== "ended" && m.phase !== "cancelled";
+              // Hizmete bağlı (AI İş 3) toplantı: düzenle/iptal/bağlantı Hizmet Masası'ndadır; burada yalnızca ev sahibine "Katıl".
+              const serviceNumber = m.serviceConsultation?.consultationNumber ?? null;
+              const linked = Boolean(m.serviceConsultation);
+              const cancellable = active && !linked;
               const editable = cancellable && view === "mine";
               const istanbul = formatMeetingIstanbul(m.startsAt, lang);
               const hostName = m.hostName ?? m.host?.name ?? null;
@@ -297,6 +301,11 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
                           <Users className="h-3.5 w-3.5" aria-hidden="true" />
                           {fmt(t.capacityLine, { count: m.maxParticipants })}
                         </span>
+                        {linked && (
+                          <span data-testid="meeting-service-badge">
+                            <Badge tone="primary">{fmt(t.serviceConsultationBadge, { number: serviceNumber ?? "" })}</Badge>
+                          </span>
+                        )}
                         {view === "all" && hostName && (
                           <span>
                             <bdi>{fmt(t.hostedByLine, { name: hostName })}</bdi>
@@ -310,7 +319,12 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
                     </Badge>
                   </div>
 
-                  {cancellable && (
+                  {linked && active && (
+                    <p className="mt-2 text-xs text-foreground/60" data-testid="meeting-service-note">
+                      {t.serviceManagedNote}
+                    </p>
+                  )}
+                  {active && (
                     <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label={fmt(t.actionsFor, { title: m.title })}>
                       {view === "mine" &&
                         (inWindow ? (
@@ -324,7 +338,7 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
                             {t.actionJoin}
                           </Button>
                         ))}
-                      {view === "mine" && (
+                      {view === "mine" && !linked && (
                         <Button type="button" size="sm" variant="outline" aria-label={`${t.actionNewLink}: ${m.title}`} onClick={() => setPendingRegen(m)} data-testid="meeting-new-link">
                           <Link2 aria-hidden="true" />
                           {t.actionNewLink}
@@ -336,10 +350,12 @@ function MeetingsManagerInner({ variant }: { variant: "admin" | "doctor" }) {
                           {t.actionEdit}
                         </Button>
                       )}
-                      <Button type="button" size="sm" variant="destructive" aria-label={`${t.actionCancel}: ${m.title}`} onClick={() => setPendingCancel(m)} data-testid="meeting-cancel">
-                        <XCircle aria-hidden="true" />
-                        {t.actionCancel}
-                      </Button>
+                      {cancellable && (
+                        <Button type="button" size="sm" variant="destructive" aria-label={`${t.actionCancel}: ${m.title}`} onClick={() => setPendingCancel(m)} data-testid="meeting-cancel">
+                          <XCircle aria-hidden="true" />
+                          {t.actionCancel}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </li>

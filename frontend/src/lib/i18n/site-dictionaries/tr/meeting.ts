@@ -171,4 +171,7 @@ export const meetingStrings: MeetingStrings = {
   hostAccessConfirmRevoke: "Yetkiyi kaldır",
   hostAccessGrantedToast: "Toplantı yetkisi verildi.",
   hostAccessRevokedToast: "Toplantı yetkisi kaldırıldı.",
+  serviceConsultationBadge: "Service consultation · {number}",
+  serviceManagedNote: "Bu toplantı Hizmet Masası tarafından yönetilir; düzenleme ve iptal oradan yapılır.",
+  errManagedByServiceDesk: "Bu toplantı Hizmet Masası tarafından yönetilir.",
 };

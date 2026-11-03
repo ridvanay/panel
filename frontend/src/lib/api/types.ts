@@ -42,6 +42,7 @@ export type ApiErrorCode =
   | "MEETING_NOT_EDITABLE"
   | "MEETING_LIMIT_REACHED"
   | "MEETING_HOST_NOT_ELIGIBLE"
+  | "MEETING_MANAGED_BY_SERVICE_DESK"
   // `.claude/architect-scope-telehealth-template.md` §9.7.10 — TADİLAT TURU 2 (booking/ödeme/
   // sağlık verisi/portal) hata kodları. Bkz. `backend/src/lib/errors.ts`.
   | "PAYMENTS_NOT_CONFIGURED"

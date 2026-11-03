@@ -28,6 +28,8 @@ export interface Meeting {
   /** Yönetici gözetim listesi: ev sahibi görünen adı (varsa). */
   hostName?: string | null;
   host?: { id?: string; name?: string | null } | null;
+  /** AI İş 3 — hizmete bağlı toplantı; doluysa düzenle/iptal/bağlantı Hizmet Masası'ndadır (409 `MEETING_MANAGED_BY_SERVICE_DESK`). */
+  serviceConsultation?: { consultationNumber: string } | null;
 }
 
 export interface MeetingList {
