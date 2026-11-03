@@ -70,7 +70,7 @@ function opensAtFromError(err: ApiClientError): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function UpcomingScreen({ startsAt, onOpen }: { startsAt: string; onOpen: () => void }) {
+function UpcomingScreen({ startsAt, onOpen, isServiceConsultation }: { startsAt: string; onOpen: () => void; isServiceConsultation: boolean }) {
   const { t, lang } = useMeetingStrings();
   const opensAt = new Date(startsAt).getTime() - MEETING_JOIN_LEAD_MS;
   const [now, setNow] = useState(() => Date.now());
@@ -89,9 +89,20 @@ function UpcomingScreen({ startsAt, onOpen }: { startsAt: string; onOpen: () => 
       title={fmt(t.guestUpcomingTitle, { time: formatMeetingClock(startsAt, lang) })}
       body={t.guestUpcomingBody}
       actions={
-        <p className="text-sm font-semibold tabular-nums text-foreground" aria-live="off" data-testid="guest-countdown">
-          <span dir="ltr">{fmt(t.guestUpcomingOpensIn, { time: formatCountdown(opensAt - now) })}</span>
-        </p>
+        <>
+          {isServiceConsultation && (
+            <div className="w-full space-y-1.5 text-xs text-foreground/70" data-testid="guest-purpose-notes-upcoming">
+              <p className="text-sm font-semibold text-foreground" data-testid="guest-purpose-title-upcoming">
+                {t.guestPurposeTitle}
+              </p>
+              <p>{t.guestPurposeIntermediary}</p>
+              <p>{t.guestPurposeNotice}</p>
+            </div>
+          )}
+          <p className="text-sm font-semibold tabular-nums text-foreground" aria-live="off" data-testid="guest-countdown">
+            <span dir="ltr">{fmt(t.guestUpcomingOpensIn, { time: formatCountdown(opensAt - now) })}</span>
+          </p>
+        </>
       }
     />
   );
@@ -314,7 +325,7 @@ export function GuestJoinFlow() {
       />
     );
   } else if (stage.kind === "upcoming" && info) {
-    content = <UpcomingScreen startsAt={info.startsAt} onOpen={() => setStage({ kind: "name" })} />;
+    content = <UpcomingScreen startsAt={info.startsAt} onOpen={() => setStage({ kind: "name" })} isServiceConsultation={isServiceConsultation} />;
   } else if (stage.kind === "room" && info) {
     content = (
       <div dir="ltr">

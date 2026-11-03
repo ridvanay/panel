@@ -63,7 +63,7 @@ describe("misafir toplantı amaç metinleri", () => {
   it("EN metinleri kontrata birebir uyar; diğer dillerde çevrilmiştir", () => {
     const m = MEETING_DICTIONARIES.en!;
     expect(m.guestPurposeTitle).toBe("Online consultation with your WM Health patient coordinator");
-    expect(m.guestPurposeWaitingTitle).toBe("Your coordinator will admit you shortly");
+    expect(m.guestPurposeWaitingTitle).toBe("The room opens when your coordinator joins");
     expect(m.guestPurposeNotice).toContain("This is not a medical examination.");
     for (const code of ["ar", "de", "es", "fr", "ro", "ru", "sr-latn"]) expect(MEETING_DICTIONARIES[code]!.guestPurposeTitle, code).not.toBe(m.guestPurposeTitle);
   });

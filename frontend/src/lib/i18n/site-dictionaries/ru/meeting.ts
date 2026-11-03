@@ -66,7 +66,8 @@ export const meetingStrings: MeetingStrings = {
   linkOnceWarning: "Эта ссылка показывается полностью только сейчас. Если вы её потеряете, создайте новую (старая перестанет работать).",
   emailSectionTitle: "Отправить по e-mail (необязательно)",
   emailLabel: "E-mail гостя",
-  emailSend: "Отправить письмо",
+  emailSend: "Отправить письмо",
+
   guestLanguageLabel: "Язык гостя",
   guestLanguageHint: "Язык страницы гостевой ссылки и письма-приглашения.",
   emailSent: "Письмо отправлено.",
@@ -157,8 +158,8 @@ export const meetingStrings: MeetingStrings = {
   guestPurposeTitle: "Онлайн-консультация с вашим координатором пациентов WM Health",
   guestPurposeIntermediary: "WM Health — посредник в медицинском туризме, а не поставщик медицинских услуг.",
   guestPurposeNotice: "Это не медицинский осмотр. Медицинская оценка и решения о лечении принимаются врачами в авторизованных медицинских учреждениях.",
-  guestPurposeWaitingTitle: "Координатор скоро впустит вас",
-  guestPurposeWaitingBody: "Не закрывайте эту страницу. Консультация начнётся, как только присоединится координатор.",
+  guestPurposeWaitingTitle: "Комната откроется, когда присоединится координатор",
+  guestPurposeWaitingBody: "Не закрывайте эту страницу.",
 
   hostAccessLabel: "Может проводить внешние встречи",
   hostAccessAdminNote: "Администраторам разрешено всегда",

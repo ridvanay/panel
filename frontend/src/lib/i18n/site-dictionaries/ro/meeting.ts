@@ -66,7 +66,8 @@ export const meetingStrings: MeetingStrings = {
   linkOnceWarning: "Acest link este afișat complet doar acum. Dacă îl pierdeți, generați unul nou (cel vechi nu va mai funcționa).",
   emailSectionTitle: "Trimiteți prin e-mail (opțional)",
   emailLabel: "Adresa de e-mail a invitatului",
-  emailSend: "Trimiteți e-mailul",
+  emailSend: "Trimiteți e-mailul",
+
   guestLanguageLabel: "Limba invitatului",
   guestLanguageHint: "Limba paginii linkului pentru invitat și a e-mailului de invitație.",
   emailSent: "E-mail trimis.",
@@ -157,8 +158,8 @@ export const meetingStrings: MeetingStrings = {
   guestPurposeTitle: "Consultație online cu coordonatorul tău de pacienți WM Health",
   guestPurposeIntermediary: "WM Health este un intermediar în turismul medical, nu un furnizor de servicii medicale.",
   guestPurposeNotice: "Aceasta nu este un consult medical. Evaluarea medicală și deciziile de tratament sunt luate de medicii din unități sanitare autorizate.",
-  guestPurposeWaitingTitle: "Coordonatorul te va admite în scurt timp",
-  guestPurposeWaitingBody: "Ține această pagină deschisă. Consultația începe imediat ce se alătură coordonatorul.",
+  guestPurposeWaitingTitle: "Sala se deschide când se alătură coordonatorul",
+  guestPurposeWaitingBody: "Ține această pagină deschisă.",
 
   hostAccessLabel: "Poate găzdui întâlniri externe",
   hostAccessAdminNote: "Administratorii au întotdeauna permisiune",

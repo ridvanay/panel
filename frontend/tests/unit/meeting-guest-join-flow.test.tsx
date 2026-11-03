@@ -153,6 +153,28 @@ describe("henüz açılmadı", () => {
     expect(screen.queryByTestId("guest-name-form")).not.toBeInTheDocument();
   });
 
+  it("hizmet görüşmesinde geri sayım ekranında amaç başlığı, aracı kuruluş ibaresi ve tıbbi muayene değildir notu görünür", async () => {
+    harness.localeCode = "en";
+    guestPreflight.mockResolvedValue({
+      ...openPreflight(),
+      purpose: "service_consultation",
+      phase: "upcoming",
+      startsAt: new Date(Date.now() + 3 * 3_600_000).toISOString(),
+    });
+    await renderFlow();
+    const notes = await screen.findByTestId("guest-purpose-notes-upcoming");
+    expect(notes).toHaveTextContent("Online consultation with your WM Health patient coordinator");
+    expect(notes).toHaveTextContent("health tourism intermediary");
+    expect(notes).toHaveTextContent("This is not a medical examination");
+  });
+
+  it("genel toplantıda geri sayım ekranında amaç metinleri yoktur", async () => {
+    guestPreflight.mockResolvedValue({ ...openPreflight(), phase: "upcoming", startsAt: new Date(Date.now() + 3 * 3_600_000).toISOString() });
+    await renderFlow();
+    await screen.findByTestId("guest-upcoming");
+    expect(screen.queryByTestId("guest-purpose-notes-upcoming")).not.toBeInTheDocument();
+  });
+
   it("join MEETING_NOT_OPEN dönerse açılış zamanıyla geri sayım ekranına geçer", async () => {
     guestJoin.mockRejectedValue(apiError(409, "MEETING_NOT_OPEN", { opensAt: [new Date(Date.now() + 2 * 3_600_000).toISOString()] }));
     await renderFlow();
@@ -368,7 +390,7 @@ describe("AI İş 3 — hizmet görüşmesi amacı (purpose=service_consultation
     await act(async () => {
       fireEvent.click(screen.getByTestId("guest-join"));
     });
-    expect(await screen.findByTestId("guest-waiting")).toHaveTextContent("Your coordinator will admit you shortly");
+    expect(await screen.findByTestId("guest-waiting")).toHaveTextContent("The room opens when your coordinator joins");
     expect(screen.getByTestId("guest-purpose-notice-waiting")).toHaveTextContent("This is not a medical examination");
   });
 

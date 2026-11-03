@@ -16,7 +16,7 @@ import {
 } from "@/lib/api/service-consultations";
 import { browserTimeZone } from "@/lib/dual-time";
 import { countryName } from "@/lib/country-display";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { contentLocaleToIntl, withLatinDigits } from "@/lib/i18n/content-locale-to-intl";
 import type { RequestStrings } from "@/lib/i18n/site-dictionaries/en/request";
 import type { ServiceBookingStrings } from "@/lib/i18n/site-dictionaries/en/service-booking";
 import type { ServiceGroupId } from "@/lib/service-groups";
@@ -105,7 +105,7 @@ function WizardInner({
   callbackHref,
   findTreatmentHref,
 }: ServiceBookingWizardProps) {
-  const intlLocale = contentLocaleToIntl(lang);
+  const intlLocale = withLatinDigits(contentLocaleToIntl(lang));
   const { selectedSlots, clearAllSlots, displayTimeZone, visitorTimeZone } = useBookingSelection();
 
   const [service, setService] = useState(initialService ?? "");
@@ -386,6 +386,7 @@ function WizardInner({
                 conflictNotice={conflictNotice}
                 fetchSlots={getServiceConsultationSlots}
                 singleSelect
+                latinDigits
                 requestHref={callbackHref}
                 stringOverrides={calendarStrings}
               />

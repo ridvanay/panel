@@ -27,3 +27,13 @@ const CONTENT_LOCALE_TO_INTL: Record<string, string> = {
 export function contentLocaleToIntl(code: string): string {
   return CONTENT_LOCALE_TO_INTL[code] ?? code;
 }
+
+/**
+ * Hizmet görüşmesi rezervasyon sayfası için: Gregoryen takvim + Latin rakam (`nu-latn`). Arapça (`ar-SA`) varsayılanı
+ * Arap-Hint rakamları (ve bazı motorlarda Hicri takvim) kullanır; takvim ızgarası Latin olduğundan saat düğmeleri ve
+ * özet de aynı rakam sistemini kullanır. Doktor akışı bunu ÇAĞIRMAZ (davranışı değişmez).
+ */
+export function withLatinDigits(intlTag: string): string {
+  if (intlTag.includes("-u-")) return intlTag;
+  return `${intlTag}-u-ca-gregory-nu-latn`;
+}

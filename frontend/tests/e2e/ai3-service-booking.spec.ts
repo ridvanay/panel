@@ -238,7 +238,7 @@ test("4b) koordinator: katilim penceresi acilinca 'Görüşmeye katıl' etkin ol
   const page = coordPage!;
   await page.goto("/admin/my-consultations");
   // Not: erisilebilir ad aria-label ("SVC-… görüşmesine katıl"); gorunen metin "Görüşmeye katıl" (Label-in-Name uyumsuzlugu raporlandi).
-  const join = page.getByTestId("my-consultations-today").getByTestId(`my-consultation-${todayId}`).getByRole("link", { name: /görüşmesine katıl/ });
+  const join = page.getByTestId("my-consultations-today").getByTestId(`my-consultation-${todayId}`).getByRole("link", { name: /Görüşmeye katıl/ });
   await expect(join.first()).toBeVisible({ timeout: 60_000 });
   await expect(join.first()).toBeEnabled();
   await join.first().click();

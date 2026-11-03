@@ -66,7 +66,8 @@ export const meetingStrings: MeetingStrings = {
   linkOnceWarning: "Ovaj link se u celini prikazuje samo sada. Ako ga izgubite, generišite novi (stari prestaje da radi).",
   emailSectionTitle: "Pošalji e-poštom (opciono)",
   emailLabel: "E-adresa gosta",
-  emailSend: "Pošalji e-poruku",
+  emailSend: "Pošalji e-poruku",
+
   guestLanguageLabel: "Jezik gosta",
   guestLanguageHint: "Jezik stranice gostinske veze i e-poruke s pozivnicom.",
   emailSent: "E-poruka je poslata.",
@@ -157,8 +158,8 @@ export const meetingStrings: MeetingStrings = {
   guestPurposeTitle: "Onlajn konsultacija sa vašim koordinatorom pacijenata WM Health",
   guestPurposeIntermediary: "WM Health je posrednik u zdravstvenom turizmu, a ne pružalac zdravstvenih usluga.",
   guestPurposeNotice: "Ovo nije medicinski pregled. Medicinsku procenu i odluke o lečenju donose lekari u ovlašćenim zdravstvenim ustanovama.",
-  guestPurposeWaitingTitle: "Koordinator će vas uskoro primiti",
-  guestPurposeWaitingBody: "Ostavite ovu stranicu otvorenom. Konsultacija počinje čim se koordinator pridruži.",
+  guestPurposeWaitingTitle: "Soba se otvara kada se koordinator pridruži",
+  guestPurposeWaitingBody: "Ostavite ovu stranicu otvorenom.",
 
   hostAccessLabel: "Može da održava spoljne sastanke",
   hostAccessAdminNote: "Administratori uvek imaju dozvolu",

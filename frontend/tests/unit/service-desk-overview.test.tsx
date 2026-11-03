@@ -97,13 +97,13 @@ describe("Hizmet Masası genel sayfa", () => {
   it("MANAGER sayfayı görür ama genel anahtar devre dışıdır (yalnızca ADMIN)", async () => {
     authState = { status: "authenticated", user: { id: "m1", role: "MANAGER" } };
     await renderPage();
-    expect(screen.getByRole("switch", { name: "Online consultation booking" })).toHaveAttribute("data-disabled");
+    expect(screen.getByRole("switch", { name: "Online görüşme rezervasyonu" })).toHaveAttribute("data-disabled");
     expect(screen.getByText(/yalnızca yönetici \(ADMIN\) değiştirebilir/)).toBeInTheDocument();
   });
 
   it("ADMIN anahtarı açar: koşullar sağlanıyorsa PATCH serviceBookingEnabled=true", async () => {
     await renderPage();
-    await userEvent.click(screen.getByRole("switch", { name: "Online consultation booking" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Online görüşme rezervasyonu" }));
     expect(api.updateServiceDesk).toHaveBeenCalledWith({ serviceBookingEnabled: true });
     expect(toast.success).toHaveBeenCalled();
   });
@@ -111,7 +111,7 @@ describe("Hizmet Masası genel sayfa", () => {
   it("aktif koordinatör yoksa açmadan önce uyarır ve API'yi çağırmaz", async () => {
     api.getServiceDesk.mockResolvedValue(overview({ stats: { activeCoordinators: 0, next7DaysSlots: 0 } }));
     await renderPage();
-    await userEvent.click(screen.getByRole("switch", { name: "Online consultation booking" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Online görüşme rezervasyonu" }));
     expect(screen.getByTestId("desk-enable-warning")).toHaveTextContent("en az bir aktif koordinatör");
     expect(api.updateServiceDesk).not.toHaveBeenCalled();
   });
@@ -119,7 +119,7 @@ describe("Hizmet Masası genel sayfa", () => {
   it("çalışma saati yoksa açmadan önce uyarır", async () => {
     api.getServiceDesk.mockResolvedValue(overview({ hours: [] }));
     await renderPage();
-    await userEvent.click(screen.getByRole("switch", { name: "Online consultation booking" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Online görüşme rezervasyonu" }));
     expect(screen.getByTestId("desk-enable-warning")).toHaveTextContent("en az bir çalışma saati");
     expect(api.updateServiceDesk).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe("Hizmet Masası genel sayfa", () => {
   it("açıkken anahtarı kapatır", async () => {
     api.getServiceDesk.mockResolvedValue(overview({ serviceBookingEnabled: true }));
     await renderPage();
-    await userEvent.click(screen.getByRole("switch", { name: "Online consultation booking" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Online görüşme rezervasyonu" }));
     expect(api.updateServiceDesk).toHaveBeenCalledWith({ serviceBookingEnabled: false });
   });
 

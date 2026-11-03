@@ -80,6 +80,17 @@ describe("ServiceConsultationManage", () => {
     expect(screen.getByTestId("manage-status")).toHaveTextContent("Scheduled");
   });
 
+  it("aynı sekmede yeni #sc_ yapıştırılınca hashchange ile yeniden okunur ve adres çubuğundan silinir", async () => {
+    renderManage();
+    expect(await screen.findByTestId("manage-view")).toBeInTheDocument();
+    const NEXT = `sc_${"B".repeat(43)}`;
+    api.lookup.mockClear();
+    window.location.hash = `#${NEXT}`;
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await waitFor(() => expect(api.lookup).toHaveBeenCalledWith(NEXT));
+    expect(window.location.hash).toBe("");
+  });
+
   it("belirteç yoksa veya biçimi bozuksa tek tip geçersiz bağlantı ekranı (API çağrılmaz)", async () => {
     window.location.hash = "";
     const first = renderManage();

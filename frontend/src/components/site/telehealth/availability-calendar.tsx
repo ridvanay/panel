@@ -23,7 +23,7 @@ function minuteClock(minute: number, intlLocale: string, hour12: boolean): strin
 }
 import { formatDayLabel } from "@/lib/telehealth-format";
 import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { contentLocaleToIntl, withLatinDigits } from "@/lib/i18n/content-locale-to-intl";
 import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -67,6 +67,8 @@ interface AvailabilityCalendarProps {
   singleSelect?: boolean;
   /** AI İş 3 (opsiyonel) — doktor sözcüğü geçen metinleri değiştirmek için `schedule`/`calendar` sözlüğü üzerine yazma. */
   stringOverrides?: { schedule?: Partial<PortalStrings["schedule"]>; calendar?: Partial<PortalStrings["calendar"]> };
+  /** Yalnızca hizmet görüşmesi sayfası: tarih/saat biçimleri Gregoryen + Latin rakam (doktor akışında verilmez). */
+  latinDigits?: boolean;
 }
 
 /**
@@ -200,7 +202,7 @@ function mergeSlots(prev: AvailabilitySlot[], fetched: AvailabilitySlot[]): Avai
   return merged;
 }
 
-export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice, weeklyRules, requestHref, fetchSlots, singleSelect = false, stringOverrides }: AvailabilityCalendarProps) {
+export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice, weeklyRules, requestHref, fetchSlots, singleSelect = false, stringOverrides, latinDigits = false }: AvailabilityCalendarProps) {
   // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
   const auth = useAuthOptional();
@@ -220,7 +222,8 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   } = useBookingSelection();
   const hour12 = usePatientHour12(visitorTimeZone);
   // Görev (2026-09-16) — takvim gün/ay isimleri denetimi: sabit `"tr-TR"` yerine aktif site dili.
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const baseIntlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const intlLocale = latinDigits ? withLatinDigits(baseIntlLocale) : baseIntlLocale;
   const { t: baseStrings } = usePortalStrings();
   const t = useMemo(
     () =>

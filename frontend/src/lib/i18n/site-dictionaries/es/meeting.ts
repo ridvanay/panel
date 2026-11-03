@@ -66,7 +66,8 @@ export const meetingStrings: MeetingStrings = {
   linkOnceWarning: "Este enlace solo se muestra completo ahora. Si lo pierde, genere uno nuevo (el anterior dejará de funcionar).",
   emailSectionTitle: "Enviar por correo (opcional)",
   emailLabel: "Correo electrónico del invitado",
-  emailSend: "Enviar correo",
+  emailSend: "Enviar correo",
+
   guestLanguageLabel: "Idioma del invitado",
   guestLanguageHint: "Idioma de la página del enlace y del correo de invitación.",
   emailSent: "Correo enviado.",
@@ -157,8 +158,8 @@ export const meetingStrings: MeetingStrings = {
   guestPurposeTitle: "Consulta en línea con su coordinador de pacientes de WM Health",
   guestPurposeIntermediary: "WM Health es un intermediario de turismo de salud, no un proveedor de servicios sanitarios.",
   guestPurposeNotice: "Esto no es un examen médico. La valoración médica y las decisiones de tratamiento las toman los médicos de centros sanitarios autorizados.",
-  guestPurposeWaitingTitle: "Su coordinador le admitirá en breve",
-  guestPurposeWaitingBody: "Mantenga esta página abierta. La consulta comienza en cuanto su coordinador se una.",
+  guestPurposeWaitingTitle: "La sala se abre cuando su coordinador se une",
+  guestPurposeWaitingBody: "Mantenga esta página abierta.",
 
   hostAccessLabel: "Puede organizar reuniones externas",
   hostAccessAdminNote: "Los administradores siempre tienen permiso",

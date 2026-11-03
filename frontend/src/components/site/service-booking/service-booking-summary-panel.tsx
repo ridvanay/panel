@@ -116,7 +116,7 @@ export function ServiceBookingSummaryPanel({
             <>
               <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-                {formatDayLabel(slot.startsAt, displayTimeZone, intlLocale)}
+                <bdi>{formatDayLabel(slot.startsAt, displayTimeZone, intlLocale)}</bdi>
               </p>
               <div className="mt-2 space-y-2 border-t border-border pt-2">
                 {mergeSlotRanges(selectedSlots).map((range) => (

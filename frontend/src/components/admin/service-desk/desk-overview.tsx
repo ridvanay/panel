@@ -133,7 +133,7 @@ function BookingSwitchCard({ overview, isAdmin, onChanged }: { overview: Service
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <label htmlFor="service-booking-enabled" className="admin-h2 block">
-            Online consultation booking
+            Online görüşme rezervasyonu
           </label>
           <p className="mt-1 admin-text-secondary">
             Açıkken sitedeki tüm &quot;Book a consultation&quot; düğmeleri takvimli rezervasyona gider; kapalıyken talep formuna (Request a call back) gider.
@@ -141,7 +141,7 @@ function BookingSwitchCard({ overview, isAdmin, onChanged }: { overview: Service
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={enabled ? "success" : "neutral"}>{enabled ? "Açık" : "Kapalı"}</Badge>
-          <Switch id="service-booking-enabled" aria-label="Online consultation booking" checked={enabled} disabled={!isAdmin || saving} onCheckedChange={(v) => void toggle(v)} />
+          <Switch id="service-booking-enabled" aria-label="Online görüşme rezervasyonu" checked={enabled} disabled={!isAdmin || saving} onCheckedChange={(v) => void toggle(v)} />
         </div>
       </div>
       {!isAdmin && <p className="text-xs text-foreground/60">Bu anahtarı yalnızca yönetici (ADMIN) değiştirebilir.</p>}

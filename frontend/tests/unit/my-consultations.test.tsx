@@ -130,10 +130,23 @@ describe("liste durumları", () => {
   });
 });
 
+describe("Yaklaşanlar listesi tekrarı", () => {
+  it("bugün listesinde olan görüşme Yaklaşanlar'da tekrar gösterilmez", async () => {
+    api.listCoordinatorConsultations.mockImplementation(async (scope: string) =>
+      scope === "today" ? [item()] : [item(), item({ id: "c2", consultationNumber: "SVC-00002" })]
+    );
+    await renderPage();
+    const upcoming = screen.getByTestId("my-consultations-upcoming");
+    expect(within(upcoming).queryByTestId("my-consultation-c1")).not.toBeInTheDocument();
+    expect(within(upcoming).getByTestId("my-consultation-c2")).toBeInTheDocument();
+    expect(within(screen.getByTestId("my-consultations-today")).getByTestId("my-consultation-c1")).toBeInTheDocument();
+  });
+});
+
 describe("Görüşmeye katıl penceresi", () => {
   it("pencere açıkken (başlangıca 5 dk) etkin bağlantı odaya gider", async () => {
     await renderPage();
-    const link = within(screen.getByTestId("my-consultations-today")).getByRole("link", { name: "SVC-00001 görüşmesine katıl" });
+    const link = within(screen.getByTestId("my-consultations-today")).getByRole("link", { name: /Görüşmeye katıl.*SVC-00001/ });
     expect(link).toHaveAttribute("href", "/admin/my-consultations/c1/room");
     expect(link).toHaveTextContent("Görüşmeye katıl");
   });
@@ -159,7 +172,7 @@ describe("Görüşmeye katıl penceresi", () => {
     await act(async () => {
       vi.advanceTimersByTime(6 * MIN);
     });
-    expect(within(today).getByRole("link", { name: "SVC-00001 görüşmesine katıl" })).toBeInTheDocument();
+    expect(within(today).getByRole("link", { name: /Görüşmeye katıl.*SVC-00001/ })).toBeInTheDocument();
   });
 
   it("iptal edilmiş ve bitmiş görüşmede katıl düğmesi yoktur", async () => {

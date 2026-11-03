@@ -44,11 +44,11 @@ export function JoinButton({ consultation, nowMs }: { consultation: Pick<Coordin
     return (
       <Link
         href={`/admin/my-consultations/${encodeURIComponent(consultation.id)}/room`}
-        aria-label={`${consultation.consultationNumber} görüşmesine katıl`}
         className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-all duration-300 hover:bg-primary-hover"
       >
         <Video className="h-4 w-4" aria-hidden="true" />
         Görüşmeye katıl
+        <span className="sr-only"> — {consultation.consultationNumber}</span>
       </Link>
     );
   }
@@ -205,6 +205,9 @@ export function MyConsultationsPanel() {
     );
   }
 
+  // Bugünkü görüşmeler "Yaklaşan" listesinde tekrar gösterilmez.
+  const todayIds = new Set((today ?? []).map((c) => c.id));
+  const upcomingOnly = upcoming === null ? null : today === null ? upcoming : upcoming.filter((c) => !todayIds.has(c.id));
   const detailItem = [...(today ?? []), ...(upcoming ?? [])].find((c) => c.id === detailId) ?? null;
 
   return (
@@ -229,7 +232,7 @@ export function MyConsultationsPanel() {
         }
       />
       <Section title="Bugünkü görüşmelerim" testId="my-consultations-today" items={today} error={todayError} nowMs={nowMs} emptyText="Bugün için görüşmeniz yok" onRetry={() => void loadToday()} onDetails={(c) => setDetailId(c.id)} />
-      <Section title="Yaklaşan görüşmeler" testId="my-consultations-upcoming" items={upcoming} error={upcomingError} nowMs={nowMs} emptyText="Yaklaşan görüşmeniz yok" onRetry={() => void loadUpcoming()} onDetails={(c) => setDetailId(c.id)} />
+      <Section title="Yaklaşan görüşmeler" testId="my-consultations-upcoming" items={upcomingOnly} error={upcomingError} nowMs={nowMs} emptyText="Yaklaşan görüşmeniz yok" onRetry={() => void loadUpcoming()} onDetails={(c) => setDetailId(c.id)} />
       <ConsultationDetailDialog id={detailId} summary={detailItem} nowMs={nowMs} onClose={() => setDetailId(null)} />
     </div>
   );

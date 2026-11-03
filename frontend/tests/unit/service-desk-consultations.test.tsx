@@ -5,7 +5,7 @@ import { ApiClientError } from "@/lib/api/error";
 import type { AdminServiceConsultation } from "@/lib/api/service-desk-admin";
 
 /** AI İş 3 — /admin/service-desk/consultations: liste (baş harfli hasta adı), süzgeçler, detay, iptal onayı + gerekçe. */
-const api = { listAdminConsultations: vi.fn(), getAdminConsultation: vi.fn(), cancelAdminConsultation: vi.fn() };
+const api = { listAdminConsultations: vi.fn(), getAdminConsultation: vi.fn(), cancelAdminConsultation: vi.fn(), resendAdminConsultationLinks: vi.fn() };
 vi.mock("@/lib/api/service-desk-admin", async (orig) => {
   const actual = await orig<typeof import("@/lib/api/service-desk-admin")>();
   return {
@@ -13,13 +13,15 @@ vi.mock("@/lib/api/service-desk-admin", async (orig) => {
     listAdminConsultations: (...a: unknown[]) => api.listAdminConsultations(...a),
     getAdminConsultation: (...a: unknown[]) => api.getAdminConsultation(...a),
     cancelAdminConsultation: (...a: unknown[]) => api.cancelAdminConsultation(...a),
+    resendAdminConsultationLinks: (...a: unknown[]) => api.resendAdminConsultationLinks(...a),
   };
 });
 let authState: { status: string; user: Record<string, unknown> | null } = { status: "authenticated", user: { id: "m1", role: "MANAGER" } };
 vi.mock("@/context/auth-context", () => ({ useAuth: () => authState }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/service-desk/consultations" }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastMock }));
 
 import AdminServiceDeskConsultationsPage from "@/app/admin/service-desk/consultations/page";
 
@@ -53,6 +55,61 @@ beforeEach(() => {
   api.listAdminConsultations.mockResolvedValue({ items: [row()], page: 1, hasNext: false });
 });
 afterEach(() => cleanup());
+
+describe("Bağlantıları yeniden gönder", () => {
+  async function openResend(over: Partial<AdminServiceConsultation> = {}) {
+    api.getAdminConsultation.mockResolvedValue(row(over));
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "SVC-00012 detayı" }));
+    });
+    await screen.findByTestId("consultation-detail");
+  }
+  async function confirmResend() {
+    fireEvent.click(screen.getByRole("button", { name: "Bağlantıları yeniden gönder" }));
+    const dialogs = await screen.findAllByRole("dialog");
+    const dialog = dialogs[dialogs.length - 1]!;
+    expect(dialog).toHaveTextContent("Hastaya yeni katılım ve yönetim bağlantısı e-postayla gider; eski bağlantılar geçersiz olur.");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Bağlantıları yeniden gönder" }));
+    });
+    return dialog;
+  }
+
+  it("planlı ve bitmemiş görüşmede onay sonrası uç çağrılır; sent:true başarı bildirimi", async () => {
+    api.resendAdminConsultationLinks.mockResolvedValue({ sent: true });
+    await openResend();
+    await confirmResend();
+    expect(api.resendAdminConsultationLinks).toHaveBeenCalledWith("s1");
+    expect(toastMock.success).toHaveBeenCalledWith("Bağlantılar hastaya e-postayla gönderildi.");
+  });
+
+  it("sent:false -> eski bağlantılar geçerli kaldı uyarısı", async () => {
+    api.resendAdminConsultationLinks.mockResolvedValue({ sent: false });
+    await openResend();
+    await confirmResend();
+    expect(toastMock.error).toHaveBeenCalledWith("E-posta gönderilemedi, eski bağlantılar geçerli kaldı.");
+  });
+
+  it.each([
+    [409, "CONFLICT", "iptal edilmiş ya da bitmiş"],
+    [422, "VALIDATION_ERROR", "kayıtlı e-posta adresi yok"],
+    [429, "RATE_LIMITED", "Çok fazla deneme"],
+  ])("%i hatası Türkçe mesaj gösterir", async (status, code, text) => {
+    api.resendAdminConsultationLinks.mockRejectedValue(new ApiClientError(status as number, { code: code as never, message: "raw" }));
+    await openResend();
+    const dialog = await confirmResend();
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(text);
+  });
+
+  it("iptal edilmiş ya da bitmiş görüşmede düğme görünmez", async () => {
+    await openResend({ status: "CANCELLED" });
+    expect(screen.queryByRole("button", { name: "Bağlantıları yeniden gönder" })).not.toBeInTheDocument();
+    cleanup();
+    await openResend({ startsAt: "2026-10-01T11:00:00.000Z", endsAt: "2026-10-01T11:30:00.000Z" });
+    expect(screen.queryByRole("button", { name: "Bağlantıları yeniden gönder" })).not.toBeInTheDocument();
+  });
+});
 
 describe("Hizmet görüşmeleri listesi", () => {
   it("yüklenirken skeleton gösterir", async () => {

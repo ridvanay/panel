@@ -16,11 +16,13 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import {
   cancelAdminConsultation,
   getAdminConsultation,
   listAdminConsultations,
+  resendAdminConsultationLinks,
   type AdminConsultationsPage,
   type AdminServiceConsultation,
   type ServiceConsultationStatus,
@@ -39,6 +41,7 @@ export function ConsultationsManager() {
   const [result, setResult] = useState<AdminConsultationsPage | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [resendTarget, setResendTarget] = useState<AdminServiceConsultation | null>(null);
   const [cancelTarget, setCancelTarget] = useState<AdminServiceConsultation | null>(null);
 
   const load = useCallback(async () => {
@@ -176,7 +179,9 @@ export function ConsultationsManager() {
           setDetailId(null);
           setCancelTarget(c);
         }}
+        onResend={(c) => setResendTarget(c)}
       />
+      <ResendLinksDialog target={resendTarget} onClose={() => setResendTarget(null)} />
       <CancelConsultationDialog
         target={cancelTarget}
         onClose={() => setCancelTarget(null)}
@@ -198,7 +203,77 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function ConsultationDetailDialog({ id, onClose, onCancel }: { id: string | null; onClose: () => void; onCancel: (c: AdminServiceConsultation) => void }) {
+/** Planlı ve henüz bitmemiş görüşmede bağlantılar yeniden gönderilebilir. */
+function canResendLinks(c: AdminServiceConsultation): boolean {
+  return c.status === "SCHEDULED" && new Date(c.endsAt).getTime() > Date.now();
+}
+
+function resendErrorMessage(err: unknown): string {
+  if (err instanceof ApiClientError) {
+    if (err.status === 409) return "Görüşme iptal edilmiş ya da bitmiş; bağlantılar yeniden gönderilemez.";
+    if (err.status === 422) return "Hasta için kayıtlı e-posta adresi yok; bağlantılar gönderilemedi.";
+    if (err.status === 429) return "Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.";
+  }
+  return friendlyErrorMessage(err);
+}
+
+function ResendLinksDialog({ target, onClose }: { target: AdminServiceConsultation | null; onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- yeni hedefte hatayı sıfırla
+    setError(null);
+  }, [target]);
+
+  async function confirm() {
+    if (!target) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await resendAdminConsultationLinks(target.id);
+      if (res?.sent) toast.success("Bağlantılar hastaya e-postayla gönderildi.");
+      else toast.error("E-posta gönderilemedi, eski bağlantılar geçerli kaldı.");
+      onClose();
+    } catch (err) {
+      setError(resendErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bağlantılar yeniden gönderilsin mi?</DialogTitle>
+          <DialogDescription>Hastaya yeni katılım ve yönetim bağlantısı e-postayla gider; eski bağlantılar geçersiz olur.</DialogDescription>
+        </DialogHeader>
+        {error && <Alert variant="error">{error}</Alert>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Vazgeç
+          </Button>
+          <Button type="button" loading={loading} onClick={() => void confirm()}>
+            Bağlantıları yeniden gönder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConsultationDetailDialog({
+  id,
+  onClose,
+  onCancel,
+  onResend,
+}: {
+  id: string | null;
+  onClose: () => void;
+  onCancel: (c: AdminServiceConsultation) => void;
+  onResend: (c: AdminServiceConsultation) => void;
+}) {
   const [detail, setDetail] = useState<AdminServiceConsultation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,6 +326,11 @@ function ConsultationDetailDialog({ id, onClose, onCancel }: { id: string | null
           <Button type="button" variant="outline" onClick={onClose}>
             Kapat
           </Button>
+          {detail && canResendLinks(detail) && (
+            <Button type="button" variant="outline" onClick={() => onResend(detail)}>
+              Bağlantıları yeniden gönder
+            </Button>
+          )}
           {detail?.status === "SCHEDULED" && (
             <Button type="button" variant="destructive" onClick={() => onCancel(detail)}>
               Görüşmeyi iptal et

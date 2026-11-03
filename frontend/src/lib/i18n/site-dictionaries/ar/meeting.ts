@@ -66,7 +66,8 @@ export const meetingStrings: MeetingStrings = {
   linkOnceWarning: "يُعرض هذا الرابط كاملًا الآن فقط. إذا فقدته فأنشئ رابطًا جديدًا (يتوقف القديم عن العمل).",
   emailSectionTitle: "إرسال بالبريد الإلكتروني (اختياري)",
   emailLabel: "البريد الإلكتروني للضيف",
-  emailSend: "إرسال البريد",
+  emailSend: "إرسال البريد",
+
   guestLanguageLabel: "لغة الضيف",
   guestLanguageHint: "لغة صفحة رابط الضيف ورسالة الدعوة.",
   emailSent: "تم إرسال البريد.",
@@ -157,8 +158,8 @@ export const meetingStrings: MeetingStrings = {
   guestPurposeTitle: "استشارة عبر الإنترنت مع منسّق المرضى في WM Health",
   guestPurposeIntermediary: "WM Health جهة وساطة في السياحة العلاجية وليست مقدّم رعاية صحية.",
   guestPurposeNotice: "هذا ليس فحصًا طبيًا. يتم التقييم الطبي وقرارات العلاج من قِبل الأطباء في المنشآت الصحية المرخّصة.",
-  guestPurposeWaitingTitle: "سيسمح لك المنسّق بالدخول بعد قليل",
-  guestPurposeWaitingBody: "يُرجى إبقاء هذه الصفحة مفتوحة. تبدأ الاستشارة بمجرد انضمام المنسّق.",
+  guestPurposeWaitingTitle: "تفتح الغرفة عند انضمام المنسّق",
+  guestPurposeWaitingBody: "يُرجى إبقاء هذه الصفحة مفتوحة.",
 
   hostAccessLabel: "يمكنه استضافة اجتماعات خارجية",
   hostAccessAdminNote: "المسؤولون لديهم الإذن دائمًا",

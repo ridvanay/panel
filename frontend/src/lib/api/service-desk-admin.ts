@@ -189,6 +189,11 @@ export function cancelAdminConsultation(id: string, reason?: string): Promise<{ 
   });
 }
 
+/** Hastaya yeni katılım + yönetim bağlantısı gönderir (202); `sent:false` -> e-posta gitmedi, eski bağlantılar geçerli. */
+export function resendAdminConsultationLinks(id: string): Promise<{ sent: boolean }> {
+  return apiFetch<{ sent: boolean }>(`/admin/service-desk/consultations/${encodeURIComponent(id)}/resend-links`, { method: "POST" });
+}
+
 // ---- Koordinatör ----
 
 export interface CoordinatorConsultation {

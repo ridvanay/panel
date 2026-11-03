@@ -14,7 +14,7 @@ import {
   type ServiceConsultationManageView,
 } from "@/lib/api/service-consultations";
 import { browserTimeZone } from "@/lib/dual-time";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { contentLocaleToIntl, withLatinDigits } from "@/lib/i18n/content-locale-to-intl";
 import { localeDirection } from "@/lib/i18n/locale-direction";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { ServiceBookingStrings } from "@/lib/i18n/site-dictionaries/en/service-booking";
@@ -81,7 +81,7 @@ export function ServiceConsultationManage({
   bookHref: string;
   homeHref: string;
 }) {
-  const intlLocale = contentLocaleToIntl(lang);
+  const intlLocale = withLatinDigits(contentLocaleToIntl(lang));
   const [stage, setStage] = useState<Stage>({ kind: "checking" });
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -111,6 +111,17 @@ export function ServiceConsultationManage({
       tokenRef.current = takeManageTokenFromLocation();
     }
     void lookup();
+    // Aynı sekmede yeni `#sc_…` yapıştırılırsa yeniden oku (belirteç yine adres çubuğundan silinir).
+    function onHashChange() {
+      const next = takeManageTokenFromLocation();
+      if (!next) return;
+      tokenRef.current = next;
+      setNotice(null);
+      setStage({ kind: "checking" });
+      void lookup();
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
     // Yalnızca bağlandığında bir kez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -493,6 +504,7 @@ function RescheduleBody({
             conflictNotice={notice}
             fetchSlots={getServiceConsultationSlots}
             singleSelect
+            latinDigits
             stringOverrides={calendarStrings}
           />
         )}

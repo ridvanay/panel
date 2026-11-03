@@ -72,7 +72,8 @@ export const meetingStrings = {
   linkOnceWarning: "This link is shown in full only now. If you lose it, generate a new one (the old link stops working).",
   emailSectionTitle: "Send by email (optional)",
   emailLabel: "Guest email address",
-  emailSend: "Send email",
+  emailSend: "Send email",
+
   guestLanguageLabel: "Guest language",
   guestLanguageHint: "Language of the guest link page and of the invitation email.",
   emailSent: "Email sent.",
@@ -169,8 +170,8 @@ export const meetingStrings = {
   guestPurposeTitle: "Online consultation with your WM Health patient coordinator",
   guestPurposeIntermediary: "WM Health is a health tourism intermediary, not a healthcare provider.",
   guestPurposeNotice: "This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.",
-  guestPurposeWaitingTitle: "Your coordinator will admit you shortly",
-  guestPurposeWaitingBody: "Please keep this page open. The consultation starts as soon as your coordinator joins.",
+  guestPurposeWaitingTitle: "The room opens when your coordinator joins",
+  guestPurposeWaitingBody: "Please keep this page open.",
 
   // ---- Admin: Kullanıcılar anahtarı ----
   hostAccessLabel: "Can host external meetings",

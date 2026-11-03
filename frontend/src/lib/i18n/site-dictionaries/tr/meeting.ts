@@ -66,7 +66,8 @@ export const meetingStrings: MeetingStrings = {
   linkOnceWarning: "Bu bağlantı yalnızca şimdi tam olarak gösterilir. Kaybederseniz yenisini üretin (eskisi çalışmaz olur).",
   emailSectionTitle: "E-postayla gönder (isteğe bağlı)",
   emailLabel: "Misafirin e-posta adresi",
-  emailSend: "E-posta gönder",
+  emailSend: "E-posta gönder",
+
   guestLanguageLabel: "Misafir dili",
   guestLanguageHint: "Misafir bağlantısı sayfasının ve davet e-postasının dili.",
   emailSent: "E-posta gönderildi.",
@@ -157,8 +158,8 @@ export const meetingStrings: MeetingStrings = {
   guestPurposeTitle: "Online consultation with your WM Health patient coordinator",
   guestPurposeIntermediary: "WM Health is a health tourism intermediary, not a healthcare provider.",
   guestPurposeNotice: "This is not a medical examination. Medical assessment and treatment decisions are made by physicians at authorized healthcare facilities.",
-  guestPurposeWaitingTitle: "Your coordinator will admit you shortly",
-  guestPurposeWaitingBody: "Please keep this page open. The consultation starts as soon as your coordinator joins.",
+  guestPurposeWaitingTitle: "The room opens when your coordinator joins",
+  guestPurposeWaitingBody: "Please keep this page open.",
 
   hostAccessLabel: "Harici toplantı oluşturabilir",
   hostAccessAdminNote: "Yöneticiler her zaman yetkilidir",
