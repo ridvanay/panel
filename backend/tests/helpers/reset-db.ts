@@ -29,8 +29,28 @@ export async function resetDatabase(prisma: PrismaClient) {
   `;
   if (tables.length === 0) return;
 
-  const names = tables.map((t) => `"public"."${t.tablename}"`).join(", ");
-  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${names} RESTART IDENTITY CASCADE`);
+  // Paket AL (İş 1.3) — KALICI düzeltme `src/app.ts` içindedir (test ortamında sweeper/zamanlayıcı kurulmaz:
+  // açılıştaki fire-and-forget ilk tur TRUNCATE ile kilit sırası çakışıp 40P01 üretiyordu). Buradakiler
+  // yalnızca EK güvenlik: (1) tablo sırası deterministik (alfabetik) — pg_tables sırası rastgeledir ve her
+  // TRUNCATE farklı sırada AccessExclusive kilit alırdı; (2) tek ifade (tek kilit turu); (3) 40P01 olursa
+  // deadlock kurbanı TRUNCATE olduğunda (rakip sorgu bitince) sınırlı sayıda yeniden dene.
+  const names = tables
+    .map((t) => t.tablename)
+    .sort()
+    .map((n) => `"public"."${n}"`)
+    .join(", ");
+  const maxAttempts = 4;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${names} RESTART IDENTITY CASCADE`);
+      break;
+    } catch (err) {
+      const text = err instanceof Error ? `${err.message} ${JSON.stringify((err as { meta?: unknown }).meta ?? {})}` : String(err);
+      const isDeadlock = text.includes("40P01") || text.toLowerCase().includes("deadlock detected");
+      if (!isDeadlock || attempt >= maxAttempts) throw err;
+      await new Promise((r) => setTimeout(r, 100 * attempt));
+    }
+  }
 
   // §10.5 Çoklu Dil & Yerelleştirme — `locales` tablosu TRUNCATE ile birlikte az önce
   // silinen `tr`/`en` seed satırlarını (bkz. migration

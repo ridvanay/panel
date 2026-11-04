@@ -455,6 +455,15 @@ export function buildApp() {
   // olduktan hemen sonra, dinlemeye başlamadan ÖNCE çalışsın (bkz. ARCHITECTURE.md §10.8.1 —
   // bu hook OLMADAN işler sonsuza dek `PROCESSING`'de asılı kalır ve UI sonsuz poll eder).
   app.addHook("onReady", async () => {
+    // Paket AL (İş 1.3) — süreç-içi zamanlayıcılar/sweeper'lar test ortamında kurulmaz. Açılışta HEMEN bir
+    // kez çalışan (fire-and-forget) ilk tur, sonraki testin `resetDatabase()` TRUNCATE'i ile kilit sırası
+    // çakışıp `40P01 deadlock` üretiyordu (intake-retention SELECT'i AccessShare, TRUNCATE AccessExclusive).
+    // Testler `run*Sweep`/`run*Retention` fonksiyonlarını doğrudan çağırır; kurtarma (`recoverStuck*`) awaited
+    // olduğundan etkilenmez.
+    // `VITEST` (vitest her zaman ayarlar, production hiç ayarlamaz): bazı testler `NODE_ENV=production`'ı işlem
+    // içinde simüle edip uygulamayı yeniden kurar — o örnekte de zamanlayıcılar kurulmamalı.
+    const runBackgroundJobs = env.NODE_ENV !== "test" && !process.env.VITEST;
+
     // devops-agent bulgusu (2026-08-17, docker-compose lokal deploy) — bu 5 grup BİRBİRİNDEN
     // TAMAMEN BAĞIMSIZ alt sistemlerdir (import/export/scheduled-publish/cart/webhook); hiçbiri
     // diğerinin çalışması için ön koşul DEĞİLDİR. Önceden hiçbir try/catch olmadan art arda
@@ -474,7 +483,7 @@ export function buildApp() {
       // yüklemeye bağlı tembel tetikleme KABUL EDİLEMEZ, bkz. import.retention.ts). `app.prisma`
       // yalnızca burada (onReady, tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir —
       // `recoverStuckImportJobs` ile AYNI gerekçe. `onClose` ile kendi interval'ını temizler.
-      registerImportRetentionScheduler(app);
+      if (runBackgroundJobs) registerImportRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "İçe aktarma (import) kurtarma/scheduler kurulumu başarısız oldu — bu oturumda içe aktarma alt sistemi eksik kalabilir.");
     }
@@ -484,7 +493,7 @@ export function buildApp() {
       // gerekçeyle `onReady`'de: `PROCESSING`'de kalmış işleri `FAILED`e çevirir VE `PENDING`
       // işleri (in-process kuyruk restart'ta kaybolduğu için) yeniden kuyruğa alır.
       await recoverStuckExportJobs(app);
-      registerExportRetentionScheduler(app);
+      if (runBackgroundJobs) registerExportRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Dışa aktarma (export) kurtarma/scheduler kurulumu başarısız oldu — bu oturumda dışa aktarma alt sistemi eksik kalabilir.");
     }
@@ -495,7 +504,7 @@ export function buildApp() {
       // yalnızca burada (tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir. Açılışta
       // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda bekleyen zamanlamalar
       // dakikalık turu beklemeden anında yayınlansın (bkz. lib/scheduled-publish.ts).
-      registerScheduledPublishSweeper(app);
+      if (runBackgroundJobs) registerScheduledPublishSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Zamanlanmış yayın (scheduled-publish) sweeper kurulumu başarısız oldu — bu oturumda bekleyen zamanlamalar süpürülmeyebilir.");
     }
@@ -504,7 +513,7 @@ export function buildApp() {
       // §10.9.3 Sepet + Stripe Checkout — `registerImportRetentionScheduler`/
       // `registerScheduledPublishSweeper` ile AYNI gerekçeyle `onReady`'de: süresi geçmiş
       // sepetleri sessizce temizler (bkz. lib/cart-retention.ts).
-      registerCartRetentionSweeper(app);
+      if (runBackgroundJobs) registerCartRetentionSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Sepet (cart) saklama süresi sweeper kurulumu başarısız oldu — bu oturumda süresi geçmiş sepetler temizlenmeyebilir.");
     }
@@ -515,8 +524,8 @@ export function buildApp() {
       // §10.8.1 deseni). `app.prisma` yalnızca burada (onReady, tüm plugin ağacı yüklendikten
       // SONRA) güvenle kullanılabilir.
       await recoverStuckWebhookDeliveries(app);
-      registerWebhookDispatcher(app);
-      registerWebhookDeliveryRetentionScheduler(app);
+      if (runBackgroundJobs) registerWebhookDispatcher(app);
+      if (runBackgroundJobs) registerWebhookDeliveryRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Giden webhook kurtarma/dispatcher/scheduler kurulumu başarısız oldu — bu oturumda webhook alt sistemi eksik kalabilir.");
     }
@@ -527,7 +536,7 @@ export function buildApp() {
       // yalnızca burada (tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir. Açılışta
       // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda 30/180 günlük eşikler bir
       // sonraki saatlik turu beklemeden uygulansın (bkz. lib/contact-retention.ts).
-      registerContactRetentionScheduler(app);
+      if (runBackgroundJobs) registerContactRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "İletişim formu saklama süresi scheduler kurulumu başarısız oldu — bu oturumda süresi geçmiş gönderimler temizlenmeyebilir.");
     }
@@ -536,7 +545,7 @@ export function buildApp() {
       // [TCT] §9.7.3 KARAR I — 5 dakikalık kadans, `PENDING_PAYMENT` yaşam döngüsü (hiç
       // ödenmemiş tutulan slotları serbest bırakır). AYNI izolasyon/gerekçe: `app.prisma`
       // yalnızca burada güvenle kullanılabilir.
-      registerBookingExpirySweeper(app);
+      if (runBackgroundJobs) registerBookingExpirySweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu rezervasyonu süre dolumu (booking-expiry) scheduler kurulumu başarısız oldu.");
     }
@@ -544,7 +553,7 @@ export function buildApp() {
     try {
       // [TCT] §9.7.5 KARAR J madde 9 (ENGELLEYİCİ, compliance-agent onaylı) — günlük kadans,
       // sağlık verisi (intake notu + tıbbi belge) 90 gün sonra GERÇEKTEN silinir.
-      registerIntakeRetentionScheduler(app);
+      if (runBackgroundJobs) registerIntakeRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Sağlık verisi (intake/belge) saklama süresi scheduler kurulumu başarısız oldu.");
     }
@@ -552,7 +561,7 @@ export function buildApp() {
     try {
       // TUR 3 (bağlayıcı) — görüşme kaydı (video) 30 gün sonra GERÇEKTEN silinir + yetim staging
       // nesneleri temizlenir. `registerIntakeRetentionScheduler` İLE AYNI izolasyon/gerekçe.
-      registerRecordingRetentionScheduler(app);
+      if (runBackgroundJobs) registerRecordingRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Görüşme kaydı saklama süresi scheduler kurulumu başarısız oldu.");
     }
@@ -560,7 +569,7 @@ export function buildApp() {
     try {
       // [ASD] §2.1/§2.3 (bağlayıcı) — 5 dakikalık kadans, 1 saat/30 dakika randevu hatırlatma
       // e-postaları (claim-first çift gönderim engeli, çoklu slot bastırması).
-      registerAppointmentReminderSweeper(app);
+      if (runBackgroundJobs) registerAppointmentReminderSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu hatırlatma (appointment-reminders) scheduler kurulumu başarısız oldu.");
     }
@@ -584,7 +593,7 @@ export function buildApp() {
     try {
       // Paket A2 (2026-10-18) — 5 dakikalık kadans, süresi geçmiş SCHEDULED/IN_PROGRESS randevuları
       // kanıta göre COMPLETED/NO_SHOW'a çeker (bkz. lib/appointment-auto-close.ts). AYNI izolasyon.
-      registerAppointmentAutoCloseSweeper(app);
+      if (runBackgroundJobs) registerAppointmentAutoCloseSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu otomatik kapatma (appointment-auto-close) scheduler kurulumu başarısız oldu.");
     }
@@ -614,7 +623,7 @@ export function buildApp() {
 
     try {
       // Paket Y — 30 dakikalık kadans, tamamlanmış görüşmeden 24 saat sonra "Deneyiminizi paylaşın" daveti.
-      registerReviewRequestSweeper(app);
+      if (runBackgroundJobs) registerReviewRequestSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Yorum daveti (review-requests) scheduler kurulumu başarısız oldu.");
     }
@@ -622,7 +631,7 @@ export function buildApp() {
     try {
       // [ASD] §3.7 / compliance-notes-support-desk.md §3 (bağlayıcı) — saatlik kadans, Canlı
       // Destek saklama süpürücüsü (30/180/365 gün, üç bağımsız idempotent işlem).
-      registerSupportRetentionScheduler(app);
+      if (runBackgroundJobs) registerSupportRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Canlı Destek saklama süresi scheduler kurulumu başarısız oldu.");
     }
