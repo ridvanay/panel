@@ -134,7 +134,7 @@ describe("header (masaüstü ve mobil)", () => {
 });
 
 describe("mega menü sağ paneli", () => {
-  async function open(f: typeof ON) {
+  function renderMenu(f: typeof ON) {
     render(
       features(
         f,
@@ -152,9 +152,20 @@ describe("mega menü sağ paneli", () => {
         </ContactChannelsProvider>
       )
     );
+  }
+
+  async function open(f: typeof ON) {
+    renderMenu(f);
     await userEvent.setup().click(screen.getByRole("button", { name: /^Health Tourism Services/ }));
     return within(await screen.findByTestId("services-mega-panel"));
   }
+
+  it("ikisi de kapalı ve WhatsApp yok: sağ panel hiç çizilmez (boş sütun kalmaz)", async () => {
+    renderMenu(BOTH_OFF);
+    await userEvent.setup().click(screen.getByRole("button", { name: /^Health Tourism Services/ }));
+    await screen.findByRole("menuitem", { name: /Dental Care/ });
+    expect(screen.queryByTestId("services-mega-panel")).toBeNull();
+  });
 
   it("ikisi de açık: iki bağlantı", async () => {
     const panel = await open(ON);

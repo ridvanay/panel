@@ -231,10 +231,10 @@ export function runAkScript(args: string[]): string {
   if (!/saas_e2e/.test(E2E_DB_URL)) throw new Error("qa-agent: script yalnizca saas_e2e hedefiyle calisir.");
   const backupDir = path.join(os.tmpdir(), "ak-e2e-script-backups");
   fs.mkdirSync(backupDir, { recursive: true });
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     DATABASE_URL: E2E_DB_URL,
-    NODE_ENV: "development",
+    NODE_ENV: "development" as const,
     REVALIDATE_SECRET: "e2e-revalidate-secret",
     INTERNAL_FRONTEND_URL: "http://localhost:3100",
     FRONTEND_URL: "http://localhost:3100",

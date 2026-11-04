@@ -87,11 +87,11 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
 
   const detailRows = [
     // Paket AK — telefon satırı "Call center" (24/7 notu numaranın altında).
-    telHref && { icon: Phone, label: t.phoneRowLabel, value: content.phone, href: telHref, external: false, note: t.callCenterNote },
-    whatsappHref && { icon: MessageCircle, label: t.whatsappRowLabel, value: content.whatsapp, href: whatsappHref, external: true },
+    telHref && { icon: Phone, label: t.phoneRowLabel, value: content.phone, href: telHref, external: false, note: t.callCenterNote, ltr: true },
+    whatsappHref && { icon: MessageCircle, label: t.whatsappRowLabel, value: content.whatsapp, href: whatsappHref, external: true, ltr: true },
     content.email && { icon: Mail, label: t.emailRowLabel, value: content.email, href: `mailto:${content.email}`, external: false },
     content.address && { icon: MapPin, label: t.addressRowLabel, value: content.address, href: addressMapHref, external: true },
-  ].filter(Boolean) as { icon: typeof Phone; label: string; value: string; href: string | null; external: boolean; note?: string }[];
+  ].filter(Boolean) as { icon: typeof Phone; label: string; value: string; href: string | null; external: boolean; note?: string; ltr?: boolean }[];
 
   return (
     <div className={cn("contact-page", aboutSerif.variable)}>
@@ -186,7 +186,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                                 {...(row.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                                 className="inline-flex min-h-11 items-center break-words text-base font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
                               >
-                                {row.value}
+                                {row.ltr ? <bdi dir="ltr">{row.value}</bdi> : row.value}
                               </a>
                             ) : (
                               <p className="text-base font-medium text-foreground">{row.value}</p>

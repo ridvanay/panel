@@ -72,6 +72,7 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
   const findEnabled = useFindTreatmentEnabled();
   const bookCtaEnabled = useBookConsultationCtaEnabled();
   const { whatsapp } = useContactChannels();
+  const showMegaPanel = findEnabled || bookCtaEnabled || Boolean(whatsapp);
   const contact = useContactCtaStrings();
 
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -124,7 +125,7 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
               "motion-reduce:transition-none motion-reduce:data-[starting-style]:translate-y-0 motion-reduce:data-[ending-style]:translate-y-0"
             )}
           >
-            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_16rem]">
+            <div className={cn("grid min-h-0 flex-1", showMegaPanel ? "grid-cols-[minmax(0,1fr)_16rem]" : "grid-cols-1")}>
               <div className="min-h-0 overflow-y-auto px-4 py-3" data-testid="services-mega-groups">
                 <div className="columns-2 gap-x-6">
                   {groups.map((group) => (
@@ -164,6 +165,8 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                 </div>
               </div>
 
+              {/* Paket AK — iki CTA da kapalı ve WhatsApp yoksa sağ panel hiç çizilmez (boş sütun kalmaz). */}
+              {showMegaPanel && (
               <div
                 data-testid="services-mega-panel"
                 className="flex min-h-0 flex-col gap-3 overflow-y-auto border-s border-border bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] p-5"
@@ -200,6 +203,7 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-5 py-1.5">
