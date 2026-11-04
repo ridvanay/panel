@@ -97,6 +97,8 @@ export const ContactPageContentSchema = z.object({
     .default({}),
   mapImageMediaId: z.string().uuid().nullable().default(null),
   mapUrl: optionalPattern(MAP_URL_PATTERN, "Yalnızca Google Haritalar bağlantısı (https://www.google.com/maps/…, https://maps.app.goo.gl/…) kabul edilir.", 500),
+  /** Paket AK (K5) - iletisim sayfasinda calisma saatleri karti. Alan yok = gorunur (mevcut davranis). */
+  hoursVisible: z.boolean().optional(),
 });
 export type ContactPageContent = z.infer<typeof ContactPageContentSchema>;
 
@@ -115,7 +117,7 @@ export function parseContactPageContent(raw: unknown): ContactPageContent {
   }
   const media = z.string().uuid().safeParse(record.mapImageMediaId);
   const mapUrl = typeof record.mapUrl === "string" && MAP_URL_PATTERN.test(record.mapUrl) ? record.mapUrl : "";
-  return { locales, mapImageMediaId: media.success ? media.data : null, mapUrl };
+  return { locales, mapImageMediaId: media.success ? media.data : null, mapUrl, ...(typeof record.hoursVisible === "boolean" ? { hoursVisible: record.hoursVisible } : {}) };
 }
 
 export function localeContent(content: ContactPageContent, locale: ContactPageLocale): ContactPageLocaleContent {

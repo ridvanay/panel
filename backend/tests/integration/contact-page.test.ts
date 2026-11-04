@@ -264,6 +264,25 @@ describe("iletişim sayfası", () => {
       expect(tr.consent).toEqual(CONTACT_PAGE_CONSENT_TEXTS.tr);
     });
 
+    it("Paket AK: hoursVisible varsayilan true; false kaydedilir ve public uca yansir; alan gonderilmeyen PUT mevcut degeri korur; gecersiz tip 422", async () => {
+      const auth = { authorization: `Bearer ${adminToken}` };
+      const base = { locales: { en: { title: "Contact us" } } };
+      await app.inject({ method: "PUT", url: ADMIN_PAGE, headers: auth, payload: base });
+      expect((await app.inject({ method: "GET", url: "/api/v1/contact/page?locale=en" })).json().data.hoursVisible).toBe(true);
+
+      const off = await app.inject({ method: "PUT", url: ADMIN_PAGE, headers: auth, payload: { ...base, hoursVisible: false } });
+      expect(off.statusCode).toBe(200);
+      expect(off.json().data.content.hoursVisible).toBe(false);
+      expect((await app.inject({ method: "GET", url: "/api/v1/contact/page?locale=en" })).json().data.hoursVisible).toBe(false);
+
+      await app.inject({ method: "PUT", url: ADMIN_PAGE, headers: auth, payload: base });
+      expect((await app.inject({ method: "GET", url: "/api/v1/contact/page?locale=en" })).json().data.hoursVisible).toBe(false);
+
+      const on = await app.inject({ method: "PUT", url: ADMIN_PAGE, headers: auth, payload: { ...base, hoursVisible: true } });
+      expect(on.json().data.content.hoursVisible).toBe(true);
+      expect((await app.inject({ method: "PUT", url: ADMIN_PAGE, headers: auth, payload: { ...base, hoursVisible: "no" } })).statusCode).toBe(422);
+    });
+
     it.each([
       ["Google dışı harita bağlantısı", { mapUrl: "https://evil.example.com/maps" }],
       ["javascript: harita bağlantısı", { mapUrl: "javascript:alert(1)" }],

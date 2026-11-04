@@ -37,6 +37,8 @@ const PublicContactPageSchema = z.object({
   whatsappDigits: z.string(),
   mapImageUrl: z.string().nullable(),
   mapUrl: z.string(),
+  /** Paket AK (K5) - false iken calisma saatleri karti gosterilmez (varsayilan true). */
+  hoursVisible: z.boolean(),
   privacyPage: z.object({ slug: z.string(), localizedSlugs: z.record(z.string()) }).nullable(),
   consent: z.object({ notice: z.string(), explicit: z.string(), privacyLinkLabel: z.string() }),
   treatmentNotSure: z.literal(TREATMENT_NOT_SURE),
@@ -104,6 +106,7 @@ export async function publicContactPageRoutes(app: FastifyInstance) {
           whatsappDigits: toWhatsAppDigits(localized.whatsapp),
           mapImageUrl: await mapImageUrlFor(app, content.mapImageMediaId),
           mapUrl: content.mapUrl,
+          hoursVisible: content.hoursVisible !== false,
           privacyPage,
           consent: CONTACT_PAGE_CONSENT_TEXTS[locale],
           treatmentNotSure: TREATMENT_NOT_SURE,
@@ -180,6 +183,8 @@ export async function adminContactPageRoutes(app: FastifyInstance) {
       const existingRaw = existing?.pageContent && typeof existing.pageContent === "object" && !Array.isArray(existing.pageContent) ? (existing.pageContent as Record<string, unknown>) : {};
       const pageContent = {
         ...content,
+        // Paket AK - alan gonderilmediyse mevcut deger korunur (eski istemci scriptin kapattigini acmasin).
+        ...(content.hoursVisible === undefined && typeof existingRaw.hoursVisible === "boolean" ? { hoursVisible: existingRaw.hoursVisible } : {}),
         ...(existingRaw[FORM_TRANSLATIONS_KEY] !== undefined ? { [FORM_TRANSLATIONS_KEY]: existingRaw[FORM_TRANSLATIONS_KEY] } : {}),
       } as Prisma.InputJsonObject;
       await app.prisma.contactForm.upsert({
@@ -195,7 +200,7 @@ export async function adminContactPageRoutes(app: FastifyInstance) {
         targetType: "ContactForm",
         targetId: CONTACT_FORM_ID,
         // İletişim bilgileri kurumsal veridir (kişisel veri değil) — değişen dillerin listesi yazılır.
-        metadata: { locales: Object.keys(content.locales), mapImage: Boolean(content.mapImageMediaId), mapUrl: Boolean(content.mapUrl) },
+        metadata: { locales: Object.keys(content.locales), mapImage: Boolean(content.mapImageMediaId), mapUrl: Boolean(content.mapUrl), ...(content.hoursVisible !== undefined ? { hoursVisible: content.hoursVisible } : {}) },
         ipAddress: request.ip,
       });
       await triggerTagRevalidation(app, [CACHE_TAGS.contactPage]);
