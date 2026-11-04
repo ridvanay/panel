@@ -108,7 +108,7 @@
     - sayfa /about · translations.en [0].data.hero.secondaryCta.label: "Meet our doctors"
     - sayfa /about · translations.en [0].data.doctors.title: "Meet our doctors"
 [özet] toplam alan değişikliği=38, sayfa=1, slayt=0, iletişim=1, ayar=1
-[yedek] C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-2026-11-04T09-49-49-082Z.json
+[yedek] C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-2026-11-04T10-02-58-923Z.json
 [fix] uygulandı (sayfa=1, slayt=0, iletişim=1, ayar=1, alan değişikliği=38).
-[geri al] npx tsx scripts/apply-client-revisions-ak.ts --restore=C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-2026-11-04T09-49-49-082Z.json --confirm=apply-client-revisions-ak --operator=<ad>
+[geri al] npx tsx scripts/apply-client-revisions-ak.ts --restore=C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-2026-11-04T10-02-58-923Z.json --confirm=apply-client-revisions-ak --operator=<ad>
 [revalidate] etiketler yenilendi: settings, contact-page, pages
