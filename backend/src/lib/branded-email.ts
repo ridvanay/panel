@@ -78,6 +78,8 @@ export interface BrandedEmailInput {
 
 interface FooterStrings {
   contact: string;
+  /** Paket AK - telefonun yanindaki kisa not ("Call center 24/7"). */
+  callCenter: string;
   support: string;
   automated: string;
   emergency: string;
@@ -89,6 +91,7 @@ interface FooterStrings {
 const FOOTER: Record<BrandLocale, FooterStrings> = {
   en: {
     contact: "Contact us",
+    callCenter: "Call center 24/7",
     support: "Free support in your language: {languages}",
     automated: "This email was sent automatically.",
     emergency: "In an emergency, call 112 (or your local emergency number).",
@@ -98,6 +101,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   tr: {
     contact: "Bize ulaşın",
+    callCenter: "Çağrı merkezi 7/24",
     support: "Kendi dilinizde ücretsiz destek: {languages}",
     automated: "Bu e-posta otomatik olarak gönderilmiştir.",
     emergency: "Acil durumda 112'yi (ya da bulunduğunuz ülkenin acil numarasını) arayın.",
@@ -107,6 +111,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   de: {
     contact: "Kontakt",
+    callCenter: "Call-Center 24/7",
     support: "Kostenloser Support in Ihrer Sprache: {languages}",
     automated: "Diese E-Mail wurde automatisch versendet.",
     emergency: "Im Notfall wählen Sie 112 (oder die Notrufnummer Ihres Landes).",
@@ -116,6 +121,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   es: {
     contact: "Contacto",
+    callCenter: "Centro de atención 24/7",
     support: "Atención gratuita en su idioma: {languages}",
     automated: "Este correo se ha enviado automáticamente.",
     emergency: "En caso de emergencia, llame al 112 (o al número de emergencias de su país).",
@@ -125,6 +131,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   fr: {
     contact: "Nous contacter",
+    callCenter: "Centre d’appels 24h/24, 7j/7",
     support: "Assistance gratuite dans votre langue : {languages}",
     automated: "Cet e-mail a été envoyé automatiquement.",
     emergency: "En cas d’urgence, appelez le 112 (ou le numéro d’urgence de votre pays).",
@@ -134,6 +141,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   ar: {
     contact: "تواصل معنا",
+    callCenter: "مركز الاتصال على مدار الساعة (24/7)",
     support: "دعم مجاني بلغتك: {languages}",
     automated: "تم إرسال هذا البريد تلقائيا.",
     emergency: "في حالة الطوارئ اتصل بالرقم 112 (أو رقم الطوارئ في بلدك).",
@@ -143,6 +151,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   ru: {
     contact: "Связаться с нами",
+    callCenter: "Колл-центр 24/7",
     support: "Бесплатная поддержка на вашем языке: {languages}",
     automated: "Это письмо отправлено автоматически.",
     emergency: "В экстренной ситуации звоните 112 (или по номеру экстренной службы вашей страны).",
@@ -152,6 +161,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   ro: {
     contact: "Contactați-ne",
+    callCenter: "Call center 24/7",
     support: "Asistență gratuită în limba dumneavoastră: {languages}",
     automated: "Acest e-mail a fost trimis automat.",
     emergency: "În caz de urgență, sunați la 112 (sau la numărul de urgență din țara dumneavoastră).",
@@ -161,6 +171,7 @@ const FOOTER: Record<BrandLocale, FooterStrings> = {
   },
   "sr-latn": {
     contact: "Kontaktirajte nas",
+    callCenter: "Kontakt centar 24/7",
     support: "Besplatna podrška na vašem jeziku: {languages}",
     automated: "Ova poruka je poslata automatski.",
     emergency: "U hitnom slučaju pozovite 112 (ili broj hitne službe u svojoj zemlji).",
@@ -201,7 +212,7 @@ function renderFooter(ctx: EmailBrandContext, locale: BrandLocale, audience: Ema
     const identity = intermediaryIdentityFor(locale);
     parts.push(line(`<strong style="color:#374151;">${escapeHtml(identity.shortLabel)}</strong>`), line(escapeHtml(identity.description)));
     if (ctx.address) parts.push(line(escapeHtml(ctx.address)));
-    const contact = [ctx.phone ? escapeHtml(ctx.phone) : null, ctx.infoEmail ? link(ctx.infoEmail, `mailto:${ctx.infoEmail}`) : null, link(t.contact, ctx.contactUrl)].filter(Boolean);
+    const contact = [ctx.phone ? `${escapeHtml(ctx.phone)} (${escapeHtml(t.callCenter)})` : null, ctx.infoEmail ? link(ctx.infoEmail, `mailto:${ctx.infoEmail}`) : null, link(t.contact, ctx.contactUrl)].filter(Boolean);
     parts.push(line(contact.join(" &middot; ")));
     if (ctx.supportLanguages && ctx.supportLanguages.length > 0) parts.push(line(escapeHtml(t.support.replace("{languages}", ctx.supportLanguages.join(", ")))));
     // Paket AH - bağlantı ETİKETİ e-posta sözlüğünden (alıcının dilinde); DB'deki yasal sayfa başlığı kullanılmaz (EN e-postada Türkçe başlık çıkmasın). Bağlantı adresi yine yasal sayfaya gider.

@@ -325,3 +325,31 @@ describe("statik tarama — ham HTML ile sendMail kalmadı", () => {
     expect(offenders.sort()).toEqual(["lib/branded-mail.ts", "modules/email-templates/email-templates.routes.ts"]);
   });
 });
+
+/** Paket AK - telefonun yanindaki "Call center 24/7" notu (9 dil, yalniz telefon varsa, personel footer'inda yok). */
+describe("Paket AK - call center notu", () => {
+  const NOTES: Record<string, string> = {
+    en: "Call center 24/7",
+    tr: "Çağrı merkezi 7/24",
+    de: "Call-Center 24/7",
+    es: "Centro de atención 24/7",
+    fr: "Centre d’appels 24h/24, 7j/7",
+    ar: "مركز الاتصال على مدار الساعة (24/7)",
+    ru: "Колл-центр 24/7",
+    ro: "Call center 24/7",
+    "sr-latn": "Kontakt centar 24/7",
+  };
+  // `tr` musteri e-postalarinda `en`e duser (Paket AH) - beklenen not EN'dir.
+  it.each(Object.entries(NOTES))("%s: telefonun yaninda not gorunur (html + metin)", (locale, rawNote) => {
+    const note = locale === "tr" ? NOTES.en! : rawNote;
+    const { html, text } = renderBrandedEmail(CTX, { locale, audience: "user", bodyHtml: "<p>x</p>" });
+    expect(html).toContain(`+90 212 000 00 00 (${note})`);
+    expect(text).toContain(note);
+  });
+  it("telefon yoksa not eklenmez; personel footer'inda telefon/not yok", () => {
+    const noPhone = renderBrandedEmail({ ...CTX, phone: null }, { locale: "en", audience: "user", bodyHtml: "<p>x</p>" });
+    expect(noPhone.html).not.toContain("Call center 24/7");
+    const staff = renderBrandedEmail(CTX, { locale: "en", audience: "staff", bodyHtml: "<p>x</p>" });
+    expect(staff.html).not.toContain("Call center 24/7");
+  });
+});
