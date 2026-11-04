@@ -7,6 +7,7 @@ import { fillBlogString } from "@/lib/blog/format";
 import { specialtyIconFor, specialtyToneFor } from "@/lib/blog/specialty-icon";
 import { cn } from "@/lib/utils";
 import { ContactCta } from "@/components/site/contact/contact-cta";
+import { FindTreatmentGate } from "@/components/site/site-features-context";
 import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
 
 /**
@@ -119,9 +120,11 @@ export function BlogEmptyState({ t }: { t: BlogStrings }) {
         {t.emptyBlog}
       </h2>
       <p className="mx-auto mt-2 max-w-xl text-base text-foreground/75">{t.emptyBlogText}</p>
-      <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <MatcherLaunchButton className="w-full sm:w-auto" />
-      </div>
+      <FindTreatmentGate>
+        <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <MatcherLaunchButton className="w-full sm:w-auto" />
+        </div>
+      </FindTreatmentGate>
     </section>
   );
 }

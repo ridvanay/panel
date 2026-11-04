@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { fetchSiteFeaturesServer } from "@/lib/api/server-site-features";
+import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { matcherStringsFor } from "@/lib/i18n/matcher-dictionaries";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
@@ -22,6 +25,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function FindYourTreatmentPage({ params }: PageProps) {
   const { lang } = await params;
   if (!(await isModuleEnabledServer("telehealth"))) notFound();
+  // Paket AK — özellik kapalıysa bölüm listesine yönlendir (proxy 302'sinin sunucu tarafı yedeği).
+  if (!(await fetchSiteFeaturesServer()).findTreatmentEnabled) {
+    const locales = await fetchLocalesServer();
+    redirect(withLocalePrefix("/specialties", lang, locales.find((l) => l.isDefault)?.code ?? lang));
+  }
   const m = matcherStringsFor(lang);
   return (
     <div className={cn(aboutContainerClass, "py-10 sm:py-14")}>

@@ -3,19 +3,22 @@ import { ShieldCheck } from "lucide-react";
 import type { PackageCardData } from "@/lib/api/types";
 import type { BlogStrings } from "@/lib/i18n/site-dictionaries/en/blog";
 import type { PackagesStrings } from "@/lib/i18n/site-dictionaries/en/packages";
+import { FindTreatmentGate } from "@/components/site/site-features-context";
 import { MatcherLaunchButton } from "@/components/site/matcher/matcher-modal";
 import { PackageCard } from "@/components/site/packages/package-card";
 
 /** Paket Z1 — liste ara CTA: "Not sure which physician you need?" + W sihirbazı düğmesi ("Find my physician"). */
 export function BlogFindPhysicianCta({ t }: { t: BlogStrings }) {
   return (
-    <aside className="rounded-[var(--site-radius)] border border-border bg-[var(--site-primary)]/5 p-5 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-6" data-testid="blog-find-physician-cta">
-      <div>
-        <p className="font-heading text-lg font-semibold text-foreground">{t.ctaTitle}</p>
-        <p className="mt-1 text-sm text-foreground/70">{t.ctaText}</p>
-      </div>
-      <MatcherLaunchButton className="mt-4 w-full sm:mt-0 sm:w-auto sm:shrink-0" />
-    </aside>
+    <FindTreatmentGate>
+      <aside className="rounded-[var(--site-radius)] border border-border bg-[var(--site-primary)]/5 p-5 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-6" data-testid="blog-find-physician-cta">
+        <div>
+          <p className="font-heading text-lg font-semibold text-foreground">{t.ctaTitle}</p>
+          <p className="mt-1 text-sm text-foreground/70">{t.ctaText}</p>
+        </div>
+        <MatcherLaunchButton className="mt-4 w-full sm:mt-0 sm:w-auto sm:shrink-0" />
+      </aside>
+    </FindTreatmentGate>
   );
 }
 

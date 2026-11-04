@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { BlockChrome, CounterBlock } from "@/lib/page-builder/types";
+import { metricValue } from "@/lib/page-builder/counter-metrics";
+import type { BlockSiteContext } from "./index";
 
 /** Binlik ayracı biçimlendirmesi TEK bir yerde — kullanıcı ayracı elle kurgulamaz
  *  (bkz. `types.ts::CounterItem.value` yorumu). */
@@ -11,17 +13,24 @@ function gridColsClass(count: number): string {
   return "grid-cols-2 md:grid-cols-4";
 }
 
-export function CounterBlockView({ block, chrome }: { block: CounterBlock; chrome: BlockChrome }) {
-  const items = block.data.items;
+export function CounterBlockView({ block, chrome, siteContext }: { block: CounterBlock; chrome: BlockChrome; siteContext?: BlockSiteContext }) {
+  // Paket AK (K2) — `metric` varsa değer canlı veriden gelir; alınamazsa (null/0/hata) öğe GÖSTERİLMEZ.
+  // `metric` yoksa elle yazılan değer aynen kullanılır (bugünkü davranış).
+  const items = block.data.items.flatMap((item) => {
+    if (!item.metric) return [{ item, value: item.value }];
+    const live = metricValue(siteContext?.metrics, item.metric);
+    return live === null ? [] : [{ item, value: live }];
+  });
+  if (items.length === 0) return null;
 
   return (
     <section className={cn(chrome === "page" && "px-4 py-12 sm:px-6")}>
       <div className={cn("mx-auto grid max-w-4xl gap-8 text-center", gridColsClass(items.length))}>
-        {items.map((item) => (
+        {items.map(({ item, value }) => (
           <div key={item.id}>
             <p className="text-4xl font-bold text-primary">
               {item.prefix}
-              {numberFormatter.format(item.value)}
+              {numberFormatter.format(value)}
               {item.suffix}
             </p>
             <p className="mt-1 text-sm text-foreground/70">{item.label}</p>

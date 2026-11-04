@@ -26,7 +26,8 @@ import { IntermediaryNotice } from "@/components/site/intermediary-notice";
  * (zemin tonu) olarak kullanılır, metin rengi olarak asla. Hareket `motion-reduce` ile kapanır.
  */
 
-type Hrefs = { request: string; find: string };
+/** Paket AK — `find: null` = "Find your treatment" gizli (findTreatmentEnabled=false). */
+type Hrefs = { request: string; find: string | null };
 
 const ring =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)] motion-reduce:transition-none";
@@ -67,12 +68,15 @@ export function VipPageContent({
   certificateNo,
   images,
   hrefs,
+  bookCtaEnabled = true,
 }: {
   strings: VipStrings;
   intermediary: IntermediaryStrings;
   certificateNo: string | null | undefined;
   images: VipImage[];
   hrefs: Hrefs;
+  /** Paket AK — `bookConsultationCtaEnabled=false` iken "Book a consultation" düğmeleri çizilmez. */
+  bookCtaEnabled?: boolean;
 }) {
   const sections: { key: string; topic: string; icon: LucideIcon; title: string; text: string }[] = [
     { key: "transfer", topic: "vip-transfer", icon: Plane, title: t.transferTitle, text: t.transferText },
@@ -101,12 +105,16 @@ export function VipPageContent({
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-foreground/80 sm:text-lg">{t.intro}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href={hrefs.request} className={primaryButton} data-testid="vip-hero-book">
-              {t.ctaBook}
-            </Link>
-            <Link href={hrefs.find} className={secondaryButton}>
-              {t.ctaFind}
-            </Link>
+            {bookCtaEnabled && (
+              <Link href={hrefs.request} className={primaryButton} data-testid="vip-hero-book">
+                {t.ctaBook}
+              </Link>
+            )}
+            {hrefs.find && (
+              <Link href={hrefs.find} className={secondaryButton}>
+                {t.ctaFind}
+              </Link>
+            )}
           </div>
         </div>
       </section>
@@ -175,6 +183,7 @@ export function VipPageContent({
           </h2>
           <p className="mt-3 max-w-2xl text-base leading-relaxed text-white/90">{t.ctaText}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            {bookCtaEnabled && (
             <Link
               href={hrefs.request}
               className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] bg-white px-5 text-sm font-semibold text-[var(--site-primary)] transition-all duration-300 hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white motion-reduce:transition-none"
@@ -182,12 +191,15 @@ export function VipPageContent({
             >
               {t.ctaBook}
             </Link>
+            )}
+            {hrefs.find && (
             <Link
               href={hrefs.find}
               className="inline-flex min-h-11 items-center justify-center rounded-[var(--site-radius)] border border-white/70 px-5 text-sm font-semibold text-white transition-all duration-300 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white motion-reduce:transition-none"
             >
               {t.ctaFind}
             </Link>
+            )}
           </div>
         </div>
         <p className="mt-8 max-w-3xl text-sm text-foreground/70">{t.note}</p>

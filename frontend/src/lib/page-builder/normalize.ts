@@ -149,7 +149,11 @@ function normalizeContainerNode(node: Record<string, unknown>, ctx: NormalizeCtx
   const rawChildren = Array.isArray(node.children) ? node.children : [];
   const children = normalizeNodeList(rawChildren, ctx, depth + 1);
   const reveal = normalizeReveal(node.reveal);
-  return reveal ? { id, type: "container", settings, children, reveal } : { id, type: "container", settings, children };
+  const base: ContainerNode = { id, type: "container", settings, children };
+  if (reveal) base.reveal = reveal;
+  // Paket AK (K1) — `hidden` korunur (yalnızca `true` taşınır; yok = görünür).
+  if (node.hidden === true) base.hidden = true;
+  return base;
 }
 
 // ---------------------------------------------------------------------------

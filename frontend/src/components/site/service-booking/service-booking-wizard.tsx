@@ -78,7 +78,8 @@ export interface ServiceBookingWizardProps {
   servicesHref: string;
   /** "Request a call back" (talep formu). */
   callbackHref: string;
-  findTreatmentHref: string;
+  /** `null` = "Find your treatment" bağlantısı gizli (Paket AK). */
+  findTreatmentHref: string | null;
 }
 
 export function ServiceBookingWizard(props: ServiceBookingWizardProps) {

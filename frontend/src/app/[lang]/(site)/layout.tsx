@@ -33,6 +33,8 @@ import { fetchCrmConfigServer } from "@/lib/api/server-crm";
 import { CartDrawer } from "@/components/site/cart-drawer";
 import { SiteScope } from "@/components/site/site-scope";
 import { ServiceBookingProvider } from "@/components/site/service-booking/service-booking-context";
+import { SiteFeaturesProvider } from "@/components/site/site-features-context";
+import { resolveSiteFeatures } from "@/lib/site-features";
 import { fetchServiceConsultationConfigServer } from "@/lib/api/server-service-consultations";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
@@ -78,6 +80,8 @@ export default async function SiteLayout({
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
+  // Paket AK — panelden açılıp kapanan özellikler (`/settings`, 60 sn); alan yoksa AÇIK.
+  const siteFeatures = resolveSiteFeatures(settings);
   const support = resolveLanguageSupport(telehealthSettings, lang, locales);
   const supportLine = support
     ? formatSiteString(dict.common.supportFooterLine, { languages: support.languages.map((l) => l.nativeName).join(", ") })
@@ -89,6 +93,7 @@ export default async function SiteLayout({
           gidebilmesi için alt sayfaların `localizations`'ı header'a bu Provider üzerinden akar
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
+        <SiteFeaturesProvider findTreatmentEnabled={siteFeatures.findTreatmentEnabled} bookConsultationCtaEnabled={siteFeatures.bookConsultationCtaEnabled}>
         <ServiceBookingProvider enabled={serviceBookingConfig?.enabled === true} callbackLabel={dict.serviceBooking.callbackLink} bookLabel={dict.services.bookOnlineConsultation}>
         {/* Paket X — iletişim kanalları (WhatsApp/canlı destek/iletişim sayfası): header, mobil düğme, bant ve CTA'lar buradan okur. */}
         <ContactChannelsProvider
@@ -100,7 +105,7 @@ export default async function SiteLayout({
         >
         <SiteScope appearance={appearance} lang={lang}>
           {/* Paket W — "Find my physician" modalı (header, anasayfa arama kutusu, CTA kartları). */}
-          <MatcherModalProvider enabled={telehealthModuleEnabled}>
+          <MatcherModalProvider enabled={telehealthModuleEnabled && siteFeatures.findTreatmentEnabled}>
           {/* §9 frontend-agent — doktor hesabı guard'ı (bkz. bileşenin başlığı); `LocaleAlternatesProvider`
               İÇİNDE mount edilir ki `useLocalizePath()` çalışsın. Görsel çıktısı YOKTUR (`null` döner). */}
           <DoctorPortalRouteGuard />
@@ -198,6 +203,7 @@ export default async function SiteLayout({
         </SiteScope>
         </ContactChannelsProvider>
         </ServiceBookingProvider>
+        </SiteFeaturesProvider>
       </LocaleAlternatesProvider>
 
       {/*

@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import type { BlockChrome, PageNode } from "@/lib/page-builder/types";
 import { ScrollReveal } from "./scroll-reveal";
+import type { SiteMetrics } from "@/lib/page-builder/counter-metrics";
 import { HeroBlockView } from "./hero-block";
 import { TextBlockView } from "./text-block";
 import { ImageBlockView } from "./image-block";
@@ -59,6 +60,8 @@ export interface BlockSiteContext {
    * belgeleri şeridi). Yalnızca ana sayfa rotası verir; diğer bloklar yok sayar.
    */
   homeAfterHero?: ReactNode;
+  /** Paket AK (K2) — `GET /public/site-metrics` yanıtı; yalnızca sayfada canlı veriye bağlı sayaç varsa sunucu sayfası doldurur. */
+  metrics?: Partial<SiteMetrics> | null;
 }
 
 function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: BlockSiteContext) {
@@ -96,7 +99,7 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: Block
     case "tabs":
       return <TabsBlockView block={node} chrome={chrome} />;
     case "counter":
-      return <CounterBlockView block={node} chrome={chrome} />;
+      return <CounterBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "testimonial":
       return <TestimonialBlockView block={node} chrome={chrome} />;
     case "pricing-table":
@@ -136,6 +139,8 @@ export function BlockRenderer({ nodes, chrome, siteContext }: { nodes: PageNode[
   return (
     <>
       {nodes.map((node) => {
+        // Paket AK (K1) — "Ziyaretçiden gizle": gizli blok (ve içindeki çocuklar) HTML'e hiç yazılmaz.
+        if (node.hidden === true) return null;
         const body = renderNodeBody(node, chrome, siteContext);
         if (body === null) return null;
 

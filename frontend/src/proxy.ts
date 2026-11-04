@@ -10,6 +10,8 @@ import { LOCALE_SEGMENT_SOURCE } from "@/lib/i18n/locale-code";
 import { legacyPhysiciansPath } from "@/lib/i18n/physicians-path";
 import { legacyFindTreatmentPath } from "@/lib/i18n/legacy-matcher-path";
 import { removedLocaleRedirectPath } from "@/lib/i18n/removed-locale-path";
+import { featureRedirectPath, matchFeatureGatedPath } from "@/lib/i18n/feature-gated-path";
+import { DEFAULT_SITE_FEATURES, resolveSiteFeatures, type SiteFeatures } from "@/lib/site-features";
 import { doctorPortalRetiredRedirect } from "@/lib/doctor-portal-redirect";
 
 /**
@@ -220,6 +222,21 @@ function withLocaleCookie(request: NextRequest, response: NextResponse, code: st
   return response;
 }
 
+/**
+ * Paket AK (K4) — panel anahtarları (`/settings`, `(site)` layout'uyla AYNI önbellek: 60 sn, `settings` etiketi).
+ * Ayar okunamazsa (ağ/5xx/bozuk gövde) varsayılan AÇIK döner → yönlendirme YAPILMAZ (fail-open, bakım anahtarıyla aynı ilke).
+ */
+async function readSiteFeaturesForProxy(): Promise<SiteFeatures> {
+  try {
+    const res = await fetch(`${SERVER_API_BASE_URL}/settings`, { next: { revalidate: 60, tags: [CACHE_TAGS.settings] } });
+    if (!res.ok) return DEFAULT_SITE_FEATURES;
+    const json = (await res.json()) as { data?: { findTreatmentEnabled?: boolean; bookConsultationCtaEnabled?: boolean } };
+    return resolveSiteFeatures(json.data);
+  } catch {
+    return DEFAULT_SITE_FEATURES;
+  }
+}
+
 /** §3.1 ANA HOST dalı — bakım modu, `/doctor/**` devri, locale redirect/rewrite. */
 async function handleMainHost(request: NextRequest, pathname: string, defaultLocale: Locale, localeCodes: Set<string>): Promise<NextResponse> {
   // [3] BAKIM MODU (503) — MEVCUT KOD, DEĞİŞMEDİ.
@@ -283,6 +300,18 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
     const url = request.nextUrl.clone();
     url.pathname = removedLocalePath;
     return NextResponse.redirect(url, 301);
+  }
+
+  // Paket AK (K4) — kapatılan özelliklerin adresleri 302 (kalıcı DEĞİL: panelden geri açılabilir; sorgu dizesi korunur).
+  // Ayar yalnızca eşleşen adreslerde okunur (diğer isteklere ek fetch yok).
+  const gated = matchFeatureGatedPath(pathname, localeCodes);
+  if (gated) {
+    const target = featureRedirectPath(gated, await readSiteFeaturesForProxy(), defaultLocale.code);
+    if (target) {
+      const url = request.nextUrl.clone();
+      url.pathname = target;
+      return NextResponse.redirect(url, 302);
+    }
   }
 
   // [5] LOCALE REDIRECT/REWRITE — MEVCUT KOD, DEĞİŞMEDİ.

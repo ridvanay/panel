@@ -1,6 +1,7 @@
 import type { ContentLocalization, DoctorProfile, Locale, SitePage, Specialty } from "@/lib/api/types";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
+import { resolveSiteFeatures, type SiteFeatures } from "@/lib/site-features";
 import type { SitemapEntry, SitemapIndexItem } from "./xml";
 
 /**
@@ -49,6 +50,8 @@ export interface SitemapData {
   portfolio: LocalizedContent[];
   /** Paket X — aktif paketler (telehealth modülü kapalıyken ya da paket yokken boş/tanımsız). */
   packages?: PackageSitemapItem[];
+  /** Paket AK — panel anahtarları; yoksa ikisi de AÇIK (bugünkü çıktı). */
+  features?: SiteFeatures;
 }
 
 interface Variant {
@@ -131,7 +134,8 @@ export function buildSection(section: SitemapSection, data: SitemapData): Sitema
       if (specialties.length === 0) return [];
       const entries = expand(data, allLocaleVariants(data, "/specialties"));
       // Paket AI — "Find your treatment" sihirbazı (eski /find-a-physician 301 ile buraya gider).
-      entries.push(...expand(data, allLocaleVariants(data, "/find-your-treatment")));
+      // Paket AK — `findTreatmentEnabled=false` iken sitemap'ten çıkar (adres 302 ile /specialties'e gider).
+      if (resolveSiteFeatures(data.features).findTreatmentEnabled) entries.push(...expand(data, allLocaleVariants(data, "/find-your-treatment")));
       for (const s of specialties) entries.push(...expand(data, allLocaleVariants(data, `/specialties/${s.slug}`), (s as { updatedAt?: string }).updatedAt));
       // "Tüm yorumlar" sayfası hizmet bölümleriyle birlikte yayında.
       entries.push(...expand(data, allLocaleVariants(data, "/reviews")));

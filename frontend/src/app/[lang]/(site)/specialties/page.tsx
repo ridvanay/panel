@@ -11,6 +11,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { formatSiteString, getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
 import { IntermediaryNotice } from "@/components/site/intermediary-notice";
+import { resolveSiteFeatures } from "@/lib/site-features";
 import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
 
 /**
@@ -107,6 +108,7 @@ export default async function SpecialtiesIndexPage({ params }: SpecialtiesPagePr
                     defaultLocaleCode={defaultLocaleCode}
                     bookingEnabled={bookingEnabled}
                     callbackLabel={dict.serviceBooking.callbackLink}
+                    bookCtaEnabled={resolveSiteFeatures(settings).bookConsultationCtaEnabled}
                   />
                 ))}
               </div>

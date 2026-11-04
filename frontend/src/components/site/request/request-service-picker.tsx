@@ -46,7 +46,8 @@ export function RequestServicePicker({
   value: string;
   onChange: (slug: string) => void;
   error?: string;
-  findTreatmentHref: string;
+  /** Paket AK — `null` (findTreatmentEnabled=false) iken "Not sure? Find your treatment" satırı çizilmez. */
+  findTreatmentHref: string | null;
 }) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase();
@@ -162,6 +163,7 @@ export function RequestServicePicker({
         </span>
       )}
 
+      {findTreatmentHref && (
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[var(--site-radius)] bg-[var(--site-primary)]/5 px-4 py-3 text-sm text-foreground/80">
         <Compass className="size-4 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
         <span>{t.notSure}</span>
@@ -169,6 +171,7 @@ export function RequestServicePicker({
           {t.findTreatmentLink}
         </Link>
       </p>
+      )}
     </fieldset>
   );
 }

@@ -7,6 +7,7 @@ import { Search, Stethoscope, X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useFindTreatmentEnabled } from "@/components/site/site-features-context";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import { PhysicianMatcher } from "./physician-matcher";
 import { cn } from "@/lib/utils";
@@ -144,13 +145,15 @@ export function MatcherLaunchButton({
   const ctx = useMatcherModal();
   const { m } = useMatcherStrings();
   const localize = useLocalizePath();
+  const featureEnabled = useFindTreatmentEnabled();
   const classes = cn(
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--site-radius)] text-sm font-semibold transition-colors motion-reduce:transition-none",
     display === "icon" ? "w-11 px-0" : display === "auto" ? "w-11 px-0 xl:w-auto xl:px-4" : "px-4",
     variant === "primary" ? "bg-[var(--site-primary)] text-white hover:opacity-90" : "border border-[var(--site-primary)] text-[var(--site-primary)] hover:bg-[var(--site-primary)]/5",
     className
   );
-  if (ctx && !ctx.enabled) return null;
+  // Paket AK — panel anahtarı kapalıysa (findTreatmentEnabled) her giriş noktası kendiliğinden gizlenir.
+  if (!featureEnabled || (ctx && !ctx.enabled)) return null;
   const labelClass = display === "icon" ? "sr-only" : display === "auto" ? "sr-only xl:not-sr-only" : undefined;
   const content = (
     <>
@@ -180,8 +183,9 @@ export function MatcherLaunchButton({
 export function MatcherHeroSearch() {
   const ctx = useMatcherModal();
   const { m } = useMatcherStrings();
+  const featureEnabled = useFindTreatmentEnabled();
   const [query, setQuery] = useState("");
-  if (!ctx?.enabled) return null;
+  if (!featureEnabled || !ctx?.enabled) return null;
   return (
     <form
       role="search"
@@ -219,7 +223,8 @@ export function MatcherHeroSearch() {
 export function MatcherCtaCard({ className }: { className?: string }) {
   const ctx = useMatcherModal();
   const { m } = useMatcherStrings();
-  if (ctx && !ctx.enabled) return null;
+  const featureEnabled = useFindTreatmentEnabled();
+  if (!featureEnabled || (ctx && !ctx.enabled)) return null;
   return (
     <aside className={cn("rounded-[var(--site-radius)] border border-border bg-surface p-5 sm:flex sm:items-center sm:justify-between sm:gap-6", className)} data-testid="matcher-cta">
       <div>

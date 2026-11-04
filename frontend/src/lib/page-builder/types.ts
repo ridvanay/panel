@@ -86,6 +86,12 @@ interface BaseNode {
   id: string;
   /** Opsiyonel — verilmemişse (veya `effect: "none"`) hiçbir giriş animasyonu uygulanmaz. */
   reveal?: RevealEffectSettings;
+  /**
+   * Paket AK (K1) — `true` ise blok ziyaretçiye ÇİZİLMEZ (HTML'de de yok); silinmez, panelden geri açılır.
+   * Yok/`false` = görünür (bugünkü davranış). Dil başına blok listesinde ayrı tutulur; aynı `id` ana
+   * listede gizliyse çeviri listesinde de gizli sayılır (`hidden-blocks.ts`).
+   */
+  hidden?: boolean;
 }
 
 export interface HeroBlock extends BaseNode {
@@ -472,12 +478,20 @@ export const PRICING_MAX_PLANS = 6;
 /** Plan BAŞINA özellik satırı sınırı (plan sayısından BAĞIMSIZ). */
 export const PRICING_MAX_FEATURES = 15;
 
+/** Paket AK (K2) — `GET /public/site-metrics` alan adları. */
+export type CounterMetric = "activeServices" | "visitorLanguages" | "activeCoordinators" | "consultationMinutes";
+
 export interface CounterItem {
   id: string;
   /** KASITLI OLARAK sayı (string DEĞİL) — biçimlendirme (binlik ayracı) render anında
    *  `Intl.NumberFormat("tr-TR")` ile yapılır, kullanıcı "500.000" yazıp ayracı elle KURGULAMAZ.
    *  Metinsel varyasyonlar (`"500+"`, `"%98"`) `prefix`/`suffix` ile ifade edilir. */
   value: number;
+  /**
+   * Paket AK (K2) — doluysa değer canlı veriden gelir; alınamazsa (null/0/hata) öğe GÖSTERİLMEZ.
+   * Yoksa elle yazılmış `value` aynen kullanılır (bugünkü davranış).
+   */
+  metric?: CounterMetric;
   /** Sayının ÖNÜNE eklenen düz metin — ör. `"%"`, `"₺"`. */
   prefix?: string;
   /** Sayının ARKASINA eklenen düz metin — ör. `"+"`, `"K"`. */

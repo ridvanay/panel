@@ -11,6 +11,8 @@ import { localeDirection } from "@/lib/i18n/locale-direction";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { resolveExplicitConsentPage, resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { callbackPath } from "@/lib/service-booking-links";
+import { fetchSiteFeaturesServer } from "@/lib/api/server-site-features";
+import { redirect } from "next/navigation";
 import type { Specialty } from "@/lib/api/types";
 import { buildServiceGroups } from "@/components/site/request/build-groups";
 import { ServiceBookingWizard } from "@/components/site/service-booking/service-booking-wizard";
@@ -47,9 +49,18 @@ export default async function BookConsultationPage({ params, searchParams }: Pag
   const serviceParam = firstParam(query.service);
   const packageParam = firstParam(query.package);
 
-  const [locales, dict, config] = await Promise.all([fetchLocalesServer(), getSiteDictionary(lang), fetchServiceConsultationConfigServer()]);
+  const [locales, dict, config, features] = await Promise.all([
+    fetchLocalesServer(),
+    getSiteDictionary(lang),
+    fetchServiceConsultationConfigServer(),
+    fetchSiteFeaturesServer(),
+  ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const localize = (path: string) => withLocalePrefix(path, lang, defaultLocaleCode);
+  // Paket AK — "Book a consultation" kapalıysa sayfa görünmez: talep formuna git (proxy 302'sinin sunucu tarafı yedeği; sorgu korunur).
+  if (!features.bookConsultationCtaEnabled) {
+    redirect(localize(callbackPath({ service: serviceParam || null, pkg: packageParam || null })));
+  }
   const s = dict.serviceBooking;
   const callbackHref = localize(callbackPath({ service: serviceParam || null, pkg: packageParam || null }));
 
@@ -119,7 +130,7 @@ export default async function BookConsultationPage({ params, searchParams }: Pag
           homeHref={localize("/")}
           servicesHref={localize("/specialties")}
           callbackHref={callbackHref}
-          findTreatmentHref={localize("/find-your-treatment")}
+          findTreatmentHref={features.findTreatmentEnabled ? localize("/find-your-treatment") : null}
         />
       </div>
     </div>

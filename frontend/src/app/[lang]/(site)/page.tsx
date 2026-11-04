@@ -17,6 +17,8 @@ import { SITE_URL } from "@/lib/env";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
+import { inheritHiddenFromCanonical, stripHiddenNodes, usesCounterMetrics } from "@/lib/page-builder/hidden-blocks";
+import { fetchSiteMetricsServer } from "@/lib/api/server-site-metrics";
 import {
   buildFaqPageJsonLd,
   buildMapPlaceJsonLd,
@@ -34,6 +36,7 @@ import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { HomeReviewsSection } from "@/components/site/reviews/home-reviews-section";
 import { DestinationsSection } from "@/components/site/destinations/destinations-section";
 import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
+import { resolveSiteFeatures } from "@/lib/site-features";
 import { primaryBookPath } from "@/lib/service-booking-links";
 
 type PageProps = { params: Promise<{ lang: string }> };
@@ -129,8 +132,11 @@ export default async function RootPage({ params }: PageProps) {
   // `generateMetadata`teki `noIndex` hesabıyla tutarlı (`page.noIndex` TEK kaynak) — mimar §7.5
   // Boşluk 2: `noIndex`teki sayfada yapılandırılmış veri BASILMAZ.
   const noIndexEffective = page.noIndex || legalMode !== "content";
-  const normalizedNodes = normalizePageNodes(page.blocks);
+  // Paket AK (K1) — ana listede (kanonik) gizli olan `id`, çeviri listesinde de gizli sayılır.
+  const normalizedNodes = inheritHiddenFromCanonical(normalizePageNodes(page.blocks), normalizePageNodes(homePage.blocks));
   const defaultLocaleCode = defaultLocale?.code ?? lang;
+  // Paket AK (K2) — canlı veriye bağlı sayaç yoksa `site-metrics` çağrılmaz.
+  const metrics = usesCounterMetrics(normalizedNodes) ? await fetchSiteMetricsServer() : null;
 
   // Paket V — hero'nun hemen altı: "kendi dilinizde destek" bandı (yalnızca destek dili seçiliyse) ve
   // "Licensed & accredited" şeridi (yalnızca görünür belge varsa). İkisi de boşsa hiçbir şey eklenmez.
@@ -147,8 +153,9 @@ export default async function RootPage({ params }: PageProps) {
           support={support}
           dict={dict.common}
           topic={settings.siteName}
-          bookHref={withLocalePrefix(primaryBookPath(bookingEnabled), lang, defaultLocaleCode)}
-          bookLabel={dict.services.bookConsultation}
+          // Paket AK — "Book a consultation" kapalıysa band düğmesi çizilmez (bookHref/bookLabel verilmezse çizilmez).
+          bookHref={resolveSiteFeatures(settings).bookConsultationCtaEnabled ? withLocalePrefix(primaryBookPath(bookingEnabled), lang, defaultLocaleCode) : undefined}
+          bookLabel={resolveSiteFeatures(settings).bookConsultationCtaEnabled ? dict.services.bookConsultation : undefined}
         />
         <AccreditationStrip
           badges={accreditations}
@@ -184,12 +191,12 @@ export default async function RootPage({ params }: PageProps) {
             {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
           >
             {templateHome || !afterHero || !firstNode ? (
-              <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode, homeAfterHero: afterHero }} />
+              <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode, homeAfterHero: afterHero, metrics }} />
             ) : (
               <>
-                <BlockRenderer nodes={[firstNode]} chrome="page" siteContext={{ lang, defaultLocaleCode }} />
+                <BlockRenderer nodes={[firstNode]} chrome="page" siteContext={{ lang, defaultLocaleCode, metrics }} />
                 {afterHero}
-                <BlockRenderer nodes={restNodes} chrome="page" siteContext={{ lang, defaultLocaleCode }} />
+                <BlockRenderer nodes={restNodes} chrome="page" siteContext={{ lang, defaultLocaleCode, metrics }} />
               </>
             )}
             {/* Paket X — "Top destinations": yorumlardan ÖNCE (önce karar bilgisi, sonra sosyal kanıt); kayıt yoksa HİÇ görünmez. */}
@@ -201,8 +208,8 @@ export default async function RootPage({ params }: PageProps) {
               `lib/page-builder/structured-data.ts`. */}
           {!noIndexEffective && (
             <>
-              <JsonLdScript json={buildFaqPageJsonLd(normalizedNodes)} />
-              <JsonLdScript json={buildMapPlaceJsonLd(normalizedNodes)} />
+              <JsonLdScript json={buildFaqPageJsonLd(stripHiddenNodes(normalizedNodes))} />
+              <JsonLdScript json={buildMapPlaceJsonLd(stripHiddenNodes(normalizedNodes))} />
               <JsonLdScript json={buildWebSiteJsonLd(settings, SITE_URL)} />
               {telehealthModuleEnabled && (
                 <JsonLdScript json={buildOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL, accreditations, dict.intermediary.description)} />

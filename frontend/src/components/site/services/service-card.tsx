@@ -28,6 +28,7 @@ export function ServiceCard({
   defaultLocaleCode,
   bookingEnabled = false,
   callbackLabel,
+  bookCtaEnabled = true,
 }: {
   service: Pick<Specialty, "slug" | "name" | "icon" | "shortDescription">;
   subServices: Pick<Specialty, "slug" | "name">[];
@@ -38,6 +39,8 @@ export function ServiceCard({
   bookingEnabled?: boolean;
   /** Rezervasyon açıkken ikincil düğme etiketi ("Request a call back"). */
   callbackLabel?: string;
+  /** Paket AK — `bookConsultationCtaEnabled`; `false` iken "Book a consultation" düğmesi çizilmez (ikincil talep düğmesi kalır). */
+  bookCtaEnabled?: boolean;
 }) {
   const localize = (path: string) => withLocalePrefix(path, activeLocaleCode, defaultLocaleCode);
   const requestHref = localize(requestFormPath({ service: service.slug }));
@@ -77,6 +80,7 @@ export function ServiceCard({
         </div>
       )}
       <div className="mt-auto flex flex-wrap gap-2 pt-4">
+        {bookCtaEnabled && (
         <Link
           href={bookHref}
           data-testid="service-card-book"
@@ -86,6 +90,7 @@ export function ServiceCard({
           <CalendarCheck className="size-4" aria-hidden="true" />
           {strings.bookConsultation}
         </Link>
+        )}
         <Link
           href={requestHref}
           data-testid="service-card-request"

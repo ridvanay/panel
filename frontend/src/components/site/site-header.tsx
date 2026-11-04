@@ -47,6 +47,7 @@ import {
 } from "@/components/site/nav-dropdown";
 import { ServicesMegaMenu, ServicesMobileGroups, FIND_YOUR_TREATMENT_PATH } from "@/components/site/services-mega-menu";
 import { useServiceBookingEnabled } from "@/components/site/service-booking/service-booking-context";
+import { useBookConsultationCtaEnabled, useFindTreatmentEnabled } from "@/components/site/site-features-context";
 import { BOOK_CONSULTATION_ROUTE } from "@/lib/service-booking-links";
 import { servicesStrings as enServicesStrings } from "@/lib/i18n/site-dictionaries/en/services";
 import type { ServicesStrings } from "@/lib/i18n/site-dictionaries/types";
@@ -381,7 +382,12 @@ export function SiteHeader({
   const baseCtaHref = ctaHref?.trim() ? ctaHref : services ? DEFAULT_CTA_PATH : "";
   // AI İş 3 — rezervasyon açıkken talep formuna giden birincil CTA rezervasyon sayfasına gider; yönetici özel bir bağlantı verdiyse ona dokunulmaz.
   const effectiveCtaHref = bookingEnabled && baseCtaHref === DEFAULT_CTA_PATH ? BOOK_CONSULTATION_ROUTE : baseCtaHref;
-  const showCta = Boolean(effectiveCtaLabel && effectiveCtaHref);
+  // Paket AK — panel anahtarları: "Book a consultation" kapalıysa header CTA'sı (ayarı ne olursa olsun) hiç çizilmez;
+  // "Find your treatment" kapalıysa Find düğmesi (masaüstü, ölçüm kabı, mobil menü) çizilmez.
+  const bookCtaEnabled = useBookConsultationCtaEnabled();
+  const findEnabled = useFindTreatmentEnabled();
+  const showCta = bookCtaEnabled && Boolean(effectiveCtaLabel && effectiveCtaHref);
+  const showDesktopActions = findEnabled || showCta;
   const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname) && !isDoctorSession;
   const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "en";
   const localize = (path: string) =>
@@ -698,7 +704,9 @@ export function SiteHeader({
         </div>
 
         {/* Masaüstü sağ: ikincil "Find your treatment" (dar düzende yalnızca ikon) + birincil CTA ("Book a consultation"). */}
+        {showDesktopActions && (
         <div className={cn("hidden shrink-0 items-center gap-2 lg:flex", shrinkOnScroll)} data-testid="site-header-actions">
+          {findEnabled && (
           <Link
             href={localize(FIND_YOUR_TREATMENT_PATH)}
             data-testid="header-find-treatment"
@@ -711,6 +719,7 @@ export function SiteHeader({
             <Compass className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className={findDisplay === "icon" ? "sr-only" : findDisplay === "auto" ? "sr-only xl:not-sr-only" : undefined}>{svc.findYourTreatment}</span>
           </Link>
+          )}
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text`; `buttonStyle` yapısal sınıf varyantı.
             <Link href={localize(effectiveCtaHref)} data-testid="header-book-consultation" className={cn(ctaClassName, "inline-flex h-10 shrink-0 items-center px-4 text-[15px] whitespace-nowrap")}>
@@ -718,6 +727,7 @@ export function SiteHeader({
             </Link>
           )}
         </div>
+        )}
 
         {/* Ölçüm kabı — görünmez, erişilebilirlik ağacı dışı; doğal genişlikleri verir (bkz. use-desktop-nav-layout). */}
         <div aria-hidden="true" className="pointer-events-none invisible absolute start-0 top-0 h-0 w-0 overflow-hidden">
@@ -732,11 +742,15 @@ export function SiteHeader({
               {dict.moreMenu}
               <ChevronDown className="h-3.5 w-3.5" />
             </span>
-            <span data-measure="find-full" className="inline-flex h-10 items-center gap-2 border px-4 text-sm font-semibold">
-              <Compass className="h-4 w-4" />
-              {svc.findYourTreatment}
-            </span>
-            <span data-measure="find-icon" className="inline-flex h-10 w-11" />
+            {findEnabled && (
+              <>
+                <span data-measure="find-full" className="inline-flex h-10 items-center gap-2 border px-4 text-sm font-semibold">
+                  <Compass className="h-4 w-4" />
+                  {svc.findYourTreatment}
+                </span>
+                <span data-measure="find-icon" className="inline-flex h-10 w-11" />
+              </>
+            )}
             {showCta && (
               <span data-measure="cta" className="inline-flex h-10 items-center px-4 text-[15px] font-semibold">
                 {effectiveCtaLabel}
@@ -819,6 +833,7 @@ export function SiteHeader({
 
               <div className="flex flex-col gap-3 p-3">
                 {/* Paket AI — mobil menünün en üstünde iki düğme: "Find your treatment" + birincil CTA ("Book a consultation"). */}
+                {findEnabled && (
                 <Link
                   href={localize(FIND_YOUR_TREATMENT_PATH)}
                   onClick={closeMobileMenu}
@@ -828,6 +843,7 @@ export function SiteHeader({
                   <Compass className="h-5 w-5" aria-hidden="true" />
                   {svc.findYourTreatment}
                 </Link>
+                )}
                 {showCta && (
                   <Link
                     href={localize(effectiveCtaHref)}

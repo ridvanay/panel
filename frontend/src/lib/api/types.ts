@@ -2007,6 +2007,13 @@ export interface SiteSettings {
    * `false` (varsayılan) iken editoryal yayın yeterlidir. Alan yoksa (eski backend) `false` kabul edilir.
    */
   blogMedicalReviewRequired?: boolean;
+  /**
+   * Paket AK — "Find your treatment" özelliği (header, mega menü, sihirbaz bağlantıları, sitemap). Public `GET /settings` ve
+   * admin uçları taşır; alan yoksa (eski backend) `true` kabul edilir — varsayılan mevcut davranıştır.
+   */
+  findTreatmentEnabled?: boolean;
+  /** Paket AK — "Book a consultation" giriş noktaları; `false` iken düğmeler gizlenir ve `/book-consultation` → `/request` (manage hariç). Yoksa `true`. */
+  bookConsultationCtaEnabled?: boolean;
 }
 
 export type LiveChatPosition = "BOTTOM_RIGHT" | "BOTTOM_LEFT";
@@ -2044,6 +2051,9 @@ export interface UpdateSiteSettingsRequest {
   healthTourismCertificateNo?: string | null;
   /** Paket AH — blog yayınında tıbbi onay şartı (ADMIN). */
   blogMedicalReviewRequired?: boolean;
+  /** Paket AK — yalnızca ADMIN. */
+  findTreatmentEnabled?: boolean;
+  bookConsultationCtaEnabled?: boolean;
 }
 
 export interface UpdateBlogPostRequest extends BlogReviewWriteFields {

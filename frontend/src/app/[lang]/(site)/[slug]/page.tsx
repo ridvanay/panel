@@ -21,6 +21,8 @@ import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { SITE_URL } from "@/lib/env";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
+import { stripHiddenNodes, usesCounterMetrics } from "@/lib/page-builder/hidden-blocks";
+import { fetchSiteMetricsServer } from "@/lib/api/server-site-metrics";
 import { selectDisplayNodes } from "@/lib/page-builder/hide-duplicate-title";
 import { buildFaqPageJsonLd, buildMapPlaceJsonLd } from "@/lib/page-builder/structured-data";
 import { JsonLdScript } from "@/components/site/json-ld-script";
@@ -140,6 +142,9 @@ export default async function DynamicPage({ params }: PageProps) {
     headerStyle: appearance.pageHeaderStyle,
   });
 
+  // Paket AK (K2) — canlı veriye bağlı sayaç yoksa `site-metrics` çağrılmaz.
+  const metrics = usesCounterMetrics(displayNodes) ? await fetchSiteMetricsServer() : null;
+
   const canonicalUrl = `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
   const isHomeTemplate = isHomeTemplatePage(page);
 
@@ -175,7 +180,7 @@ export default async function DynamicPage({ params }: PageProps) {
             // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
             {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
           >
-            <BlockRenderer nodes={displayNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
+            <BlockRenderer nodes={displayNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang, metrics }} />
           </div>
           {/* Şablon sayfası `/` adresindeki görünümüyle aynı kalır — CMS paylaşım satırı eklenmez. */}
           {!isHomeTemplate && appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
@@ -189,8 +194,8 @@ export default async function DynamicPage({ params }: PageProps) {
               şey render ETMEZ. */}
           {!noIndexEffective && (
             <>
-              <JsonLdScript json={buildFaqPageJsonLd(normalizedNodes)} />
-              <JsonLdScript json={buildMapPlaceJsonLd(normalizedNodes)} />
+              <JsonLdScript json={buildFaqPageJsonLd(stripHiddenNodes(normalizedNodes))} />
+              <JsonLdScript json={buildMapPlaceJsonLd(stripHiddenNodes(normalizedNodes))} />
             </>
           )}
         </>

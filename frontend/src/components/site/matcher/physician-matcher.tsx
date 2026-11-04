@@ -39,6 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePatientTimeZoneState } from "@/components/site/telehealth/use-patient-time-zone";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useServiceBooking } from "@/components/site/service-booking/service-booking-context";
+import { useBookConsultationCtaEnabled } from "@/components/site/site-features-context";
 import { useMatcherStrings } from "@/lib/i18n/use-matcher-strings";
 import { fmt } from "@/lib/i18n/use-portal-strings";
 import { countryForTimeZone, countryName } from "@/lib/country-display";
@@ -139,6 +140,8 @@ export function PhysicianMatcher({
   // AI İş 3 — rezervasyon açıkken sonuçtaki "Book an online consultation" rezervasyon sayfasına gider; ikincil düğme
   // "Request a call back" olur. Kırmızı bayrak görüldüyse rezervasyon düğmesi gösterilmez (acil yönlendirme önceliklidir).
   const { enabled: bookingEnabled, callbackLabel } = useServiceBooking();
+  // Paket AK — `bookConsultationCtaEnabled=false` iken sonuçtaki "Book" düğmesi gizlenir; talep düğmesi kalır.
+  const bookCtaEnabled = useBookConsultationCtaEnabled();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1043,7 +1046,7 @@ export function PhysicianMatcher({
                       <p className="font-semibold text-foreground">{s.name}</p>
                       {s.description && <p className="mt-1 line-clamp-3 text-xs text-foreground/70">{s.description}</p>}
                       <div className="mt-4 flex flex-col gap-2">
-                        {(!bookingEnabled || !redFlagSeen) && (
+                        {bookCtaEnabled && (!bookingEnabled || !redFlagSeen) && (
                           <Link
                             href={`${localize(bookingEnabled ? "/book-consultation" : "/request")}?service=${encodeURIComponent(s.slug)}`}
                             onClick={() => trackMatcher("matcher_book_click", { position: index + 1 })}

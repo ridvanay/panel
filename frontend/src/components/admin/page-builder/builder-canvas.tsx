@@ -49,6 +49,7 @@ import {
   Trash2,
   Unlink2,
   ZoomIn,
+  EyeOff,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -485,10 +486,28 @@ interface Ctx {
   onSelectContainer: (id: string) => void;
   selectedContainerId: string | null;
   onUpdateReveal: (id: string, reveal: RevealEffectSettings | undefined) => void;
+  /** Paket AK (K1) — "Ziyaretçiden gizle": blok silinmez, ziyaretçiye çizilmez; kapatılınca alan kaldırılır. */
+  onUpdateHidden: (id: string, hidden: boolean) => void;
   /** Dinamik konteyner ekleme (§10 tasarım notları — imza frontend-agent'a bırakıldı) — kök-sonu
    *  kutusu, aralar-arası inserter VE kontrol barındaki "+Alta" ÜÇÜ DE bu TEK callback'i kullanır;
    *  "+Alta" için `parentId` = mevcut konteynerin ebeveyni, `index` = kendi index'i + 1. */
   onInsertContainer: (parentId: BuilderContainerId, index: number, preset: LayoutPreset) => void;
+}
+
+/**
+ * Paket AK (K1) — "Ziyaretçiden gizle" anahtarı. Gizli blok ziyaretçiye hiç çizilmez; editörde soluk + rozetli kalır.
+ * Dil başına blok listesi ayrı olduğu için anahtar YALNIZCA düzenlenen dil listesine yazılır (her dilde ayrı).
+ */
+function HiddenToggle({ id, hidden, onChange, compact }: { id: string; hidden: boolean; onChange: (hidden: boolean) => void; compact?: boolean }) {
+  const switchId = `hide-${id}`;
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <Switch id={switchId} size="sm" checked={hidden} onCheckedChange={onChange} aria-label="Ziyaretçiden gizle" data-testid="block-hidden-toggle" />
+      <label htmlFor={switchId} className={cn("cursor-pointer text-xs text-foreground/70", compact && "sr-only")}>
+        Ziyaretçiden gizle
+      </label>
+    </div>
+  );
 }
 
 /** §5 ui-designer dokümanı — bir konteynerin İÇİNDEKİ yaprak bloklar için sessiz "bare" ipucu. */
@@ -518,8 +537,9 @@ function ContentBlockCard({
   const isBare = parentId !== "root";
   const revealBadge = revealBadgeLabel(block.reveal);
 
+  const isHidden = block.hidden === true;
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div className={cn("rounded-xl border border-border bg-card p-4 shadow-sm", isHidden && "opacity-60")} data-hidden={isHidden ? "true" : undefined}>
       <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {dragHandle}
@@ -529,10 +549,17 @@ function ContentBlockCard({
               {revealBadge}
             </Badge>
           )}
+          {isHidden && (
+            <Badge tone="neutral" size="sm" className="gap-1">
+              <EyeOff className="h-3 w-3" aria-hidden />
+              Gizli
+            </Badge>
+          )}
           {isBare && <BareChromeHint />}
           <LayoutMenu mode="wrap" onSelect={() => ctx.onWrap(block.id)} />
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <HiddenToggle id={block.id} hidden={isHidden} onChange={(hidden) => ctx.onUpdateHidden(block.id, hidden)} />
           <RevealEffectControl value={block.reveal} onChange={(reveal) => ctx.onUpdateReveal(block.id, reveal)} />
           {isBare && (
             <Button
@@ -787,6 +814,12 @@ function ContainerCard({
               {revealBadge}
             </Badge>
           )}
+          {container.hidden === true && (
+            <Badge tone="neutral" size="sm" className="gap-1">
+              <EyeOff className="h-3 w-3" aria-hidden />
+              Gizli
+            </Badge>
+          )}
           {isBare && <BareChromeHint />}
           {tooManyForReadability && (
             <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
@@ -815,6 +848,7 @@ function ContainerCard({
           >
             <Settings2 />
           </Button>
+          <HiddenToggle id={container.id} hidden={container.hidden === true} onChange={(hidden) => ctx.onUpdateHidden(container.id, hidden)} compact />
           <RevealEffectControl size="icon-xs" value={container.reveal} onChange={(reveal) => ctx.onUpdateReveal(container.id, reveal)} />
           <AddChildContainerControl
             disabled={childInsertDisabled}
@@ -1143,6 +1177,17 @@ export function BuilderCanvas({
     onChange(updateNode(nodes, id, (node) => ({ ...node, reveal })));
   }
 
+  function updateHidden(id: string, hidden: boolean) {
+    onChange(
+      updateNode(nodes, id, (node) => {
+        if (hidden) return { ...node, hidden: true };
+        const { hidden: _drop, ...rest } = node;
+        void _drop;
+        return rest as typeof node;
+      })
+    );
+  }
+
   const ctx: Ctx = {
     onMove: move,
     onMoveToParent: moveToParent,
@@ -1155,6 +1200,7 @@ export function BuilderCanvas({
     onSelectContainer,
     selectedContainerId,
     onUpdateReveal: updateReveal,
+    onUpdateHidden: updateHidden,
     onInsertContainer: insertContainer,
   };
 

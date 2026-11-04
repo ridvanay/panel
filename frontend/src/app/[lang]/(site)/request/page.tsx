@@ -21,6 +21,7 @@ import { buildServiceGroups } from "@/components/site/request/build-groups";
 import { RequestSidePanel } from "@/components/site/request/request-side-panel";
 import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
 import { bookingPath } from "@/lib/service-booking-links";
+import { resolveSiteFeatures } from "@/lib/site-features";
 
 /**
  * Paket AH — `/{lang}/request`: bölüm bazlı talep formu (randevu/ödeme yerine). `?service=<slug>` bölümü,
@@ -160,7 +161,7 @@ export default async function RequestPage({ params, searchParams }: PageProps) {
             homeHref={localize("/")}
             servicesHref={localize("/specialties")}
             contactHref={localize("/contact")}
-            findTreatmentHref={localize("/find-your-treatment")}
+            findTreatmentHref={resolveSiteFeatures(settings).findTreatmentEnabled ? localize("/find-your-treatment") : null}
             vipHref={localize("/vip-accommodation-transfer")}
             guidesHref={localize("/blog")}
             whatsappHref={whatsappHref}

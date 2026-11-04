@@ -5,6 +5,7 @@ import { UserRoundSearch } from "lucide-react";
 import { fetchSpecialtyBySlugServer } from "@/lib/api/server-telehealth";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
+import { resolveSiteFeatures } from "@/lib/site-features";
 import { ContactActions } from "@/components/site/contact-actions";
 import { IntermediaryNotice } from "@/components/site/intermediary-notice";
 import { requestFormPath } from "@/lib/intermediary";
@@ -113,6 +114,8 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
     isServiceBookingEnabledServer(),
   ]);
   if (!specialty) notFound();
+  // Paket AK — panel anahtarı (varsayılan açık).
+  const features = resolveSiteFeatures(settings);
 
   const parent = specialty.parent ?? null;
   const children = specialty.children ?? [];
@@ -193,6 +196,7 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
           <p className="mt-1 text-sm text-foreground/70">{dict.telehealth.specialtyCoordinatorText}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {features.bookConsultationCtaEnabled && (
           <Link
             href={bookHref}
             data-testid="specialty-book-cta"
@@ -201,6 +205,7 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
           >
             {dict.services.bookConsultation}
           </Link>
+          )}
           <Link
             href={requestHref}
             data-testid="specialty-request-cta"

@@ -2,6 +2,9 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { COUNTER_METRIC_OPTIONS } from "@/lib/page-builder/counter-metrics";
+import type { CounterMetric } from "@/lib/page-builder/types";
 import { newId } from "@/lib/page-builder/registry";
 import { COUNTER_MAX_ITEMS, type CounterBlock, type CounterItem } from "@/lib/page-builder/types";
 
@@ -69,6 +72,23 @@ export function CounterBlockEditor({ block, onChange }: { block: CounterBlock; o
                 </Button>
               </div>
             </div>
+            {/* Paket AK (K2) — "Canlı veri": seçilirse değer sitenin gerçek verisinden gelir (alınamazsa öğe gösterilmez). */}
+            <Field id={`${item.id}-metric`} label="Canlı veri" hint="Seçilirse aşağıdaki elle yazılan değer yerine sitenin güncel verisi gösterilir; veri alınamazsa bu öğe gizlenir.">
+              {(inputProps) => (
+                <Select
+                  {...inputProps}
+                  value={item.metric ?? ""}
+                  onChange={(e) => updateItem(item.id, { metric: (e.target.value || undefined) as CounterMetric | undefined })}
+                >
+                  <option value="">Elle yazılan değer</option>
+                  {COUNTER_METRIC_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
             <div className="grid grid-cols-3 gap-2">
               <Field id={`${item.id}-prefix`} label="Önek">
                 {(inputProps) => (

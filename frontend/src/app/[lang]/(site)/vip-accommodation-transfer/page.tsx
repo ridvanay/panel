@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { resolveSiteFeatures } from "@/lib/site-features";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchPageBySlugServer } from "@/lib/api/server-pages";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
@@ -50,6 +51,7 @@ export default async function VipAccommodationTransferPage({ params }: PageProps
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const localize = (path: string) => withLocalePrefix(path, lang, defaultLocaleCode);
+  const features = resolveSiteFeatures(settings);
 
   return (
     <div dir={localeDirection(lang)}>
@@ -58,7 +60,8 @@ export default async function VipAccommodationTransferPage({ params }: PageProps
         intermediary={dict.intermediary}
         certificateNo={settings.healthTourismCertificateNo}
         images={extractVipImages(imagePage?.blocks)}
-        hrefs={{ request: localize("/request"), find: localize("/find-your-treatment") }}
+        hrefs={{ request: localize("/request"), find: features.findTreatmentEnabled ? localize("/find-your-treatment") : null }}
+        bookCtaEnabled={features.bookConsultationCtaEnabled}
       />
     </div>
   );

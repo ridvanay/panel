@@ -5,6 +5,7 @@ import { ContactCta } from "@/components/site/contact/contact-cta";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { usePackagesStrings } from "@/lib/i18n/use-packages-strings";
 import { useServiceBooking } from "@/components/site/service-booking/service-booking-context";
+import { useBookConsultationCtaEnabled } from "@/components/site/site-features-context";
 import { bookingPath } from "@/lib/service-booking-links";
 import { PackageInquiryForm, focusPackageInquiryForm } from "./package-inquiry-form";
 
@@ -12,7 +13,9 @@ import { PackageInquiryForm, focusPackageInquiryForm } from "./package-inquiry-f
 export function PackageDetailActions({ slug, title }: { slug: string; title: string }) {
   const t = usePackagesStrings();
   const localize = useLocalizePath();
-  const { enabled: bookingEnabled, bookLabel } = useServiceBooking();
+  const { enabled: serviceBookingEnabled, bookLabel } = useServiceBooking();
+  // Paket AK — `bookConsultationCtaEnabled=false` iken "Book" düğmesi gizlenir; "Request this package" kalır.
+  const bookingEnabled = serviceBookingEnabled && useBookConsultationCtaEnabled();
   return (
     <div className="space-y-6">
       {bookingEnabled && (

@@ -12,6 +12,7 @@ import type { PackageCardData, PackageDetailData } from "@/lib/api/types";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { usePackagesStrings } from "@/lib/i18n/use-packages-strings";
 import { useServiceBooking } from "@/components/site/service-booking/service-booking-context";
+import { useBookConsultationCtaEnabled } from "@/components/site/site-features-context";
 import { bookingPath } from "@/lib/service-booking-links";
 import { PackageDetailBody } from "./package-detail-body";
 import { PackageInquiryForm, focusPackageInquiryForm } from "./package-inquiry-form";
@@ -55,7 +56,10 @@ function DetailLoader({ card, onClose, onRetry }: { card: PackageCardData; onClo
   const t = usePackagesStrings();
   const lang = useActiveLocaleCode();
   const localize = useLocalizePath();
-  const { enabled: bookingEnabled, bookLabel } = useServiceBooking();
+  const { enabled: serviceBookingEnabled, bookLabel } = useServiceBooking();
+  // Paket AK — `bookConsultationCtaEnabled=false` iken "Book" düğmesi gizlenir.
+  const bookCtaEnabled = useBookConsultationCtaEnabled();
+  const bookingEnabled = serviceBookingEnabled && bookCtaEnabled;
   const intlLocale = contentLocaleToIntl(lang);
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const slug = card.slug;

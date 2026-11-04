@@ -9,6 +9,7 @@ import { FALLBACK_LOCALES, fetchLocalesServer } from "@/lib/api/server-locales";
 import { withBuildTimeFallback } from "@/lib/api/server-fetch";
 import { fetchPackagesServer } from "@/lib/api/server-packages";
 import type { PackageSitemapItem, SitemapData } from "./build";
+import { resolveSiteFeatures } from "@/lib/site-features";
 
 /** Paket X — her açık dil için aktif paket listesi; paket yalnızca içeriği o dilde olan sürümlerle (`contentLocale`) eklenir. */
 async function loadPackages(locales: SitemapData["locales"]): Promise<PackageSitemapItem[]> {
@@ -57,5 +58,7 @@ export async function loadSiteContent(): Promise<SitemapData & { siteName: strin
     products: products as unknown as SitemapData["products"],
     portfolio,
     packages,
+    // Paket AK — kapatılan özellikler (findTreatmentEnabled) sitemap/llms'ten çıkar; alan yoksa AÇIK.
+    features: resolveSiteFeatures(settings),
   };
 }

@@ -13,6 +13,7 @@ import { groupServices, serviceGroupTitle, type ServiceGroup } from "@/lib/servi
 import { buildWhatsappHref } from "@/lib/whatsapp-link";
 import { useContactCtaStrings } from "@/lib/i18n/use-contact-cta-strings";
 import { useServiceBookingEnabled } from "@/components/site/service-booking/service-booking-context";
+import { useBookConsultationCtaEnabled, useFindTreatmentEnabled } from "@/components/site/site-features-context";
 import { BOOK_CONSULTATION_ROUTE } from "@/lib/service-booking-links";
 import type { ServicesStrings } from "@/lib/i18n/site-dictionaries/types";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,9 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
   const groups = useServiceGroups(specialties);
   // AI İş 3 — rezervasyon açıkken "Book an online consultation" rezervasyon sayfasına gider.
   const bookingEnabled = useServiceBookingEnabled();
+  // Paket AK — panel anahtarları (varsayılan açık).
+  const findEnabled = useFindTreatmentEnabled();
+  const bookCtaEnabled = useBookConsultationCtaEnabled();
   const { whatsapp } = useContactChannels();
   const contact = useContactCtaStrings();
 
@@ -164,7 +168,8 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                 data-testid="services-mega-panel"
                 className="flex min-h-0 flex-col gap-3 overflow-y-auto border-s border-border bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] p-5"
               >
-                <p className="text-base leading-snug font-semibold text-foreground">{strings.panelHeading}</p>
+                {(findEnabled || bookCtaEnabled) && <p className="text-base leading-snug font-semibold text-foreground">{strings.panelHeading}</p>}
+                {findEnabled && (
                 <Menu.Item
                   render={<Link href={localize(FIND_YOUR_TREATMENT_PATH)} />}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] bg-[var(--site-button)] px-4 text-sm font-semibold text-[var(--site-button-text)] outline-none transition-opacity hover:opacity-90 data-[highlighted]:opacity-90"
@@ -172,6 +177,8 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                   <Compass className="size-4" aria-hidden="true" />
                   {strings.findYourTreatment}
                 </Menu.Item>
+                )}
+                {bookCtaEnabled && (
                 <Menu.Item
                   render={<Link href={localize(bookingEnabled ? BOOK_CONSULTATION_ROUTE : BOOK_CONSULTATION_PATH)} />}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] border border-[var(--site-primary)] bg-surface px-4 text-sm font-semibold text-[var(--site-primary)] outline-none transition-colors hover:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))] data-[highlighted]:bg-[color-mix(in_oklch,var(--site-primary)_6%,var(--site-surface))]"
@@ -179,6 +186,7 @@ export function ServicesMegaMenu({ link, localize, active, specialties, strings,
                   <CalendarCheck className="size-4" aria-hidden="true" />
                   {strings.bookOnlineConsultation}
                 </Menu.Item>
+                )}
                 {whatsapp && (
                   <div className="mt-1 border-t border-border pt-3" data-testid="services-mega-contact">
                     <p className="text-xs font-medium text-[var(--site-muted-text,currentColor)]">{strings.coordinatorHeading}</p>
