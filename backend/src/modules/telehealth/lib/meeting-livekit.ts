@@ -142,6 +142,26 @@ export function listMeetingParticipants(roomName: string): Promise<string[] | nu
   return listRoomParticipantIdentities(roomName);
 }
 
+/** LiveKit `ParticipantInfo_State`: JOINING=0, JOINED=1, ACTIVE=2, DISCONNECTED=3. Kapasiteye yalnız JOINED/ACTIVE sayılır. */
+export function isCountedParticipantState(state: number): boolean {
+  return state === 1 || state === 2;
+}
+
+/**
+ * Paket AM — kapasite için odadaki SAYILAN (JOINED/ACTIVE) kimlikler. `null` = Server API yok. Hata fırlatabilir;
+ * çağıran yakalayıp mevcut (durumsuz) sayıma düşer.
+ */
+export async function listMeetingCountedIdentities(roomName: string, config: LiveKitConfig = getLiveKitConfig()): Promise<string[] | null> {
+  if (!config.internalUrl) return null;
+  try {
+    const participants = await getClient(config).listParticipants(roomName);
+    return participants.filter((p) => isCountedParticipantState(p.state)).map((p) => p.identity);
+  } catch (err) {
+    if ((err as { code?: string }).code === "not_found") return [];
+    throw err;
+  }
+}
+
 /** Tek atma kapısı: yalnızca `meet_` odası + `meet-host:`/`meet-guest:` kimliği. Aksi hâlde HİÇ çağrı yapılmaz. */
 export async function removeMeetingParticipant(roomName: string, identity: string): Promise<boolean> {
   if (!isMeetingRoomName(roomName) || !isMeetingIdentity(identity)) {

@@ -13,18 +13,31 @@ export class MemoryRateLimiter {
     private readonly windowMs: number
   ) {}
 
-  /** Sayaca ekler; sınır aşılmışsa `false` döner (ekleme yapılmaz). */
-  tryConsume(key: string, now: number = Date.now()): boolean {
+  /** Sayaca ekler; sınır aşılmışsa `false` döner (ekleme yapılmaz). `max` verilirse çağrı başına sınırı geçersiz kılar. */
+  tryConsume(key: string, now: number = Date.now(), max: number = this.max): boolean {
+    return this.consume(key, now, max).allowed;
+  }
+
+  /** `tryConsume` + reddedilirse pencerenin açılmasına kalan süre (ms; `Retry-After` için). */
+  consume(key: string, now: number = Date.now(), max: number = this.max): { allowed: boolean; retryAfterMs: number } {
     const cutoff = now - this.windowMs;
     const list = (this.hits.get(key) ?? []).filter((t) => t > cutoff);
-    if (list.length >= this.max) {
+    if (list.length >= max) {
       this.hits.set(key, list);
-      return false;
+      return { allowed: false, retryAfterMs: Math.max(0, (list[list.length - max] ?? now) + this.windowMs - now) };
     }
     list.push(now);
     this.hits.set(key, list);
     if (this.hits.size > MAX_KEYS) this.prune(cutoff);
-    return true;
+    return { allowed: true, retryAfterMs: 0 };
+  }
+
+  /** Sayaca EKLEMEDEN: sınır dolu mu? Doluysa `retryAfterMs` > 0. */
+  peek(key: string, now: number = Date.now(), max: number = this.max): { limited: boolean; retryAfterMs: number } {
+    const cutoff = now - this.windowMs;
+    const list = (this.hits.get(key) ?? []).filter((t) => t > cutoff);
+    if (list.length < max) return { limited: false, retryAfterMs: 0 };
+    return { limited: true, retryAfterMs: Math.max(0, (list[list.length - max] ?? now) + this.windowMs - now) };
   }
 
   /** Test yardımcısı. */

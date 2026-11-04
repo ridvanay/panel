@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
@@ -17,6 +17,7 @@ import {
   buildMeetingGuestIdentity,
   createMeetingGuestToken,
   ensureMeetingRoom,
+  listMeetingCountedIdentities,
   listMeetingParticipants,
 } from "../telehealth/lib/meeting-livekit";
 import { GUEST_TOKEN_REGEX, issueGuestSession, verifyGuestSession, verifyGuestToken } from "./meeting-tokens";
@@ -28,8 +29,36 @@ const POLL_AFTER_SEC = 5;
 /** Misafir oturumu sayımı yalnızca bu pencerede oluşturulanları sayar (bot doldurma tavanı süresiz kilitlemesin). */
 const GUEST_SESSION_WINDOW_MS = 24 * 60 * 60_000;
 /** IP başına toplantı başına en çok bu kadar YENİ misafir oturumu (24 sa). IP saklanmaz: bellek içi, anahtar özetlenir. */
-const SESSIONS_PER_IP_PER_MEETING = 10;
-export const guestSessionIpLimiter = new MemoryRateLimiter(SESSIONS_PER_IP_PER_MEETING, GUEST_SESSION_WINDOW_MS);
+const MIN_SESSIONS_PER_IP_PER_MEETING = 20;
+/** Paket AM: aynı ofis ağından (tek IP) ev sahibi dahil `maxParticipants` kişi + yenilemeler girebilmeli: max(20, maxParticipants × 4). */
+export function sessionsPerIpPerMeeting(maxParticipants: number): number {
+  return Math.max(MIN_SESSIONS_PER_IP_PER_MEETING, maxParticipants * 4);
+}
+export const guestSessionIpLimiter = new MemoryRateLimiter(MIN_SESSIONS_PER_IP_PER_MEETING, GUEST_SESSION_WINDOW_MS);
+
+/**
+ * Paket AM — oran sınırları (bellek içi; anahtarlar sha256, ham IP saklanmaz). Bu uçlar genel `RATE_LIMIT_MAX` kovasından
+ * muaftır (`config.rateLimit: false`): kendi sınırları aşağıdadır, bekleme yoklaması genel kovayı tüketmez.
+ *  - INVALID: geçersiz belirteç / oturum denemeleri için IP başına AYRI kova (kaba kuvvet koruması; anahtar parçalama ile aşılamaz).
+ *  - JOIN: IP + toplantı + misafir oturumu (oturum yoksa IP + toplantı) başına.
+ *  - PREFLIGHT: IP + toplantı başına.
+ */
+export const GUEST_INVALID_TOKEN_MAX_PER_MIN = 30;
+export const GUEST_JOIN_MAX_PER_MIN = 30;
+export const GUEST_PREFLIGHT_MAX_PER_MIN = 60;
+const RATE_WINDOW_MS = 60_000;
+export const guestInvalidTokenLimiter = new MemoryRateLimiter(GUEST_INVALID_TOKEN_MAX_PER_MIN, RATE_WINDOW_MS);
+export const guestJoinLimiter = new MemoryRateLimiter(GUEST_JOIN_MAX_PER_MIN, RATE_WINDOW_MS);
+export const guestPreflightLimiter = new MemoryRateLimiter(GUEST_PREFLIGHT_MAX_PER_MIN, RATE_WINDOW_MS);
+
+const sha = (...parts: string[]) => crypto.createHash("sha256").update(parts.join("|")).digest("hex");
+
+/** 429 + `Retry-After` (saniye); gövde proje zarfı (error-handler 429 dalı). */
+function throwRateLimited(reply: FastifyReply, retryAfterMs: number): never {
+  const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  reply.header("Retry-After", String(retryAfterSeconds));
+  throw Object.assign(new Error(`Çok fazla istek. ${retryAfterSeconds} saniye sonra tekrar deneyin.`), { statusCode: 429, retryAfterSeconds });
+}
 
 /**
  * `/meet/guest` prefix'i altında bağlanır. Paket AG (İş 3) — herkese açık misafir uçları (oturum YOK). Erişim
@@ -84,14 +113,29 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
     return meeting;
   }
 
+  /** Geçersiz belirteç IP kovası dolmuşsa DB'ye gitmeden 429; geçersizlikte kovayı tüketir ve aynı 404'ü fırlatır. */
+  async function resolveMeetingLimited(request: { ip: string }, reply: FastifyReply, rawToken: string) {
+    const ipKey = sha("invalid", ipRateKey(request.ip));
+    const peek = guestInvalidTokenLimiter.peek(ipKey);
+    if (peek.limited) throwRateLimited(reply, peek.retryAfterMs);
+    try {
+      return await resolveMeeting(rawToken);
+    } catch (err) {
+      if (err instanceof MeetingLinkInvalidError) guestInvalidTokenLimiter.tryConsume(ipKey);
+      throw err;
+    }
+  }
+
   server.post(
     "/preflight",
     {
-      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      config: { rateLimit: false },
       schema: { body: GuestPreflightRequestSchema, response: { 200: ApiSuccessSchema(GuestPreflightResponseSchema) } },
     },
     async (request, reply) => {
-      const meeting = await resolveMeeting(request.body.t);
+      const meeting = await resolveMeetingLimited(request, reply, request.body.t);
+      const limit = guestPreflightLimiter.consume(sha("preflight", ipRateKey(request.ip), meeting.id));
+      if (!limit.allowed) throwRateLimited(reply, limit.retryAfterMs);
       return reply.send(
         ok({
           title: meeting.title,
@@ -108,15 +152,18 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
   server.post(
     "/join",
     {
-      // Yoklama 5 sn = 12/dk; yeniden bağlanma payı.
-      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      // Yoklama 5 sn (+0–2 sn) ≈ 10–12/dk; sınır handler içinde (IP + toplantı + oturum).
+      config: { rateLimit: false },
       schema: { body: GuestJoinRequestSchema, response: { 200: ApiSuccessSchema(GuestJoinResponseSchema) } },
     },
     async (request, reply) => {
       const { t, name, guestSession } = request.body;
 
       // 1) belirteç → toplantı (aksi hâlde aynı 404)
-      const meeting = await resolveMeeting(t);
+      const meeting = await resolveMeetingLimited(request, reply, t);
+      const verifiedSession = guestSession ? verifyGuestSession(guestSession, meeting.id) : null;
+      const joinLimit = guestJoinLimiter.consume(sha("join", ipRateKey(request.ip), meeting.id, verifiedSession?.guestId ?? ""));
+      if (!joinLimit.allowed) throwRateLimited(reply, joinLimit.retryAfterMs);
 
       // 2) LiveKit yapılandırması YALNIZCA geçerli belirteç sahibine bildirilir
       if (!isLiveKitConfigured()) throw new LiveKitNotConfiguredError();
@@ -131,7 +178,7 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       let displayName: string;
       let session: string;
       if (guestSession) {
-        const verified = verifyGuestSession(guestSession, meeting.id);
+        const verified = verifiedSession;
         if (!verified) throw new MeetingLinkInvalidError();
         const guest = await app.prisma.externalMeetingGuest.findFirst({ where: { id: verified.guestId, meetingId: meeting.id } });
         if (!guest || guest.removedAt) throw new MeetingLinkInvalidError();
@@ -143,13 +190,13 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
         if (name === undefined) throw new ValidationError("Name is required.", { name: ["Name is required."] });
         const normalized = normalizeGuestName(name);
         if (!normalized.ok) throw new ValidationError(normalized.reason, { name: [normalized.reason] });
-        // Tavan yalnızca çıkarılmamış ve son 24 saatte açılmış oturumları sayar; ek olarak IP başına toplantı başına 10.
+        // Tavan yalnızca çıkarılmamış ve son 24 saatte açılmış oturumları sayar; ek olarak IP başına toplantı başına max(20, maxParticipants × 4).
         const sessions = await app.prisma.externalMeetingGuest.count({
           where: { meetingId: meeting.id, removedAt: null, createdAt: { gte: new Date(now.getTime() - GUEST_SESSION_WINDOW_MS) } },
         });
         if (sessions >= MAX_GUEST_SESSIONS_PER_MEETING) throw new MeetingFullError("The meeting is full.");
         const ipKey = crypto.createHash("sha256").update(`${meeting.id}|${ipRateKey(request.ip)}`).digest("hex");
-        if (!guestSessionIpLimiter.tryConsume(ipKey, now.getTime())) throw new MeetingFullError("The meeting is full.");
+        if (!guestSessionIpLimiter.tryConsume(ipKey, now.getTime(), sessionsPerIpPerMeeting(meeting.maxParticipants))) throw new MeetingFullError("The meeting is full.");
         const created = await app.prisma.externalMeetingGuest.create({
           data: { meetingId: meeting.id, displayName: normalized.name, lastSeenAt: now },
           select: { id: true },
@@ -178,8 +225,19 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       // henüz gelmemiş olsa da misafirler son koltuğu dolduramaz).
       if (present !== null) {
         const ownIdentity = buildMeetingGuestIdentity(guestId);
-        const guestsInRoom = present.filter((id) => id.startsWith(MEETING_GUEST_IDENTITY_PREFIX) && id !== ownIdentity).length;
-        if (guestsInRoom >= meeting.maxParticipants - 1) throw new MeetingFullError("The meeting is full.");
+        const capacity = meeting.maxParticipants - 1;
+        const isOtherGuest = (id: string) => id.startsWith(MEETING_GUEST_IDENTITY_PREFIX) && id !== ownIdentity;
+        let guestsInRoom = present.filter(isOtherGuest).length;
+        if (guestsInRoom >= capacity) {
+          // Paket AM: dolu görününce yalnız JOINED/ACTIVE kimlikleri say (JOINING/DISCONNECTED koltuk kaplamaz). Okunamazsa mevcut sayım.
+          try {
+            const counted = await listMeetingCountedIdentities(meeting.roomName);
+            if (counted !== null) guestsInRoom = counted.filter(isOtherGuest).length;
+          } catch (err) {
+            app.log.warn({ err, meetingId: meeting.id }, "Toplantı katılımcı durumları okunamadı; durumsuz sayım kullanıldı.");
+          }
+        }
+        if (guestsInRoom >= capacity) throw new MeetingFullError("The meeting is full.");
       }
 
       // 7) token

@@ -32,7 +32,7 @@ vi.mock("../../src/modules/telehealth/lib/livekit", async (importOriginal) => {
 
 import { buildTestApp } from "../helpers/build-test-app";
 import { setExternalMeetingsEnabledForTests } from "../../src/lib/feature-flags";
-import { guestSessionIpLimiter } from "../../src/modules/meetings/meetings.guest.routes";
+import { guestInvalidTokenLimiter, guestJoinLimiter, guestPreflightLimiter, guestSessionIpLimiter, sessionsPerIpPerMeeting } from "../../src/modules/meetings/meetings.guest.routes";
 import { resetDatabase } from "../helpers/reset-db";
 import { signAccessToken } from "../../src/lib/jwt";
 import { env } from "../../src/config/env";
@@ -315,7 +315,7 @@ describe("join — pencere, bekleme, kapasite, token", () => {
     expect(await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } })).toBe(50);
   });
 
-  it("B4: tavan yalnız çıkarılmamış ve son 24 saatteki oturumları sayar; IP başına toplantı başına en çok 10 yeni oturum", async () => {
+  it("B4: tavan yalnız çıkarılmamış ve son 24 saatteki oturumları sayar; IP başına toplantı başına en çok max(20, maxParticipants × 4) yeni oturum", async () => {
     const { meeting, token } = await seed({ startsInMin: 0, autoAdmit: true });
     const old = new Date(Date.now() - 25 * 3600_000);
     await app.prisma.externalMeetingGuest.createMany({
@@ -328,10 +328,14 @@ describe("join — pencere, bekleme, kapasite, token", () => {
     const okRes = await join(token, { name: "Yeni" });
     expect(okRes.statusCode).toBe(200);
 
-    // IP başına 10: aynı IP'den 9 daha (toplam 10) olur, 11. reddedilir; başka IP etkilenmez
+    // IP başına max(20, 4x4) = 20: aynı IP'den 20 oturum olur, 21. reddedilir; başka IP etkilenmez
     const ip = nextIp();
     guestSessionIpLimiter.reset();
-    for (let i = 0; i < 10; i += 1) expect((await join(token, { name: `Ada ${i}` }, ip)).statusCode).toBe(200);
+    for (let i = 0; i < 20; i += 1) {
+      guestJoinLimiter.reset();
+      expect((await join(token, { name: `Ada ${i}` }, ip)).statusCode).toBe(200);
+    }
+    guestJoinLimiter.reset();
     const blocked = await join(token, { name: "Ada fazla" }, ip);
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().error.code).toBe("MEETING_FULL");
@@ -429,26 +433,177 @@ describe("audit", () => {
   });
 });
 
-describe("oran sınırı", () => {
-  it("join: 30/dk IP (31. istek 429 RATE_LIMITED + Retry-After); başka IP etkilenmez", async () => {
-    const { token } = await seed({ startsInMin: 0 });
+describe("oran sınırı (Paket AM)", () => {
+  beforeEach(() => {
+    guestJoinLimiter.reset();
+    guestPreflightLimiter.reset();
+    guestInvalidTokenLimiter.reset();
+    guestSessionIpLimiter.reset();
+  });
+
+  it("join: anahtar IP + toplantı + oturum; aynı oturumun 31. isteği 429 + Retry-After; aynı IP'deki başka oturum ve başka IP etkilenmez", async () => {
+    const { token } = await seed({ startsInMin: 0, max: 8 });
     const ip = nextIp();
-    // Yoklama gibi mevcut oturumla çağrılar (yeni oturum açmaz; B4 IP-oturum sınırına takılmaz).
     const session = (await join(token, { name: "Ada" }, ip)).json().data.guestSession as string;
-    for (let i = 1; i < 30; i += 1) expect((await join(token, { guestSession: session }, ip)).statusCode).toBe(200);
+    const other = (await join(token, { name: "Bob" }, ip)).json().data.guestSession as string;
+    for (let i = 0; i < 30; i += 1) expect((await join(token, { guestSession: session }, ip)).statusCode).toBe(200);
     const blocked = await join(token, { guestSession: session }, ip);
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json().error.code).toBe("RATE_LIMITED");
-    expect(blocked.headers["retry-after"]).toBeDefined();
-    expect((await join(token, { name: "Ada" }, nextIp())).statusCode).toBe(200);
+    expect(Number(blocked.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+    expect((await join(token, { guestSession: other }, ip)).statusCode).toBe(200);
+    expect((await join(token, { name: "Cem" }, nextIp())).statusCode).toBe(200);
   });
 
-  it("preflight: 30/dk IP (geçersiz belirteçle de sayılır)", async () => {
+  it("join: oturumsuz istekler IP + toplantı kovasında (30/dk)", async () => {
+    const { token } = await seed({ startsInMin: 0, max: 4 });
     const ip = nextIp();
-    for (let i = 0; i < 30; i += 1) expect((await post("preflight", { t: "bozuk" }, ip)).statusCode).toBe(404);
-    const blocked = await post("preflight", { t: "bozuk" }, ip);
+    for (let i = 0; i < 30; i += 1) expect((await join(token, {}, ip)).statusCode).toBe(422);
+    const blocked = await join(token, {}, ip);
     expect(blocked.statusCode).toBe(429);
-    expect(blocked.json().error.code).toBe("RATE_LIMITED");
+    expect(blocked.headers["retry-after"]).toBeDefined();
+  });
+
+  it("preflight: IP + toplantı başına 60/dk (61. istek 429 + Retry-After); başka toplantı ayrı kova", async () => {
+    const a = await seed({ startsInMin: 60 });
+    const b = await seed({ startsInMin: 60 });
+    const ip = nextIp();
+    for (let i = 0; i < 60; i += 1) expect((await post("preflight", { t: a.token }, ip)).statusCode).toBe(200);
+    const blocked = await post("preflight", { t: a.token }, ip);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers["retry-after"]).toBeDefined();
+    expect((await post("preflight", { t: b.token }, ip)).statusCode).toBe(200);
+  });
+
+  it("geçersiz belirteç kovası IP bazlı (30/dk): farklı bozuk belirteçlerle parçalama kaba kuvveti kolaylaştırmaz; başka IP etkilenmez", async () => {
+    const live = await seed({ startsInMin: 0 });
+    const ip = nextIp();
+    const bogus = () => `mg_${crypto.randomBytes(32).toString("base64url").slice(0, 43)}`;
+    for (let i = 0; i < 30; i += 1) {
+      const res = i % 2 ? await post("preflight", { t: bogus() }, ip) : await join(bogus(), { name: "X" }, ip);
+      expect(res.statusCode).toBe(404);
+    }
+    const blocked = await join(bogus(), { name: "X" }, ip);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers["retry-after"]).toBeDefined();
+    expect((await post("preflight", { t: live.token }, nextIp())).statusCode).toBe(200);
+  });
+
+  it("geçerli belirteçli istekler geçersiz kovayı tüketmez", async () => {
+    const live = await seed({ startsInMin: 60 });
+    const ip = nextIp();
+    for (let i = 0; i < 40; i += 1) expect((await post("preflight", { t: live.token }, ip)).statusCode).toBe(200);
+    expect((await post("preflight", { t: "bozuk" }, ip)).statusCode).toBe(404);
+  });
+
+  it("misafir uçları genel RATE_LIMIT_MAX kovasından muaf: x-ratelimit-* başlığı yok", async () => {
+    const live = await seed({ startsInMin: 60 });
+    const ip = nextIp();
+    const res = await post("preflight", { t: live.token }, ip);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-ratelimit-limit"]).toBeUndefined();
+    const j = await join(live.token, { name: "Ada" }, ip);
+    expect(j.headers["x-ratelimit-limit"]).toBeUndefined();
+  });
+
+  it("oturum sınırı formülü: max(20, maxParticipants × 4)", () => {
+    expect(sessionsPerIpPerMeeting(2)).toBe(20);
+    expect(sessionsPerIpPerMeeting(5)).toBe(20);
+    expect(sessionsPerIpPerMeeting(8)).toBe(32);
+    expect(sessionsPerIpPerMeeting(10)).toBe(40);
+  });
+
+  it("maxParticipants=10: aynı IP'den 20'den fazla yeni oturum açılabilir (sınır 40)", async () => {
+    const { token } = await seed({ startsInMin: 0, max: 10, autoAdmit: true });
+    const ip = nextIp();
+    for (let i = 0; i < 25; i += 1) {
+      expect((await join(token, { name: `Kişi ${i}` }, ip)).statusCode).toBe(200);
+      guestJoinLimiter.reset();
+    }
+  });
+});
+
+describe("aynı ve farklı IP'lerden çok katılımcı, yeniden bağlanma (Paket AM)", () => {
+  beforeEach(() => {
+    guestJoinLimiter.reset();
+    guestInvalidTokenLimiter.reset();
+    guestSessionIpLimiter.reset();
+  });
+
+  async function admitMany(meeting: { id: string; roomName: string }, token: string, ips: string[]) {
+    lk.rooms.set(meeting.roomName, [`meet-host:${host.id}`]);
+    for (let i = 0; i < ips.length; i += 1) {
+      const res = await join(token, { name: `Misafir ${i}` }, ips[i]);
+      expect(res.statusCode, `misafir ${i}`).toBe(200);
+      expect(res.json().data.status).toBe("ready");
+      const guests = await app.prisma.externalMeetingGuest.findMany({ where: { meetingId: meeting.id, admittedAt: { not: null } } });
+      lk.rooms.set(meeting.roomName, [`meet-host:${host.id}`, ...guests.map((g) => `meet-guest:${g.id}`)]);
+    }
+  }
+
+  it("aynı IP'den 7 misafir, maxParticipants=8: hepsi girer, 8. misafir 409 MEETING_FULL", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, max: 8 });
+    const ip = nextIp();
+    await admitMany(meeting, token, Array(7).fill(ip));
+    const eighth = await join(token, { name: "Sekizinci" }, ip);
+    expect(eighth.statusCode).toBe(409);
+    expect(eighth.json().error.code).toBe("MEETING_FULL");
+  });
+
+  it("7 misafir 7 FARKLI IP'den: hepsi girer, 8. full", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, max: 8 });
+    await admitMany(meeting, token, Array.from({ length: 7 }, () => nextIp()));
+    const eighth = await join(token, { name: "Sekizinci" }, nextIp());
+    expect(eighth.statusCode).toBe(409);
+    expect(eighth.json().error.code).toBe("MEETING_FULL");
+  });
+
+  it("karışık: 4 aynı IP + 3 farklı IP: hepsi girer, 8. full", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, max: 8 });
+    const office = nextIp();
+    await admitMany(meeting, token, [office, office, office, office, nextIp(), nextIp(), nextIp()]);
+    expect((await join(token, { name: "Sekizinci" }, office)).statusCode).toBe(409);
+  });
+
+  it("guestSession ile yeniden join: aynı guestId ve LiveKit kimliği, yeni satır yok; IP-A'dan alınan oturum IP-B'den de çalışır; çıkarılan geri giremez", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, max: 4 });
+    lk.rooms.set(meeting.roomName, [`meet-host:${host.id}`]);
+    const ipA = nextIp();
+    const ipB = nextIp();
+    const first = await join(token, { name: "Ada" }, ipA);
+    const guest = await app.prisma.externalMeetingGuest.findFirstOrThrow({ where: { meetingId: meeting.id } });
+    const verifier = new TokenVerifier("fake-api-key", "fake-api-secret-for-tests-only");
+    expect((await verifier.verify(first.json().data.token)).sub).toBe(`meet-guest:${guest.id}`);
+    lk.rooms.set(meeting.roomName, [`meet-host:${host.id}`, `meet-guest:${guest.id}`]);
+    for (const ip of [ipA, ipB, ipB]) {
+      const again = await join(token, { guestSession: first.json().data.guestSession }, ip);
+      expect(again.statusCode).toBe(200);
+      expect((await verifier.verify(again.json().data.token)).sub).toBe(`meet-guest:${guest.id}`);
+    }
+    expect(await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } })).toBe(1);
+
+    await app.prisma.externalMeetingGuest.update({ where: { id: guest.id }, data: { removedAt: new Date() } });
+    const removed = await join(token, { guestSession: first.json().data.guestSession }, ipB);
+    expect(removed.statusCode).toBe(404);
+    expect(removed.json().error.code).toBe("MEETING_LINK_INVALID");
+  });
+
+  it("farklı IP'lerden eşzamanlı bekleme yoklaması (her biri 12/dk) 429 almaz; aynı IP'deki 3 bekleyen de almaz", async () => {
+    const { token } = await seed({ startsInMin: 0, max: 8 });
+    const ips = [nextIp(), nextIp(), nextIp(), nextIp(), nextIp(), nextIp(), nextIp(), nextIp()];
+    ips.push(ips[0]!, ips[0]!);
+    const sessions: string[] = [];
+    for (const ip of ips) {
+      const res = await join(token, { name: "Bekleyen" }, ip);
+      expect(res.json().data.status).toBe("waiting");
+      sessions.push(res.json().data.guestSession);
+    }
+    for (let round = 0; round < 11; round += 1) {
+      for (let i = 0; i < ips.length; i += 1) {
+        const res = await join(token, { guestSession: sessions[i] }, ips[i]);
+        expect(res.statusCode, `ip ${i} tur ${round}`).toBe(200);
+      }
+    }
   });
 });
 

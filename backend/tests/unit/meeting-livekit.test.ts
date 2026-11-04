@@ -7,6 +7,7 @@ import {
   MEETING_GUEST_IDENTITY_PREFIX,
   MEETING_HOST_IDENTITY_PREFIX,
   computeMeetingTokenTtlSec,
+  isCountedParticipantState,
   createMeetingGuestToken,
   createMeetingHostToken,
   ensureMeetingRoom,
@@ -158,5 +159,11 @@ describe("kırmızı çizgi — statik güvence", () => {
     for (const f of meetingFiles) {
       expect(strip(f.code), f.rel).not.toMatch(/\b(createMeetingToken|createQaListenerToken|createInterpreterToken|ensureRoomConfigured)\b/);
     }
+  });
+});
+
+describe("Paket AM: kapasiteye sayılan katılımcı durumları", () => {
+  it("yalnız JOINED(1) ve ACTIVE(2) sayılır; JOINING(0) ve DISCONNECTED(3) sayılmaz", () => {
+    expect([0, 1, 2, 3].map(isCountedParticipantState)).toEqual([false, true, true, false]);
   });
 });
