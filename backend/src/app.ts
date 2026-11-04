@@ -122,6 +122,7 @@ import { adminDoctorMediaSettingsRoutes, adminTelehealthShowcaseRoutes, teleheal
 import { registerReviewRequestSweeper } from "./lib/review-requests";
 import { registerVideoTranscodeWorker } from "./lib/video-transcode/worker";
 import { warnIfRevalidationDisabled } from "./lib/revalidate";
+import { serializeRequestForLog } from "./lib/log-safe";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -146,6 +147,8 @@ export function buildApp() {
             // veya benzer bir token/URL alanını loglarsa maskeler. `censor` ile değer tamamen
             // gizlenir, anahtar adı log'da kalır (hangi alanın redakte edildiği hâlâ görülebilir,
             // ama değeri asla).
+            // Paket AL (İş 5) — URL sorgusundaki token/t/key/code/signature `***` (bkz. lib/log-safe.ts).
+            serializers: { req: serializeRequestForLog },
             redact: {
               paths: [
                 "setPasswordUrl",
