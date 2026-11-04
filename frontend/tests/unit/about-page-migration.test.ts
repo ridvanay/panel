@@ -43,8 +43,22 @@ const EN_BEFORE_V = {
   heroBody:
     "Founded under the leadership of Dr. Vahit Mutlu, WM Health welcomes patients from different countries to Istanbul. We bring together high standards of care, clear communication and careful coordination to support a safe and well-informed treatment journey. From the first consultation to the planning of next steps, we aim to make quality healthcare more accessible across borders.",
   bookConsultationCta: "Book a consultation",
+  // Paket AK — "What we coordinate" yeniden adlandırması (migration anındaki değerler).
+  treatmentEyebrow: "What we treat",
+  treatmentTitle: "Our treatment areas",
+  treatmentBody:
+    "Each patient’s needs are different. Treatment decisions are made following an individual medical evaluation, with attention to the patient’s health history and goals.",
 };
-const TR_BEFORE_V = { meetDoctorsCta: "Doktorlarımızla tanışın", doctorsTitle: "Doktorlarımızla tanışın", viewAllDoctorsCta: "Tüm doktorlar" };
+const TR_BEFORE_V = {
+  meetDoctorsCta: "Doktorlarımızla tanışın",
+  doctorsTitle: "Doktorlarımızla tanışın",
+  viewAllDoctorsCta: "Tüm doktorlar",
+  // Paket AK — tr sözlüğü İngilizce metne çevrildi (migration anındaki Türkçe değerler).
+  treatmentEyebrow: "Tedavi ettiklerimiz",
+  treatmentTitle: "Tedavi alanlarımız",
+  treatmentBody:
+    "Her hastanın ihtiyaçları farklıdır. Tedavi kararları, hastanın sağlık geçmişi ve hedefleri göz önünde bulundurularak yapılan bireysel tıbbi değerlendirmenin ardından verilir.",
+};
 
 describe("about veri migration'ı", () => {
   it("tr içeriği (başlık, blok, SEO) sözlükle birebir aynıdır", () => {

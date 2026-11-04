@@ -67,6 +67,7 @@ const EXEMPT: { prefix: string; reason: string }[] = [
   { prefix: "lib/common-passwords.ts", reason: "yaygın parola listesi (veri)" },
   { prefix: "lib/telehealth-format.ts", reason: "hekim konsolu 'TSİ' kısaltması (e2e sözleşmesi)" },
   { prefix: "lib/legacy-turkish-text.ts", reason: "Türkçe metin TESPİT eden yardımcı" },
+  { prefix: "lib/contact-hours.ts", reason: "Paket AK — panelde girilen Türkçe gün adlarını TESPİT edip ziyaretçi diline eşleyen yardımcı (eşleme anahtarı)" },
   // Hekim portalı.
   { prefix: "app/[lang]/(doctor)/", reason: "hekim portalı (kapsam dışı)" },
   { prefix: "components/site/telehealth/", reason: "hekim portalı/konsolu, randevu-ödeme adımları (ziyaretçi girişleri /request'e 301)" },

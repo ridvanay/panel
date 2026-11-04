@@ -42,7 +42,7 @@ describe("SpecialtyCardsBlockView", () => {
     ]);
     render(await SpecialtyCardsBlockView({ block: block(), chrome: "page", siteContext: { lang: "en", defaultLocaleCode: "tr" } }));
 
-    expect(screen.getByRole("heading", { level: 2, name: "Our Specialties" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Our Health Tourism Services" })).toBeInTheDocument();
     const links = screen.getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/en/specialties/kardiyoloji", "/en/specialties/dermatoloji"]);
     // Kartın tamamı tek bağlantı; erişilebilir adı uzmanlık adı (görsel dekoratif).

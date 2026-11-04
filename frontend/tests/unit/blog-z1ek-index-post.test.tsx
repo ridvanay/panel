@@ -102,7 +102,7 @@ describe("Paket Z1-ek — blog ana sayfası, yazı yokken", () => {
     expect(cards).toHaveLength(3);
     for (const card of cards) {
       expect(card).toHaveAttribute("data-has-posts", "false");
-      expect(within(card).getByTestId("blog-specialty-meta")).toHaveTextContent("View specialty");
+      expect(within(card).getByTestId("blog-specialty-meta")).toHaveTextContent("View service");
       expect(card.textContent).not.toMatch(/\d/);
     }
     expect(screen.getByRole("link", { name: /Orthopaedics/ })).toHaveAttribute("href", "/specialties/orthopaedics");
