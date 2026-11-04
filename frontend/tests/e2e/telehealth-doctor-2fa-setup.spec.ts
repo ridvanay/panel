@@ -38,7 +38,7 @@ test.describe.configure({ timeout: 120_000 });
  */
 test.describe.configure({ mode: "serial" });
 
-const FIXTURE_PASSWORD = "QaE2eDoctor2faSetup12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RUN_SUFFIX = Date.now().toString(36);
 const NO_2FA_DOCTOR_EMAIL = `qa-e2e-th-doctor-2fa-setup-${RUN_SUFFIX}@example.com`;
 const WITH_2FA_DOCTOR_EMAIL = `qa-e2e-th-doctor-2fa-baseline-${RUN_SUFFIX}@example.com`;

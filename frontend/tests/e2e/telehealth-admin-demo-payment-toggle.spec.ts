@@ -48,7 +48,7 @@ test.describe.configure({ mode: "serial" });
 
 const RUN_SUFFIX = Date.now().toString(36);
 const PATIENT_EMAIL = `qa-e2e-demo-toggle-${RUN_SUFFIX}@example.com`;
-const PATIENT_PASSWORD = "QaE2eDemoToggle12345!";
+const PATIENT_PASSWORD = "Zx9-Plover-Quartz-71!";
 const PATIENT_NAME = `QA Demo Toggle Hasta ${RUN_SUFFIX}`;
 
 let adminToken: string;

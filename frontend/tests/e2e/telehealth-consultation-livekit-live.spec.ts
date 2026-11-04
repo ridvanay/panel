@@ -399,7 +399,7 @@ test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17
 
   const RUN_SUFFIX = Date.now().toString(36);
   const DOCTOR_EMAIL = `qa-e2e-livekit-doctor-${RUN_SUFFIX}@example.com`;
-  const DOCTOR_PASSWORD = "QaE2eLivekitDoctor12345!";
+  const DOCTOR_PASSWORD = "Zx9-Plover-Quartz-71!";
 
   let twoPartyDoctor: CreatedFixtureDoctor;
   let doctorUserId: string;

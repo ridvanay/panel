@@ -38,7 +38,7 @@ test.describe.configure({ timeout: 120_000 });
  */
 test.describe.configure({ mode: "serial" });
 
-const FIXTURE_PASSWORD = "QaE2eDoctorJoinWindow12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RUN_SUFFIX = Date.now().toString(36);
 const DOCTOR_TR_EMAIL = `qa-e2e-doctor-join-window-tr-${RUN_SUFFIX}@example.com`;
 const DOCTOR_NY_EMAIL = `qa-e2e-doctor-join-window-ny-${RUN_SUFFIX}@example.com`;

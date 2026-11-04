@@ -24,7 +24,7 @@ import { ensureTelehealthModuleWithDoctors, listAdminAppointmentsRaw } from "./s
  */
 test.describe.configure({ mode: "serial" });
 
-const FIXTURE_PASSWORD = "QaE2eTelehealthRbac12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RUN_SUFFIX = Date.now().toString(36);
 const EDITOR_EMAIL = `qa-e2e-telehealth-rbac-editor-${RUN_SUFFIX}@example.com`;
 const MANAGER_EMAIL = `qa-e2e-telehealth-rbac-manager-${RUN_SUFFIX}@example.com`;

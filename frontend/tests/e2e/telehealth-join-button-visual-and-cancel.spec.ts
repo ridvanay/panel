@@ -29,7 +29,7 @@ test.describe.configure({ mode: "serial" });
 
 const RUN_SUFFIX = Date.now().toString(36);
 const PATIENT_EMAIL = `qa-e2e-join-cancel-${RUN_SUFFIX}@example.com`;
-const PATIENT_PASSWORD = "QaE2eJoinCancel12345!";
+const PATIENT_PASSWORD = "Zx9-Plover-Quartz-71!";
 const PATIENT_NAME = `QA Join/Cancel Hasta ${RUN_SUFFIX}`;
 
 let adminToken: string;

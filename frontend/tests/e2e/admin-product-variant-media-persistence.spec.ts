@@ -49,7 +49,7 @@ const RUN_SUFFIX = Date.now().toString(36);
 const UPLOAD_FILENAME = `qa-admin-variant-media-${RUN_SUFFIX}.png`;
 
 /** `support/product-variants-fixtures.ts::TEST_PNG_BASE64` İLE BİREBİR AYNI 1×1 şeffaf PNG. */
-const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
 
 let adminPage: Page;
 let closeSession: () => Promise<void>;

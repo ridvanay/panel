@@ -48,7 +48,7 @@ test.describe.configure({ mode: "serial" });
 
 const RUN_SUFFIX = Date.now().toString(36);
 const MANAGER_EMAIL = `qa-e2e-order-mgmt-manager-${RUN_SUFFIX}@example.com`;
-const MANAGER_PASSWORD = "QaE2eOrderMgrRole12345!";
+const MANAGER_PASSWORD = "Zx9-Plover-Quartz-71!";
 const UNIT_PRICE_CENTS = 15_000;
 
 let adminToken: string;

@@ -46,7 +46,7 @@ import {
 
 const EDITOR_EMAIL = "qa-e2e-users-editor-target@example.com";
 const ADMIN_CANDIDATE_EMAIL = "qa-e2e-users-admin-candidate@example.com";
-const FIXTURE_PASSWORD = "QaE2eFixture12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 
 let page: Page;
 let closeSession: () => Promise<void>;

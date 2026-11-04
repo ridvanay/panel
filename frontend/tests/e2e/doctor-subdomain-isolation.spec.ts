@@ -34,7 +34,7 @@ const SITE_ORIGIN = process.env.E2E_FRONTEND_URL ?? "http://siteadi.localhost:31
 const DOCTOR_ORIGIN = process.env.E2E_DOCTOR_FRONTEND_URL ?? "http://doktor.siteadi.localhost:3100";
 const API_BASE_URL = process.env.E2E_API_URL ?? "http://localhost:4001/api/v1";
 
-const FIXTURE_PASSWORD = "QaE2eSubdomainIsolation12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RUN_SUFFIX = Date.now().toString(36);
 const DOCTOR_USER_EMAIL = `qa-e2e-doctor-subdomain-${RUN_SUFFIX}@example.com`;
 const DOCTOR_TITLE = "Dr.";

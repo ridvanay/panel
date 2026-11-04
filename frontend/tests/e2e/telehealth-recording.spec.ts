@@ -76,7 +76,7 @@ test.describe.configure({ mode: "serial" });
 
 const RUN_SUFFIX = Date.now().toString(36);
 const DOCTOR_EMAIL = `qa-e2e-th-recording-doctor-${RUN_SUFFIX}@example.com`;
-const DOCTOR_PASSWORD = "QaE2eTelehealthRecording12345!";
+const DOCTOR_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RECORDING_MODULE_LABEL = "Görüşme Kaydı";
 const RECORDING_MODULE_KEY = "telehealth-recording";
 

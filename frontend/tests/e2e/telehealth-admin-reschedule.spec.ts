@@ -46,7 +46,7 @@ import {
  */
 test.describe.configure({ mode: "serial" });
 
-const FIXTURE_PASSWORD = "QaE2eTelehealthReschedule12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RUN_SUFFIX = Date.now().toString(36);
 const DOCTOR_USER_EMAIL = `qa-e2e-telehealth-reschedule-doctor-${RUN_SUFFIX}@example.com`;
 const MANAGER_EMAIL = `qa-e2e-telehealth-reschedule-manager-${RUN_SUFFIX}@example.com`;

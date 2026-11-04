@@ -25,7 +25,7 @@ test.describe.configure({ mode: "serial" });
 
 const TARGET_EMAIL = "aylin.kara@deneme.com";
 const ORIGINAL_PASSWORD = "Demo12345!";
-const TEMP_PASSWORD = "QaE2eTempRoundTrip12345!";
+const TEMP_PASSWORD = "Kv7-Heron-Basalt-58!";
 
 let page: Page;
 let closeSession: () => Promise<void>;

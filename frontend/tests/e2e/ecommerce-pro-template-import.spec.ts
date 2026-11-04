@@ -48,7 +48,7 @@ const RUN_SUFFIX = Date.now().toString(36);
 const MANAGER_EMAIL = `qa-e2e-ecom-manager-${RUN_SUFFIX}@example.com`;
 const EDITOR_EMAIL = `qa-e2e-ecom-editor-${RUN_SUFFIX}@example.com`;
 const LOW_PRIV_EMAIL = `qa-e2e-ecom-user-${RUN_SUFFIX}@example.com`;
-const FIXTURE_PASSWORD = "QaE2eEcomTpl12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 
 const RATE_LIMIT_WINDOW_RESET_MS = 65_000;
 

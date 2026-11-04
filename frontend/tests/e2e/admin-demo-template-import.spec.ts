@@ -57,7 +57,7 @@ const RUN_SUFFIX = Date.now().toString(36);
 const MANAGER_EMAIL = `qa-e2e-demo-tpl-manager-${RUN_SUFFIX}@example.com`;
 const EDITOR_EMAIL = `qa-e2e-demo-tpl-editor-${RUN_SUFFIX}@example.com`;
 const LOW_PRIV_EMAIL = `qa-e2e-demo-tpl-user-${RUN_SUFFIX}@example.com`;
-const FIXTURE_PASSWORD = "QaE2eDemoTpl12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 
 // Rate-limit penceresinin (1 dakika) TAM olarak sıfırlanmasını garanti etmek için küçük bir pay
 // bırakılır — `site-home-layout-parity.spec.ts`teki `revalidate:60` toleransıyla AYNI felsefe.
@@ -414,7 +414,7 @@ test("madde 11: import sonrası medya kütüphanesinde 12 yeni görsel var ve me
   });
 
   // `admin-product-variant-media-persistence.spec.ts::TEST_PNG_BASE64` İLE BİREBİR AYNI 1×1 şeffaf PNG.
-  const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
   let uploadedMediaId: string | null = null;
 
   try {

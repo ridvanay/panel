@@ -100,9 +100,9 @@ function deleteUserDirectly(email: string): void {
 
 const RUN_SUFFIX = Date.now().toString(36);
 const QA_ADMIN_EMAIL = `qa-e2e-demo-pay-admin-${RUN_SUFFIX}@example.com`;
-const QA_ADMIN_PASSWORD = "QaE2eDemoPayAdmin12345!";
+const QA_ADMIN_PASSWORD = "Zx9-Plover-Quartz-71!";
 const DOCTOR_USER_EMAIL = `qa-e2e-demo-pay-doctor-${RUN_SUFFIX}@example.com`;
-const FIXTURE_PASSWORD = "QaE2eDemoPayDoctor12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const PATIENT_PAID_NAME = `QA Demo Pay Hasta ${RUN_SUFFIX}`;
 const PATIENT_UNPAID_NAME = `QA Demo Pay Odenmemis Hasta ${RUN_SUFFIX}`;
 

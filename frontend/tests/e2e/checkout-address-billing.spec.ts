@@ -340,7 +340,7 @@ test("madde 5: geçersiz TCKN (checksum tutmuyor) — inline hata gösterilir, s
 
 test.describe("madde 6: üye kullanıcı prefill", () => {
   const MEMBER_EMAIL = "qa-e2e-checkout-member@example.com";
-  const MEMBER_PASSWORD = "QaE2eCheckoutMember12345!";
+  const MEMBER_PASSWORD = "Zx9-Plover-Quartz-71!";
   const MEMBER_NAME = "QA E2E Checkout Member";
   let memberPage: Page;
   let closeMemberSession: () => Promise<void>;

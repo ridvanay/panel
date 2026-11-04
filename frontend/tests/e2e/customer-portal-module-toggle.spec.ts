@@ -18,7 +18,7 @@ import { adminGetUserByEmail, registerFixtureUser, resetFixtureUserToBaseline } 
  */
 
 const CUSTOMER_EMAIL = "qa-e2e-customer-portal@example.com";
-const CUSTOMER_PASSWORD = "QaE2eCustomer12345!";
+const CUSTOMER_PASSWORD = "Zx9-Plover-Quartz-71!";
 
 let adminToken: string;
 let customerPage: Page;

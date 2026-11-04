@@ -374,7 +374,7 @@ export async function updateNavigationConfig(token: string, body: Record<string,
 
 /** 1x1 şeffaf PNG (geçerli magic byte'lı, gerçek bir görsel) — `detectImageMimeType`'ı geçer. */
 const TEST_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
 
 export interface TestMedia {
   id: string;

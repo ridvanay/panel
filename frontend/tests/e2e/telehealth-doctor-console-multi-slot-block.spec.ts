@@ -32,7 +32,7 @@ test.describe.configure({ timeout: 120_000 });
  */
 test.describe.configure({ mode: "serial" });
 
-const FIXTURE_PASSWORD = "QaE2eMultiSlotBlockBadge12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 const RUN_SUFFIX = Date.now().toString(36);
 const DOCTOR_EMAIL = `qa-e2e-multi-slot-block-doctor-${RUN_SUFFIX}@example.com`;
 const PATIENT_MULTI = `QA Blok Rozeti Çoklu Hasta ${RUN_SUFFIX}`;

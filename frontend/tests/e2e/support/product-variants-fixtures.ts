@@ -191,7 +191,7 @@ export async function adminDeleteProductPermanently(token: string, productId: st
 }
 
 /** 1x1 şeffaf PNG — `support/api.ts::uploadTestMedia`'daki AYNI sabit, magic-byte doğrulamasını geçer. */
-const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
 
 export interface TestMediaFixture {
   id: string;

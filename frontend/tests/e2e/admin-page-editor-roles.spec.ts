@@ -61,7 +61,7 @@ import { registerFixtureUser, resetFixtureUserToBaseline, adminGetUserByEmail, a
 // tetikleyip kotayı katlayarak 429'a düşürür (bkz. `admin-user-management.spec.ts`'teki AYNI
 // gerekçe).
 
-const FIXTURE_PASSWORD = "QaE2ePageRoles12345!";
+const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 // Her kullanıcı için ÇALIŞTIRMA-BAŞINA-BENZERSİZ bir e-posta üretilir — `POST /auth/register`'ın
 // HER ZAMAN 201 (ilk kayıt) dönmesini garanti eder, `getFixtureUserToken()`'ın `/auth/login`'e
 // DÜŞMESİNİ (ve login kotasını tüketmesini) gerektirmez.

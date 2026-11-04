@@ -894,7 +894,7 @@ test.describe("Hero Studio — admin akışları", () => {
     const RUN_SUFFIX = Date.now().toString(36);
     const EDITOR_EMAIL = `qa-e2e-slider-editor-${RUN_SUFFIX}@example.com`;
     const USER_EMAIL = `qa-e2e-slider-user-${RUN_SUFFIX}@example.com`;
-    const FIXTURE_PASSWORD = "QaE2eSliderRbac12345!";
+    const FIXTURE_PASSWORD = "Zx9-Plover-Quartz-71!";
 
     let editorPage: Page;
     let closeEditorSession: () => Promise<void>;

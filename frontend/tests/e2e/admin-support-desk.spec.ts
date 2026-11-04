@@ -14,9 +14,9 @@ test.describe.configure({ mode: "serial" });
 
 const RUN_SUFFIX = Date.now().toString(36);
 const MANAGER_EMAIL = `qa-e2e-support-manager-${RUN_SUFFIX}@example.com`;
-const MANAGER_PASSWORD = "QaE2eSupportManager12345!";
+const MANAGER_PASSWORD = "Zx9-Plover-Quartz-71!";
 const EDITOR_EMAIL = `qa-e2e-support-editor-${RUN_SUFFIX}@example.com`;
-const EDITOR_PASSWORD = "QaE2eSupportEditor12345!";
+const EDITOR_PASSWORD = "Zx9-Plover-Quartz-71!";
 
 let adminToken: string;
 let managerToken: string;
