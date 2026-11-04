@@ -40,6 +40,14 @@ export class MemoryRateLimiter {
     return { limited: true, retryAfterMs: Math.max(0, (list[list.length - max] ?? now) + this.windowMs - now) };
   }
 
+  /** `consume(key, now)` ile ayrılan yeri geri verir (aynı `now` damgası; yoksa no-op). */
+  release(key: string, now: number): void {
+    const list = this.hits.get(key);
+    if (!list) return;
+    const idx = list.lastIndexOf(now);
+    if (idx >= 0) list.splice(idx, 1);
+  }
+
   /** Test yardımcısı. */
   reset(): void {
     this.hits.clear();

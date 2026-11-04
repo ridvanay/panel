@@ -113,15 +113,27 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
     return meeting;
   }
 
-  /** Geçersiz belirteç IP kovası dolmuşsa DB'ye gitmeden 429; geçersizlikte kovayı tüketir ve aynı 404'ü fırlatır. */
+  /**
+   * ATOMİK geçersiz-deneme kovası: yer ÖNCEDEN ayrılır (tryConsume, DB'den önce, eşzamanlı N istekte sınır aşılmaz).
+   * Kova doluysa DB'ye gitmeden 429. İstek tamamen geçerli çıkarsa `refund()` ile yer geri verilir; geçersizlikte
+   * (belirteç veya guestSession) ayrılan yer kalır -> sayılır.
+   */
   async function resolveMeetingLimited(request: { ip: string }, reply: FastifyReply, rawToken: string) {
     const ipKey = sha("invalid", ipRateKey(request.ip));
-    const peek = guestInvalidTokenLimiter.peek(ipKey);
-    if (peek.limited) throwRateLimited(reply, peek.retryAfterMs);
+    const at = Date.now();
+    const reserved = guestInvalidTokenLimiter.consume(ipKey, at);
+    if (!reserved.allowed) throwRateLimited(reply, reserved.retryAfterMs);
+    let refunded = false;
+    const refund = () => {
+      if (refunded) return;
+      refunded = true;
+      guestInvalidTokenLimiter.release(ipKey, at);
+    };
     try {
-      return await resolveMeeting(rawToken);
+      return { meeting: await resolveMeeting(rawToken), refund };
     } catch (err) {
-      if (err instanceof MeetingLinkInvalidError) guestInvalidTokenLimiter.tryConsume(ipKey);
+      // Geçersizlik: yer kalır. Beklenmeyen (ör. DB) hata: kullanıcı suçu değil, geri ver.
+      if (!(err instanceof MeetingLinkInvalidError)) refund();
       throw err;
     }
   }
@@ -133,7 +145,8 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       schema: { body: GuestPreflightRequestSchema, response: { 200: ApiSuccessSchema(GuestPreflightResponseSchema) } },
     },
     async (request, reply) => {
-      const meeting = await resolveMeetingLimited(request, reply, request.body.t);
+      const { meeting, refund } = await resolveMeetingLimited(request, reply, request.body.t);
+      refund();
       const limit = guestPreflightLimiter.consume(sha("preflight", ipRateKey(request.ip), meeting.id));
       if (!limit.allowed) throwRateLimited(reply, limit.retryAfterMs);
       return reply.send(
@@ -160,8 +173,12 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       const { t, name, guestSession } = request.body;
 
       // 1) belirteç → toplantı (aksi hâlde aynı 404)
-      const meeting = await resolveMeetingLimited(request, reply, t);
+      const { meeting, refund } = await resolveMeetingLimited(request, reply, t);
+      // guestSession geçersizse (imza / başka toplantı / misafir yok / çıkarılmış) aynı IP kovasında sayılır ve aynı 404 döner.
       const verifiedSession = guestSession ? verifyGuestSession(guestSession, meeting.id) : null;
+      const existingGuest = verifiedSession ? await app.prisma.externalMeetingGuest.findFirst({ where: { id: verifiedSession.guestId, meetingId: meeting.id } }) : null;
+      if (guestSession && (!existingGuest || existingGuest.removedAt)) throw new MeetingLinkInvalidError();
+      refund();
       const joinLimit = guestJoinLimiter.consume(sha("join", ipRateKey(request.ip), meeting.id, verifiedSession?.guestId ?? ""));
       if (!joinLimit.allowed) throwRateLimited(reply, joinLimit.retryAfterMs);
 
@@ -178,10 +195,7 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       let displayName: string;
       let session: string;
       if (guestSession) {
-        const verified = verifiedSession;
-        if (!verified) throw new MeetingLinkInvalidError();
-        const guest = await app.prisma.externalMeetingGuest.findFirst({ where: { id: verified.guestId, meetingId: meeting.id } });
-        if (!guest || guest.removedAt) throw new MeetingLinkInvalidError();
+        const guest = existingGuest!;
         await app.prisma.externalMeetingGuest.update({ where: { id: guest.id }, data: { lastSeenAt: now }, select: { id: true } });
         guestId = guest.id;
         displayName = guest.displayName;

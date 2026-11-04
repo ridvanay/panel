@@ -489,6 +489,40 @@ describe("oran sınırı (Paket AM)", () => {
     expect((await post("preflight", { t: live.token }, nextIp())).statusCode).toBe(200);
   });
 
+  it("sahte guestSession denemeleri IP kovasında sayılır: 30 denemeden sonra 31. istek 429; geçerli oturumla yeniden bağlanma kovayı tüketmez", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, max: 8 });
+    const ip = nextIp();
+    const real = (await join(token, { name: "Ada" }, ip)).json().data.guestSession as string;
+    const removedGuest = await app.prisma.externalMeetingGuest.create({ data: { meetingId: meeting.id, displayName: "Çıkarılan", removedAt: new Date() } });
+    const removedSession = issueGuestSession(removedGuest.id, meeting.id, meeting.endsAt);
+    // geçerli oturumla çok sayıda yeniden bağlanma kovayı tüketmez
+    for (let i = 0; i < 20; i += 1) {
+      guestJoinLimiter.reset();
+      expect((await join(token, { guestSession: real }, ip)).statusCode).toBe(200);
+    }
+    guestJoinLimiter.reset();
+    const fakes = [`gs_v1.${"a".repeat(10)}.${"b".repeat(10)}.${"c".repeat(10)}`, removedSession, issueGuestSession(crypto.randomUUID(), meeting.id, meeting.endsAt)];
+    for (let i = 0; i < 30; i += 1) {
+      guestJoinLimiter.reset();
+      expect((await join(token, { guestSession: fakes[i % fakes.length] }, ip)).statusCode).toBe(404);
+    }
+    guestJoinLimiter.reset();
+    const blocked = await join(token, { guestSession: fakes[0] }, ip);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers["retry-after"]).toBeDefined();
+    expect((await join(token, { guestSession: real }, nextIp())).statusCode).toBe(200);
+  });
+
+  it("atomik: 40 eşzamanlı geçersiz istek -> en çok 30 tanesi 404, kalanı 429", async () => {
+    const ip = nextIp();
+    const results = await Promise.all(Array.from({ length: 40 }, (_, i) => post("preflight", { t: `mg_${String(i).padStart(43, "A")}` }, ip)));
+    const notFound = results.filter((r) => r.statusCode === 404).length;
+    const limited = results.filter((r) => r.statusCode === 429).length;
+    expect(notFound).toBeLessThanOrEqual(30);
+    expect(notFound + limited).toBe(40);
+    expect(limited).toBeGreaterThanOrEqual(10);
+  });
+
   it("geçerli belirteçli istekler geçersiz kovayı tüketmez", async () => {
     const live = await seed({ startsInMin: 60 });
     const ip = nextIp();
