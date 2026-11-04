@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import { noindexHeaderSources } from "./src/lib/seo/private-paths";
-import { blogPreviewHeaderRules } from "./src/lib/seo/preview-headers";
+import { blogPreviewHeaderRules, tokenPageHeaderRules } from "./src/lib/seo/preview-headers";
 
 /**
  * `next/image` `remotePatterns` — `.claude/architect-scope-products-catalog.md` §6.1 (frontend-agent'a
