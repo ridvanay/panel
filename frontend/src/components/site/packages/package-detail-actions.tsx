@@ -15,7 +15,8 @@ export function PackageDetailActions({ slug, title }: { slug: string; title: str
   const localize = useLocalizePath();
   const { enabled: serviceBookingEnabled, bookLabel } = useServiceBooking();
   // Paket AK — `bookConsultationCtaEnabled=false` iken "Book" düğmesi gizlenir; "Request this package" kalır.
-  const bookingEnabled = serviceBookingEnabled && useBookConsultationCtaEnabled();
+  const bookCtaEnabled = useBookConsultationCtaEnabled();
+  const bookingEnabled = serviceBookingEnabled && bookCtaEnabled;
   return (
     <div className="space-y-6">
       {bookingEnabled && (

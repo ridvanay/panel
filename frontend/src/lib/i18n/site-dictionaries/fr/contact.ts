@@ -66,7 +66,10 @@ export const contactStrings: ContactStrings = {
 
   // --- Details column ---
   contactDetailsTitle: "Coordonnées",
-  phoneRowLabel: "Téléphone",
+  // Paket AK — telefon satırı çağrı merkezi numarasıdır; not numaranın altında, kısa hâli footer'da.
+  phoneRowLabel: "Centre d’appels",
+  callCenterNote: "Notre centre d’appels est joignable 24 h/24 et 7 j/7.",
+  callCenterShort: "Centre d’appels 24 h/24, 7 j/7",
   whatsappRowLabel: "WhatsApp",
   emailRowLabel: "E-mail",
   addressRowLabel: "Adresse",

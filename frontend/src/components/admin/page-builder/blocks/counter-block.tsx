@@ -3,10 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { COUNTER_METRIC_OPTIONS } from "@/lib/page-builder/counter-metrics";
 import type { CounterMetric } from "@/lib/page-builder/types";
 import { newId } from "@/lib/page-builder/registry";
 import { COUNTER_MAX_ITEMS, type CounterBlock, type CounterItem } from "@/lib/page-builder/types";
+
+/** Paket AK (K2) — canlı veri seçenekleri (`GET /public/site-metrics` alanları; yönetici arayüzü Türkçe). */
+export const COUNTER_METRIC_OPTIONS: { value: CounterMetric; label: string }[] = [
+  { value: "activeServices", label: "Aktif hizmet sayısı" },
+  { value: "visitorLanguages", label: "Ziyaretçi dili sayısı" },
+  { value: "activeCoordinators", label: "Aktif koordinatör sayısı" },
+  { value: "consultationMinutes", label: "Görüşme süresi (dakika)" },
+];
 
 export function CounterBlockEditor({ block, onChange }: { block: CounterBlock; onChange: (block: CounterBlock) => void }) {
   const items = block.data.items;

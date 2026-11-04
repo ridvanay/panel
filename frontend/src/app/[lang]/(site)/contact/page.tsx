@@ -15,17 +15,14 @@ import { ContactPageForm } from "@/components/site/contact/contact-page-form";
 import { Eyebrow } from "@/components/site/about/eyebrow";
 import { aboutSerif } from "@/components/site/about/about-fonts";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
-import type { ContactConsentLocale } from "@/lib/api/types";
+import { contactLocale } from "@/lib/contact-locale";
 import { cn } from "@/lib/utils";
 import { DOCTORS_VISIBLE_TO_VISITORS } from "@/lib/intermediary";
+import { mapsHref } from "@/lib/contact-links";
+import { localizeHoursLabel } from "@/lib/contact-hours";
 
 type PageProps = { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
-/** Paket U (B1) — onay metinleri 9 dilde sunucudan; sayfa içeriği en/tr dışında sunucuda EN'e düşer. */
-const CONSENT_LOCALES: readonly ContactConsentLocale[] = ["en", "tr", "es", "de", "ar", "ru", "ro", "fr", "sr-latn"];
-function contactLocale(lang: string): ContactConsentLocale {
-  return (CONSENT_LOCALES as readonly string[]).includes(lang) ? (lang as ContactConsentLocale) : "en";
-}
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { lang } = await params;
@@ -35,13 +32,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: page.content.title || dict.contact.metaTitle,
     description: page.content.intro || dict.contact.metaDescription,
   };
-}
-
-/** Adres → harita bağlantısı: admin'in Google Haritalar bağlantısı, yoksa adres araması. */
-function mapsHref(mapUrl: string, address: string): string | null {
-  if (mapUrl) return mapUrl;
-  if (address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-  return null;
 }
 
 const CARD_CLASS = "rounded-[24px] border border-border bg-surface p-6 sm:p-7";
@@ -89,14 +79,19 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
   const whatsappHref = page.whatsappDigits ? `https://wa.me/${page.whatsappDigits}` : null;
   const addressMapHref = mapsHref(page.mapUrl, content.address);
   const emergency = telehealthEnabled ? resolveEmergencyNotice(telehealthSettings, lang, dict.telehealth) : null;
-  const hours = content.hours.filter((row) => row.label || row.value);
+  // Paket AK — `hoursVisible=false` iken kart yok; açıkken Türkçe gün adları ziyaretçi diline eşlenir.
+  const hours =
+    page.hoursVisible === false
+      ? []
+      : content.hours.filter((row) => row.label || row.value).map((row) => ({ ...row, label: localizeHoursLabel(row.label, lang) }));
 
   const detailRows = [
-    telHref && { icon: Phone, label: t.phoneRowLabel, value: content.phone, href: telHref, external: false },
+    // Paket AK — telefon satırı "Call center" (24/7 notu numaranın altında).
+    telHref && { icon: Phone, label: t.phoneRowLabel, value: content.phone, href: telHref, external: false, note: t.callCenterNote },
     whatsappHref && { icon: MessageCircle, label: t.whatsappRowLabel, value: content.whatsapp, href: whatsappHref, external: true },
     content.email && { icon: Mail, label: t.emailRowLabel, value: content.email, href: `mailto:${content.email}`, external: false },
     content.address && { icon: MapPin, label: t.addressRowLabel, value: content.address, href: addressMapHref, external: true },
-  ].filter(Boolean) as { icon: typeof Phone; label: string; value: string; href: string | null; external: boolean }[];
+  ].filter(Boolean) as { icon: typeof Phone; label: string; value: string; href: string | null; external: boolean; note?: string }[];
 
   return (
     <div className={cn("contact-page", aboutSerif.variable)}>
@@ -195,6 +190,11 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                               </a>
                             ) : (
                               <p className="text-base font-medium text-foreground">{row.value}</p>
+                            )}
+                            {row.note && (
+                              <p className="text-sm text-[var(--about-muted-text)]" data-testid="contact-call-center-note">
+                                {row.note}
+                              </p>
                             )}
                           </div>
                         </li>

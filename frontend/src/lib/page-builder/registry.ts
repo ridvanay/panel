@@ -275,7 +275,7 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
         data: {
           content: {
             tr: { title: "Uzmanlık Alanlarımız", subtitle: "" },
-            en: { title: "Our Specialties", subtitle: "" },
+            en: { title: "Our Health Tourism Services", subtitle: "" },
           },
           columns: 4,
           showDescription: true,

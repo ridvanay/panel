@@ -14,9 +14,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "Keine Ergebnisse gefunden",
   searchPlaceholder: "Nach Arztname suchen...",
   searchAriaLabel: "Ärzte suchen",
-  specialtyFilterAriaLabel: "Nach Fachgebiet filtern",
+  specialtyFilterAriaLabel: "Nach Leistung filtern",
   languageFilterAriaLabel: "Nach Sprache filtern",
-  allSpecialties: "Alle Fachgebiete",
+  allSpecialties: "Alle Leistungen",
   allLanguages: "Alle Sprachen",
 
   verifiedPhysicianBadge: "Verifizierter Arzt",
@@ -88,8 +88,8 @@ export const telehealthStrings: TelehealthStrings = {
 
   specialtyMetaDescription: "Beratung anfragen: {specialty}. Ein Patientenkoordinator organisiert die Behandlung in autorisierten Gesundheitseinrichtungen.",
   specialtiesPageSubtitle: "Wählen Sie eine Leistung und senden Sie eine Beratungsanfrage. Die Behandlung erfolgt in autorisierten Gesundheitseinrichtungen.",
-  specialtiesEmptyTitle: "Kein Fachgebiet gefunden",
-  specialtiesEmptyDescription: "Derzeit gibt es keine Fachgebiete zum Anzeigen.",
+  specialtiesEmptyTitle: "Keine Leistung gefunden",
+  specialtiesEmptyDescription: "Derzeit gibt es keine Leistungen zum Anzeigen.",
   specialtyCoordinatorTitle: "Lassen Sie sich von unserem Koordinator begleiten",
   specialtyCoordinatorText: "Schildern Sie uns Ihre Situation – ein Patientenkoordinator hilft Ihnen, die Behandlung in einer autorisierten Gesundheitseinrichtung zu planen.",
 

@@ -14,9 +14,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "Nema rezultata",
   searchPlaceholder: "Pretražite po imenu lekara...",
   searchAriaLabel: "Pretraga lekara",
-  specialtyFilterAriaLabel: "Filtriraj prema specijalnosti",
+  specialtyFilterAriaLabel: "Filtriraj prema usluzi",
   languageFilterAriaLabel: "Filtriraj prema jeziku",
-  allSpecialties: "Sve specijalnosti",
+  allSpecialties: "Sve usluge",
   allLanguages: "Svi jezici",
 
   verifiedPhysicianBadge: "Provereni lekar",
@@ -88,8 +88,8 @@ export const telehealthStrings: TelehealthStrings = {
 
   specialtyMetaDescription: "Zatražite konsultaciju: {specialty}. Koordinator pacijenata organizuje lečenje u ovlašćenim zdravstvenim ustanovama.",
   specialtiesPageSubtitle: "Izaberite uslugu i pošaljite zahtev za konsultaciju. Lečenje se obavlja u ovlašćenim zdravstvenim ustanovama.",
-  specialtiesEmptyTitle: "Nije pronađena nijedna specijalnost",
-  specialtiesEmptyDescription: "Trenutno nema specijalnosti za prikaz.",
+  specialtiesEmptyTitle: "Nije pronađena nijedna usluga",
+  specialtiesEmptyDescription: "Trenutno nema usluga za prikaz.",
   specialtyCoordinatorTitle: "Prepustite se vođstvu našeg koordinatora",
   specialtyCoordinatorText: "Recite nam o svojoj situaciji, a koordinator pacijenata će vam pomoći da isplanirate lečenje u ovlašćenoj zdravstvenoj ustanovi.",
 

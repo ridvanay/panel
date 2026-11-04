@@ -5068,6 +5068,8 @@ export interface ContactPageContent {
   locales: Partial<Record<ContactPageLocale, ContactPageLocaleContent>>;
   mapImageMediaId: string | null;
   mapUrl: string;
+  /** Paket AK (K5) — `false` iken iletişim sayfasında "Çalışma saatleri" kartı gösterilmez. Yoksa `true`. */
+  hoursVisible?: boolean;
 }
 
 /** `GET /contact/page?locale=` */
@@ -5077,6 +5079,8 @@ export interface PublicContactPage {
   whatsappDigits: string;
   mapImageUrl: string | null;
   mapUrl: string;
+  /** Paket AK (K5) — `false` iken çalışma saatleri kartı gösterilmez. Yoksa `true`. */
+  hoursVisible?: boolean;
   privacyPage: { slug: string; localizedSlugs: Record<string, string> } | null;
   /** Onay kutusu metinleri — SUNUCUDA tutulur, gösterilen = saklanan. */
   consent: { notice: string; explicit: string; privacyLinkLabel: string };

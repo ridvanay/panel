@@ -21,10 +21,10 @@ export const aboutStrings: AboutStrings = {
   locationTitle: "İstanbul, Türkiye",
   locationSubtitle: "Farklı ülkelerden hastaları ağırlıyoruz",
 
-  treatmentEyebrow: "Tedavi ettiklerimiz",
-  treatmentTitle: "Tedavi alanlarımız",
+  treatmentEyebrow: "What we coordinate",
+  treatmentTitle: "Treatment services we facilitate",
   treatmentBody:
-    "Her hastanın ihtiyaçları farklıdır. Tedavi kararları, hastanın sağlık geçmişi ve hedefleri göz önünde bulundurularak yapılan bireysel tıbbi değerlendirmenin ardından verilir.",
+    "Each patient’s needs are different. We connect you with healthcare facilities holding an International Health Tourism Authorization Certificate, where treatment decisions are made following an individual medical evaluation.",
   treatmentObesity: "Obezite ve metabolik cerrahi",
   treatmentOncology: "Cerrahi onkoloji",
   treatmentIvf: "Tüp bebek (IVF) ve üreme sağlığı",

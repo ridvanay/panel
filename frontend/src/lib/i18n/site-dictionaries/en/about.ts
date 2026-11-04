@@ -5,7 +5,7 @@
 export const aboutStrings = {
   metaTitle: "About Us | WM Health",
   metaDescription:
-    "WM Health is an international health tourism intermediary that helps patients from different countries plan their treatment in Türkiye. Learn about our role, treatment areas and approach.",
+    "WM Health is an international health tourism intermediary that helps patients from different countries plan their treatment in Türkiye. Learn about our role, the treatment services we facilitate and our approach.",
 
   // --- Hero ---
   breadcrumbCurrent: "About Us",
@@ -19,10 +19,10 @@ export const aboutStrings = {
   locationSubtitle: "Welcoming patients from different countries",
 
   // --- Treatment areas ---
-  treatmentEyebrow: "What we treat",
-  treatmentTitle: "Our treatment areas",
+  treatmentEyebrow: "What we coordinate",
+  treatmentTitle: "Treatment services we facilitate",
   treatmentBody:
-    "Each patient’s needs are different. Treatment decisions are made following an individual medical evaluation, with attention to the patient’s health history and goals.",
+    "Each patient’s needs are different. We connect you with healthcare facilities holding an International Health Tourism Authorization Certificate, where treatment decisions are made following an individual medical evaluation.",
   treatmentObesity: "Obesity & metabolic surgery",
   treatmentOncology: "Surgical oncology",
   treatmentIvf: "IVF & reproductive health",

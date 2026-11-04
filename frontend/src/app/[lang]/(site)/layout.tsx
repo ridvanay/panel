@@ -33,6 +33,8 @@ import { fetchCrmConfigServer } from "@/lib/api/server-crm";
 import { CartDrawer } from "@/components/site/cart-drawer";
 import { SiteScope } from "@/components/site/site-scope";
 import { ServiceBookingProvider } from "@/components/site/service-booking/service-booking-context";
+import { fetchContactPageServer } from "@/lib/api/server-contact";
+import { contactLocale } from "@/lib/contact-locale";
 import { SiteFeaturesProvider } from "@/components/site/site-features-context";
 import { resolveSiteFeatures } from "@/lib/site-features";
 import { fetchServiceConsultationConfigServer } from "@/lib/api/server-service-consultations";
@@ -68,7 +70,7 @@ export default async function SiteLayout({
     getSiteDictionary(lang),
     fetchCrmConfigServer(),
   ]);
-  const [navSpecialties, telehealthSettings, accreditations, contactChannels, serviceBookingConfig] = await Promise.all([
+  const [navSpecialties, telehealthSettings, accreditations, contactChannels, serviceBookingConfig, footerContactPage] = await Promise.all([
     telehealthModuleEnabled ? fetchSpecialtiesServer(lang) : Promise.resolve([]),
     // Paket V — footer'daki destek satırı ve yetki belgesi logoları.
     telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
@@ -77,6 +79,8 @@ export default async function SiteLayout({
     telehealthModuleEnabled ? fetchContactChannelsServer(lang) : Promise.resolve({ whatsapp: null }),
     // AI İş 3 — "Book a consultation" düğmelerinin hedefi (açıkken /book-consultation, kapalıyken /request); 60 sn önbellek.
     fetchServiceConsultationConfigServer(),
+    // Paket AK (K5) — footer: iletişim sayfası içeriğinden telefon + adres (tek kaynak `/admin/contact`); hata sayfayı bozmaz.
+    fetchContactPageServer(contactLocale(lang)).catch(() => null),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
@@ -162,6 +166,11 @@ export default async function SiteLayout({
             // Paket AH — kimlik ibaresi + (doluysa) yetki belgesi numarası; eski Türkçe DB metinleri sözlükle değiştirilir.
             intermediary={dict.intermediary}
             certificateNo={settings.healthTourismCertificateNo ?? null}
+            contact={{
+              phone: footerContactPage?.content.phone ?? null,
+              callCenterShort: dict.contact.callCenterShort,
+              address: footerContactPage?.content.address ?? null,
+            }}
             labels={{
               allRightsReserved: dict.nav.footerAllRightsReserved,
               servicesHeading: dict.nav.footerServicesHeading,

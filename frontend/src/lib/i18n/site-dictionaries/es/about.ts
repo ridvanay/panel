@@ -3,7 +3,7 @@ import type { AboutStrings } from "../en/about";
 export const aboutStrings: AboutStrings = {
   metaTitle: "Quiénes somos | WM Health",
   metaDescription:
-    "WM Health es un intermediario internacional de turismo de salud que ayuda a pacientes de distintos países a planificar su tratamiento en Türkiye. Conozca nuestro papel, nuestras áreas de tratamiento y nuestro enfoque.",
+    "WM Health es un intermediario internacional de turismo de salud que ayuda a pacientes de distintos países a planificar su tratamiento en Türkiye. Conozca nuestro papel, los servicios de tratamiento que facilitamos y nuestro enfoque.",
 
   breadcrumbCurrent: "Quiénes somos",
   heroEyebrow: "Sobre WM Health",
@@ -15,10 +15,10 @@ export const aboutStrings: AboutStrings = {
   locationTitle: "Estambul, Turquía",
   locationSubtitle: "Recibimos a pacientes de distintos países",
 
-  treatmentEyebrow: "Qué tratamos",
-  treatmentTitle: "Nuestras áreas de tratamiento",
+  treatmentEyebrow: "Qué coordinamos",
+  treatmentTitle: "Servicios de tratamiento que facilitamos",
   treatmentBody:
-    "Las necesidades de cada paciente son diferentes. Las decisiones de tratamiento se toman tras una evaluación médica individual, teniendo en cuenta el historial de salud y los objetivos del paciente.",
+    "Las necesidades de cada paciente son diferentes. Le ponemos en contacto con centros sanitarios que cuentan con un Certificado de Autorización de Turismo de Salud Internacional, donde las decisiones de tratamiento se toman tras una evaluación médica individual.",
   treatmentObesity: "Cirugía de la obesidad y metabólica",
   treatmentOncology: "Oncología quirúrgica",
   treatmentIvf: "FIV y salud reproductiva",

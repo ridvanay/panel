@@ -14,9 +14,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "Nu au fost găsite rezultate",
   searchPlaceholder: "Căutați după numele medicului...",
   searchAriaLabel: "Căutați medici",
-  specialtyFilterAriaLabel: "Filtrați după specialitate",
+  specialtyFilterAriaLabel: "Filtrați după serviciu",
   languageFilterAriaLabel: "Filtrați după limbă",
-  allSpecialties: "Toate specialitățile",
+  allSpecialties: "Toate serviciile",
   allLanguages: "Toate limbile",
 
   verifiedPhysicianBadge: "Medic verificat",
@@ -88,8 +88,8 @@ export const telehealthStrings: TelehealthStrings = {
 
   specialtyMetaDescription: "Solicită o consultație pentru {specialty}. Un coordonator de pacienți organizează tratamentul în unități medicale autorizate.",
   specialtiesPageSubtitle: "Alege un serviciu și trimite o solicitare de consultație. Tratamentul se desfășoară în unități medicale autorizate.",
-  specialtiesEmptyTitle: "Nu a fost găsită nicio specialitate",
-  specialtiesEmptyDescription: "Momentan nu există specialități de afișat.",
+  specialtiesEmptyTitle: "Nu a fost găsit niciun serviciu",
+  specialtiesEmptyDescription: "Momentan nu există servicii de afișat.",
   specialtyCoordinatorTitle: "Lasă-te îndrumat de coordonatorul nostru",
   specialtyCoordinatorText: "Spune-ne care este situația ta, iar un coordonator de pacienți te va ajuta să planifici tratamentul într-o unitate medicală autorizată.",
 

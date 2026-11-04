@@ -74,20 +74,45 @@ export function buildFaqPageJsonLd(nodes: PageNode[]): string | null {
  * Görev (2026-09-16) — ana sayfa kurum + `WebSite` JSON-LD'si (eskiden `MedicalOrganization`).
  * `doctor-json-ld.ts`/`specialty-json-ld.ts` İLE AYNI disiplin: yalnızca GERÇEKTEN var olan
  * kaynaktan (`SiteSettings`/`NavigationConfigDto.socialLinks` — `settings/navigation` uçları,
- * `site-footer.tsx`'in KULLANDIĞI AYNI kaynak) alan doldurulur. `address`/`telephone` KASITLI
- * OLARAK EKLENMEZ: site genelinde (SiteSettings) yapılandırılmış bir kurumsal adres/telefon alanı
- * YOK (yalnızca `google-map` sayfa bloğunun serbest metin `address`'i var, o zaten kendi `Place`
+ * `site-footer.tsx`'in KULLANDIĞI AYNI kaynak) alan doldurulur. `address`/`telephone` YALNIZCA
+ * `contact` parametresiyle (Paket AK: iletişim sayfası içeriği, `/admin/contact`) verilirse eklenir; SiteSettings'te
+ * yapılandırılmış bir kurumsal adres/telefon alanı YOK (yalnızca `google-map` sayfa bloğunun serbest metin `address`'i var, o zaten kendi `Place`
  * JSON-LD'sini `buildMapPlaceJsonLd` ile üretiyor — sayfa-özel içerik, site-geneli kurumsal veri
  * DEĞİL) — mimar "Kurallar" madde 1/2 (sahte/uydurma alan üretme yasağı) gereği bu iki alan
  * atlanır, ikinci bir veri kaynağı İCAT EDİLMEZ.
  */
+/**
+ * Paket AK (K5) — `Organization` için iletişim bilgisi (iletişim sayfası içeriğinden, `/admin/contact`). `address` metni
+ * ÇEVRİLMEZ ve olduğu gibi `streetAddress` olur; posta kodu YAZILMAZ (bilinmiyor). `addressLocality` yalnızca adres İstanbul'u
+ * içeriyorsa, `addressCountry` ("TR") yalnızca adres Türkiye'yi içeriyorsa eklenir — uydurma alan üretilmez.
+ */
+export interface OrganizationContact {
+  phone?: string | null;
+  address?: string | null;
+}
+
+const ISTANBUL_PATTERN = /(?:\u0130|I|i)stanbul/;
+const TURKEY_PATTERN = /T\u00fcrkiye|Turkiye|Turkey/i;
+
+function buildPostalAddress(address: string): Record<string, string> {
+  return {
+    "@type": "PostalAddress",
+    streetAddress: address,
+    ...(ISTANBUL_PATTERN.test(address) ? { addressLocality: "Istanbul" } : {}),
+    ...(TURKEY_PATTERN.test(address) ? { addressCountry: "TR" } : {}),
+  };
+}
+
 export function buildOrganizationJsonLd(
   settings: SiteSettings,
   socialLinks: SocialLinkDto[],
   siteUrl: string,
   accreditations: PublicAccreditation[] = [],
-  description?: string
+  description?: string,
+  contact?: OrganizationContact
 ): string {
+  const telephone = contact?.phone?.trim();
+  const address = contact?.address?.trim();
   const sameAs = socialLinks.map((link) => link.url).filter((url) => url.trim().length > 0);
   // Paket V — `hasCredential` yalnızca sitede görünen (aktif + belge no + süresi geçmemiş) belgeler;
   // public uç zaten yalnızca bunları döndürür.
@@ -110,6 +135,8 @@ export function buildOrganizationJsonLd(
     ...(description ? { description } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
     ...(hasCredential.length > 0 ? { hasCredential } : {}),
+    ...(telephone ? { telephone } : {}),
+    ...(address ? { address: buildPostalAddress(address) } : {}),
   });
 }
 

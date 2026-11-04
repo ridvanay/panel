@@ -118,6 +118,9 @@ interface GeneralSettingsSnapshot {
   recipientsText: string;
   certificateNo: string;
   blogMedicalReviewRequired: boolean;
+  /** Paket AK — site özellikleri. */
+  findTreatmentEnabled: boolean;
+  bookConsultationCtaEnabled: boolean;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -204,6 +207,9 @@ export default function AdminSettingsPage() {
   // Paket AH — aracı kuruluş kimliği: yetki belgesi numarası (boşsa sitede belge satırı görünmez) ve blog tıbbi onay şartı.
   const [certificateNo, setCertificateNo] = useState("");
   const [blogMedicalReviewRequired, setBlogMedicalReviewRequired] = useState(false);
+  // Paket AK — site özellikleri (varsayılan AÇIK: mevcut davranış).
+  const [findTreatmentEnabled, setFindTreatmentEnabled] = useState(true);
+  const [bookConsultationCtaEnabled, setBookConsultationCtaEnabled] = useState(true);
 
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -241,6 +247,8 @@ export default function AdminSettingsPage() {
       setRecipientsError(undefined);
       setCertificateNo(settings.healthTourismCertificateNo ?? "");
       setBlogMedicalReviewRequired(settings.blogMedicalReviewRequired ?? false);
+      setFindTreatmentEnabled(settings.findTreatmentEnabled ?? true);
+      setBookConsultationCtaEnabled(settings.bookConsultationCtaEnabled ?? true);
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
@@ -259,6 +267,8 @@ export default function AdminSettingsPage() {
         recipientsText: storedRecipients ?? "",
         certificateNo: settings.healthTourismCertificateNo ?? "",
         blogMedicalReviewRequired: settings.blogMedicalReviewRequired ?? false,
+        findTreatmentEnabled: settings.findTreatmentEnabled ?? true,
+        bookConsultationCtaEnabled: settings.bookConsultationCtaEnabled ?? true,
       });
       setLoaded(true);
     } catch (err) {
@@ -291,7 +301,9 @@ export default function AdminSettingsPage() {
       recipientsUseDefault !== snapshot.recipientsUseDefault ||
       recipientsText !== snapshot.recipientsText ||
       certificateNo !== snapshot.certificateNo ||
-      blogMedicalReviewRequired !== snapshot.blogMedicalReviewRequired
+      blogMedicalReviewRequired !== snapshot.blogMedicalReviewRequired ||
+      findTreatmentEnabled !== snapshot.findTreatmentEnabled ||
+      bookConsultationCtaEnabled !== snapshot.bookConsultationCtaEnabled
     );
   }, [
     siteName,
@@ -311,6 +323,8 @@ export default function AdminSettingsPage() {
     recipientsText,
     certificateNo,
     blogMedicalReviewRequired,
+    findTreatmentEnabled,
+    bookConsultationCtaEnabled,
     snapshot,
   ]);
 
@@ -394,7 +408,7 @@ export default function AdminSettingsPage() {
         liveChatRequireEmail,
         liveChatPosition,
         ...(isAdmin ? { bookingNotificationRecipients: recipientsUseDefault ? null : recipientsText.trim() } : {}),
-        ...(isAdmin ? { healthTourismCertificateNo: certificateNo.trim() ? certificateNo.trim() : null, blogMedicalReviewRequired } : {}),
+        ...(isAdmin ? { healthTourismCertificateNo: certificateNo.trim() ? certificateNo.trim() : null, blogMedicalReviewRequired, findTreatmentEnabled, bookConsultationCtaEnabled } : {}),
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
@@ -425,6 +439,8 @@ export default function AdminSettingsPage() {
         recipientsText: recipientsUseDefault ? "" : recipientsText.trim(),
         certificateNo: certificateNo.trim(),
         blogMedicalReviewRequired,
+        findTreatmentEnabled,
+        bookConsultationCtaEnabled,
       });
       setCertificateNo(certificateNo.trim());
       if (!recipientsUseDefault) setRecipientsText(recipientsText.trim());
@@ -828,6 +844,48 @@ export default function AdminSettingsPage() {
                 )}
               </Card>
             </motion.div>
+            {/* Paket AK — site özellikleri: "Find your treatment" ve "Book a consultation" (`Kaydet` ile birlikte; en geç 60 sn'de siteye yansır). */}
+            {isAdmin && (
+            <motion.div variants={cardVariants} className="lg:col-span-3" data-testid="site-features-card">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={Settings2}
+                  title="Site özellikleri"
+                  description="Sitedeki iki giriş noktasını silmeden açıp kapatın. Değişiklik en geç 60 saniye içinde yansır ve denetim günlüğüne yazılır."
+                />
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Find your treatment</p>
+                    <p className="text-xs text-foreground/60">
+                      Kapalıyken menüdeki, mega menüdeki ve sayfalardaki &quot;Find your treatment&quot; düğmeleri gizlenir; sihirbaz sayfası hizmet listesine
+                      yönlenir ve site haritasından çıkar. Açıkken bugünkü davranış geçerlidir.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={findTreatmentEnabled}
+                    onCheckedChange={(checked) => setFindTreatmentEnabled(Boolean(checked))}
+                    aria-label="Find your treatment özelliği"
+                    data-testid="switch-find-treatment"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Book a consultation düğmeleri</p>
+                    <p className="text-xs text-foreground/60">
+                      Kapalıyken menüdeki, hizmet ve paket sayfalarındaki &quot;Book a consultation&quot; düğmeleri gizlenir; rezervasyon sayfası talep formuna
+                      yönlenir. &quot;Request a call back&quot; düğmeleri, mevcut randevular ve randevu yönetim bağlantıları çalışmaya devam eder.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={bookConsultationCtaEnabled}
+                    onCheckedChange={(checked) => setBookConsultationCtaEnabled(Boolean(checked))}
+                    aria-label="Book a consultation düğmeleri"
+                    data-testid="switch-book-consultation"
+                  />
+                </div>
+              </Card>
+            </motion.div>
+            )}
             {/* Paket AH — aracı kuruluş kimliği: yetki belgesi numarası + blog tıbbi onay şartı (`Kaydet` ile birlikte). */}
             {isAdmin && (
             <motion.div variants={cardVariants} className="lg:col-span-3">

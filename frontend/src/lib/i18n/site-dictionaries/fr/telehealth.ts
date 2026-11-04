@@ -15,9 +15,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "Aucun résultat",
   searchPlaceholder: "Rechercher par nom de médecin…",
   searchAriaLabel: "Rechercher des médecins",
-  specialtyFilterAriaLabel: "Filtrer par spécialité",
+  specialtyFilterAriaLabel: "Filtrer par service",
   languageFilterAriaLabel: "Filtrer par langue",
-  allSpecialties: "Toutes les spécialités",
+  allSpecialties: "Tous les services",
   allLanguages: "Toutes les langues",
 
   // --- doctor-card.tsx / doctor-profile-hero.tsx ---
@@ -89,8 +89,8 @@ export const telehealthStrings: TelehealthStrings = {
   specialtiesMetaDescriptionDefault: "Découvrez nos services de tourisme de santé et demandez une consultation.",
   specialtyMetaDescription: "Demandez une consultation pour {specialty}. Un coordinateur patient organise le traitement dans des établissements de santé autorisés.",
   specialtiesPageSubtitle: "Choisissez un service et envoyez une demande de consultation. Le traitement est réalisé dans des établissements de santé autorisés.",
-  specialtiesEmptyTitle: "Aucune spécialité trouvée",
-  specialtiesEmptyDescription: "Aucune spécialité à afficher pour le moment.",
+  specialtiesEmptyTitle: "Aucun service trouvé",
+  specialtiesEmptyDescription: "Aucun service à afficher pour le moment.",
   specialtyCoordinatorTitle: "Laissez notre coordinateur vous guider",
   specialtyCoordinatorText: "Parlez-nous de votre situation : un coordinateur patient vous aidera à organiser le traitement dans un établissement de santé autorisé.",
 

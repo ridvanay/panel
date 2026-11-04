@@ -38,6 +38,11 @@ interface SiteFooterProps {
   certificateNo?: string | null;
   /** Paket AH — sabit footer metinleri (`dict.nav.footer*`); eski Türkçe DB başlıkları/telif satırı bunlarla değiştirilir. */
   labels?: { allRightsReserved: string; servicesHeading: string; legalHeading: string; navAria: string };
+  /**
+   * Paket AK (K5) — iletişim sayfası içeriğinden (`/admin/contact`) çağrı merkezi telefonu, "Call center 24/7" notu ve adres.
+   * Telefon/adres boşsa ilgili satır çizilmez.
+   */
+  contact?: { phone?: string | null; callCenterShort?: string; address?: string | null };
 }
 
 /**
@@ -78,6 +83,7 @@ export function SiteFooter({
   intermediary,
   certificateNo,
   labels,
+  contact,
 }: SiteFooterProps) {
   const localize = (path: string) =>
     activeLocaleCode ? withLocalePrefix(path, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode) : path;
@@ -91,6 +97,8 @@ export function SiteFooter({
   const copyrightLine =
     copyrightText && copyrightText.trim().length > 0 && !looksTurkish(copyrightText) ? copyrightText : defaultCopyright;
   const certificate = certificateNo?.trim();
+  const contactPhone = contact?.phone?.trim() || null;
+  const contactAddress = contact?.address?.trim() || null;
   const visibleTagline = tagline && tagline.trim().length > 0 && !looksTurkish(tagline) ? tagline : null;
 
   return (
@@ -123,6 +131,27 @@ export function SiteFooter({
                   <p className="font-medium text-foreground/80" data-testid="footer-certificate">
                     {formatSiteString(intermediary.certificateLine, { no: certificate })}
                   </p>
+                )}
+              </div>
+            )}
+            {(contactPhone || contactAddress) && (
+              <div className="space-y-1.5 text-xs text-foreground/60" data-testid="footer-contact">
+                {contactPhone && (
+                  <p>
+                    <a href={`tel:${contactPhone.replace(/[^\d+]/g, "")}`} className="text-sm font-medium text-foreground hover:text-[var(--site-link)]" data-testid="footer-phone">
+                      {contactPhone}
+                    </a>
+                    {contact?.callCenterShort && (
+                      <span className="block" data-testid="footer-call-center">
+                        {contact.callCenterShort}
+                      </span>
+                    )}
+                  </p>
+                )}
+                {contactAddress && (
+                  <address className="not-italic leading-relaxed" data-testid="footer-address">
+                    {contactAddress}
+                  </address>
                 )}
               </div>
             )}

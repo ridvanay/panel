@@ -36,6 +36,8 @@ import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { HomeReviewsSection } from "@/components/site/reviews/home-reviews-section";
 import { DestinationsSection } from "@/components/site/destinations/destinations-section";
 import { isServiceBookingEnabledServer } from "@/lib/api/server-service-consultations";
+import { fetchContactPageServer } from "@/lib/api/server-contact";
+import { contactLocale } from "@/lib/contact-locale";
 import { resolveSiteFeatures } from "@/lib/site-features";
 import { primaryBookPath } from "@/lib/service-booking-links";
 
@@ -140,10 +142,12 @@ export default async function RootPage({ params }: PageProps) {
 
   // Paket V — hero'nun hemen altı: "kendi dilinizde destek" bandı (yalnızca destek dili seçiliyse) ve
   // "Licensed & accredited" şeridi (yalnızca görünür belge varsa). İkisi de boşsa hiçbir şey eklenmez.
-  const [telehealthSettings, accreditations, bookingEnabled] = await Promise.all([
+  const [telehealthSettings, accreditations, bookingEnabled, contactPage] = await Promise.all([
     telehealthModuleEnabled ? fetchTelehealthThemeServer() : Promise.resolve(null),
     fetchAccreditationsServer(lang),
     isServiceBookingEnabledServer(),
+    // Paket AK (K5) — Organization JSON-LD adres/telefon: iletişim sayfası içeriği (tek kaynak); hata sayfayı bozmaz.
+    fetchContactPageServer(contactLocale(lang)).catch(() => null),
   ]);
   const support = resolveLanguageSupport(telehealthSettings, lang, locales);
   const afterHero =
@@ -212,7 +216,10 @@ export default async function RootPage({ params }: PageProps) {
               <JsonLdScript json={buildMapPlaceJsonLd(stripHiddenNodes(normalizedNodes))} />
               <JsonLdScript json={buildWebSiteJsonLd(settings, SITE_URL)} />
               {telehealthModuleEnabled && (
-                <JsonLdScript json={buildOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL, accreditations, dict.intermediary.description)} />
+                <JsonLdScript json={buildOrganizationJsonLd(settings, navigation.socialLinks, SITE_URL, accreditations, dict.intermediary.description, {
+                    phone: contactPage?.content.phone,
+                    address: contactPage?.content.address,
+                  })} />
               )}
             </>
           )}

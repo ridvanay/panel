@@ -10,7 +10,7 @@ export const reviewsStrings: ReviewsStrings = {
   sectionFaq: "Частые вопросы",
   bookCta: "Записаться",
   bookCtaAria: "Перейти к разделу записи",
-  overviewSpecialty: "Специальность",
+  overviewSpecialty: "Услуга",
   overviewLanguages: "Языки, на которых говорит врач",
   overviewHospital: "Больница / клиника",
   procedureWhat: "Что выполняется",

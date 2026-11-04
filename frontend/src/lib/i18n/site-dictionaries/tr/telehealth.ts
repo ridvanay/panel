@@ -14,9 +14,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "Sonuç bulunamadı",
   searchPlaceholder: "Hekim adına göre ara...",
   searchAriaLabel: "Hekim ara",
-  specialtyFilterAriaLabel: "Uzmanlığa göre filtrele",
+  specialtyFilterAriaLabel: "Filter by service",
   languageFilterAriaLabel: "Dile göre filtrele",
-  allSpecialties: "Tüm uzmanlıklar",
+  allSpecialties: "All services",
   allLanguages: "Tüm diller",
 
   verifiedPhysicianBadge: "Doğrulanmış Hekim",
@@ -88,8 +88,8 @@ export const telehealthStrings: TelehealthStrings = {
 
   specialtyMetaDescription: "{specialty} uzmanlık alanındaki doktorlarımızla online randevu alın.",
   specialtiesPageSubtitle: "Branşa göre doktorlarımızı keşfedin ve online randevunuzu alın.",
-  specialtiesEmptyTitle: "Uzmanlık alanı bulunamadı",
-  specialtiesEmptyDescription: "Şu anda listelenecek bir uzmanlık alanı yok.",
+  specialtiesEmptyTitle: "No service found",
+  specialtiesEmptyDescription: "There are currently no services to list.",
   specialtyCoordinatorTitle: "Bu alanda size uygun hekimi koordinatörümüz belirlesin",
   specialtyCoordinatorText: "Durumunuzu bize anlatın; hasta koordinatörümüz sizi bu alanda uygun bir hekimle buluştursun.",
 

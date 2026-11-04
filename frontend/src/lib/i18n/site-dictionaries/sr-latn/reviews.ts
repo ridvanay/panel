@@ -10,7 +10,7 @@ export const reviewsStrings: ReviewsStrings = {
   sectionFaq: "Česta pitanja",
   bookCta: "Zakaži",
   bookCtaAria: "Idi na odeljak za zakazivanje",
-  overviewSpecialty: "Specijalnost",
+  overviewSpecialty: "Usluga",
   overviewLanguages: "Jezici koje govori",
   overviewHospital: "Bolnica / klinika",
   procedureWhat: "Šta se radi",

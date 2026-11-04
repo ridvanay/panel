@@ -14,9 +14,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "لا توجد نتائج",
   searchPlaceholder: "ابحث باسم الطبيب...",
   searchAriaLabel: "البحث عن الأطباء",
-  specialtyFilterAriaLabel: "التصفية حسب التخصص",
+  specialtyFilterAriaLabel: "التصفية حسب الخدمة",
   languageFilterAriaLabel: "التصفية حسب اللغة",
-  allSpecialties: "جميع التخصصات",
+  allSpecialties: "جميع الخدمات",
   allLanguages: "جميع اللغات",
 
   verifiedPhysicianBadge: "طبيب موثّق",
@@ -88,8 +88,8 @@ export const telehealthStrings: TelehealthStrings = {
 
   specialtyMetaDescription: "اطلب استشارة بخصوص {specialty}. ينظّم منسق المرضى العلاج في منشآت صحية مرخّصة.",
   specialtiesPageSubtitle: "اختر خدمة وأرسل طلب استشارة. يُجرى العلاج في منشآت صحية مرخّصة.",
-  specialtiesEmptyTitle: "لم يُعثر على أي تخصص",
-  specialtiesEmptyDescription: "لا توجد تخصصات لعرضها حاليًا.",
+  specialtiesEmptyTitle: "لم يُعثر على أي خدمة",
+  specialtiesEmptyDescription: "لا توجد خدمات لعرضها حاليًا.",
   specialtyCoordinatorTitle: "دع منسقنا يرشدك",
   specialtyCoordinatorText: "أخبرنا بحالتك وسيساعدك منسق المرضى على تخطيط العلاج في منشأة صحية مرخّصة.",
 

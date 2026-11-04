@@ -3,7 +3,7 @@ import type { AboutStrings } from "../en/about";
 export const aboutStrings: AboutStrings = {
   metaTitle: "O nama | WM Health",
   metaDescription:
-    "WM Health je međunarodni posrednik u zdravstvenom turizmu koji pomaže pacijentima iz različitih zemalja da planiraju lečenje u Turskoj. Saznajte više o našoj ulozi, oblastima lečenja i pristupu.",
+    "WM Health je međunarodni posrednik u zdravstvenom turizmu koji pomaže pacijentima iz različitih zemalja da planiraju lečenje u Turskoj. Saznajte više o našoj ulozi, uslugama lečenja koje posredujemo i pristupu.",
 
   breadcrumbCurrent: "O nama",
   heroEyebrow: "O kompaniji WM Health",
@@ -15,10 +15,10 @@ export const aboutStrings: AboutStrings = {
   locationTitle: "Istanbul, Turska",
   locationSubtitle: "Dočekujemo pacijente iz različitih zemalja",
 
-  treatmentEyebrow: "Šta lečimo",
-  treatmentTitle: "Naše oblasti lečenja",
+  treatmentEyebrow: "Šta koordiniramo",
+  treatmentTitle: "Usluge lečenja koje posredujemo",
   treatmentBody:
-    "Potrebe svakog pacijenta su različite. Odluke o lečenju donose se nakon individualne medicinske procene, uz uvažavanje zdravstvene istorije i ciljeva pacijenta.",
+    "Potrebe svakog pacijenta su različite. Povezujemo vas sa zdravstvenim ustanovama koje poseduju Sertifikat o ovlašćenju za međunarodni zdravstveni turizam, u kojima se odluke o lečenju donose nakon individualne medicinske procene.",
   treatmentObesity: "Gojaznost i metabolička hirurgija",
   treatmentOncology: "Hirurška onkologija",
   treatmentIvf: "VTO i reproduktivno zdravlje",

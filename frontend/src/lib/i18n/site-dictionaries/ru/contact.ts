@@ -60,7 +60,10 @@ export const contactStrings: ContactStrings = {
   selectPlaceholder: "Выберите…",
 
   contactDetailsTitle: "Контактные данные",
-  phoneRowLabel: "Телефон",
+  // Paket AK — telefon satırı çağrı merkezi numarasıdır; not numaranın altında, kısa hâli footer'da.
+  phoneRowLabel: "Колл-центр",
+  callCenterNote: "Вы можете обратиться в наш колл-центр круглосуточно, без выходных.",
+  callCenterShort: "Колл-центр 24/7",
   whatsappRowLabel: "WhatsApp",
   emailRowLabel: "Электронная почта",
   addressRowLabel: "Адрес",

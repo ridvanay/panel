@@ -10,7 +10,7 @@ export const reviewsStrings: ReviewsStrings = {
   sectionFaq: "Questions fréquentes",
   bookCta: "Réserver",
   bookCtaAria: "Aller à la section de réservation",
-  overviewSpecialty: "Spécialité",
+  overviewSpecialty: "Service",
   overviewLanguages: "Langues parlées",
   overviewHospital: "Hôpital / clinique",
   procedureWhat: "En quoi cela consiste",

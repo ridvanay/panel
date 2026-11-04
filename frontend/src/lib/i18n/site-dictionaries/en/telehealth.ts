@@ -28,9 +28,9 @@ export const telehealthStrings = {
   doctorsEmptyTitle: "No results found",
   searchPlaceholder: "Search by physician name...",
   searchAriaLabel: "Search physicians",
-  specialtyFilterAriaLabel: "Filter by specialty",
+  specialtyFilterAriaLabel: "Filter by service",
   languageFilterAriaLabel: "Filter by language",
-  allSpecialties: "All specialties",
+  allSpecialties: "All services",
   allLanguages: "All languages",
 
   // --- doctor-card.tsx / doctor-profile-hero.tsx ortak etiketler (madde 7/9) ---
@@ -119,8 +119,8 @@ export const telehealthStrings = {
   specialtiesMetaDescriptionDefault: "Explore our health tourism services and request a consultation.",
   specialtyMetaDescription: "Request a consultation for {specialty}. A patient coordinator arranges treatment at authorized healthcare facilities.",
   specialtiesPageSubtitle: "Choose a service and send a consultation request. Treatment is performed at authorized healthcare facilities.",
-  specialtiesEmptyTitle: "No specialty found",
-  specialtiesEmptyDescription: "There are currently no specialties to list.",
+  specialtiesEmptyTitle: "No service found",
+  specialtiesEmptyDescription: "There are currently no services to list.",
   /** Paket V — hekimi olmayan uzmanlık sayfasında doktor listesinin yerine. */
   specialtyCoordinatorTitle: "Let our coordinator guide you",
   specialtyCoordinatorText: "Tell us about your situation and a patient coordinator will help you plan treatment at an authorized healthcare facility.",

@@ -14,9 +14,9 @@ export const telehealthStrings: TelehealthStrings = {
   doctorsEmptyTitle: "No se han encontrado resultados",
   searchPlaceholder: "Buscar por nombre del médico...",
   searchAriaLabel: "Buscar médicos",
-  specialtyFilterAriaLabel: "Filtrar por especialidad",
+  specialtyFilterAriaLabel: "Filtrar por servicio",
   languageFilterAriaLabel: "Filtrar por idioma",
-  allSpecialties: "Todas las especialidades",
+  allSpecialties: "Todos los servicios",
   allLanguages: "Todos los idiomas",
 
   verifiedPhysicianBadge: "Médico verificado",
@@ -88,8 +88,8 @@ export const telehealthStrings: TelehealthStrings = {
 
   specialtyMetaDescription: "Solicite una consulta para {specialty}. Un coordinador de pacientes organiza el tratamiento en centros sanitarios autorizados.",
   specialtiesPageSubtitle: "Elija un servicio y envíe una solicitud de consulta. El tratamiento se realiza en centros sanitarios autorizados.",
-  specialtiesEmptyTitle: "No se ha encontrado ninguna especialidad",
-  specialtiesEmptyDescription: "En este momento no hay especialidades que mostrar.",
+  specialtiesEmptyTitle: "No se ha encontrado ningún servicio",
+  specialtiesEmptyDescription: "En este momento no hay servicios que mostrar.",
   specialtyCoordinatorTitle: "Deje que nuestro coordinador le guíe",
   specialtyCoordinatorText: "Cuéntenos su situación y un coordinador de pacientes le ayudará a planificar el tratamiento en un centro sanitario autorizado.",
 

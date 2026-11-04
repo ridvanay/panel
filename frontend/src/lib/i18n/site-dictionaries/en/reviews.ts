@@ -14,7 +14,7 @@ export const reviewsStrings = {
   sectionFaq: "FAQ",
   bookCta: "Book",
   bookCtaAria: "Go to the booking section",
-  overviewSpecialty: "Specialty",
+  overviewSpecialty: "Service",
   overviewLanguages: "Languages spoken",
   overviewHospital: "Hospital / clinic",
   // İşlemler

@@ -10,7 +10,7 @@ export const reviewsStrings: ReviewsStrings = {
   sectionFaq: "Întrebări frecvente",
   bookCta: "Programare",
   bookCtaAria: "Mergi la secțiunea de programare",
-  overviewSpecialty: "Specialitate",
+  overviewSpecialty: "Serviciu",
   overviewLanguages: "Limbi vorbite",
   overviewHospital: "Spital / clinică",
   procedureWhat: "Ce se face",

@@ -10,7 +10,7 @@ export const reviewsStrings: ReviewsStrings = {
   sectionFaq: "Sık Sorulan Sorular",
   bookCta: "Randevu Al",
   bookCtaAria: "Randevu bölümüne git",
-  overviewSpecialty: "Uzmanlık",
+  overviewSpecialty: "Service",
   overviewLanguages: "Konuştuğu diller",
   overviewHospital: "Hastane / klinik",
   procedureWhat: "Ne yapılır",

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
@@ -39,6 +40,7 @@ function normalize(content: ContactPageContent): ContactPageContent {
     locales: { tr: { ...EMPTY_LOCALE, ...content.locales.tr }, en: { ...EMPTY_LOCALE, ...content.locales.en } },
     mapImageMediaId: content.mapImageMediaId ?? null,
     mapUrl: content.mapUrl ?? "",
+    hoursVisible: content.hoursVisible !== false,
   };
 }
 
@@ -113,7 +115,7 @@ export function ContactPageContentCard() {
     setSaving(true);
     setFieldErrors({});
     try {
-      const updated = await contactApi.updateAdminContactPage({ ...content, mapImageMediaId: mapImage?.id ?? null });
+      const updated = await contactApi.updateAdminContactPage({ ...content, hoursVisible: content.hoursVisible !== false, mapImageMediaId: mapImage?.id ?? null });
       setContent(normalize(updated.content));
       setMapImage(mediaFromUrl(updated.content.mapImageMediaId, updated.mapImageUrl));
       toast.success("İletişim sayfası kaydedildi.");
@@ -181,6 +183,22 @@ export function ContactPageContentCard() {
 
       <div className="space-y-2">
         <p className="text-sm font-medium text-foreground">Çalışma saatleri</p>
+        {/* Paket AK (K5) — kart gizlenir ama satırlar silinmez; tüm diller için geçerlidir. */}
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+          <div className="min-w-0 flex-1">
+            <label htmlFor="contact-page-hours-visible" className="cursor-pointer text-sm font-medium text-foreground">
+              İletişim sayfasında çalışma saatlerini göster
+            </label>
+            <p className="text-xs text-foreground/60">Kapalıyken &quot;Çalışma saatleri&quot; kartı sitede görünmez; aşağıdaki satırlar silinmez, tekrar açabilirsiniz.</p>
+          </div>
+          <Switch
+            id="contact-page-hours-visible"
+            checked={content.hoursVisible !== false}
+            onCheckedChange={(checked) => setContent((prev) => (prev ? { ...prev, hoursVisible: Boolean(checked) } : prev))}
+            aria-label="İletişim sayfasında çalışma saatlerini göster"
+            data-testid="switch-contact-hours-visible"
+          />
+        </div>
         {localeContent.hours.length === 0 && <p className="text-xs text-foreground/60">Satır yoksa &quot;Çalışma saatleri&quot; kartı gösterilmez.</p>}
         {localeContent.hours.map((row, index) => (
           <div key={index} className="flex items-center gap-2">
@@ -188,7 +206,7 @@ export function ContactPageContentCard() {
               className="flex-1"
               aria-label={`Satır ${index + 1}: gün(ler)`}
               maxLength={60}
-              placeholder="Pazartesi – Cuma"
+              placeholder="Monday – Friday"
               value={row.label}
               onChange={(e) => patchLocale({ hours: localeContent.hours.map((h, i) => (i === index ? { ...h, label: e.target.value } : h)) })}
             />
@@ -237,7 +255,7 @@ export function ContactPageContentCard() {
         <Field
           id="contact-page-map-url"
           label="Google Haritalar bağlantısı"
-          hint="“Google Haritalar'da aç” düğmesinin hedefi. Yalnızca https://www.google.com/maps/…, https://maps.google.com/… veya https://maps.app.goo.gl/… kabul edilir. Boşsa adres üzerinden arama bağlantısı üretilir."
+          hint="“Google Haritalar'da aç” düğmesinin hedefi. Yalnızca https://www.google.com/maps/…, https://maps.google.com/… veya https://maps.app.goo.gl/… kabul edilir. Adres doluysa düğme her zaman adresi aratır; bu bağlantı yalnızca adres boşken kullanılır."
           error={fieldErrors.mapUrl}
         >
           {(p) => (
