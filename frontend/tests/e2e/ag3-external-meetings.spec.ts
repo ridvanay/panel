@@ -282,11 +282,15 @@ test("2) misafir: gecersiz baglanti tek tip ekran; yaklasan geri sayim; ad dogru
   apiArMeetingId = ar.meeting.id;
   expect(apiArLink).toMatch(/^\/ar\/meet\/join#mg_/);
 
-  // --- Gecersiz baglanti: bicimce gecerli ama bilinmeyen belirtec, bicimce gecersiz ve belirtecsiz ayni ekrani gosterir.
+  // --- Gecersiz baglanti: bicimce gecerli ama bilinmeyen belirtec ve bicimce gecersiz belirtec ayni ekrani gosterir.
+  // Paket AM: belirtecSIZ adres (adres cubugundan kopyalanmis) artik ayri "tam baglanti gerekli" ekranini gosterir.
   const g = await newGuest(browser, 1440);
   try {
+    await g.page.goto("/en/meet/join");
+    await expect(g.page.getByTestId("guest-needs-link")).toBeVisible({ timeout: 90_000 });
+    await expect(g.page.getByTestId("guest-invalid")).toHaveCount(0);
     const texts: string[] = [];
-    for (const [i, url] of ["/en/meet/join#mg_" + "A".repeat(43), "/en/meet/join#garbage", "/en/meet/join"].entries()) {
+    for (const [i, url] of ["/en/meet/join#mg_" + "A".repeat(43), "/en/meet/join#garbage"].entries()) {
       await g.page.goto("about:blank");
       await g.page.goto(url);
       await expect(g.page.getByTestId("guest-invalid")).toBeVisible({ timeout: 90_000 });

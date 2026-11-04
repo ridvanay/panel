@@ -403,10 +403,10 @@ for (const cfg of [
       // Hala doluyken tekrar dene -> yine full
       await over.page.getByTestId("guest-full-retry").click();
       await expect(over.page.getByTestId("guest-full")).toBeVisible({ timeout: 30_000 });
-      // BULGU AM-QA-1: 409 MEETING_FULL yanitinda guestSession donmedigi icin her "Tekrar dene" yeni (admitted olmayan) misafir
-      // satiri acar ve IP basina oturum kotasini tuketir. Burada yalniz gozlemlenir; kota tukenmesi F2 testinde.
+      // AM-QA-1 duzeltmesi (4eaa7bd): dolu denemesi ("Tekrar dene" dahil) kalici misafir satiri ACMAZ ve IP oturum kotasini
+      // tuketmez — satir sayisi yalniz odadaki misafirler kadar kalir.
       const rowsAfterFullRetry = dbGuestRows(m.id);
-      expect(rowsAfterFullRetry).toBeGreaterThanOrEqual(seats + 1);
+      expect(rowsAfterFullRetry).toBe(seats);
 
       // Biri cikar (duzgun ayrilma)
       const leaver = inRoom[1]!;

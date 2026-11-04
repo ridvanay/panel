@@ -251,6 +251,13 @@ export async function pickFirstSlot(page: Page, skip = 0): Promise<void> {
     await day.click();
   }
   await expect(slots.first()).toBeVisible({ timeout: 20_000 });
+  // Gunun gec saatinde (en erken = simdi + 2 sa) ilk gunde `skip`'ten az saat kalabilir; o zaman sonraki uygun gunlere gec.
+  // (Paket AM regresyon kosusunda 19:40'ta ilk gunde 8. saat yoktu — test saate bagli kiriliyordu.)
+  const days = page.locator("button:has([data-testid='day-slot-count'])");
+  for (let d = 1; (await slots.count()) <= skip && d < Math.min(await days.count(), 8); d++) {
+    await days.nth(d).click();
+    await expect(slots.first()).toBeVisible({ timeout: 20_000 });
+  }
   await slots.nth(skip).click();
 }
 
