@@ -235,7 +235,7 @@ function applyList(blocks: Node[], ctx: ListCtx, isHomeScope: boolean) {
 }
 
 /** Yalniz rapor: "we treat / our treatment / ..." gibi tedavi eden taraf ifadeleri. */
-const TREATING_PATTERN = /\bwe treat\b|our treatment\b|our patients['’] treatment|treatment areas|\bour (?:doctors?|physicians?)\b|choose your doctor|verified profiles|doctor profiles|find an available doctor/i;
+const TREATING_PATTERN = /\bwe treat\b|\bour treatment\b|\bour patients['’] treatment|\btreatment areas\b|\bour (?:doctors?|physicians?)\b|choose your doctor|verified profiles|doctor profiles|find an available doctor/i;
 function scanTreating(blocks: Node[], where: string, out: string[]) {
   const visit = (v: unknown, p: string) => {
     if (typeof v === "string") {

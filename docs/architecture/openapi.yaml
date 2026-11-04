@@ -5828,6 +5828,47 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  /public/site-metrics:
+    get:
+      tags: [Settings]
+      security: []
+      summary: Ana sayfa sayaç şeridi için canlı sayılar (public, API anahtarı GEREKTİRMEZ)
+      description: >
+        Paket AK (K2). Kişisel veri YOK; yalnızca toplamlar. Hesaplanamayan kalem `null` döner (istemci o öğeyi göstermez).
+        `activeServices` = aktif ÜST hizmet sayısı (`parentId = null` + `isActive`); `visitorLanguages` = etkin site dilleri
+        (`tr` hariç — Türkçe ziyaretçiye kapalı); `activeCoordinators` = aktif koordinatör (profil aktif + kullanıcı ACTIVE +
+        doktor profili yok + EDITOR/MANAGER); `consultationMinutes` = `ServiceDesk.durationMin` (masa yoksa `null`).
+        Yanıt `Cache-Control: public, max-age=60, s-maxage=60`. Aynı uç takma ad olarak `/site-metrics` altında da sunulur.
+        Not: `/public/*` altındaki diğer uçlar `X-Api-Key` ister; bu uç AYRI bir plugin'dir ve anahtar istemez.
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control: { schema: { type: string }, description: "public, max-age=60, s-maxage=60" }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteMetrics" }
+
+  /site-metrics:
+    get:
+      tags: [Settings]
+      security: []
+      summary: "`GET /public/site-metrics` ile aynı (takma ad)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteMetrics" }
+
   /settings:
     get:
       tags: [Settings]
@@ -18034,6 +18075,12 @@ components:
         `pages.schemas.ts::PageNodeSchema` dispatch'i).
 
 
+        **Paket AK (K1/K2):** TÜM düğümlerde (container ve çocukları dahil) opsiyonel `hidden: boolean` vardır
+        (yok = görünür; `true` = ziyaretçiye ÇİZİLMEZ, panelde soluk görünür; dil başına liste ayrı tutulur).
+        `counter` öğelerinde opsiyonel `metric` (`activeServices` · `visitorLanguages` · `activeCoordinators` ·
+        `consultationMinutes`) vardır; doluysa değer `GET /public/site-metrics` ucundan gelir, alınamazsa öğe gösterilmez.
+
+
         `type: "text"` bloklarının `data.html`'i DB'ye yazılmadan önce
         `lib/html-sanitize.ts::sanitizeRichHtml`'den geçer — **konteyner İÇİNDEKİLER DAHİL**
         (iteratif tarama + özyinelemeli sanitize, derinlik `MAX_CONTAINER_DEPTH` ile
@@ -19311,6 +19358,15 @@ components:
           items: { type: object, properties: { label: { type: string, maxLength: 60 }, value: { type: string, maxLength: 60 } } }
         responseTime: { type: string, maxLength: 160 }
 
+    SiteMetrics:
+      type: object
+      required: [activeServices, visitorLanguages, activeCoordinators, consultationMinutes]
+      properties:
+        activeServices: { type: integer, nullable: true, description: "Aktif ÜST hizmet sayısı; 0/hesaplanamıyorsa null." }
+        visitorLanguages: { type: integer, nullable: true, description: "Etkin site dilleri, `tr` hariç; 0 ise null." }
+        activeCoordinators: { type: integer, nullable: true, description: "Uygun aktif koordinatör sayısı; 0 ise null." }
+        consultationMinutes: { type: integer, nullable: true, description: "ServiceDesk.durationMin; masa yoksa null." }
+
     ContactPageContent:
       type: object
       properties:
@@ -19322,6 +19378,7 @@ components:
             tr: { $ref: "#/components/schemas/ContactPageLocaleContent" }
         mapImageMediaId: { type: string, format: uuid, nullable: true }
         mapUrl: { type: string, maxLength: 500, description: "Yalnızca Google Haritalar bağlantısı; boş = adresten arama bağlantısı" }
+        hoursVisible: { type: boolean, description: "Paket AK (K5) — iletişim sayfasında çalışma saatleri kartı. Alan yok = görünür (`true`). PUT'ta gönderilmezse mevcut değer korunur." }
 
     AdminContactPage:
       type: object
@@ -19332,13 +19389,14 @@ components:
 
     PublicContactPage:
       type: object
-      required: [locale, content, whatsappDigits, mapImageUrl, mapUrl, privacyPage, consent, treatmentNotSure]
+      required: [locale, content, whatsappDigits, mapImageUrl, mapUrl, hoursVisible, privacyPage, consent, treatmentNotSure]
       properties:
         locale: { type: string, enum: [en, tr] }
         content: { $ref: "#/components/schemas/ContactPageLocaleContent" }
         whatsappDigits: { type: string, description: "https://wa.me/<whatsappDigits>" }
         mapImageUrl: { type: string, nullable: true }
         mapUrl: { type: string }
+        hoursVisible: { type: boolean, description: "Paket AK (K5) — `false` iken çalışma saatleri kartı gösterilmez (varsayılan `true`)." }
         privacyPage:
           type: object
           nullable: true
@@ -20183,6 +20241,12 @@ components:
           nullable: true
           maxLength: 64
           description: "Paket AH — Uluslararası Sağlık Turizmi Yetki Belgesi numarası (admin girer). `null` = belge satırı sitede gösterilmez."
+        findTreatmentEnabled:
+          type: boolean
+          description: "Paket AK (K3) — Find your treatment özelliği (giriş noktaları + `/find-your-treatment`). Varsayılan `true` (mevcut davranış). `false` iken frontend düğmeleri/menü bağlantılarını gizler, sayfayı `/specialties` adresine 302'ler, sitemap/llms'ten çıkarır. Satır yokken (DEFAULTS yolu) da `true` döner."
+        bookConsultationCtaEnabled:
+          type: boolean
+          description: "Paket AK (K3) — Book a consultation giriş noktaları (header, mega menü, kartlar). Varsayılan `true`. `false` iken düğmeler gizlenir; `/book-consultation` (manage hariç) `/request` adresine 302'lenir. `serviceBookingEnabled` ve mevcut randevular ETKİLENMEZ."
 
     AdminSiteSettings:
       description: >
@@ -20351,6 +20415,8 @@ components:
         liveChatPosition: { type: string, enum: [BOTTOM_RIGHT, BOTTOM_LEFT], description: "Dahili sohbet düğmesinin köşesi (geçersiz değer 422)." }
         healthTourismCertificateNo: { type: string, nullable: true, maxLength: 64, description: "Paket AH — Yetki Belgesi numarası. Trim edilir; boş/yalnız boşluk → `null`; 64 karakter üstü, kontrol karakteri ve `<` `>` 422." }
         blogMedicalReviewRequired: { type: boolean, description: "Paket AH — blog hekim onayı (Z1) şartı bayrağı (varsayılan `false`)." }
+        findTreatmentEnabled: { type: boolean, description: "Paket AK — Find your treatment anahtarı (yalnız ADMIN; `settings.update` audit metadata'sına yeni değer yazılır). Gönderilmezse mevcut değer korunur." }
+        bookConsultationCtaEnabled: { type: boolean, description: "Paket AK — Book a consultation giriş noktaları anahtarı (yalnız ADMIN; audit'e yeni değer yazılır). Gönderilmezse mevcut değer korunur." }
         bookingNotificationRecipients: { type: string, nullable: true, maxLength: 2000, description: "Paket AG — `null` = varsayılana dön, `\"\"` = bildirim yok, dolu = virgülle ayrılmış adresler (en çok 10; geçersiz adres 422)." }
         # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
         # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş
