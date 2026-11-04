@@ -48,6 +48,7 @@ export async function resetDatabase(prisma: PrismaClient) {
       const text = err instanceof Error ? `${err.message} ${JSON.stringify((err as { meta?: unknown }).meta ?? {})}` : String(err);
       const isDeadlock = text.includes("40P01") || text.toLowerCase().includes("deadlock detected");
       if (!isDeadlock || attempt >= maxAttempts) throw err;
+      console.warn(`[resetDatabase] 40P01 deadlock — yeniden deneme ${attempt}/${maxAttempts - 1}`);
       await new Promise((r) => setTimeout(r, 100 * attempt));
     }
   }
