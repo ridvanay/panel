@@ -6,7 +6,7 @@ import type { NavigationItemDto, SiteSettings } from "@/lib/api/types";
  * Paket AJ-2 (c) — ziyaretçi sayfalarının RENDER EDİLMİŞ HTML'inde (metin + erişilebilirlik öznitelikleri + JSON-LD)
  * hekim ima eden ifade taraması. WM Health bir aracı kuruluştur; sitede hekim yoktur (`lib/intermediary.ts`).
  *
- * Aranan ifadeler: doctor, physician, surgeon, "Dr.", "Prof.", "Consult Physicians", "Find a physician", "your doctor",
+ * Aranan ifadeler (Paket AL ile genişletildi: specialist, "our hospital", "we treat" dahil): doctor, physician, surgeon, "Dr.", "Prof.", "Consult Physicians", "Find a physician", "your doctor",
  * "(video) consultation with a doctor/physician/specialist". "video consultation" TEK BAŞINA yasak DEĞİLDİR
  * (hasta koordinatörüyle görüntülü görüşme sürer).
  *
@@ -80,7 +80,7 @@ import { intermediaryStrings } from "@/lib/i18n/site-dictionaries/en/intermediar
 const LOCALES = [{ code: "en", label: "English", nativeLabel: "English", isDefault: true, enabled: true, sortOrder: 0, hreflang: null }];
 
 /** Yasak ifadeler (EN). */
-const FORBIDDEN = /\b(?:doctors?|physicians?|surgeons?)\b|\bDr\.|\bProf\.|consult physicians|find a physician|(?:video )?consultation with (?:a |an |our |the )?(?:doctor|physician|specialist)/i;
+const FORBIDDEN = /\b(?:doctors?|physicians?|surgeons?|specialists?)\b|\bour hospitals?\b|\bwe treat\b|\bDr\.|\bProf\.|consult physicians|find a physician|(?:video )?consultation with (?:a |an |our |the )?(?:doctor|physician|specialist)/i;
 
 /** İzinli istisnalar — bulunan eşleşmeden ÖNCE metinden çıkarılır. */
 const ALLOWED: RegExp[] = [
@@ -206,6 +206,10 @@ describe("Tarama yardımcısı", () => {
     expect(findDoctorPhrases("Meet our doctors")).toHaveLength(1);
     expect(findDoctorPhrases("Free video consultation with a specialist")).toHaveLength(1);
     expect(findDoctorPhrases("Find a physician")).toHaveLength(1);
+    // Paket AL — genişletilen ifadeler.
+    expect(findDoctorPhrases("Meet our specialists")).toHaveLength(1);
+    expect(findDoctorPhrases("Visit our hospital")).toHaveLength(1);
+    expect(findDoctorPhrases("Conditions we treat")).toHaveLength(1);
     expect(findDoctorPhrases("Dr. Vahit Mutlu")).toHaveLength(1);
     expect(findDoctorPhrases("Free online video consultation with a patient coordinator")).toHaveLength(0);
     expect(findDoctorPhrases("Decisions are made by physicians at authorized healthcare facilities.")).toHaveLength(0);

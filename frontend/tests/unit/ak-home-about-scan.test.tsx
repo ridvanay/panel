@@ -193,3 +193,54 @@ describe("K6 — Hakkımızda: 'What we coordinate'", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/**
+ * Paket AL İş 4 — EN ziyaretçi sözlüğünde "doctor / physician / surgeon / specialist / our hospital / we treat / Dr." taraması.
+ * - İZİNLİ BEYAN: tıbbi karar sorumluluğunu yetkili tesise bağlayan cümleler (ALLOWED).
+ * - BAYRAKLA KAPALI ÖZELLİK ANAHTARLARI: hekim portalı/profili/randevusu (telehealth, portal, consultation, reviews ad alanları)
+ *   ve hekim bölümleri (FLAGGED_KEYS) — kodda durur, ziyaretçide kapalıdır; silinmez ama burada pinlenir.
+ *   Listeye YENİ bir anahtar düşerse test kırılır: ya metin düzeltilir ya bilinçli olarak buraya eklenir.
+ * - KALAN ZİYARETÇİ YERLERİ (REMAINING_VISITOR): ziyaretçi sayfasından erişilebilen ama hekim ima eden metinler (rapora yazıldı).
+ */
+describe("AL İş 4 — sözlükte hekim ifadesi taraması (EN)", () => {
+  const TERMS = /\b(?:doctors?|physicians?|surgeons?|specialists?|our hospitals?|we treat)\b|\bDr\./i;
+  const ALLOWED = [/\b(?:made )?by (?:a |the )?physicians?(?: at| in| from)? (?:an? |the )?(?:authorized )?healthcare facilit(?:y|ies)/gi, /\bphysicians? at (?:an? )?authorized healthcare facilit(?:y|ies)/gi];
+  const FLAGGED_NAMESPACES = ["telehealth", "portal", "consultation", "reviews"];
+  const FLAGGED_KEYS = [
+    "nav.doctorPortal",
+    "nav.consultPhysicians",
+    "about.doctorsTitle",
+    "about.viewAllDoctorsCta",
+    "contact.doctorRequestMessage",
+    "home.doctorsTitle",
+    "home.doctorsCta",
+    "packages.relatedDoctorsTitle",
+    "blog.previewBannerPending",
+  ];
+  // Hekim-ima eden ama ziyaretçiye açık (medical-reviewers / içerik standartları) metinler: rapora yazıldı, ürün sahibi kararı bekler.
+  const REMAINING_VISITOR = ["trustPages.mrIntro", "trustPages.mrReviewersTitle", "trustPages.mrReviewersText", "trustPages.mrReviewersEmpty"];
+
+  function scan(): string[] {
+    const hits: string[] = [];
+    const walk = (value: unknown, path: string) => {
+      if (typeof value === "string") {
+        let cleaned = value;
+        for (const re of ALLOWED) cleaned = cleaned.replace(re, "");
+        if (TERMS.test(cleaned)) hits.push(path);
+      } else if (value && typeof value === "object") {
+        for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k);
+      }
+    };
+    walk(en, "");
+    return hits.filter((p) => !FLAGGED_NAMESPACES.includes(p.split(".")[0]));
+  }
+
+  it("yeni hekim ifadesi eklenmemiş: kalan bulgular yalnızca bilinen bayraklı / raporlanmış anahtarlar", () => {
+    expect(scan().sort()).toEqual([...FLAGGED_KEYS, ...REMAINING_VISITOR].sort());
+  });
+
+  it("izinli beyanlar (yetkili tesiste hekim) bulgu sayılmaz", () => {
+    const hits = scan();
+    for (const key of ["blog.disclaimer", "trustPages.csNotText", "request.aboutDont2", "serviceBooking.medicalNote"]) expect(hits, key).not.toContain(key);
+  });
+});
