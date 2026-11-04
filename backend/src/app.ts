@@ -58,6 +58,7 @@ import { registerCartRetentionSweeper } from "./lib/cart-retention";
 import { apiKeysRoutes } from "./modules/api-keys/api-keys.routes";
 import { outboundWebhooksRoutes } from "./modules/outbound-webhooks/outbound-webhooks.routes";
 import { publicApiRoutes } from "./modules/public-api/public-api.routes";
+import { publicSiteMetricsRoutes } from "./modules/site-metrics/site-metrics.routes";
 import { registerWebhookDispatcher, recoverStuckWebhookDeliveries } from "./modules/outbound-webhooks/outbound-webhooks.dispatcher";
 import { registerWebhookDeliveryRetentionScheduler } from "./modules/outbound-webhooks/outbound-webhooks.retention";
 import { telehealthRoutes } from "./modules/telehealth/telehealth.routes";
@@ -315,6 +316,9 @@ export function buildApp() {
       // ANA settings router'ına EKLENMEDİ, bkz. o dokümanın §1.2).
       api.register(adminEmailSettingsRoutes, { prefix: "/admin/settings/email" });
       api.register(publicApiRoutes, { prefix: "/public" });
+      // Paket AK (K2) - canli sayac verisi; API anahtari GEREKTIRMEZ (ayri plugin). `/public/site-metrics` kontrat yolu, `/site-metrics` takma ad.
+      api.register(publicSiteMetricsRoutes, { prefix: "/public/site-metrics" });
+      api.register(publicSiteMetricsRoutes, { prefix: "/site-metrics" });
       // Tele-Sağlık modülü — bkz. .claude/architect-scope-telehealth-template.md §2.2/§4.1.
       // PUBLIC uçlar kök seviyede `/doctors` + `/appointments` (prefiks YOK, telehealthRoutes
       // kendi içinde ikisini de tanımlar) ve `requireModuleEnabled("telehealth")` ile korunur
