@@ -509,6 +509,15 @@ interface Backup {
   slides: { id: string; layers: unknown }[];
   contact: { pageContent: unknown } | null;
   settings: { exists: boolean; findTreatmentEnabled: boolean; bookConsultationCtaEnabled: boolean } | null;
+  /** Uygulamadan SONRAKI beklenen durumun ozetleri (restore, yedekten sonra yapilan duzenlemeleri bununla tespit eder). */
+  after?: { pages: Record<string, string>; contact: string | null; settings: { findTreatmentEnabled: boolean; bookConsultationCtaEnabled: boolean } | null };
+}
+
+/** Anahtar sirasindan bagimsiz kararli ozet (Postgres jsonb anahtar sirasini degistirir). */
+function stable(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v as object).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  return JSON.stringify(v) ?? "null";
 }
 
 function buildBackup(plan: Plan): Backup {
@@ -520,6 +529,11 @@ function buildBackup(plan: Plan): Backup {
       slides: plan.slides.filter((s) => s.changed).map((s) => ({ id: s.id, layers: s.oldLayers })),
       contact: plan.contact ? { pageContent: plan.contact.oldContent } : null,
       settings: plan.settings ? { exists: plan.settings.exists, ...plan.settings.old } : null,
+      after: {
+        pages: Object.fromEntries(plan.pages.filter((p) => p.changed && !p.invalid).map((p) => [p.id, stable({ blocks: p.blocks, translations: p.translations })])),
+        contact: plan.contact ? stable(plan.contact.content) : null,
+        settings: plan.settings ? { findTreatmentEnabled: false, bookConsultationCtaEnabled: false } : null,
+      },
     })
   ) as Backup;
 }
@@ -564,13 +578,97 @@ async function applyPlan(plan: Plan, audit: { operator: string; backup: string }
   return stats;
 }
 
-async function restoreBackup(file: string, operator: string) {
+interface RestoreAssessment {
+  missingPages: string[];
+  missingSlides: string[];
+  warnings: string[];
+  pages: Backup["pages"];
+  slides: Backup["slides"];
+}
+
+/** Yedekteki kayitlari guncel DB ile karsilastirir: yedekten sonra degismis kayitlari ve artik var olmayanlari tespit eder. */
+async function assessRestore(snap: Backup): Promise<RestoreAssessment> {
+  const warnings: string[] = [];
+  const pageRows = await prisma.page.findMany({ where: { id: { in: snap.pages.map((p) => p.id) } }, select: { id: true, slug: true, blocks: true, translations: true, updatedAt: true, deletedAt: true } });
+  const present = new Map(pageRows.map((p) => [p.id, p]));
+  const missingPages: string[] = [];
+  const pages: Backup["pages"] = [];
+  for (const p of snap.pages) {
+    const row = present.get(p.id);
+    if (!row) {
+      missingPages.push(`/${p.slug} (${p.id})`);
+      continue;
+    }
+    pages.push(p);
+    const expected = snap.after?.pages?.[p.id];
+    const current = stable({ blocks: row.blocks, translations: row.translations });
+    if (expected === undefined) warnings.push(`sayfa /${row.slug}: bu yedekte karşılaştırma özeti yok (eski sürüm); güncel updatedAt=${row.updatedAt.toISOString()} — restore bu sayfadaki sonraki düzenlemeleri ezebilir`);
+    else if (expected !== current) warnings.push(`sayfa /${row.slug}: yedekten sonra değişmiş — restore bu düzenlemeleri ezer (updatedAt=${row.updatedAt.toISOString()})`);
+    if (row.deletedAt) warnings.push(`sayfa /${row.slug}: çöp kutusunda (restore içeriği yazar, çöpten çıkarmaz)`);
+  }
+  const slideRows = await prisma.slide.findMany({ where: { id: { in: snap.slides.map((x) => x.id) } }, select: { id: true } });
+  const slidePresent = new Set(slideRows.map((x) => x.id));
+  const missingSlides = snap.slides.filter((x) => !slidePresent.has(x.id)).map((x) => x.id);
+  const slides = snap.slides.filter((x) => slidePresent.has(x.id));
+  if (snap.contact) {
+    const form = await prisma.contactForm.findUnique({ where: { id: CONTACT_FORM_ID }, select: { pageContent: true, updatedAt: true } });
+    if (form && snap.after?.contact !== undefined && snap.after.contact !== null && stable(form.pageContent) !== snap.after.contact) {
+      warnings.push(`iletişim sayfası: yedekten sonra değişmiş — restore bu düzenlemeleri ezer (updatedAt=${form.updatedAt.toISOString()})`);
+    }
+  }
+  if (snap.settings && snap.after?.settings) {
+    const row = await prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { findTreatmentEnabled: true, bookConsultationCtaEnabled: true, updatedAt: true } });
+    if (row && (row.findTreatmentEnabled !== snap.after.settings.findTreatmentEnabled || row.bookConsultationCtaEnabled !== snap.after.settings.bookConsultationCtaEnabled)) {
+      warnings.push(`ayarlar: yedekten sonra değişmiş (find=${row.findTreatmentEnabled}, book=${row.bookConsultationCtaEnabled}) — restore bu düzenlemeleri ezer (updatedAt=${row.updatedAt.toISOString()})`);
+    }
+  }
+  return { missingPages, missingSlides, warnings, pages, slides };
+}
+
+function printAssessment(a: RestoreAssessment) {
+  for (const w of a.warnings) console.log(`[uyarı] ${w}`);
+  for (const m of a.missingPages) console.log(`[atla] yedekteki sayfa artık yok, atlanacak: ${m}`);
+  for (const m of a.missingSlides) console.log(`[atla] yedekteki slayt artık yok, atlanacak: ${m}`);
+}
+
+/** Restore yazmadan ONCE guncel durumun ayri bir yedegi (ayni biçim; gerekirse o da --restore ile geri yuklenebilir). */
+async function writePreRestoreBackup(a: RestoreAssessment, dir: string): Promise<string> {
+  const pages = await prisma.page.findMany({ where: { id: { in: a.pages.map((p) => p.id) } }, select: { id: true, slug: true, blocks: true, translations: true } });
+  const slides = await prisma.slide.findMany({ where: { id: { in: a.slides.map((x) => x.id) } }, select: { id: true, layers: true } });
+  const form = await prisma.contactForm.findUnique({ where: { id: CONTACT_FORM_ID }, select: { pageContent: true } });
+  const settings = await prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { findTreatmentEnabled: true, bookConsultationCtaEnabled: true } });
+  const snap: Backup = JSON.parse(
+    JSON.stringify({
+      version: 1,
+      createdAt: new Date().toISOString(),
+      pages,
+      slides,
+      contact: form ? { pageContent: form.pageContent } : null,
+      settings: settings ? { exists: true, ...settings } : null,
+    })
+  ) as Backup;
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `client-revisions-ak-pre-restore-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  fs.writeFileSync(file, JSON.stringify(snap, null, 2), "utf8");
+  return file;
+}
+
+function readBackupFile(file: string): Backup {
   const snap = JSON.parse(fs.readFileSync(file, "utf8")) as Backup;
   if (snap.version !== 1 || !Array.isArray(snap.pages) || !Array.isArray(snap.slides)) throw new Error("Geçersiz yedek dosyası biçimi.");
+  return snap;
+}
+
+async function restoreBackup(file: string, operator: string, backupDir: string) {
+  const snap = readBackupFile(file);
+  const a = await assessRestore(snap);
+  printAssessment(a);
+  const pre = await writePreRestoreBackup(a, backupDir);
+  console.log(`[yedek] restore öncesi güncel durum: ${pre}`);
   await prisma.$transaction(
     async (tx) => {
-      for (const p of snap.pages) await tx.page.update({ where: { id: p.id }, data: { blocks: p.blocks as Prisma.InputJsonValue, translations: p.translations as Prisma.InputJsonValue } });
-      for (const s of snap.slides) await tx.slide.update({ where: { id: s.id }, data: { layers: s.layers as Prisma.InputJsonValue } });
+      for (const p of a.pages) await tx.page.update({ where: { id: p.id }, data: { blocks: p.blocks as Prisma.InputJsonValue, translations: p.translations as Prisma.InputJsonValue } });
+      for (const s of a.slides) await tx.slide.update({ where: { id: s.id }, data: { layers: s.layers as Prisma.InputJsonValue } });
       if (snap.contact) await tx.contactForm.update({ where: { id: CONTACT_FORM_ID }, data: { pageContent: snap.contact.pageContent as Prisma.InputJsonValue } });
       if (snap.settings) {
         await tx.siteSettings.upsert({
@@ -580,12 +678,17 @@ async function restoreBackup(file: string, operator: string) {
         });
       }
       await tx.auditLog.create({
-        data: { actorEmail: `script:${operator}`, action: "site.client_revisions_ak_restore", targetType: "Script", metadata: { script: "apply-client-revisions-ak", backup: path.basename(file), pages: snap.pages.length, slides: snap.slides.length } },
+        data: {
+          actorEmail: `script:${operator}`,
+          action: "site.client_revisions_ak_restore",
+          targetType: "Script",
+          metadata: { script: "apply-client-revisions-ak", backup: path.basename(file), preRestoreBackup: path.basename(pre), pages: a.pages.length, slides: a.slides.length, skippedPages: a.missingPages.length, skippedSlides: a.missingSlides.length, overwrittenEdits: a.warnings.length },
+        },
       });
     },
     { timeout: 60_000 }
   );
-  console.log(`[fix] yedekten geri yüklendi (sayfa=${snap.pages.length}, slayt=${snap.slides.length}, iletişim=${snap.contact ? 1 : 0}, ayar=${snap.settings ? 1 : 0}).`);
+  console.log(`[fix] yedekten geri yüklendi (sayfa=${a.pages.length}, slayt=${a.slides.length}, iletişim=${snap.contact ? 1 : 0}, ayar=${snap.settings ? 1 : 0}; atlanan sayfa=${a.missingPages.length}, slayt=${a.missingSlides.length}).`);
 }
 
 async function revalidate(plan: Plan | null) {
@@ -614,6 +717,14 @@ async function main() {
   if (args.confirm !== undefined && !write) throw new Error(`Geçersiz --confirm değeri. Beklenen: --confirm=${CONFIRM_TOKEN}`);
   if (write && !args.operator?.trim()) throw new Error("--operator=<ad> zorunludur (audit log için).");
   if (args.phone !== undefined && !DISPLAY_PHONE_PATTERN.test(args.phone)) throw new Error('--call-center-phone geçersiz (ör. "+90 212 000 00 00": rakam, boşluk, ( ) - ve baştaki +).');
+  if (!args.list && !args.restore) {
+    // Panel PUT semasi (contact-page.ts::plain(300)) ile AYNI kurallar: trim, en cok 300 karakter, HTML yok; ek olarak tek satir.
+    // (contact-page.ts dogrudan import EDILMEZ: env/anahtar dogrulamasini tetikler; kurallar burada aynalanir.)
+    const address = args.address.trim();
+    const problem = !address ? "boş olamaz" : address.length > 300 ? "en çok 300 karakter" : /<\s*[a-z!/?]/i.test(address) ? "HTML kullanılamaz; düz metin girin" : /[\r\n]/.test(address) ? "tek satır olmalı" : null;
+    if (problem) throw new Error(`--address geçersiz: ${problem} (en çok 300 karakter, HTML yok, tek satır).`);
+    args.address = address;
+  }
   console.log(`[apply-client-revisions-ak] mod=${args.list ? "LİSTE" : args.restore ? (write ? "GERİ YÜKLE" : "KURU (restore)") : write ? "YAZ" : "KURU ÇALIŞTIRMA"}`);
   printTargetDb();
   assertProdWriteAllowed(write, process.argv.slice(2));
@@ -626,10 +737,11 @@ async function main() {
     const file = path.resolve(args.restore);
     if (!fs.existsSync(file)) throw new Error(`Yedek dosyası bulunamadı: ${file}`);
     if (!write) {
+      printAssessment(await assessRestore(readBackupFile(file)));
       console.log(`[kuru] ${file} yedeğinden geri yüklenecekti (hiçbir şey yazılmadı).`);
       return;
     }
-    await restoreBackup(file, args.operator!.trim());
+    await restoreBackup(file, args.operator!.trim(), path.resolve(args.backupDir ?? "storage/backups"));
     if (!args.noRevalidate) await revalidate(null);
     return;
   }

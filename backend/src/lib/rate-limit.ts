@@ -169,3 +169,6 @@ export const BULK_AVAILABILITY_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
 
 /** Paket R — `GET /geo/hint` (herkese açık; sayfa başına bir kez çağrılır). */
 export const GEO_HINT_RATE_LIMIT = { max: 20, timeWindow: "1 minute" };
+
+/** Paket AK - `GET /public/site-metrics` (herkese acik, DB sayimi yapar): IP basina 60/dk. */
+export const SITE_METRICS_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };

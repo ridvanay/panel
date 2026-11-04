@@ -295,7 +295,7 @@ describe("scripts/apply-client-revisions-ak.ts", () => {
       // Restore: birebir eski
       const backups = fs.readdirSync(backupDir).filter((f) => f.startsWith("client-revisions-ak-"));
       expect(backups).toHaveLength(1);
-      const restore = runScript([`--restore=${path.join(backupDir, backups[0]!)}`, ...CONFIRM]);
+      const restore = runScript([`--restore=${path.join(backupDir, backups[0]!)}`, ...CONFIRM, `--backup-dir=${backupDir}`]);
       expect(restore.status, restore.stderr).toBe(0);
       expect(await snapshot()).toBe(before);
       expect(await prisma.auditLog.count({ where: { action: "site.client_revisions_ak_restore" } })).toBe(1);
@@ -329,6 +329,58 @@ describe("scripts/apply-client-revisions-ak.ts", () => {
       expect(res.status, res.stderr).toBe(0);
       const contact = (await prisma.contactForm.findUniqueOrThrow({ where: { id: "singleton" } })).pageContent as Node;
       expect(contact.locales.en.address).toBe("Test Cad. 5, Istanbul");
+    });
+
+    it("--address panel semasiyla dogrulanir: HTML, 300+ karakter ve cok satirli adres reddedilir (yazmadan cikar)", async () => {
+      const before = await snapshot();
+      for (const bad of ["<b>x</b> Cad. 1", "A".repeat(301), "Satir 1\nSatir 2"]) {
+        const res = runScript([...CONFIRM, `--address=${bad}`, `--backup-dir=${backupDir}`]);
+        expect(res.status, bad.slice(0, 20)).not.toBe(0);
+        expect(res.stderr).toContain("--address geçersiz");
+      }
+      expect(runScript([`--address=<script>`, `--backup-dir=${backupDir}`]).status).not.toBe(0);
+      expect(await snapshot()).toBe(before);
+      expect(fs.readdirSync(backupDir)).toHaveLength(0);
+    });
+
+    it("restore: yazmadan once ayri on-yedek alinir; yedekten sonra degismis kayitlar uyarilir (kuru ve gercek); silinmis sayfa atlanir, restore dusmez", async () => {
+      expect(runScript([...CONFIRM, `--backup-dir=${backupDir}`]).status).toBe(0);
+      const backupFile = path.join(backupDir, fs.readdirSync(backupDir).find((f) => f.startsWith("client-revisions-ak-2"))!);
+
+      // Yedekten sonra: ana sayfa elle duzenlendi, iletisim degisti, ayar acildi, hakkimizda sayfasi silindi.
+      const home = await prisma.page.findUniqueOrThrow({ where: { id: homeId } });
+      const blocks = home.blocks as Node[];
+      blocks.push({ id: "manual-1", type: "text", data: { html: "<p>manuel</p>" } });
+      await prisma.page.update({ where: { id: homeId }, data: { blocks: blocks as Prisma.InputJsonValue } });
+      const form = await prisma.contactForm.findUniqueOrThrow({ where: { id: "singleton" } });
+      await prisma.contactForm.update({ where: { id: "singleton" }, data: { pageContent: { ...(form.pageContent as Node), mapImageMediaId: null, title: "elle" } as Prisma.InputJsonValue } });
+      await prisma.siteSettings.update({ where: { id: "singleton" }, data: { findTreatmentEnabled: true } });
+      await prisma.page.delete({ where: { id: aboutId } });
+
+      const dry = runScript([`--restore=${backupFile}`, `--backup-dir=${backupDir}`]);
+      expect(dry.status, dry.stderr).toBe(0);
+      expect(dry.stdout).toContain("sayfa /home: yedekten sonra değişmiş — restore bu düzenlemeleri ezer");
+      expect(dry.stdout).toContain("iletişim sayfası: yedekten sonra değişmiş — restore bu düzenlemeleri ezer");
+      expect(dry.stdout).toContain("ayarlar: yedekten sonra değişmiş");
+      expect(dry.stdout).toContain("yedekteki sayfa artık yok, atlanacak: /about");
+      expect(dry.stdout).toContain("[kuru]");
+      expect(fs.readdirSync(backupDir).filter((f) => f.includes("pre-restore"))).toHaveLength(0);
+
+      const afterEdit = await snapshot();
+      const real = runScript([`--restore=${backupFile}`, ...CONFIRM, `--backup-dir=${backupDir}`]);
+      expect(real.status, real.stderr).toBe(0);
+      expect(real.stdout).toContain("yedekten sonra değişmiş — restore bu düzenlemeleri ezer");
+      expect(real.stdout).toContain("[yedek] restore öncesi güncel durum:");
+      expect(real.stdout).toContain("atlanan sayfa=1");
+      const pre = fs.readdirSync(backupDir).filter((f) => f.startsWith("client-revisions-ak-pre-restore-"));
+      expect(pre).toHaveLength(1);
+      const preSnap = JSON.parse(fs.readFileSync(path.join(backupDir, pre[0]!), "utf8")) as { pages: { id: string; blocks: Node[] }[]; settings: { findTreatmentEnabled: boolean } };
+      expect(preSnap.pages.find((p) => p.id === homeId)!.blocks.some((b) => b.id === "manual-1")).toBe(true);
+      expect(preSnap.settings.findTreatmentEnabled).toBe(true);
+      expect(await snapshot()).not.toBe(afterEdit);
+      const restoredHome = await page(homeId);
+      expect((restoredHome.blocks as Node[]).some((b) => b.id === "manual-1")).toBe(false);
+      expect((await prisma.auditLog.findFirstOrThrow({ where: { action: "site.client_revisions_ak_restore" } })).metadata).toMatchObject({ skippedPages: 1 });
     });
 
     it("NODE_ENV=production iken yazma --i-know-this-is-prod ister; bayrakla gecer", async () => {

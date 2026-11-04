@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { resetSiteMetricsCache } from "../../src/modules/site-metrics/site-metrics.routes";
 import { mkCoordinator, mkSpecialty, mkUser } from "../helpers/service-desk";
 
 /** Paket AK (K2) - GET /public/site-metrics: canli sayac verisi, kisisel veri yok, 60 sn onbellek. */
@@ -18,6 +19,7 @@ describe("Paket AK - site-metrics", () => {
   });
   beforeEach(async () => {
     await resetDatabase(app.prisma);
+    resetSiteMetricsCache();
   });
 
   it("anonim erisilir (API anahtari gerekmez), Cache-Control 60 sn; bos veride hizmet/koordinator/masa null", async () => {
@@ -74,5 +76,22 @@ describe("Paket AK - site-metrics", () => {
     expect(a.consultationMinutes).toBe(45);
     expect(b).toEqual(a);
     expect(Object.keys(a).sort()).toEqual(["activeCoordinators", "activeServices", "consultationMinutes", "visitorLanguages"]);
+  });
+
+  it("60 sn bellek ici onbellek: ikinci istek DB degisse de ayni degeri doner; sifirlaninca yenilenir", async () => {
+    await mkSpecialty(app, "A");
+    expect((await get()).json().data.activeServices).toBe(1);
+    await mkSpecialty(app, "B");
+    expect((await get()).json().data.activeServices).toBe(1);
+    resetSiteMetricsCache();
+    expect((await get()).json().data.activeServices).toBe(2);
+  });
+
+  it("rota seviyesinde oran siniri: ayni IP'den dakikada 60'tan fazla istek 429", async () => {
+    const ip = "10.55.7.7";
+    const statuses: number[] = [];
+    for (let i = 0; i < 61; i += 1) statuses.push((await app.inject({ method: "GET", url: "/api/v1/public/site-metrics", remoteAddress: ip })).statusCode);
+    expect(statuses.slice(0, 60).every((c) => c === 200)).toBe(true);
+    expect(statuses[60]).toBe(429);
   });
 });
