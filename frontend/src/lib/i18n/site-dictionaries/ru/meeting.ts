@@ -153,6 +153,9 @@ export const meetingStrings: MeetingStrings = {
   guestWaitingLeave: "Выйти",
   guestFullTitle: "Встреча заполнена",
   guestFullBody: "Достигнут лимит участников. Обратитесь к организатору.",
+  guestNeedsLinkTitle: "Нужна полная ссылка-приглашение",
+  guestNeedsLinkBody: "Для этой страницы нужна полная ссылка-приглашение. Откройте ссылку из приглашения ещё раз — ссылки, скопированные из адресной строки, не работают.",
+  guestTooManyAttempts: "Слишком много попыток. Подождите несколько секунд — мы повторим попытку автоматически.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "Онлайн-консультация с вашим координатором пациентов WM Health",

@@ -153,6 +153,9 @@ export const meetingStrings: MeetingStrings = {
   guestWaitingLeave: "Quitter",
   guestFullTitle: "Cette réunion est complète",
   guestFullBody: "La limite de participants est atteinte. Veuillez contacter l'hôte.",
+  guestNeedsLinkTitle: "Lien d'invitation complet requis",
+  guestNeedsLinkBody: "Cette page nécessite le lien d'invitation complet. Veuillez rouvrir le lien de votre invitation — les liens copiés depuis la barre d'adresse ne fonctionnent pas.",
+  guestTooManyAttempts: "Trop de tentatives. Patientez quelques secondes ; nous réessaierons automatiquement.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "Consultation en ligne avec votre coordinateur patient WM Health",

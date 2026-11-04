@@ -153,6 +153,9 @@ export const meetingStrings: MeetingStrings = {
   guestWaitingLeave: "مغادرة",
   guestFullTitle: "هذا الاجتماع ممتلئ",
   guestFullBody: "تم بلوغ حد المشاركين. يرجى التواصل مع المضيف.",
+  guestNeedsLinkTitle: "مطلوب رابط الدعوة الكامل",
+  guestNeedsLinkBody: "تحتاج هذه الصفحة إلى رابط الدعوة الكامل. يرجى فتح الرابط من دعوتك مرة أخرى — الروابط المنسوخة من شريط العنوان لا تعمل.",
+  guestTooManyAttempts: "محاولات كثيرة جدًا. يرجى الانتظار بضع ثوانٍ؛ سنعيد المحاولة تلقائيًا.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "استشارة عبر الإنترنت مع منسّق المرضى في WM Health",

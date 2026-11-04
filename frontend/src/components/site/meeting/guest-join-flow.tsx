@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Ban, CalendarClock, DoorClosed, Hourglass, LogOut, ShieldCheck, Users } from "lucide-react";
+import { Ban, CalendarClock, Link2Off, DoorClosed, Hourglass, LogOut, ShieldCheck, Users } from "lucide-react";
 import { ApiClientError } from "@/lib/api/error";
 import { guestJoin, guestPreflight, type GuestJoinResponse, type GuestPreflight } from "@/lib/api/meetings";
 import type { MeetingTokenResponse } from "@/lib/api/types";
@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { PrejoinDeviceCheck, type PrejoinCheckHandle } from "@/components/site/telehealth/room/prejoin-device-check";
 import { MeetingNotice, MeetingRoom, type MeetingExitReason } from "./meeting-room";
 import { validateGuestName, type GuestNameProblem } from "./guest-name";
+import { clearGuestRecord, loadGuestRecord, saveGuestRecord } from "./guest-session-storage";
 import { formatCountdown, formatMeetingClock, MEETING_JOIN_LEAD_MS } from "./meeting-time";
 
 /** Misafir belirteci biçimi (sunucu: `^mg_[A-Za-z0-9_-]{43}$`). */
@@ -24,6 +25,21 @@ const TOKEN_PATTERN = /^mg_[A-Za-z0-9_-]{43}$/;
 /** Sekme gizliyken yoklama aralığı (tasarım §8.4: 5 sn → 15 sn). */
 const HIDDEN_POLL_MS = 15_000;
 const DEFAULT_POLL_MS = 5_000;
+/** Paket AM İş 3: yoklamaya 0–2 sn rastgele gecikme eklenir (aynı ağdaki misafirler aynı saniyeye yığılmasın). */
+const POLL_JITTER_MS = 2_000;
+const RETRY_AFTER_MAX_SEC = 120;
+const FIRST_JOIN_MAX_AUTO_RETRIES = 5;
+/** Paket AM İş 4: "dolu" ekranında otomatik yeniden deneme aralığı ve üst sınırı. */
+const FULL_RETRY_MS = 15_000;
+const FULL_MAX_AUTO_RETRIES = 8;
+
+/** 429 gövdesindeki `details.retryAfterSeconds` (backend `Retry-After` başlığıyla aynı değeri taşır) → ms. */
+export function retryAfterMs(err: unknown): number | null {
+  const raw = err instanceof ApiClientError ? err.details?.retryAfterSeconds?.[0] : undefined;
+  const sec = Number(raw);
+  if (!Number.isFinite(sec) || sec <= 0) return null;
+  return Math.min(sec, RETRY_AFTER_MAX_SEC) * 1000;
+}
 
 /**
  * Adres çubuğundaki `#mg_…` parçasını okur ve geçmişten SİLER (belirteç URL'de, Referer'da ve geçmişte kalmaz).
@@ -40,10 +56,11 @@ export function takeTokenFromLocation(): string | null {
 type Stage =
   | { kind: "checking" }
   | { kind: "invalid" }
+  | { kind: "needsLink" }
   | { kind: "error"; message: string }
   | { kind: "upcoming" }
   | { kind: "name"; message?: string }
-  | { kind: "joining" }
+  | { kind: "joining"; silent?: boolean; message?: string }
   | { kind: "waiting"; pollMs: number }
   | { kind: "full" }
   | { kind: "room"; token: MeetingTokenResponse }
@@ -128,10 +145,22 @@ export function GuestJoinFlow() {
   const nameRef = useRef<string>("");
   const prejoinRef = useRef<PrejoinCheckHandle | null>(null);
   const startedRef = useRef(false);
+  /** Oturum sessionStorage'dan geldi (ilk join reddedilirse adla yeni kayda düşülür). */
+  const restoredRef = useRef(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fullAutoRetriesRef = useRef(0);
+  const joinRef = useRef<((withName: string | null, opts?: { silent?: boolean; attempt?: number }) => Promise<void>) | null>(null);
+
+  const forgetStored = useCallback(() => clearGuestRecord(tokenRef.current), []);
+  useEffect(() => () => clearTimeout(retryTimerRef.current), []);
 
   const runPreflight = useCallback(async () => {
     const token = tokenRef.current;
-    if (!token || !TOKEN_PATTERN.test(token)) {
+    if (!token) {
+      setStage({ kind: "needsLink" });
+      return;
+    }
+    if (!TOKEN_PATTERN.test(token)) {
       setStage({ kind: "invalid" });
       return;
     }
@@ -139,20 +168,51 @@ export function GuestJoinFlow() {
     try {
       const result = await guestPreflight(token);
       setInfo(result);
-      setStage(result.phase === "upcoming" && Date.now() < new Date(result.startsAt).getTime() - MEETING_JOIN_LEAD_MS ? { kind: "upcoming" } : { kind: "name" });
+      if (result.phase === "upcoming" && Date.now() < new Date(result.startsAt).getTime() - MEETING_JOIN_LEAD_MS) {
+        setStage({ kind: "upcoming" });
+      } else if (sessionRef.current) {
+        // Yenileme: aynı misafir kaydıyla doğrudan katıl (ad formu atlanır).
+        void joinRef.current?.(null, { silent: true });
+      } else {
+        setStage({ kind: "name" });
+      }
     } catch (err) {
       if (err instanceof ApiClientError && (err.status === 404 || err.code === "MEETING_LINK_INVALID")) {
+        forgetStored();
         setStage({ kind: "invalid" });
       } else {
         setStage({ kind: "error", message: meetingErrorMessage(err, t) });
       }
     }
-  }, [t]);
+  }, [t, forgetStored]);
 
   useEffect(() => {
     if (!startedRef.current) {
       startedRef.current = true;
-      tokenRef.current = takeTokenFromLocation();
+      const fromUrl = takeTokenFromLocation();
+      if (fromUrl) {
+        tokenRef.current = fromUrl;
+        if (TOKEN_PATTERN.test(fromUrl)) {
+          const saved = loadGuestRecord(fromUrl);
+          if (saved?.session) {
+            sessionRef.current = saved.session;
+            restoredRef.current = true;
+          }
+          if (saved?.name) nameRef.current = saved.name;
+          saveGuestRecord({ token: fromUrl, ...(saved?.session ? { session: saved.session } : {}), ...(saved?.name ? { name: saved.name } : {}) });
+        }
+      } else {
+        // Yenileme: belirteç adreste yok → bu sekmenin sessionStorage kaydından alınır (yoksa "tam bağlantı gerekli").
+        const saved = loadGuestRecord();
+        if (saved && TOKEN_PATTERN.test(saved.token)) {
+          tokenRef.current = saved.token;
+          if (saved.session) {
+            sessionRef.current = saved.session;
+            restoredRef.current = true;
+          }
+          if (saved.name) nameRef.current = saved.name;
+        }
+      }
     }
     void runPreflight();
     // Yalnızca bağlandığında bir kez: dil değişimi preflight'ı yeniden çalıştırmasın.
@@ -162,6 +222,8 @@ export function GuestJoinFlow() {
   /** `join` yanıtını sahneye çevirir (ilk giriş, yoklama ve yeniden katılım için ortak). */
   const applyJoinResult = useCallback((res: GuestJoinResponse) => {
     sessionRef.current = res.guestSession;
+    restoredRef.current = false;
+    if (tokenRef.current) saveGuestRecord({ token: tokenRef.current, session: res.guestSession, ...(nameRef.current ? { name: nameRef.current } : {}) });
     if (res.status === "waiting") {
       setStage({ kind: "waiting", pollMs: Math.max(1, res.pollAfterSec ?? 5) * 1000 });
       return;
@@ -176,6 +238,7 @@ export function GuestJoinFlow() {
       if (err instanceof ApiClientError) {
         if (err.status === 404 || err.code === "MEETING_LINK_INVALID") {
           prejoinRef.current?.stop();
+          forgetStored();
           setStage({ kind: "invalid" });
           return true;
         }
@@ -197,29 +260,66 @@ export function GuestJoinFlow() {
       setStage({ kind: "name", message: meetingErrorMessage(err, t) });
       return true;
     },
-    [t]
+    [t, forgetStored]
   );
 
   const join = useCallback(
-    async (withName: string | null) => {
+    async (withName: string | null, opts: { silent?: boolean; attempt?: number } = {}) => {
       const token = tokenRef.current;
       if (!token) {
-        setStage({ kind: "invalid" });
+        setStage({ kind: "needsLink" });
         return;
       }
-      setStage({ kind: "joining" });
+      const attempt = opts.attempt ?? 0;
+      const useName = withName ?? nameRef.current;
+      if (!sessionRef.current && !useName) {
+        setStage({ kind: "name" });
+        return;
+      }
+      clearTimeout(retryTimerRef.current);
+      setStage({ kind: "joining", silent: opts.silent });
       try {
         const res = await guestJoin({
           t: token,
-          ...(sessionRef.current ? { guestSession: sessionRef.current } : { name: withName ?? nameRef.current }),
+          ...(sessionRef.current ? { guestSession: sessionRef.current } : { name: useName }),
         });
         applyJoinResult(res);
       } catch (err) {
+        if (err instanceof ApiClientError && err.status === 429) {
+          // İlk giriş 429: kullanıcı dostu mesaj + Retry-After kadar sonra otomatik yeniden deneme (sınırlı).
+          if (attempt < FIRST_JOIN_MAX_AUTO_RETRIES) {
+            setStage({ kind: "joining", silent: opts.silent, message: t.guestTooManyAttempts });
+            const wait = (retryAfterMs(err) ?? 5_000) + Math.random() * POLL_JITTER_MS;
+            retryTimerRef.current = setTimeout(() => void joinRef.current?.(withName, { silent: opts.silent, attempt: attempt + 1 }), wait);
+          } else {
+            setStage({ kind: "name", message: t.guestTooManyAttempts });
+          }
+          return;
+        }
+        if (err instanceof ApiClientError && (err.status === 404 || err.code === "MEETING_LINK_INVALID") && restoredRef.current) {
+          // Saklanan oturum kabul edilmedi: bir kez adla yeni kayda düş (bağlantı gerçekten geçersizse bu da 404 döner).
+          restoredRef.current = false;
+          sessionRef.current = null;
+          if (nameRef.current) {
+            void joinRef.current?.(nameRef.current, { silent: opts.silent });
+          } else {
+            setStage({ kind: "name" });
+          }
+          return;
+        }
+        if (opts.silent && (!(err instanceof ApiClientError) || err.status === 0 || err.status >= 500)) {
+          // Oturumla otomatik katılım ağ/sunucu hatasına düştü: ad formu değil, "yeniden dene" (online olayında otomatik).
+          setStage({ kind: "error", message: meetingErrorMessage(err, t) });
+          return;
+        }
         applyJoinError(err, false);
       }
     },
-    [applyJoinResult, applyJoinError]
+    [applyJoinResult, applyJoinError, t]
   );
+  useEffect(() => {
+    joinRef.current = join;
+  }, [join]);
 
   // Bekleme: ev sahibi gelene kadar 5 sn'de bir yoklar (sekme gizliyken 15 sn).
   const waitingPollMs = stage.kind === "waiting" ? stage.pollMs : null;
@@ -227,9 +327,11 @@ export function GuestJoinFlow() {
     if (waitingPollMs === null) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
+    let rateLimited = 0;
+    const schedule = (overrideMs?: number) => {
       const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
-      timer = setTimeout(() => void tick(), hidden ? Math.max(HIDDEN_POLL_MS, waitingPollMs) : waitingPollMs || DEFAULT_POLL_MS);
+      const base = overrideMs ?? (hidden ? Math.max(HIDDEN_POLL_MS, waitingPollMs) : waitingPollMs || DEFAULT_POLL_MS);
+      timer = setTimeout(() => void tick(), base + Math.random() * POLL_JITTER_MS);
     };
     const tick = async () => {
       const token = tokenRef.current;
@@ -237,31 +339,61 @@ export function GuestJoinFlow() {
       try {
         const res = await guestJoin({ t: token, guestSession: sessionRef.current });
         if (cancelled) return;
+        rateLimited = 0;
         if (res.status === "waiting") schedule();
         else applyJoinResult(res);
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiClientError && err.status === 429) {
+          // Retry-After'a uy; yoksa üstel geri çekilme (10, 20, 40, en çok 60 sn).
+          rateLimited += 1;
+          schedule(retryAfterMs(err) ?? Math.min(60_000, 10_000 * 2 ** (rateLimited - 1)));
+          return;
+        }
         if (!applyJoinError(err, true)) schedule();
       }
     };
     schedule();
+    // Ağ değişimi (wifi→4G, IP değişimi): bağlantı geri gelince beklemeden, aynı guestSession ile hemen yokla.
+    const onOnline = () => {
+      if (timer) clearTimeout(timer);
+      void tick();
+    };
+    window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      window.removeEventListener("online", onOnline);
     };
   }, [waitingPollMs, applyJoinResult, applyJoinError]);
+
+  // Ağ hatası ekranındayken bağlantı geri gelirse otomatik yeniden dene (kayıtlı oturum varsa ad sorulmadan katılır).
+  const isErrorStage = stage.kind === "error";
+  useEffect(() => {
+    if (!isErrorStage) return;
+    const onOnline = () => void runPreflight();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [isErrorStage, runPreflight]);
 
   const reconnectToken = useCallback(async (): Promise<MeetingTokenResponse> => {
     const token = tokenRef.current;
     const session = sessionRef.current;
     if (!token || !session) throw new ApiClientError(404, { code: "MEETING_LINK_INVALID", message: "invalid" });
-    const res = await guestJoin({ t: token, guestSession: session });
+    let res: GuestJoinResponse;
+    try {
+      res = await guestJoin({ t: token, guestSession: session });
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 404) forgetStored();
+      throw err;
+    }
     if (res.status === "ready") return { token: res.token, serverUrl: res.serverUrl, roomName: res.roomName, expiresAt: res.expiresAt };
     // Ev sahibi odada değilken yeniden bağlanma bekleme kapısına takılır → kurtarma "yeniden dene" ekranına düşer.
     throw new ApiClientError(409, { code: "MEETING_NOT_OPEN", message: "waiting" });
-  }, []);
+  }, [forgetStored]);
 
   function handleExit(reason: MeetingExitReason, detail?: string) {
+    if (reason === "ended" || reason === "removed") forgetStored();
     if (reason === "failed") setStage({ kind: "name", message: detail ?? t.errGeneric });
     else setStage({ kind: reason });
   }
@@ -271,9 +403,22 @@ export function GuestJoinFlow() {
     const result = validateGuestName(name);
     if (!result.ok) return;
     nameRef.current = result.value;
+    restoredRef.current = false;
+    if (tokenRef.current) saveGuestRecord({ token: tokenRef.current, ...(sessionRef.current ? { session: sessionRef.current } : {}), name: result.value });
     prejoinRef.current?.stop();
     void join(result.value);
   }
+
+  // Paket AM İş 4: "dolu" ekranında 15 sn'de bir (sınırlı sayıda) otomatik yeniden deneme.
+  // Bağımlılık `stage` nesnesi: ardışık "full" sonuçları (React toplu güncellemesi) efekti yeniden kurar.
+  useEffect(() => {
+    if (stage.kind !== "full" || fullAutoRetriesRef.current >= FULL_MAX_AUTO_RETRIES) return;
+    const id = setTimeout(() => {
+      fullAutoRetriesRef.current += 1;
+      void joinRef.current?.(null, { silent: true });
+    }, FULL_RETRY_MS);
+    return () => clearTimeout(id);
+  }, [stage]);
 
   const nameResult = validateGuestName(name);
   const nameError = touched && !nameResult.ok ? nameProblemMessage(nameResult.reason, t) : undefined;
@@ -292,6 +437,8 @@ export function GuestJoinFlow() {
     );
   } else if (stage.kind === "invalid") {
     content = <MeetingNotice testId="guest-invalid" icon={<Ban className="h-9 w-9" />} title={t.guestInvalidTitle} body={t.guestInvalidBody} />;
+  } else if (stage.kind === "needsLink") {
+    content = <MeetingNotice testId="guest-needs-link" icon={<Link2Off className="h-9 w-9" />} title={t.guestNeedsLinkTitle} body={t.guestNeedsLinkBody} />;
   } else if (stage.kind === "error") {
     content = (
       <MeetingNotice
@@ -306,7 +453,26 @@ export function GuestJoinFlow() {
       />
     );
   } else if (stage.kind === "full") {
-    content = <MeetingNotice testId="guest-full" icon={<Users className="h-9 w-9" />} title={t.guestFullTitle} body={t.guestFullBody} />;
+    content = (
+      <MeetingNotice
+        testId="guest-full"
+        icon={<Users className="h-9 w-9" />}
+        title={t.guestFullTitle}
+        body={t.guestFullBody}
+        actions={
+          <Button type="button" variant="outline" data-testid="guest-full-retry" onClick={() => void join(null)}>
+            {t.retry}
+          </Button>
+        }
+      />
+    );
+  } else if (stage.kind === "joining" && stage.silent) {
+    content = (
+      <div role="status" className="flex items-center justify-center gap-3 py-16 text-sm text-foreground/70" data-testid="guest-checking">
+        <Spinner className="h-5 w-5" />
+        {stage.message ?? t.guestChecking}
+      </div>
+    );
   } else if (stage.kind === "ended") {
     content = <MeetingNotice testId="guest-ended" icon={<DoorClosed className="h-9 w-9" />} title={t.roomEndedTitle} body={t.roomEndedBody} />;
   } else if (stage.kind === "removed") {
@@ -325,7 +491,7 @@ export function GuestJoinFlow() {
       />
     );
   } else if (stage.kind === "upcoming" && info) {
-    content = <UpcomingScreen startsAt={info.startsAt} onOpen={() => setStage({ kind: "name" })} isServiceConsultation={isServiceConsultation} />;
+    content = <UpcomingScreen startsAt={info.startsAt} onOpen={() => (sessionRef.current ? void join(null, { silent: true }) : setStage({ kind: "name" }))} isServiceConsultation={isServiceConsultation} />;
   } else if (stage.kind === "room" && info) {
     content = (
       <div dir="ltr">
@@ -378,7 +544,7 @@ export function GuestJoinFlow() {
                 <p>{t.guestPurposeNotice}</p>
               </div>
             )}
-            {stage.kind === "name" && stage.message && <Alert variant="error">{stage.message}</Alert>}
+            {(stage.kind === "name" || stage.kind === "joining") && stage.message && <Alert variant="error">{stage.message}</Alert>}
             <Field id="guest-name" label={t.guestNameLabel} hint={t.guestNameHint} error={nameError} required>
               {(inputProps) => (
                 <Input

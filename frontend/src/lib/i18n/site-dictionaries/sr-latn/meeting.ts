@@ -153,6 +153,9 @@ export const meetingStrings: MeetingStrings = {
   guestWaitingLeave: "Napusti",
   guestFullTitle: "Ovaj sastanak je pun",
   guestFullBody: "Dostignut je broj učesnika. Obratite se domaćinu.",
+  guestNeedsLinkTitle: "Potreban je pun link pozivnice",
+  guestNeedsLinkBody: "Ova stranica zahteva pun link pozivnice. Ponovo otvorite link iz pozivnice — linkovi kopirani iz adresne trake ne rade.",
+  guestTooManyAttempts: "Previše pokušaja. Sačekajte nekoliko sekundi; pokušaćemo ponovo automatski.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "Onlajn konsultacija sa vašim koordinatorom pacijenata WM Health",

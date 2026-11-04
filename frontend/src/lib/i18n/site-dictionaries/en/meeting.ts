@@ -48,7 +48,7 @@ export const meetingStrings = {
   fieldDuration: "Duration",
   fieldCapacity: "Participant limit",
   capacityHint: "Total number of people in the room, including you (2 to 8).",
-  capacityOption: "{count} people",
+  capacityOption: "{count} people (including you)",
   fieldNote: "Private note",
   noteHint: "Only you can see this note. It is not shown to guests or included in emails.",
   fieldAutoAdmit: "Let guests in even if I have not joined yet",
@@ -165,6 +165,9 @@ export const meetingStrings = {
   guestWaitingLeave: "Leave",
   guestFullTitle: "This meeting is full",
   guestFullBody: "The participant limit has been reached. Please ask the host.",
+  guestNeedsLinkTitle: "Full invitation link needed",
+  guestNeedsLinkBody: "This page needs the full invitation link. Please open the link from your invitation again — links copied from the address bar don't work.",
+  guestTooManyAttempts: "Too many attempts. Please wait a few seconds; we will try again automatically.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "Online consultation with your WM Health patient coordinator",

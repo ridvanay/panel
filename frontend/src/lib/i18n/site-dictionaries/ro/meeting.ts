@@ -153,6 +153,9 @@ export const meetingStrings: MeetingStrings = {
   guestWaitingLeave: "Părăsiți",
   guestFullTitle: "Această întâlnire este plină",
   guestFullBody: "Limita de participanți a fost atinsă. Contactați gazda.",
+  guestNeedsLinkTitle: "Este necesar linkul complet de invitație",
+  guestNeedsLinkBody: "Această pagină are nevoie de linkul complet de invitație. Deschideți din nou linkul din invitația dvs. — linkurile copiate din bara de adrese nu funcționează.",
+  guestTooManyAttempts: "Prea multe încercări. Așteptați câteva secunde; vom încerca din nou automat.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "Consultație online cu coordonatorul tău de pacienți WM Health",

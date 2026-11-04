@@ -43,7 +43,7 @@ export const meetingStrings: MeetingStrings = {
   fieldDuration: "Süre",
   fieldCapacity: "Katılımcı sınırı",
   capacityHint: "Siz dahil odadaki toplam kişi sayısı (2 ile 8 arası).",
-  capacityOption: "{count} kişi",
+  capacityOption: "{count} kişi (siz dahil)",
   fieldNote: "Özel not",
   noteHint: "Bu notu yalnızca siz görürsünüz. Misafirlere gösterilmez ve e-postalara eklenmez.",
   fieldAutoAdmit: "Ben katılmadan da misafirleri içeri al",
@@ -153,6 +153,9 @@ export const meetingStrings: MeetingStrings = {
   guestWaitingLeave: "Ayrıl",
   guestFullTitle: "Toplantı dolu",
   guestFullBody: "Katılımcı sınırına ulaşıldı. Lütfen ev sahibine danışın.",
+  guestNeedsLinkTitle: "Full invitation link needed",
+  guestNeedsLinkBody: "This page needs the full invitation link. Please open the link from your invitation again — links copied from the address bar don't work.",
+  guestTooManyAttempts: "Too many attempts. Please wait a few seconds; we will try again automatically.",
 
   // ---- Hizmet görüşmesi amaç metinleri ----
   guestPurposeTitle: "Online consultation with your WM Health patient coordinator",

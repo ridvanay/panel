@@ -71,11 +71,13 @@ beforeEach(() => {
   harness.reset();
   removeMediaDevices();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   guestPreflight.mockReset();
   guestJoin.mockReset();
   guestPreflight.mockResolvedValue(openPreflight());
   openLink();
   vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(Math, "random").mockReturnValue(0);
 });
 
 afterEach(() => {
@@ -105,7 +107,8 @@ describe("belirteç URL parçasından okunur ve adres çubuğundan silinir", () 
     openLink("");
     await renderFlow();
     expect(guestPreflight).not.toHaveBeenCalled();
-    expect(await screen.findByTestId("guest-invalid")).toHaveTextContent("Bu bağlantı geçersiz");
+    expect(await screen.findByTestId("guest-needs-link")).toBeInTheDocument();
+    expect(screen.queryByTestId("guest-invalid")).not.toBeInTheDocument();
     cleanup();
     openLink("#mg_kisa");
     await renderFlow();
@@ -262,7 +265,7 @@ describe("bekleme ekranı ve yoklama", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     guestJoin
       .mockResolvedValueOnce({ status: "waiting", guestSession: "gs_v1.s", pollAfterSec: 5 })
-      .mockRejectedValueOnce(apiError(429, "RATE_LIMITED"))
+      .mockRejectedValueOnce(apiError(429, "RATE_LIMITED", { retryAfterSeconds: ["5"] }))
       .mockResolvedValueOnce(ready());
     await renderFlow();
     await fillAndJoin();
