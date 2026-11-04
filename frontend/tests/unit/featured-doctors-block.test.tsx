@@ -167,10 +167,11 @@ describe("metin hizalama ve bağlantılar", () => {
   it("metin bloğu `align` değerini uygular, eski kayıtta satır başına (LTR'de sol, RTL'de sağ) düşer", () => {
     const text = (align?: TextBlock["data"]["align"]): TextBlock => ({ id: "t", type: "text", data: { html: "<p>Merhaba</p>", align } });
     const { container, rerender } = render(<TextBlockView block={text("center")} chrome="page" />);
-    expect(container.firstElementChild!.className).toContain("text-center");
+    // Paket Z1-ek sonrası hizalama sınıfı dış sarmalayıcıda değil, `.blog-prose` gövde öğesindedir.
+    expect(container.querySelector(".blog-prose")!.className).toContain("text-center");
     rerender(<TextBlockView block={text()} chrome="page" />);
     // Paket L — mantıksal hizalama (`text-start`): Arapça (RTL) sayfada da doğru tarafa yaslanır.
-    expect(container.firstElementChild!.className).toContain("text-start");
+    expect(container.querySelector(".blog-prose")!.className).toContain("text-start");
   });
 
   it("dış bağlantı yeni sekme + rel=noopener, site içi bağlantı aynı sekme", () => {
