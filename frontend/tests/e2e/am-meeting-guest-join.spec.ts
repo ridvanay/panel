@@ -497,7 +497,6 @@ for (const mixed of [false, true]) {
 }
 
 test("F2) BULGU AM-QA-1: 'dolu' denemeleri IP oturum kotasini tuketir; yer acilinca ayni IP'den yeni misafir girebilmeli", async () => {
-  test.fail(true, "AM-QA-1: 409 MEETING_FULL yanitinda guestSession donmuyor; her tekrar deneme yeni misafir satiri acar ve IP kotasini (max(20, max*4)) tuketir");
   test.setTimeout(420_000);
   const ip = `${NET}100`;
   const m = await createMeeting("F2-kota", 3); // kota = max(20, 12) = 20

@@ -194,6 +194,8 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
       let guestId: string;
       let displayName: string;
       let session: string;
+      // Bu istekte AÇILAN satır + tüketilen IP oturum kotası (kapasite dolu çıkarsa geri alınır).
+      let createdNow: { ipKey: string; at: number } | null = null;
       if (guestSession) {
         const guest = existingGuest!;
         await app.prisma.externalMeetingGuest.update({ where: { id: guest.id }, data: { lastSeenAt: now }, select: { id: true } });
@@ -211,6 +213,7 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
         if (sessions >= MAX_GUEST_SESSIONS_PER_MEETING) throw new MeetingFullError("The meeting is full.");
         const ipKey = crypto.createHash("sha256").update(`${meeting.id}|${ipRateKey(request.ip)}`).digest("hex");
         if (!guestSessionIpLimiter.tryConsume(ipKey, now.getTime(), sessionsPerIpPerMeeting(meeting.maxParticipants))) throw new MeetingFullError("The meeting is full.");
+        createdNow = { ipKey, at: now.getTime() };
         const created = await app.prisma.externalMeetingGuest.create({
           data: { meetingId: meeting.id, displayName: normalized.name, lastSeenAt: now },
           select: { id: true },
@@ -251,7 +254,15 @@ export async function meetingsGuestRoutes(app: FastifyInstance) {
             app.log.warn({ err, meetingId: meeting.id }, "Toplantı katılımcı durumları okunamadı; durumsuz sayım kullanıldı.");
           }
         }
-        if (guestsInRoom >= capacity) throw new MeetingFullError("The meeting is full.");
+        if (guestsInRoom >= capacity) {
+          // Paket AM (AM-QA-1): dolu toplantı yeni misafir satırı bırakmaz ve IP oturum kotasını tüketmez.
+          // (guestSession ile gelen yeniden deneme zaten satır açmaz.) Bekleme durumunda satır korunur (yukarıda döner).
+          if (createdNow) {
+            await app.prisma.externalMeetingGuest.deleteMany({ where: { id: guestId, admittedAt: null } });
+            guestSessionIpLimiter.release(createdNow.ipKey, createdNow.at);
+          }
+          throw new MeetingFullError("The meeting is full.");
+        }
       }
 
       // 7) token

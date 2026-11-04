@@ -599,6 +599,33 @@ describe("aynı ve farklı IP'lerden çok katılımcı, yeniden bağlanma (Paket
     expect((await join(token, { name: "Sekizinci" }, office)).statusCode).toBe(409);
   });
 
+  it("AM-QA-1: dolu toplantıda 30 deneme yeni misafir satırı açmaz ve IP kotasını tüketmez; koltuk açılınca aynı IP girer; guestSession'lı dolu deneme satır açmaz", async () => {
+    const { meeting, token } = await seed({ startsInMin: 0, max: 3 });
+    const ip = nextIp();
+    await admitMany(meeting, token, [ip, ip]);
+    const before = await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } });
+    for (let i = 0; i < 30; i += 1) {
+      guestJoinLimiter.reset();
+      const res = await join(token, { name: `Fazla ${i}` }, ip);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("MEETING_FULL");
+    }
+    expect(await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } })).toBe(before);
+    // oturumlu dolu deneme: satır açmaz
+    const sessionRow = await app.prisma.externalMeetingGuest.create({ data: { meetingId: meeting.id, displayName: "Oturumlu" } });
+    const sessionStr = issueGuestSession(sessionRow.id, meeting.id, meeting.endsAt);
+    guestJoinLimiter.reset();
+    expect((await join(token, { guestSession: sessionStr }, ip)).statusCode).toBe(409);
+    expect(await app.prisma.externalMeetingGuest.count({ where: { meetingId: meeting.id } })).toBe(before + 1);
+    await app.prisma.externalMeetingGuest.delete({ where: { id: sessionRow.id } });
+    // koltuk açılır
+    lk.rooms.set(meeting.roomName, [`meet-host:${host.id}`]);
+    guestJoinLimiter.reset();
+    const ok = await join(token, { name: "Yeni" }, ip);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().data.status).toBe("ready");
+  });
+
   it("guestSession ile yeniden join: aynı guestId ve LiveKit kimliği, yeni satır yok; IP-A'dan alınan oturum IP-B'den de çalışır; çıkarılan geri giremez", async () => {
     const { meeting, token } = await seed({ startsInMin: 0, max: 4 });
     lk.rooms.set(meeting.roomName, [`meet-host:${host.id}`]);
