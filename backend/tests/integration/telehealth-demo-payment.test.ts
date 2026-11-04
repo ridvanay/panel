@@ -154,10 +154,15 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
   // `http://localhost:3000` LİTERAL string'ini bekliyor) kırardı. Bu yüzden `PUBLIC_URL` yerine
   // yalnızca BU test bloğu için `FRONTEND_URL`'i geçici olarak gerçek bir domain'e override ediyoruz.
   const ORIGINAL_FRONTEND_URL = process.env.FRONTEND_URL;
+  // Paket AL (İş 1.4) — `config/env.ts` artık production'da `*.localhost` PUBLIC_URL'i de `process.exit(1)` ile
+  // reddediyor (RFC 6761 genişletmesi, 2026-09-18); `.env.test`'in `siteadi.localhost` değeri bu bloğu ve
+  // ardındaki testleri düşürüyordu (NODE_ENV "production"da kalıyor, sonraki blok da `ENABLE_DEMO_PAYMENTS` korumasına takılıyordu).
+  const ORIGINAL_PUBLIC_URL = process.env.PUBLIC_URL;
 
   beforeAll(async () => {
     process.env.NODE_ENV = "production";
     process.env.FRONTEND_URL = "https://wmhealthistanbul.com";
+    process.env.PUBLIC_URL = "https://wmhealthistanbul.com";
     delete process.env.ENABLE_DEMO_PAYMENTS; // fail-closed boot korumasını TETİKLEMEMEK için false kalır.
     vi.resetModules();
     ({ buildApp } = await import("../../src/app"));
@@ -172,6 +177,7 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
     await app.close();
     process.env.NODE_ENV = "test";
     process.env.FRONTEND_URL = ORIGINAL_FRONTEND_URL;
+    process.env.PUBLIC_URL = ORIGINAL_PUBLIC_URL;
     vi.resetModules();
   });
 
