@@ -14,10 +14,10 @@ export function escapeEmbeddedClosingTags(code: string): string {
 
 /**
  * Font eşleştirme tablosu (ui-designer kararı, design-notes-appearance-panel.md §7) — `SiteFont`
- * enum'u KAPALI olduğu için (§10.12.3, `next/font/google` derleme-zamanı kısıtı) admin panelindeki
+ * enum'u KAPALI olduğu için (§10.12.3, `next/font/local` derleme-zamanı kısıtı) admin panelindeki
  * mini-önizleme kartları GERÇEK fontu YÜKLEMEZ, yalnızca tarayıcının zaten sahip olduğu en yakın
  * sistem eşleniğini (`cssFallback`) gösterir. Gerçek font SADECE `(site)` layout'unda/canlı
- * önizlemede `next/font/google` üzerinden yüklenir (bkz. `(site)/layout.tsx`, `SITE_FONT_CLASS_MAP`
+ * önizlemede `next/font/local` üzerinden yüklenir (bkz. `(site)/layout.tsx`, `SITE_FONT_CLASS_MAP`
  * orada tanımlıdır — kapalı enum derleme-zamanı importu gerektirdiği için burada DEĞİL, layout'ta).
  */
 export const SITE_FONT_OPTIONS: { value: SiteFont; label: string; cssFallback: string }[] = [

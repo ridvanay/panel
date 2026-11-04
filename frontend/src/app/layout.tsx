@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { Providers } from "./providers";
 import { HtmlLangSync } from "@/components/html-lang-sync";
 import { localeDirection } from "@/lib/i18n/locale-direction";
@@ -9,15 +9,64 @@ import { buildSiteIconsMetadata } from "@/lib/site-settings/site-icons";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import "./globals.css";
 
-// Paket T — `latin-ext`: Romence (ș ț ă î â), Sırpça Latin (č ć đ š ž), Fransızca (œ) giriş/admin ekranlarında da.
-const geistSans = Geist({
+// Paket AL — Geist yerel dosyadan (next/font/local; build'de Google Fonts indirmesi YOK). Google'daki gibi alt küme başına
+// ayrı yüz (unicode-range): latin + latin-ext (Paket T: Romence ș ț ă î â, Sırpça Latin č ć đ š ž, Fransızca œ) + cyrillic (Rusça).
+// `-cyr`/`-ext` yüzleri ana fontun ardına `font-family` listesinde eklenir (bkz. globals.css `--font-sans`/`--font-mono`).
+const geistSans = localFont({
+  src: [
+    { path: "../fonts/geist/geist-latin-100-900-normal.woff2", weight: "100 900", style: "normal" },
+  ],
   variable: "--font-geist-sans",
-  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  adjustFontFallback: false,
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" }],
 });
-
-const geistMono = Geist_Mono({
+const geistSansCyr = localFont({
+  src: [
+    { path: "../fonts/geist/geist-cyrillic-100-900-normal.woff2", weight: "100 900", style: "normal" },
+  ],
+  variable: "--font-geist-sans-cyr",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  declarations: [{ prop: "unicode-range", value: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116" }],
+});
+const geistSansExt = localFont({
+  src: [
+    { path: "../fonts/geist/geist-latin-ext-100-900-normal.woff2", weight: "100 900", style: "normal" },
+  ],
+  variable: "--font-geist-sans-ext",
+  display: "swap",
+  preload: false,
+  declarations: [{ prop: "unicode-range", value: "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF" }],
+});
+const geistMono = localFont({
+  src: [
+    { path: "../fonts/geist-mono/geist-mono-latin-100-900-normal.woff2", weight: "100 900", style: "normal" },
+  ],
   variable: "--font-geist-mono",
-  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  adjustFontFallback: false,
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" }],
+});
+const geistMonoCyr = localFont({
+  src: [
+    { path: "../fonts/geist-mono/geist-mono-cyrillic-100-900-normal.woff2", weight: "100 900", style: "normal" },
+  ],
+  variable: "--font-geist-mono-cyr",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  declarations: [{ prop: "unicode-range", value: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116" }],
+});
+const geistMonoExt = localFont({
+  src: [
+    { path: "../fonts/geist-mono/geist-mono-latin-ext-100-900-normal.woff2", weight: "100 900", style: "normal" },
+  ],
+  variable: "--font-geist-mono-ext",
+  display: "swap",
+  preload: false,
+  declarations: [{ prop: "unicode-range", value: "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF" }],
 });
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -60,7 +109,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       lang={activeLocale}
       // Paket L — Arapça gibi sağdan sola dillerde `rtl`; admin/auth rotalarında header yok → "tr" → `ltr`.
       dir={localeDirection(activeLocale)}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistSansCyr.variable} ${geistSansExt.variable} ${geistMono.variable} ${geistMonoCyr.variable} ${geistMonoExt.variable} h-full antialiased`}
       // next-themes <html> üzerinde class="dark"/style="color-scheme" ekleyip kaldırdığı için
       // sunucu/istemci ilk render'ında kaçınılmaz bir farklılık oluşur; bu satır o beklenen
       // farkı bastırır (yalnızca bir seviye derinlikte etkilidir, başka hydration uyarılarını

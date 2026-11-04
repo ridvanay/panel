@@ -15,7 +15,7 @@ import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { ABOUT_PAGE_SLUG, isAboutTemplatePage } from "@/lib/about-page";
 import { isHomeTemplatePage } from "@/lib/home-page";
-import { aboutSerif } from "@/components/site/about/about-fonts";
+import { aboutSerif, aboutSerifExt } from "@/components/site/about/about-fonts";
 import { buildContentMetadata } from "@/lib/seo";
 import { intermediaryMetaDescription } from "@/lib/seo/intermediary-meta";
 import { SITE_URL } from "@/lib/env";
@@ -176,7 +176,7 @@ export default async function DynamicPage({ params }: PageProps) {
         <>
           {legalMode === "binding-fallback" && <LegalBindingVersionsNote text={dict.legal.bindingVersionsNote} />}
           <div
-            className={isHomeTemplate ? aboutSerif.variable : undefined}
+            className={isHomeTemplate ? `${aboutSerif.variable} ${aboutSerifExt.variable}` : undefined}
             // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
             {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
           >

@@ -18,7 +18,7 @@ import {
 } from "@/lib/about-page";
 import { SITE_URL } from "@/lib/env";
 import type { Locale, SitePage } from "@/lib/api/types";
-import { aboutSerif } from "@/components/site/about/about-fonts";
+import { aboutSerif, aboutSerifExt } from "@/components/site/about/about-fonts";
 import { AboutHero } from "@/components/site/about/about-hero";
 import { TreatmentAreas } from "@/components/site/about/treatment-areas";
 import { WhyWmHealth } from "@/components/site/about/why-wm-health";
@@ -143,7 +143,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
   const secondaryHeroHref = content.hero.secondaryCta.href === ABOUT_DOCTORS_ANCHOR && !showDoctors ? null : href(content.hero.secondaryCta.href);
 
   return (
-    <div className={cn("about-page", aboutSerif.variable)}>
+    <div className={cn("about-page", aboutSerif.variable, aboutSerifExt.variable)}>
       <AboutHero
         hero={content.hero}
         homeLabel={dict.common.home}

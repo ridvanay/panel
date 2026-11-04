@@ -48,7 +48,9 @@ describe("site fontları — dile göre yazı sistemi", () => {
     // Kiril alt kümesi olmayan fontlara uyumlu yedek.
     expect(siteFontFamilyFor("POPPINS", "ru")).toMatch(/^var\(--font-site-montserrat-cyr\)/);
     expect(siteFontFamilyFor("SYSTEM", "ru")).toBe(SITE_FONT_FAMILY.SYSTEM);
-    expect(siteFontFamilyFor("LORA", "ar")).toBe(`var(--font-site-arabic), ${SITE_FONT_FAMILY.LORA}`);
+    expect(siteFontFamilyFor("LORA", "ar")).toBe(
+      `var(--font-site-arabic), var(--font-site-arabic-latin), var(--font-site-arabic-latin-ext), ${SITE_FONT_FAMILY.LORA}`,
+    );
   });
 
   it("font değişken sınıfları yalnızca ru/ar sayfalarında uygulanır", () => {

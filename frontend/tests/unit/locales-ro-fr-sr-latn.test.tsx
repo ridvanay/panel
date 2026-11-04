@@ -149,12 +149,14 @@ describe("sözlükler ve metinler", () => {
     expect(resolveQaListenerNoticeCopy("xx").notice).toContain("Kalite kontrol");
   });
 
-  it("font: site fontları ve kök Geist fontları latin-ext alt kümesini yükler (ș ț ă č ć đ œ)", () => {
+  it("font: site fontları ve kök Geist fontları latin-ext yüzünü yükler (ș ț ă č ć đ œ) — Paket AL: next/font/local", () => {
     const fonts = readFileSync(resolve(__dirname, "../../src/lib/site-settings/site-fonts.ts"), "utf8");
-    const siteFontLines = fonts.split("\n").filter((l) => /^export const site\w+ = \w+\(\{ subsets: \["latin"/.test(l));
-    expect(siteFontLines.length).toBe(10);
-    expect(siteFontLines.every((l) => l.includes('"latin-ext"'))).toBe(true);
+    const extFaces = fonts.match(/^export const site(?!Arabic)\w+Ext = localFont\(/gm) ?? [];
+    expect(extFaces.length).toBe(10);
+    expect(fonts).not.toContain("next/font/google");
+    expect((fonts.match(/-latin-ext-[^"]+\.woff2/g) ?? []).length).toBeGreaterThanOrEqual(10);
     const layout = readFileSync(resolve(__dirname, "../../src/app/layout.tsx"), "utf8");
-    expect((layout.match(/subsets: \["latin", "latin-ext"\]/g) ?? []).length).toBe(2);
+    expect((layout.match(/^const geist(Sans|Mono)Ext = localFont\(/gm) ?? []).length).toBe(2);
+    expect(layout).not.toContain("next/font/google");
   });
 });

@@ -34,6 +34,15 @@ vi.mock("next/font/google", () => {
   };
 });
 
+// Paket AL — fontlar `next/font/local` ile yüklenir (default export); aynı gerekçeyle sahte (stub) uygulanır.
+vi.mock("next/font/local", () => ({
+  default: (options?: { variable?: string }) => ({
+    variable: options?.variable ?? "--font-mock",
+    className: "font-mock",
+    style: { fontFamily: "mock-font" },
+  }),
+}));
+
 // jsdom `ResizeObserver`'ı implemente etmez; recharts'ın `ResponsiveContainer`'ı (bkz.
 // visitor-chart.tsx/activity-bar-chart.tsx/device-breakdown-chart.tsx) mount olurken bunu
 // kullanır — polyfill olmadan "ResizeObserver is not defined" ile patlar.

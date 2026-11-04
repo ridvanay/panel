@@ -1,4 +1,4 @@
-import { aboutSerif } from "@/components/site/about/about-fonts";
+import { aboutSerif, aboutSerifExt } from "@/components/site/about/about-fonts";
 import { isHomeTemplatePage } from "@/lib/home-page";
 import type { Metadata } from "next";
 import { fetchHomepageServer, fetchSiteSettingsServer } from "@/lib/api/server-settings";
@@ -190,7 +190,7 @@ export default async function RootPage({ params }: PageProps) {
         <>
           {legalMode === "binding-fallback" && <LegalBindingVersionsNote text={dict.legal.bindingVersionsNote} />}
           <div
-            className={isHomeTemplatePage(page) ? aboutSerif.variable : undefined}
+            className={isHomeTemplatePage(page) ? `${aboutSerif.variable} ${aboutSerifExt.variable}` : undefined}
             // Paket L — yeni dillerde gösterilen kanonik (EN) yasal metin kendi yönünde ve dilinde işaretlenir.
             {...(legalMode === "binding-fallback" ? { dir: "ltr", lang: defaultLocale?.code } : {})}
           >

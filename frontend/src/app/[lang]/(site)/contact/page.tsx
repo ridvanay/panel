@@ -13,7 +13,7 @@ import { resolveEmergencyNotice } from "@/lib/emergency-notice";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
 import { ContactPageForm } from "@/components/site/contact/contact-page-form";
 import { Eyebrow } from "@/components/site/about/eyebrow";
-import { aboutSerif } from "@/components/site/about/about-fonts";
+import { aboutSerif, aboutSerifExt } from "@/components/site/about/about-fonts";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { contactLocale } from "@/lib/contact-locale";
 import { cn } from "@/lib/utils";
@@ -94,7 +94,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
   ].filter(Boolean) as { icon: typeof Phone; label: string; value: string; href: string | null; external: boolean; note?: string; ltr?: boolean }[];
 
   return (
-    <div className={cn("contact-page", aboutSerif.variable)}>
+    <div className={cn("contact-page", aboutSerif.variable, aboutSerifExt.variable)}>
       <section className="bg-background">
         <div className={cn(aboutContainerClass, "pt-8 pb-16 sm:pt-10 lg:pb-24")}>
           <nav aria-label={dict.ui.breadcrumb} className="text-sm font-semibold text-[var(--about-muted-text)]">

@@ -26,7 +26,7 @@ vi.mock("@/lib/api/server-telehealth", () => ({
   fetchSpecialtiesServer: async () => [],
   fetchTelehealthThemeServer: async () => null,
 }));
-vi.mock("next/font/google", () => ({ Newsreader: () => ({ variable: "about-serif", className: "about-serif" }) }));
+vi.mock("next/font/local", () => ({ default: () => ({ variable: "about-serif", className: "about-serif" }) }));
 vi.mock("@/components/site/contact/contact-page-form", () => ({ ContactPageForm: () => null }));
 
 import ContactPage from "@/app/[lang]/(site)/contact/page";

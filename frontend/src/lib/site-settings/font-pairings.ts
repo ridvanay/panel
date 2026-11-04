@@ -3,7 +3,7 @@ import type { SiteFont } from "@/lib/api/types";
 /**
  * design-notes-appearance-studio.md §3.1 — 15 kürasyonlu (headingFont, bodyFont) çifti,
  * `/admin/appearance` `typography` sekmesindeki "Hazır Font Eşleşmeleri" şeridi için. `SiteFont`
- * enum'u KAPALI olduğu için (§10.12.3, `next/font/google` derleme-zamanı kısıtı) burada SADECE
+ * enum'u KAPALI olduğu için (§10.12.3, `next/font/local` derleme-zamanı kısıtı) burada SADECE
  * mevcut 11 `SiteFont` değerinin kombinasyonları kullanılır — yeni font YOK. Tıklama HEM
  * `headingFont` HEM `bodyFont`'u aynı anda değiştirir (`baseFontSize`/renkler DOKUNULMAZ).
  */
