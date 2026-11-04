@@ -468,6 +468,8 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     liveChatRequireEmail: settings.liveChatRequireEmail,
     liveChatPosition: settings.liveChatPosition,
     healthTourismCertificateNo: settings.healthTourismCertificateNo,
+    findTreatmentEnabled: settings.findTreatmentEnabled,
+    bookConsultationCtaEnabled: settings.bookConsultationCtaEnabled,
   };
 }
 

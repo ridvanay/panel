@@ -66,6 +66,9 @@ export const UpdateSiteSettingsRequestSchema = z
       .optional(),
     // Paket AH - blog hekim onayı (Z1) şartı bayrağı.
     blogMedicalReviewRequired: z.boolean().optional(),
+    // Paket AK (K3) - site ozellik anahtarlari.
+    findTreatmentEnabled: z.boolean().optional(),
+    bookConsultationCtaEnabled: z.boolean().optional(),
   })
   .refine(
     (data) =>

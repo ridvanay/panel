@@ -899,6 +899,9 @@ export const SiteSettingsSchema = z.object({
   liveChatPosition: z.enum(["BOTTOM_RIGHT", "BOTTOM_LEFT"]),
   // Paket AH - Uluslararası Sağlık Turizmi Yetki Belgesi numarası (admin girer; null/boş = belge satırı gösterilmez).
   healthTourismCertificateNo: z.string().nullable(),
+  // Paket AK (K3) - "Find your treatment" ve "Book a consultation" giris noktalari (varsayilan true).
+  findTreatmentEnabled: z.boolean(),
+  bookConsultationCtaEnabled: z.boolean(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 

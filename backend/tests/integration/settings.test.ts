@@ -524,3 +524,63 @@ describe("settings - healthTourismCertificateNo + blogMedicalReviewRequired (Pak
     expect((await patch(adminToken, { blogMedicalReviewRequired: false })).json().data.blogMedicalReviewRequired).toBe(false);
   });
 });
+
+/** Paket AK (K3) - findTreatmentEnabled + bookConsultationCtaEnabled: varsayilan acik, yalniz ADMIN degistirir, audit alanlari icerir. */
+describe("settings - findTreatmentEnabled + bookConsultationCtaEnabled (Paket AK)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+  let editorToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    ({ accessToken: adminToken } = await registerTestUser(app, { email: "settings-ak-admin@example.com" }));
+    const { hashPassword } = await import("../../src/lib/password");
+    const { signAccessToken } = await import("../../src/lib/jwt");
+    const editor = await app.prisma.user.create({
+      data: { email: "settings-ak-editor@example.com", name: "Editor", passwordHash: await hashPassword("Sifre12345!"), role: "EDITOR", status: "ACTIVE", emailVerifiedAt: new Date(), twoFactorEnabled: true },
+    });
+    editorToken = signAccessToken({ sub: editor.id, email: editor.email }).token;
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("satir yokken public GET /settings ikisini de true doner (mevcut davranis)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(res.json().data.findTreatmentEnabled).toBe(true);
+    expect(res.json().data.bookConsultationCtaEnabled).toBe(true);
+  });
+
+  it("EDITOR degistiremez (403)", async () => {
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${editorToken}` }, payload: { findTreatmentEnabled: false } });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("ADMIN kapatir; public DTO yansitir, tekli PATCH digerini bozmaz, audit alanlari icerir", async () => {
+    const patch = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${adminToken}` }, payload: { findTreatmentEnabled: false } });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data.findTreatmentEnabled).toBe(false);
+    expect(patch.json().data.bookConsultationCtaEnabled).toBe(true);
+
+    const patch2 = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${adminToken}` }, payload: { bookConsultationCtaEnabled: false } });
+    expect(patch2.json().data.findTreatmentEnabled).toBe(false);
+    expect(patch2.json().data.bookConsultationCtaEnabled).toBe(false);
+
+    const pub = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(pub.json().data.findTreatmentEnabled).toBe(false);
+    expect(pub.json().data.bookConsultationCtaEnabled).toBe(false);
+
+    const logs = await app.prisma.auditLog.findMany({ where: { action: "settings.update" }, orderBy: { createdAt: "asc" } });
+    const meta = logs.map((l) => l.metadata as Record<string, unknown>);
+    expect(meta.some((m) => m.findTreatmentEnabled === false && (m.changed as string[]).includes("findTreatmentEnabled"))).toBe(true);
+    expect(meta.some((m) => m.bookConsultationCtaEnabled === false)).toBe(true);
+  });
+
+  it("gecersiz tip 422", async () => {
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: { authorization: `Bearer ${adminToken}` }, payload: { findTreatmentEnabled: "no" } });
+    expect(res.statusCode).toBe(422);
+  });
+});

@@ -60,6 +60,9 @@ export const DEFAULTS = {
   liveChatRequirePhone: true,
   liveChatRequireEmail: false,
   liveChatPosition: "BOTTOM_RIGHT" as const,
+  // Paket AK (K3) - varsayilan acik (mevcut davranis).
+  findTreatmentEnabled: true,
+  bookConsultationCtaEnabled: true,
 };
 
 /**
@@ -231,6 +234,8 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
             : {}),
           // Paket AH - belge numarası kamuya açık bilgidir; yine de yalnız "değişti" izi yazılır (değer audit'e girmez).
           ...(request.body.blogMedicalReviewRequired !== undefined ? { blogMedicalReviewRequired: request.body.blogMedicalReviewRequired } : {}),
+          ...(request.body.findTreatmentEnabled !== undefined ? { findTreatmentEnabled: request.body.findTreatmentEnabled } : {}),
+          ...(request.body.bookConsultationCtaEnabled !== undefined ? { bookConsultationCtaEnabled: request.body.bookConsultationCtaEnabled } : {}),
           ...(request.body.demoPaymentsEnabled !== undefined
             ? { demoPaymentsEnabled: request.body.demoPaymentsEnabled }
             : {}),

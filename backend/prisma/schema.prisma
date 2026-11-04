@@ -1355,6 +1355,10 @@ model SiteSettings {
   /// Paket AH — blog yayininda hekim onayi (Z1) sarti. false (varsayilan) = sart aranmaz, editoryal yayin yeterli;
   /// true = eski Z1 davranisi. Mevcut yayindaki yazilar etkilenmez.
   blogMedicalReviewRequired Boolean @default(false)
+  /// Paket AK (K3) - "Find your treatment" ozelligi (giris noktalari + /find-your-treatment). Varsayilan acik = mevcut davranis.
+  findTreatmentEnabled Boolean @default(true)
+  /// Paket AK (K3) - "Book a consultation" giris noktalari (header/mega menu/kartlar). Varsayilan acik = mevcut davranis.
+  bookConsultationCtaEnabled Boolean @default(true)
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
