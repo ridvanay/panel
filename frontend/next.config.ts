@@ -87,6 +87,8 @@ const nextConfig: NextConfig = {
       ...noindexHeaderSources().map((source) => ({ source, headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] })),
       // Taslak blog önizlemesi: belirteç URL'de — Referrer-Policy: no-referrer (bkz. preview-headers.ts).
       ...blogPreviewHeaderRules(),
+      // Paket AL - belirteç taşıyan diğer sayfalar (sıfırlama, davet, görüşme, randevu, yorum, misafir toplantı).
+      ...tokenPageHeaderRules(),
     ];
   },
 };

@@ -24,3 +24,15 @@ describe("Paket AL — belirteç taşıyan sayfalarda Referrer-Policy", () => {
     expect(sources).not.toMatch(/\/blog(?!\/preview)|\/products|\/about/);
   });
 });
+
+describe("Paket AL — next.config headers() kuralları bağlar", () => {
+  it("belirteçli yollar için Referrer-Policy: no-referrer kuralı yapılandırmada yer alır", async () => {
+    const mod = await import("../../next.config");
+    const config = mod.default as { headers?: () => Promise<{ source: string; headers: { key: string; value: string }[] }[]> };
+    const rules = await config.headers!();
+    const noRef = rules.filter((r) => r.headers.some((h) => h.key === "Referrer-Policy" && h.value === "no-referrer")).map((r) => r.source);
+    for (const path of ["/reset-password", "/invitations/:path*", "/consultation/:path*", "/patient/bookings/:path*", "/review/:path*", "/meet/:path*", "/book-consultation/manage", "/blog/preview/:postId"]) {
+      expect(noRef, path).toContain(path);
+    }
+  });
+});
