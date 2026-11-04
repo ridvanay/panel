@@ -9,7 +9,6 @@ export const commonStrings = {
   /** Paket V — canlı destek düğmesi (destek bandı, koordinatör kutusu). */
   liveChatCta: "Live chat",
   contactUsCta: "Contact us",
-  talkToUsCta: "Talk to us",
   /** Paket V — anasayfa destek bandı (yalnızca `supportLanguages` doluysa görünür). */
   supportBandTitle: "Speak with a patient coordinator in your language — free of charge",
   /** Yalnızca `interpreterIncluded=true` iken gösterilir. */

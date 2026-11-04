@@ -9,8 +9,6 @@ export const requestStrings: RequestStrings = {
   requestCta: "Solicitar una consulta",
   formAria: "Formulario de solicitud de consulta",
   serviceLabel: "Servicio",
-  servicePlaceholder: "Seleccione un servicio",
-  serviceGeneralOption: "{service} (general)",
   packageLabel: "Paquete seleccionado",
   servicesUnavailable: "No se pudo cargar la lista de servicios. Aún puede contactar con nuestro coordinador de pacientes a través de la página de contacto.",
   contactPageLink: "Contáctenos",

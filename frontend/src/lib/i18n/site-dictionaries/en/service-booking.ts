@@ -40,9 +40,7 @@ export const serviceBookingStrings = {
 
   // ---- Özet paneli ----
   summaryLabel: "Consultation summary",
-  summaryService: "Service",
   summaryServicePending: "Choose a service",
-  summaryWith: "With",
   coordinatorTitle: "Patient Coordinator",
   freeLabel: "Free of charge",
   minutesShort: "{minutes} min",
@@ -61,7 +59,6 @@ export const serviceBookingStrings = {
   morningGroupAria: "Morning times",
   afternoonGroupAria: "Afternoon times",
   eveningGroupAria: "Evening times",
-  slotLimitNote: "Choose one time for your consultation.",
 
   // ---- Durumlar ----
   loadingSlots: "Loading available times…",
@@ -119,7 +116,6 @@ export const serviceBookingStrings = {
   manageRescheduledTitle: "Your consultation time was changed",
   manageRescheduledBody: "A new join link has been sent to your e-mail. The previous link no longer works.",
   manageRescheduleBack: "Back",
-  manageLimitReached: "This consultation has already been changed the maximum number of times.",
   manageSlotTaken: "That time was just taken. The calendar has been refreshed. Please choose another time.",
   manageErrorGeneric: "Something went wrong. Please try again.",
 

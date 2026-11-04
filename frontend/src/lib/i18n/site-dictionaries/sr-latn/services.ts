@@ -22,7 +22,6 @@ export const servicesStrings: ServicesStrings = {
   processStep4: "Putovanje i smeštaj",
   processStep5: "Tretman",
   processStep6: "Nega nakon tretmana",
-  cardBook: "Zakaži",
   cardRequest: "Zatraži",
   cardBookAria: "Zakažite online konsultaciju: {service}",
   cardRequestAria: "Zatražite konsultaciju: {service}",

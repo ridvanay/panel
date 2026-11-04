@@ -34,9 +34,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   interpreterLanguageLabel: "لغة المترجم",
 
   summaryLabel: "ملخص الاستشارة",
-  summaryService: "الخدمة",
   summaryServicePending: "اختر خدمة",
-  summaryWith: "مع",
   coordinatorTitle: "منسّق المرضى",
   freeLabel: "مجانية",
   minutesShort: "{minutes} د",
@@ -54,7 +52,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "مواعيد الصباح",
   afternoonGroupAria: "مواعيد ما بعد الظهر",
   eveningGroupAria: "مواعيد المساء",
-  slotLimitNote: "اختر موعدًا واحدًا لاستشارتك.",
 
   loadingSlots: "جارٍ تحميل المواعيد المتاحة…",
   loadErrorTitle: "تعذّر تحميل المواعيد المتاحة.",
@@ -109,7 +106,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "تم تغيير موعد استشارتك",
   manageRescheduledBody: "تم إرسال رابط انضمام جديد إلى بريدك الإلكتروني. لم يعد الرابط السابق صالحًا.",
   manageRescheduleBack: "رجوع",
-  manageLimitReached: "تم تغيير موعد هذه الاستشارة بالحد الأقصى المسموح به.",
   manageSlotTaken: "تم حجز هذا الموعد للتو. تم تحديث التقويم. يُرجى اختيار موعد آخر.",
   manageErrorGeneric: "حدث خطأ ما. يُرجى المحاولة مرة أخرى.",
 

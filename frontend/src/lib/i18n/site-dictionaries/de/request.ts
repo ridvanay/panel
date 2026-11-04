@@ -9,8 +9,6 @@ export const requestStrings: RequestStrings = {
   requestCta: "Beratung anfragen",
   formAria: "Formular für die Beratungsanfrage",
   serviceLabel: "Leistung",
-  servicePlaceholder: "Leistung auswählen",
-  serviceGeneralOption: "{service} (allgemein)",
   packageLabel: "Ausgewähltes Paket",
   servicesUnavailable: "Die Liste der Leistungen konnte nicht geladen werden. Sie erreichen unseren Patientenkoordinator weiterhin über die Kontaktseite.",
   contactPageLink: "Kontakt aufnehmen",

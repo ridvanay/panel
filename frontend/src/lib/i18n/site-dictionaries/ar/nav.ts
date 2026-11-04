@@ -33,8 +33,6 @@ export const navStrings: NavStrings = {
   specialtyProceduresTitle: "الإجراءات",
   /** Paket AH — masaüstü açılır menü altındaki 'tüm hizmetler' bağlantısı. */
   allServices: "جميع الخدمات",
-  /** Paket AH — header'daki 'Request a consultation' düğmesi (talep formuna gider). */
-  requestConsultation: "اطلب استشارة",
   /** Paket AH — footer telif satırı sonu. */
   footerAllRightsReserved: "جميع الحقوق محفوظة.",
   /** Paket AH — footer'da hizmetler sütunu başlığı. */

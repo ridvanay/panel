@@ -36,7 +36,6 @@ export const contactStrings: ContactStrings = {
   submit: "Pošalji poruku",
   sending: "Slanje…",
   responseTimeDefault: "Naš tim za pacijente obično odgovara u roku od jednog radnog dana.",
-  requiredMark: "obavezno",
 
   successTitle: "Hvala Vam — Vaša poruka je poslata.",
   successBody:

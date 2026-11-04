@@ -34,9 +34,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   interpreterLanguageLabel: "Limba interpretului",
 
   summaryLabel: "Rezumatul consultației",
-  summaryService: "Serviciu",
   summaryServicePending: "Alege un serviciu",
-  summaryWith: "Cu",
   coordinatorTitle: "Coordonator de pacienți",
   freeLabel: "Gratuit",
   minutesShort: "{minutes} min",
@@ -54,7 +52,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "Ore de dimineață",
   afternoonGroupAria: "Ore de după-amiază",
   eveningGroupAria: "Ore de seară",
-  slotLimitNote: "Alege o singură oră pentru consultație.",
 
   loadingSlots: "Se încarcă orele disponibile…",
   loadErrorTitle: "Nu am putut încărca orele disponibile.",
@@ -109,7 +106,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "Ora consultației a fost schimbată",
   manageRescheduledBody: "Un nou link de participare a fost trimis pe e-mailul tău. Linkul anterior nu mai funcționează.",
   manageRescheduleBack: "Înapoi",
-  manageLimitReached: "Această consultație a fost deja modificată de numărul maxim de ori.",
   manageSlotTaken: "Această oră tocmai a fost ocupată. Calendarul a fost actualizat. Alege o altă oră.",
   manageErrorGeneric: "Ceva nu a funcționat. Încearcă din nou.",
 

@@ -37,9 +37,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
 
   // ---- Özet paneli ----
   summaryLabel: "Zusammenfassung der Beratung",
-  summaryService: "Leistung",
   summaryServicePending: "Leistung wählen",
-  summaryWith: "Mit",
   coordinatorTitle: "Patientenkoordinator",
   freeLabel: "Kostenlos",
   minutesShort: "{minutes} Min.",
@@ -58,7 +56,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "Termine am Vormittag",
   afternoonGroupAria: "Termine am Nachmittag",
   eveningGroupAria: "Termine am Abend",
-  slotLimitNote: "Wählen Sie einen Termin für Ihre Beratung.",
 
   // ---- Durumlar ----
   loadingSlots: "Freie Termine werden geladen…",
@@ -116,7 +113,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "Der Termin Ihrer Beratung wurde geändert",
   manageRescheduledBody: "Ein neuer Teilnahme-Link wurde an Ihre E-Mail-Adresse gesendet. Der bisherige Link funktioniert nicht mehr.",
   manageRescheduleBack: "Zurück",
-  manageLimitReached: "Diese Beratung wurde bereits so oft wie möglich geändert.",
   manageSlotTaken: "Dieser Termin wurde soeben vergeben. Der Kalender wurde aktualisiert. Bitte wählen Sie einen anderen Termin.",
   manageErrorGeneric: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
 

@@ -35,7 +35,6 @@ export const contactStrings: ContactStrings = {
   submit: "إرسال الرسالة",
   sending: "جارٍ الإرسال…",
   responseTimeDefault: "يرد فريق خدمة المرضى لدينا عادةً خلال يوم عمل واحد.",
-  requiredMark: "إلزامي",
 
   successTitle: "شكرًا لك — تم إرسال رسالتك.",
   successBody: "سيتواصل معك فريق خدمة المرضى في أقرب وقت ممكن عبر طريقة التواصل التي اخترتها.",

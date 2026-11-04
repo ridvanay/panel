@@ -34,9 +34,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   interpreterLanguageLabel: "Langue de l'interprète",
 
   summaryLabel: "Récapitulatif de la consultation",
-  summaryService: "Service",
   summaryServicePending: "Choisissez un service",
-  summaryWith: "Avec",
   coordinatorTitle: "Coordinateur patient",
   freeLabel: "Gratuit",
   minutesShort: "{minutes} min",
@@ -54,7 +52,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "Créneaux du matin",
   afternoonGroupAria: "Créneaux de l'après-midi",
   eveningGroupAria: "Créneaux du soir",
-  slotLimitNote: "Choisissez un créneau pour votre consultation.",
 
   loadingSlots: "Chargement des créneaux disponibles…",
   loadErrorTitle: "Impossible de charger les créneaux disponibles.",
@@ -109,7 +106,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "L'horaire de votre consultation a été modifié",
   manageRescheduledBody: "Un nouveau lien de participation a été envoyé à votre adresse e-mail. L'ancien lien ne fonctionne plus.",
   manageRescheduleBack: "Retour",
-  manageLimitReached: "Cette consultation a déjà été modifiée le nombre maximal de fois.",
   manageSlotTaken: "Ce créneau vient d'être pris. Le calendrier a été actualisé. Veuillez choisir un autre créneau.",
   manageErrorGeneric: "Une erreur s'est produite. Veuillez réessayer.",
 

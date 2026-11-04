@@ -4,7 +4,6 @@ export const commonStrings: CommonStrings = {
   home: "Главная",
   liveChatCta: "Онлайн-чат",
   contactUsCta: "Связаться с нами",
-  talkToUsCta: "Напишите нам",
   supportBandTitle: "Поговорите с координатором пациентов на вашем языке — бесплатно",
   supportInterpreterIncluded: "Бесплатная онлайн-видеоконсультация с координатором пациентов — переводчик включён.",
   /** Paket AJ — destek bandı açıklaması (her zaman görünür; tercüman cümlesi ayrı). */

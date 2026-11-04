@@ -34,9 +34,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   interpreterLanguageLabel: "Idioma del intérprete",
 
   summaryLabel: "Resumen de la consulta",
-  summaryService: "Servicio",
   summaryServicePending: "Elija un servicio",
-  summaryWith: "Con",
   coordinatorTitle: "Coordinador de pacientes",
   freeLabel: "Gratuita",
   minutesShort: "{minutes} min",
@@ -54,7 +52,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "Horarios de la mañana",
   afternoonGroupAria: "Horarios de la tarde",
   eveningGroupAria: "Horarios de la noche",
-  slotLimitNote: "Elija un horario para su consulta.",
 
   loadingSlots: "Cargando horarios disponibles…",
   loadErrorTitle: "No se pudieron cargar los horarios disponibles.",
@@ -109,7 +106,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "El horario de su consulta ha cambiado",
   manageRescheduledBody: "Hemos enviado un nuevo enlace para unirse a su correo electrónico. El enlace anterior ya no funciona.",
   manageRescheduleBack: "Volver",
-  manageLimitReached: "Esta consulta ya se ha modificado el número máximo de veces.",
   manageSlotTaken: "Ese horario acaba de ocuparse. El calendario se ha actualizado. Elija otro horario.",
   manageErrorGeneric: "Algo salió mal. Inténtelo de nuevo.",
 

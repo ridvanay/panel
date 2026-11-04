@@ -36,7 +36,6 @@ export const contactStrings: ContactStrings = {
   submit: "Mesajı gönder",
   sending: "Gönderiliyor…",
   responseTimeDefault: "Hasta ekibimiz genellikle bir iş günü içinde yanıt verir.",
-  requiredMark: "zorunlu",
 
   successTitle: "Teşekkürler — mesajınız gönderildi.",
   successBody: "Hasta ekibimiz tercih ettiğiniz iletişim yoluyla en kısa sürede size dönüş yapacak.",

@@ -41,7 +41,6 @@ export const contactStrings = {
   submit: "Send message",
   sending: "Sending…",
   responseTimeDefault: "Our patient team usually replies within one business day.",
-  requiredMark: "required",
 
   // --- Result ---
   successTitle: "Thank you — your message has been sent.",

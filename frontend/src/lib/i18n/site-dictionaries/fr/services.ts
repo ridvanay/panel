@@ -22,7 +22,6 @@ export const servicesStrings: ServicesStrings = {
   processStep4: "Voyage et séjour",
   processStep5: "Traitement",
   processStep6: "Suivi post-traitement",
-  cardBook: "Réserver",
   cardRequest: "Demander",
   cardBookAria: "Réserver une consultation en ligne : {service}",
   cardRequestAria: "Demander une consultation : {service}",

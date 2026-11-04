@@ -36,7 +36,6 @@ export const contactStrings: ContactStrings = {
   submit: "Trimiteți mesajul",
   sending: "Se trimite…",
   responseTimeDefault: "Echipa noastră pentru pacienți răspunde de obicei în decurs de o zi lucrătoare.",
-  requiredMark: "obligatoriu",
 
   successTitle: "Vă mulțumim — mesajul dumneavoastră a fost trimis.",
   successBody: "Echipa noastră pentru pacienți vă va contacta cât mai curând posibil, prin metoda de contact preferată.",

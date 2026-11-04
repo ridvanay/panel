@@ -9,8 +9,6 @@ export const requestStrings: RequestStrings = {
   requestCta: "Zatražite konsultaciju",
   formAria: "Obrazac za zahtev za konsultaciju",
   serviceLabel: "Usluga",
-  servicePlaceholder: "Izaberite uslugu",
-  serviceGeneralOption: "{service} (opšte)",
   packageLabel: "Izabrani paket",
   servicesUnavailable: "Spisak usluga nije mogao da se učita. I dalje možete kontaktirati našeg koordinatora pacijenata preko stranice za kontakt.",
   contactPageLink: "Kontaktirajte nas",

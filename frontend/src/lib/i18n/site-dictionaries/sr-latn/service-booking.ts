@@ -34,9 +34,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   interpreterLanguageLabel: "Jezik tumača",
 
   summaryLabel: "Rezime konsultacije",
-  summaryService: "Usluga",
   summaryServicePending: "Izaberite uslugu",
-  summaryWith: "Sa",
   coordinatorTitle: "Koordinator pacijenata",
   freeLabel: "Besplatno",
   minutesShort: "{minutes} min",
@@ -54,7 +52,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "Termini pre podne",
   afternoonGroupAria: "Termini posle podne",
   eveningGroupAria: "Termini uveče",
-  slotLimitNote: "Izaberite jedan termin za konsultaciju.",
 
   loadingSlots: "Učitavanje slobodnih termina…",
   loadErrorTitle: "Nismo uspeli da učitamo slobodne termine.",
@@ -109,7 +106,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "Termin vaše konsultacije je promenjen",
   manageRescheduledBody: "Novi link za pristup poslat je na vašu e-poštu. Prethodni link više ne radi.",
   manageRescheduleBack: "Nazad",
-  manageLimitReached: "Termin ove konsultacije već je promenjen maksimalan broj puta.",
   manageSlotTaken: "Taj termin je upravo zauzet. Kalendar je osvežen. Izaberite drugi termin.",
   manageErrorGeneric: "Došlo je do greške. Pokušajte ponovo.",
 

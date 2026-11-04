@@ -37,7 +37,6 @@ export const contactStrings: ContactStrings = {
   submit: "Envoyer le message",
   sending: "Envoi en cours…",
   responseTimeDefault: "Notre équipe patients répond généralement sous un jour ouvré.",
-  requiredMark: "obligatoire",
 
   // --- Result ---
   successTitle: "Merci — votre message a bien été envoyé.",

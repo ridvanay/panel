@@ -35,7 +35,6 @@ export const contactStrings: ContactStrings = {
   submit: "Nachricht senden",
   sending: "Wird gesendet…",
   responseTimeDefault: "Unser Patiententeam antwortet in der Regel innerhalb eines Werktages.",
-  requiredMark: "Pflichtfeld",
 
   successTitle: "Vielen Dank – Ihre Nachricht wurde gesendet.",
   successBody: "Unser Patiententeam meldet sich so bald wie möglich über den von Ihnen bevorzugten Kontaktweg.",

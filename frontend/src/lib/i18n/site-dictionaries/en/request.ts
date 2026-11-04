@@ -12,8 +12,6 @@ export const requestStrings = {
   requestCta: "Request a consultation",
   formAria: "Consultation request form",
   serviceLabel: "Service",
-  servicePlaceholder: "Select a service",
-  serviceGeneralOption: "{service} (general)",
   packageLabel: "Selected package",
   servicesUnavailable: "The list of services could not be loaded. You can still reach our patient coordinator through the contact page.",
   contactPageLink: "Contact us",

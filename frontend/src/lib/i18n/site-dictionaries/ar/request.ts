@@ -9,8 +9,6 @@ export const requestStrings: RequestStrings = {
   requestCta: "اطلب استشارة",
   formAria: "نموذج طلب استشارة",
   serviceLabel: "الخدمة",
-  servicePlaceholder: "اختر خدمة",
-  serviceGeneralOption: "{service} (عام)",
   packageLabel: "الباقة المختارة",
   servicesUnavailable: "تعذّر تحميل قائمة الخدمات. لا يزال بإمكانك التواصل مع منسق المرضى عبر صفحة الاتصال.",
   contactPageLink: "اتصل بنا",

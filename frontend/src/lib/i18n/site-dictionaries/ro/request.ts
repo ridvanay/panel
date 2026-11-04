@@ -9,8 +9,6 @@ export const requestStrings: RequestStrings = {
   requestCta: "Solicită o consultație",
   formAria: "Formular de solicitare a consultației",
   serviceLabel: "Serviciu",
-  servicePlaceholder: "Selectează un serviciu",
-  serviceGeneralOption: "{service} (general)",
   packageLabel: "Pachet selectat",
   servicesUnavailable: "Lista serviciilor nu a putut fi încărcată. Poți totuși contacta coordonatorul nostru de pacienți prin pagina de contact.",
   contactPageLink: "Contactează-ne",

@@ -34,9 +34,7 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   interpreterLanguageLabel: "Язык переводчика",
 
   summaryLabel: "Сводка консультации",
-  summaryService: "Услуга",
   summaryServicePending: "Выберите услугу",
-  summaryWith: "С",
   coordinatorTitle: "Координатор пациентов",
   freeLabel: "Бесплатно",
   minutesShort: "{minutes} мин",
@@ -54,7 +52,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   morningGroupAria: "Утреннее время",
   afternoonGroupAria: "Дневное время",
   eveningGroupAria: "Вечернее время",
-  slotLimitNote: "Выберите одно время для консультации.",
 
   loadingSlots: "Загрузка свободного времени…",
   loadErrorTitle: "Не удалось загрузить свободное время.",
@@ -109,7 +106,6 @@ export const serviceBookingStrings: ServiceBookingStrings = {
   manageRescheduledTitle: "Время консультации изменено",
   manageRescheduledBody: "Новая ссылка для подключения отправлена на ваш e-mail. Прежняя ссылка больше не работает.",
   manageRescheduleBack: "Назад",
-  manageLimitReached: "Время этой консультации уже изменено максимально допустимое число раз.",
   manageSlotTaken: "Это время только что заняли. Календарь обновлён. Выберите другое время.",
   manageErrorGeneric: "Что-то пошло не так. Попробуйте ещё раз.",
 

@@ -35,7 +35,6 @@ export const contactStrings: ContactStrings = {
   submit: "Enviar mensaje",
   sending: "Enviando…",
   responseTimeDefault: "Nuestro equipo de atención al paciente suele responder en un día hábil.",
-  requiredMark: "obligatorio",
 
   successTitle: "Gracias, su mensaje se ha enviado.",
   successBody: "Nuestro equipo de atención al paciente se pondrá en contacto con usted lo antes posible por el método que ha elegido.",
