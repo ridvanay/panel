@@ -1,3 +1,5 @@
+import type { FastifyRequest } from "fastify";
+
 /**
  * Log güvenliği: hata iletilerindeki e-posta adresi kalıplarını maskeler (SMTP hataları alıcı adresini içerebilir).
  * Hassas veri (alıcı adresi) loglara yazılmaz; yalnızca maskelenmiş ileti kalır.
@@ -43,18 +45,12 @@ export function maskUrlQuery(url: string): string {
 }
 
 /** Fastify varsayılan `req` serializer'ı ile AYNI alanlar; yalnızca `url` sorgusu maskelenir. */
-export function serializeRequestForLog(req: {
-  method?: string;
-  url?: string;
-  headers?: Record<string, unknown>;
-  host?: string;
-  ip?: string;
-  socket?: { remotePort?: number };
-}) {
+export function serializeRequestForLog(req: FastifyRequest) {
+  const acceptVersion = req.headers?.["accept-version"];
   return {
     method: req.method,
     url: typeof req.url === "string" ? maskUrlQuery(req.url) : req.url,
-    version: req.headers && req.headers["accept-version"],
+    version: Array.isArray(acceptVersion) ? acceptVersion[0] : acceptVersion,
     host: req.host,
     remoteAddress: req.ip,
     remotePort: req.socket ? req.socket.remotePort : undefined,
