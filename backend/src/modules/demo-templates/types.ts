@@ -190,7 +190,7 @@ export interface DemoButtonNode extends DemoBaseNode {
 
 export interface DemoCounterNode extends DemoBaseNode {
   type: "counter";
-  data: { items: { id: string; value: number; prefix?: string; suffix?: string; label: string }[] };
+  data: { items: { id: string; value: number; prefix?: string; suffix?: string; label: string; metric?: "activeServices" | "visitorLanguages" | "activeCoordinators" | "consultationMinutes" }[] };
 }
 
 export interface DemoCtaNode extends DemoBaseNode {

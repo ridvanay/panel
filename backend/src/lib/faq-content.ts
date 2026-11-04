@@ -37,9 +37,9 @@ export const FAQ_EN_COPY: FaqLocaleCopy = {
     },
     {
       id: "faq-3",
-      question: "Who will carry out my treatment?",
+      question: "Where will my treatment take place?",
       answer:
-        "Your care is planned with the physician responsible for your treatment. Before confirming your visit, you can request information about the treating specialist and the hospital or clinic where your care will take place.",
+        "WM Health is an international health tourism intermediary and does not provide healthcare itself. Your treatment takes place at a healthcare facility holding an International Health Tourism Authorization Certificate, where treatment decisions are made following an individual medical evaluation. Before confirming your visit, you can ask your patient coordinator about the facility where your care will take place.",
     },
     {
       id: "faq-4",
@@ -69,7 +69,7 @@ export const FAQ_EN_COPY: FaqLocaleCopy = {
       id: "faq-8",
       question: "How is follow-up arranged after I return home?",
       answer:
-        "Follow-up requirements vary by treatment. Before leaving Istanbul, clarify your recovery instructions, review schedule, and contact arrangements, including whether follow-up with a physician in your home country is needed.",
+        "Follow-up requirements vary by treatment. Before leaving Istanbul, clarify your recovery instructions, review schedule, and contact arrangements with your patient coordinator, including whether follow-up with a healthcare professional in your home country is needed.",
     },
   ],
 };
@@ -92,9 +92,9 @@ export const FAQ_TR_COPY: FaqLocaleCopy = {
     },
     {
       id: "faq-3",
-      question: "Tedavimi kim gerçekleştirecek?",
+      question: "Tedavim nerede gerçekleştirilecek?",
       answer:
-        "Bakımınız, tedavinizden sorumlu hekimle birlikte planlanır. Ziyaretinizi kesinleştirmeden önce, sizi tedavi edecek uzman ve bakımınızın gerçekleştirileceği hastane veya klinik hakkında bilgi talep edebilirsiniz.",
+        "WM Health uluslararası bir sağlık turizmi aracı kuruluşudur; sağlık hizmetini kendisi sunmaz. Tedaviniz, Uluslararası Sağlık Turizmi Yetki Belgesi bulunan bir sağlık tesisinde, bireysel tıbbi değerlendirmenin ardından verilen kararlarla gerçekleştirilir. Ziyaretinizi kesinleştirmeden önce hasta koordinatörünüzden bakımınızın yapılacağı tesis hakkında bilgi isteyebilirsiniz.",
     },
     {
       id: "faq-4",
@@ -124,7 +124,7 @@ export const FAQ_TR_COPY: FaqLocaleCopy = {
       id: "faq-8",
       question: "Yurda döndükten sonra takip süreci nasıl planlanır?",
       answer:
-        "Takip gereksinimleri tedaviye göre değişiklik gösterir. İstanbul'dan ayrılmadan önce iyileşme talimatlarınızı, kontrol takviminizi ve iletişim düzenlemelerinizi netleştirin; bu, kendi ülkenizde bir hekimle takip gerekip gerekmediğini de kapsar.",
+        "Takip gereksinimleri tedaviye göre değişir. İstanbul'dan ayrılmadan önce hasta koordinatörünüzle iyileşme talimatlarınızı, kontrol takviminizi ve iletişim düzenlemelerinizi netleştirin; bu, kendi ülkenizde bir sağlık profesyoneliyle takip gerekip gerekmediğini de kapsar.",
     },
   ],
 };

@@ -179,17 +179,17 @@ const trustBandSection: PageNode = {
     {
       id: "th-trust-1",
       type: "icon-box",
-      data: { icon: "Clock", heading: "7/24 Erişim", description: "İstediğiniz saatte müsait bir doktor bulup randevu oluşturabilirsiniz." },
+      data: { icon: "Clock", heading: "Kendi Dilinizde Destek", description: "8 dilde ücretsiz destek ve tercümanlık hizmeti." },
     },
     {
       id: "th-trust-2",
       type: "icon-box",
-      data: { icon: "ShieldCheck", heading: "Şifreli Görüşme", description: "Görüntülü konsültasyonlar şifreli bağlantı üzerinden yapılır." },
+      data: { icon: "ShieldCheck", heading: "Güvenli Görüntülü Görüşme", description: "Hasta koordinatörünüzle çevrimiçi görüşmeler şifreli bağlantı üzerinden yapılır." },
     },
     {
       id: "th-trust-3",
       type: "icon-box",
-      data: { icon: "BadgeCheck", heading: "Doğrulanmış Profiller", description: "Yayına alınan gerçek doktor profilleri kimlik/diploma doğrulamasından geçer." },
+      data: { icon: "BadgeCheck", heading: "Yetkili Sağlık Tesisleri", description: "Tedaviler, Uluslararası Sağlık Turizmi Yetki Belgesi bulunan sağlık tesislerinde gerçekleştirilir." },
     },
   ],
 };
@@ -218,7 +218,7 @@ const specialtyGridSection: PageNode = {
     background: { type: "color", value: BACKGROUND },
   },
   children: [
-    { id: "th-specialty-grid-heading", type: "heading", data: { text: "Branşlar", level: 2, align: "center", underline: false } },
+    { id: "th-specialty-grid-heading", type: "heading", data: { text: "Sağlık Turizmi Hizmetlerimiz", level: 2, align: "center", underline: false } },
     {
       id: "th-specialty-grid-row",
       type: "container",
@@ -281,17 +281,17 @@ const howItWorksSection: PageNode = {
         {
           id: "th-how-1",
           type: "icon-box",
-          data: { icon: "UserSearch", heading: "1. Doktorunuzu Seçin", description: "Branş veya dile göre filtreleyerek size uygun doktoru bulun." },
+          data: { icon: "UserSearch", heading: "1. Hizmet Seçin", description: "İlgilendiğiniz sağlık turizmi hizmetini seçin." },
         },
         {
           id: "th-how-2",
           type: "icon-box",
-          data: { icon: "CalendarCheck", heading: "2. Uygun Saati Seçin", description: "Doktorun müsaitlik takviminden size uygun bir randevu saati seçin." },
+          data: { icon: "CalendarCheck", heading: "2. Koordinatörünüzle Görüşün", description: "Ücretsiz çevrimiçi görüşmede hasta koordinatörünüzle tanışın." },
         },
         {
           id: "th-how-3",
           type: "icon-box",
-          data: { icon: "Video", heading: "3. Görüşmeye Katılın", description: "Randevu saatinde bağlantıya tıklayın, görüntülü görüşmeye başlayın." },
+          data: { icon: "Video", heading: "3. Yolculuğunuzu Planlayın", description: "Tedavinizi yetkili bir tesiste, seyahatinizi ve konaklamanızı sizinle birlikte planlarız." },
         },
       ],
     },
@@ -377,10 +377,10 @@ function buildCounterSection(input: { doctorCount: number; specialtyCount: numbe
     type: "counter",
     data: {
       items: [
-        { id: "th-counter-doctors", value: input.doctorCount, label: "Uzman Doktor" },
-        { id: "th-counter-specialties", value: input.specialtyCount, label: "Uzmanlık Alanı" },
-        { id: "th-counter-languages", value: input.languageCount, label: "Desteklenen Dil" },
-        { id: "th-counter-duration", value: input.sessionDurationMin, suffix: " dk", label: "Standart Seans Süresi" },
+        { id: "th-counter-doctors", value: input.doctorCount, label: "Hasta Koordinatörü", metric: "activeCoordinators" },
+        { id: "th-counter-specialties", value: input.specialtyCount, label: "Sağlık Turizmi Hizmeti", metric: "activeServices" },
+        { id: "th-counter-languages", value: input.languageCount, label: "Desteklenen Dil", metric: "visitorLanguages" },
+        { id: "th-counter-duration", value: input.sessionDurationMin, suffix: " dk", label: "Ön Görüşme Süresi", metric: "consultationMinutes" },
       ],
     },
   };

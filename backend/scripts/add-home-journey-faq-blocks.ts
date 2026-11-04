@@ -97,7 +97,7 @@ const JOURNEY_EN: JourneyCopy = {
       id: "journey-step-3",
       icon: "Stethoscope",
       title: "Examination and Treatment",
-      text: "The physician responsible for your care completes the necessary examinations and carries out your treatment plan.",
+      text: "At an authorized healthcare facility, the necessary examinations are completed and your treatment plan is determined following an individual medical evaluation.",
     },
     {
       id: "journey-step-4",
@@ -137,7 +137,7 @@ const JOURNEY_TR: JourneyCopy = {
       id: "journey-step-3",
       icon: "Stethoscope",
       title: "Muayene ve Tedavi",
-      text: "Tedavinizden sorumlu hekim gerekli muayeneleri tamamlar ve tedavi planınızı uygular.",
+      text: "Yetkili bir sağlık tesisinde gerekli muayeneler tamamlanır ve tedavi planınız bireysel tıbbi değerlendirmenin ardından belirlenir.",
     },
     {
       id: "journey-step-4",
