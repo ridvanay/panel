@@ -402,6 +402,7 @@ const GalleryBlockSchema = z.object({
   type: z.literal("gallery"),
   data: GalleryBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- §Faz "Temel Elemanlar" — Başlık/Buton/İkon Kutusu/Ayırıcı (yeni) ---------- */
@@ -428,6 +429,7 @@ const HeadingBlockSchema = z.object({
   type: z.literal("heading"),
   data: HeadingBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /**
@@ -450,6 +452,7 @@ const ButtonBlockSchema = z.object({
   type: z.literal("button"),
   data: ButtonBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 const IconBoxBlockDataSchema = z.object({
@@ -463,6 +466,7 @@ const IconBoxBlockSchema = z.object({
   type: z.literal("icon-box"),
   data: IconBoxBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Ayırıcı VE Boşluk TEK blok tipi — `variant` ayrımlar (bkz. frontend `types.ts::DividerBlock`). */
@@ -476,6 +480,7 @@ const DividerBlockSchema = z.object({
   type: z.literal("divider"),
   data: DividerBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- §Faz "Medya & İnteraktif" — Görsel (zenginleştirme)/Video/Akordiyon/Sekmeler ---------- */
@@ -503,6 +508,7 @@ const ImageBlockSchema = z.object({
   type: z.literal("image"),
   data: ImageBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /**
@@ -531,6 +537,7 @@ const VideoBlockSchema = z.object({
   type: z.literal("video"),
   data: VideoBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Frontend `types.ts::ACCORDION_MAX_ITEMS`/`TABS_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
@@ -572,6 +579,7 @@ const AccordionBlockSchema = z.object({
   type: z.literal("accordion"),
   data: AccordionBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 const TabsBlockDataSchema = z.object({
@@ -591,6 +599,7 @@ const TabsBlockSchema = z.object({
   type: z.literal("tabs"),
   data: TabsBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- §Faz "Pazarlama & Sosyal Kanıt" — CTA (zenginleştirme)/Sayaç/Müşteri Yorumları/Fiyatlandırma Tablosu ---------- */
@@ -620,6 +629,7 @@ const CtaBlockSchema = z.object({
   type: z.literal("cta"),
   data: CtaBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Frontend `types.ts::COUNTER_MAX_ITEMS`/`TESTIMONIAL_MAX_ITEMS`/`PRICING_MAX_PLANS`/
@@ -640,6 +650,8 @@ const CounterBlockDataSchema = z.object({
         prefix: z.string().max(8).optional(),
         suffix: z.string().max(8).optional(),
         label: z.string().min(1).max(120),
+        // Paket AK (K2) - canli veri kaynagi; yoksa elle yazilan value kullanilir.
+        metric: z.enum(["activeServices", "visitorLanguages", "activeCoordinators", "consultationMinutes"]).optional(),
       })
     )
     .min(1)
@@ -650,6 +662,7 @@ const CounterBlockSchema = z.object({
   type: z.literal("counter"),
   data: CounterBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /**
@@ -677,6 +690,7 @@ const TestimonialBlockSchema = z.object({
   type: z.literal("testimonial"),
   data: TestimonialBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /**
@@ -712,6 +726,7 @@ const PricingTableBlockSchema = z.object({
   type: z.literal("pricing-table"),
   data: PricingTableBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- §Faz 4 "Dinamik & CMS İçerikleri" — Son Blog Yazıları/İletişim Formu/Özel HTML ---------- */
@@ -736,6 +751,7 @@ const LatestPostsBlockSchema = z.object({
   type: z.literal("latest-posts"),
   data: LatestPostsBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /**
@@ -751,6 +767,7 @@ const ContactFormBlockSchema = z.object({
   type: z.literal("contact-form"),
   data: ContactFormBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Frontend `types.ts::CUSTOM_HTML_MAX_LENGTH` ile SAYISAL OLARAK BİREBİR AYNI. */
@@ -771,6 +788,7 @@ const CustomHtmlBlockSchema = z.object({
   type: z.literal("custom-html"),
   data: CustomHtmlBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- Görsel widget'lar — Öncesi/Sonrası, Logo Bandı, İlerleme Çubuğu, Ekip ---------- */
@@ -795,6 +813,7 @@ const BeforeAfterSliderBlockSchema = z.object({
   type: z.literal("before-after-slider"),
   data: BeforeAfterSliderBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Frontend `types.ts::LOGO_MARQUEE_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
@@ -828,6 +847,7 @@ const LogoMarqueeBlockSchema = z.object({
   type: z.literal("logo-marquee"),
   data: LogoMarqueeBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Frontend `types.ts::SKILL_BAR_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
@@ -851,6 +871,7 @@ const SkillBarBlockSchema = z.object({
   type: z.literal("skill-bar"),
   data: SkillBarBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /** Frontend `types.ts::TEAM_MAX_MEMBERS`/`TEAM_MAX_SOCIAL_LINKS_PER_MEMBER` ile SAYISAL OLARAK
@@ -881,6 +902,7 @@ const TeamBlockSchema = z.object({
   type: z.literal("team"),
   data: TeamBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- Uzmanlık Kartları — veri Uzmanlıklar modülünden gelir, blok yalnızca görünümü taşır ----------
@@ -904,6 +926,7 @@ const SpecialtyCardsBlockSchema = z.object({
   type: z.literal("specialty-cards"),
   data: SpecialtyCardsBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- Metin bloğu — 2026-10-18 (Paket A3) ----------
@@ -921,6 +944,7 @@ const TextBlockSchema = z
       })
       .passthrough(),
     reveal: RevealEffectSettingsSchema.optional(),
+    hidden: z.boolean().optional(),
   })
   .passthrough();
 
@@ -968,6 +992,7 @@ const FeaturedDoctorsBlockSchema = z.object({
   type: z.literal("featured-doctors"),
   data: FeaturedDoctorsBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md §3.5/§6.1 ---------- */
@@ -988,6 +1013,7 @@ const AdvancedSliderBlockSchema = z.object({
   type: z.literal("advanced-slider"),
   data: AdvancedSliderBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- Google Harita — bkz. .claude/architect-scope-google-map-corporate-blocks.md §2.1/§5
@@ -1118,6 +1144,7 @@ const GoogleMapBlockSchema = z.object({
   type: z.literal("google-map"),
   data: GoogleMapBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- "Hakkımızda" şablon bloğu — bkz. lib/about-page-template.ts ----------
@@ -1303,6 +1330,7 @@ const JourneyMapBlockSchema = z.object({
   type: z.literal("journey-map"),
   data: JourneyMapBlockDataSchema,
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
@@ -1384,6 +1412,7 @@ const ContainerNodeSchema: z.ZodTypeAny = z.object({
   settings: ContainerSettingsSchema,
   children: z.array(PageNodeSchema).max(MAX_CHILDREN_PER_CONTAINER).default([]),
   reveal: RevealEffectSettingsSchema.optional(),
+  hidden: z.boolean().optional(),
 });
 
 const LegacyColumnsNodeSchema: z.ZodTypeAny = z.preprocess(legacyColumnsToContainer, ContainerNodeSchema);
