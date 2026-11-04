@@ -1,0 +1,6 @@
+[apply-client-revisions-ak] mod=GERİ YÜKLE
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[uyarı] ayarlar: yedekten sonra değişmiş (find=true, book=true) — restore bu düzenlemeleri ezer (updatedAt=2026-11-04T09:53:40.428Z)
+[yedek] restore öncesi güncel durum: C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-pre-restore-2026-11-04T09-53-43-702Z.json
+[fix] yedekten geri yüklendi (sayfa=1, slayt=0, iletişim=1, ayar=1; atlanan sayfa=0, slayt=0).
+[revalidate] etiketler yenilendi: settings, contact-page, pages

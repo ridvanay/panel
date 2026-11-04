@@ -1,0 +1,66 @@
+[apply-client-revisions-ak] mod=LİSTE
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[ayarlar] homePageId=7aff9bc6-f780-426e-ab84-7a0fd4a26f4c findTreatmentEnabled=true bookConsultationCtaEnabled=true
+[ana sayfa] /anasayfa-30 (7aff9bc6-f780-426e-ab84-7a0fd4a26f4c)
+  blocks (en):
+    - container id=th-trust-band
+        - icon-box id=th-trust-1 "24/7 Access"
+        - icon-box id=th-trust-2 "Encrypted Consultation"
+        - icon-box id=th-trust-3 "Verified Profiles"
+    - container id=th-specialty-grid
+        - heading id=th-specialty-grid-heading "Our Specialties"
+        - specialty-cards id=ak-fx-specialty-cards
+    - container id=th-how-it-works
+        - heading id=th-how-it-works-heading "How it works"
+        - container id=th-how-it-works-row
+            - icon-box id=th-how-1 "1. Choose Your Doctor"
+            - icon-box id=th-how-2 "2. Pick a Time"
+            - icon-box id=th-how-3 "3. Join the Call"
+    - counter id=th-counters
+  translations.ar.blocks:
+    - container id=th-trust-band
+        - icon-box id=th-trust-1 "الوصول على مدار الساعة"
+        - icon-box id=th-trust-2 "استشارة مشفّرة"
+        - icon-box id=th-trust-3 "ملفات موثّقة"
+    - container id=th-specialty-grid
+        - heading id=th-specialty-grid-heading "تخصصاتنا"
+        - specialty-cards id=ak-fx-specialty-cards
+    - container id=th-how-it-works
+        - heading id=th-how-it-works-heading "كيف يعمل"
+        - container id=th-how-it-works-row
+            - icon-box id=th-how-1 "١. اختر طبيبك"
+            - icon-box id=th-how-2 "٢. اختر الموعد"
+            - icon-box id=th-how-3 "٣. انضم إلى المكالمة"
+    - counter id=th-counters
+[slaytlar] 30
+  - de80ce3b-d17d-4fdb-8d67-ae8b7ddacf5c slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - b450812b-abc2-4017-a597-9b6b9b683308 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - a15c8191-54f4-4c15-afcf-a7a9d39dfde6 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - dcc343e7-9adc-485d-b761-dd13d7028b21 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 7009a5db-8547-4769-bcfb-11c6cd11d888 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 7e48cb7a-e986-48e8-8da8-a267074a53e4 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 0f93412e-d943-4e9c-834e-36db3fa8af26 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 043551cf-2652-42de-9dc0-3ce37246f22f slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - a6209b97-1c06-443b-8cb8-6f61348398cf slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 9b89d714-ee4b-4059-8035-8b84ce2be27e slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 65d57fa0-54be-4de9-8269-6fcab3428498 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 2e3e907e-df21-4a26-ad5e-39ffc939b1de slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - e485fbd0-7c93-4cc6-abc4-d99ece1c1924 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 69b8a9fc-ac8c-4b4a-890a-59e536ebb966 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 9cf528e1-2817-4084-9a5b-086143254d88 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 1e921d08-dc31-4e4f-aaf5-26d64500a788 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - b4ec18a8-6fdc-4b0e-a211-f44af0987e58 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 2edc5d56-f371-4963-9e86-aabde8c2de4e slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - d2961866-7db3-4df4-b4c1-b92fa7b9f978 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - d1ab5f30-4bba-434c-b5e7-b9cc8e23ce41 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 7fec7566-38e7-4d4d-872f-7ec4480b273c slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 9e14c628-9e71-48c6-8891-8ba293e63585 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - a4588ba4-e583-427c-8040-bd7a95f2737d slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 56130336-a7b7-4035-9570-9a5859ace325 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - cc5b3191-a29e-4891-8150-cdbfeb7699d8 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 5192b38d-55c9-4988-85e8-ec46ac029576 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 5e04e14f-848f-4f53-a7a0-326da279baff slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 22665db5-25ea-428b-9c01-9a4d0666af52 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 2741bfe6-86aa-4dd4-9120-4233b3684bbe slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+  - 38417bbe-11c9-460e-8da2-d108d2019d72 slider="Global TeleHealth Hero" label="Hero" gorsel=(yok) katman metinleri="Görüntülü Sağlık Danışmanlığı", "Uzman Doktorlarla Görüntülü Görüşün", "Randevunuzu birkaç tıkla alın, doktorunu…", "Doktorları Keşfet"
+[iletisim] en.phone="+90 212 555 01 00" en.address="Eski Test Mah. Deneme Sk. No: 1, Kadikoy / Istanbul" mapUrl="https://www.google.com/maps/place/Old+Test+Address" hoursVisible=(yok=gorunur)

@@ -1,0 +1,114 @@
+[apply-client-revisions-ak] mod=YAZ
+[hedef DB] localhost:5432/saas_e2e (NODE_ENV=development)
+[plan] uygulanacak değişiklikler (eski -> yeni)
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi 1 baslik: "24/7 Access" -> "Support in your language"
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi 1 aciklama: "Find an available doctor and book within minutes." -> "Free support and interpreter service in 8 languages."
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi 2 baslik: "Encrypted Consultation" -> "Secure video consultation"
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi 2 aciklama: "Your video consultation is protected end to end." -> "Online consultations with your patient coordinator over an encrypted connection."
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi 3 baslik: "Verified Profiles" -> "Authorized facilities"
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi 3 aciklama: "All active doctor profiles are verified." -> "Treatments are performed at healthcare facilities holding an International Health Tourism …"
+  ~ sayfa /anasayfa-30 · blocks (en) | ozellik seridi hidden: "(yok)" -> "true"
+  ~ sayfa /anasayfa-30 · blocks (en) | hizmetler basligi: "Our Specialties" -> "Our Health Tourism Services"
+  ~ sayfa /anasayfa-30 · blocks (en) | specialty-cards.content.en.title: "Our Specialties" -> "Our Health Tourism Services"
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir 1 baslik: "1. Choose Your Doctor" -> "1. Choose a service"
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir 1 aciklama: "Browse verified profiles and pick a doctor." -> "Select the health tourism service you are interested in."
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir 2 baslik: "2. Pick a Time" -> "2. Talk to your coordinator"
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir 2 aciklama: "Select a slot in the doctor's availability calendar." -> "Meet your patient coordinator in a free online consultation."
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir 3 baslik: "3. Join the Call" -> "3. Plan your journey"
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir 3 aciklama: "Join your video consultation from any device." -> "We plan your treatment at an authorized facility, your travel and your stay."
+  ~ sayfa /anasayfa-30 · blocks (en) | nasil calisir hidden: "(yok)" -> "true"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi 1 baslik: "الوصول على مدار الساعة" -> "دعم بلغتك"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi 1 aciklama: "ابحث عن طبيب متاح واحجز خلال دقائق." -> "دعم مجاني وخدمة ترجمة فورية بـ 8 لغات."
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi 2 baslik: "استشارة مشفّرة" -> "استشارة فيديو آمنة"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi 2 aciklama: "استشارتك المرئية محمية من طرف إلى طرف." -> "استشارات عبر الإنترنت مع منسق المرضى الخاص بك عبر اتصال مشفّر."
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi 3 baslik: "ملفات موثّقة" -> "منشآت مرخّصة"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi 3 aciklama: "جميع ملفات الأطباء النشطين موثّقة." -> "تُجرى العلاجات في منشآت صحية حاصلة على شهادة ترخيص السياحة العلاجية الدولية."
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | ozellik seridi hidden: "(yok)" -> "true"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | hizmetler basligi: "تخصصاتنا" -> "خدمات السياحة العلاجية لدينا"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | specialty-cards.content.ar.title: "تخصصاتنا" -> "خدمات السياحة العلاجية لدينا"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir 1 baslik: "١. اختر طبيبك" -> "اختر خدمة"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir 1 aciklama: "تصفّح الملفات الموثّقة واختر طبيبًا." -> "اختر خدمة السياحة العلاجية التي تهمك."
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir 2 baslik: "٢. اختر الموعد" -> "تحدث مع منسقك"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir 2 aciklama: "اختر موعدًا من تقويم توفّر الطبيب." -> "تعرّف على منسق المرضى الخاص بك في استشارة مجانية عبر الإنترنت."
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir 3 baslik: "٣. انضم إلى المكالمة" -> "خطط لرحلتك"
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir 3 aciklama: "انضم إلى استشارتك المرئية من أي جهاز." -> "نخطط لعلاجك في منشأة مرخّصة ولسفرك وإقامتك."
+  ~ sayfa /anasayfa-30 · translations.ar.blocks | nasil calisir hidden: "(yok)" -> "true"
+  ~ iletisim sayfasi (ContactForm.pageContent) | adres (en): "Eski Test Mah. Deneme Sk. No: 1, Kadikoy / Istanbul" -> "Atatürk Mah. Ertuğrul Gazi Sk. Metropol İstanbul C1 Blok No: 2B İç Kapı No: 168, Ataşehir …"
+  ~ iletisim sayfasi (ContactForm.pageContent) | adres (tr): "Eski Test Mah. Deneme Sk. No: 1, Kadikoy / Istanbul" -> "Atatürk Mah. Ertuğrul Gazi Sk. Metropol İstanbul C1 Blok No: 2B İç Kapı No: 168, Ataşehir …"
+  ~ iletisim sayfasi (ContactForm.pageContent) | harita baglantisi (adres aranacak): "https://www.google.com/maps/place/Old+Test+Address" -> ""
+  ~ iletisim sayfasi (ContactForm.pageContent) | calisma saatleri karti gorunur: "(yok)" -> "false"
+  ~ SiteSettings | findTreatmentEnabled: "true" -> "false"
+  ~ SiteSettings | bookConsultationCtaEnabled: "true" -> "false"
+  ? Yolculuk adim 3: bulunamadi (elle panelden)
+  ? Hero basligi (OUR HEALTH SERVICE): katman metninde yok -> metin GORSELIN ICINDE: gorsel yeniden uretilmeli (asagidaki slayt/gorsel listesi)
+  [gorsel yeniden uretilmeli] hero yazisi katmanda degil, slayt gorselinin icinde olabilir:
+    - slayt de80ce3b-d17d-4fdb-8d67-ae8b7ddacf5c (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt b450812b-abc2-4017-a597-9b6b9b683308 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt a15c8191-54f4-4c15-afcf-a7a9d39dfde6 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt dcc343e7-9adc-485d-b761-dd13d7028b21 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 7009a5db-8547-4769-bcfb-11c6cd11d888 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 7e48cb7a-e986-48e8-8da8-a267074a53e4 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 0f93412e-d943-4e9c-834e-36db3fa8af26 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 043551cf-2652-42de-9dc0-3ce37246f22f (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt a6209b97-1c06-443b-8cb8-6f61348398cf (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 9b89d714-ee4b-4059-8035-8b84ce2be27e (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 65d57fa0-54be-4de9-8269-6fcab3428498 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 2e3e907e-df21-4a26-ad5e-39ffc939b1de (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt e485fbd0-7c93-4cc6-abc4-d99ece1c1924 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 69b8a9fc-ac8c-4b4a-890a-59e536ebb966 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 9cf528e1-2817-4084-9a5b-086143254d88 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 1e921d08-dc31-4e4f-aaf5-26d64500a788 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt b4ec18a8-6fdc-4b0e-a211-f44af0987e58 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 2edc5d56-f371-4963-9e86-aabde8c2de4e (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt d2961866-7db3-4df4-b4c1-b92fa7b9f978 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt d1ab5f30-4bba-434c-b5e7-b9cc8e23ce41 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 7fec7566-38e7-4d4d-872f-7ec4480b273c (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 9e14c628-9e71-48c6-8891-8ba293e63585 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt a4588ba4-e583-427c-8040-bd7a95f2737d (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 56130336-a7b7-4035-9570-9a5859ace325 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt cc5b3191-a29e-4891-8150-cdbfeb7699d8 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 5192b38d-55c9-4988-85e8-ec46ac029576 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 5e04e14f-848f-4f53-a7a0-326da279baff (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 22665db5-25ea-428b-9c01-9a4d0666af52 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 2741bfe6-86aa-4dd4-9120-4233b3684bbe (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+    - slayt 38417bbe-11c9-460e-8da2-d108d2019d72 (Global TeleHealth Hero / Hero) arka plan: (gradient/yok)
+  i sayac seridi (sayfa /anasayfa · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-2 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-3 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-4 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-5 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-6 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-7 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-8 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-9 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-10 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-11 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-12 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-13 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-14 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-15 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-16 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-17 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-18 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-19 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-20 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-21 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-22 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-23 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-24 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-25 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-26 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-27 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-28 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-29 · blocks (en)): 4 Uzman Doktor | 6 Uzmanlık Alanı | 4 Desteklenen Dil | 30 dk Standart Seans Süresi - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-30 · blocks (en)): 15 Coordinator | 6 Medical Specialty | 6 Spoken Language | 30 min Minutes - DOKUNULMADI (panelden karar)
+  i sayac seridi (sayfa /anasayfa-30 · translations.ar.blocks): 15 منسّق | 6 تخصص طبي | 6 لغة منطوقة | 30 دقيقة - DOKUNULMADI (panelden karar)
+  i --call-center-phone parametresi yok, telefon degismedi.
+  [tarama] tedavi eden taraf gibi gorunen ifadeler (rapor amacli, script DEGISTIRMEZ):
+    - sayfa /about · translations.en [0].data.hero.secondaryCta.label: "Meet our doctors"
+    - sayfa /about · translations.en [0].data.doctors.title: "Meet our doctors"
+[özet] toplam alan değişikliği=38, sayfa=1, slayt=0, iletişim=1, ayar=1
+[yedek] C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-2026-11-04T09-49-49-082Z.json
+[fix] uygulandı (sayfa=1, slayt=0, iletişim=1, ayar=1, alan değişikliği=38).
+[geri al] npx tsx scripts/apply-client-revisions-ak.ts --restore=C:\Users\Ridonei\AppData\Local\Temp\ak-e2e-script-backups\client-revisions-ak-2026-11-04T09-49-49-082Z.json --confirm=apply-client-revisions-ak --operator=<ad>
+[revalidate] etiketler yenilendi: settings, contact-page, pages
