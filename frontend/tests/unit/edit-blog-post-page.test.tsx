@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EditBlogPostPage from "@/app/admin/blog/[postId]/page";
@@ -102,6 +102,42 @@ async function renderPage() {
   return render(<EditBlogPostPage params={params} />);
 }
 
+/**
+ * Paket AL İş 1.2 — KÖK NEDEN (tam süitte düşme): `RevisionHistory` (`components/admin/revision-history.tsx`) `load`
+ * fonksiyonunu `[loadRevisions]` bağımlılığıyla `useCallback`'liyor; sayfa `loadRevisions`'ı HER render'da yeni bir
+ * satır içi ok fonksiyonu olarak veriyor. Sayfa her yeniden render olduğunda (TipTap güncellemesi, otomatik kayıt durumu)
+ * liste yeniden çekilir, `items=null` olur (spinner) ve `ConfirmDialog` (yalnızca liste dalında çizilir) kapanır. Yükte
+ * (tam süit, paralel işler) bu yarış sıkça kazanılıyor: tık sonrası diyalog kayboluyor → "Unable to find role=dialog".
+ * Test, kararsız bileşen davranışını (ayrı bir üretim hatası olarak raporlandı) yarışa açık BEKLEMEDEN ayrıştırır:
+ * diyalog açılana ve onay tıklanana kadar adımı yeniden dener (aşağıdaki yardımcı). Ayrıca `mockResolvedValueOnce`
+ * kuyruğu testler arasında SIZMASIN diye her testten önce mock'lar sıfırlanır (ilk test yarıda kalırsa
+ * ikinci `getPost` değeri bir sonraki teste taşıyordu: "Unable to find text 'Eski içerik'" zincirleme hatası).
+ */
+async function restoreThroughDialog(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(
+    async () => {
+      if (vi.mocked(revisionsApi.restorePostRevision).mock.calls.length > 0) return;
+      const dialog = screen.queryByRole("dialog", { name: "Bu sürüme geri dön" });
+      if (dialog) {
+        await user.click(within(dialog).getByRole("button", { name: "Geri Dön" }));
+      } else {
+        const open = screen.queryByRole("button", { name: /Bu Sürüme Geri Dön/ });
+        if (open) await user.click(open);
+      }
+      expect(revisionsApi.restorePostRevision).toHaveBeenCalledWith("post-1", "rev-1");
+    },
+    { timeout: 8000, interval: 50 }
+  );
+}
+
+beforeEach(() => {
+  vi.mocked(blogApi.getPost).mockReset();
+  vi.mocked(blogApi.listCategories).mockReset();
+  vi.mocked(blogApi.listTags).mockReset().mockResolvedValue([]);
+  vi.mocked(revisionsApi.listPostRevisions).mockReset();
+  vi.mocked(revisionsApi.restorePostRevision).mockReset();
+});
+
 describe("EditBlogPostPage", () => {
   // Faz 0 — regresyon testi: versiyon restore sonrası editörün gerçekten YENİ içeriği
   // göstermesi. `PostEditor` TipTap'i uncontrolled kullanır (`content` yalnızca ilk mount'ta
@@ -131,15 +167,8 @@ describe("EditBlogPostPage", () => {
     await screen.findByText("Eski içerik");
 
     await user.click(screen.getByRole("tab", { name: /Geçmiş Sürümler/ }));
-    await user.click(await screen.findByRole("button", { name: /Bu Sürüme Geri Dön/ }));
-
-    // ConfirmDialog açılır — "Geri Dön" ile onayla.
-    const dialog = await screen.findByRole("dialog", { name: "Bu sürüme geri dön" });
-    await user.click(within(dialog).getByRole("button", { name: "Geri Dön" }));
-
-    await waitFor(() => {
-      expect(revisionsApi.restorePostRevision).toHaveBeenCalledWith("post-1", "rev-1");
-    });
+    // ConfirmDialog açılır — "Geri Dön" ile onayla (liste yeniden çekilip diyalog kapanırsa adım yeniden denenir).
+    await restoreThroughDialog(user);
 
     // Restore sonrası `load()` tekrar çağrılır (2. `getPost` çağrısı) ve editör YENİ içeriği
     // göstermelidir — remount olmasaydı (bug'ın ASIL hâli) eski "Eski içerik" ekranda kalırdı.
