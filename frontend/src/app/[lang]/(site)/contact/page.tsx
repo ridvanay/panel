@@ -97,7 +97,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
     <div className={cn("contact-page", aboutSerif.variable)}>
       <section className="bg-background">
         <div className={cn(aboutContainerClass, "pt-8 pb-16 sm:pt-10 lg:pb-24")}>
-          <nav aria-label={dict.ui.breadcrumb} className="text-sm text-[var(--about-muted-text)]">
+          <nav aria-label={dict.ui.breadcrumb} className="text-sm font-semibold text-[var(--about-muted-text)]">
             <ol className="flex items-center gap-2">
               <li>
                 <Link href={homeHref} className="inline-flex min-h-11 items-center hover:text-foreground hover:underline">
@@ -105,7 +105,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                 </Link>
               </li>
               <li aria-hidden="true">/</li>
-              <li aria-current="page" className="font-medium text-foreground">
+              <li aria-current="page" className="font-semibold text-foreground">
                 {t.breadcrumbCurrent}
               </li>
             </ol>
@@ -116,7 +116,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
             <h1 className="about-serif mt-5 text-4xl leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-[56px]">
               {content.title || t.title}
             </h1>
-            <p className="mt-5 max-w-2xl text-base leading-relaxed text-[var(--about-body-text)] sm:text-lg">{content.intro || t.intro}</p>
+            <p className="mt-5 max-w-2xl text-base font-semibold leading-relaxed text-[var(--about-body-text)] sm:text-lg">{content.intro || t.intro}</p>
 
             {(telHref || whatsappHref) && (
               <div className="mt-6 flex gap-3 lg:hidden">
@@ -147,7 +147,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
           <div className="mt-10 grid gap-6 lg:mt-12 lg:grid-cols-12 lg:gap-8">
             <div className={cn(CARD_CLASS, "relative lg:col-span-7 lg:self-start lg:p-9")}>
               <h2 className="text-2xl font-semibold text-foreground">{t.formTitle}</h2>
-              <p className="mt-1.5 text-sm text-[var(--about-muted-text)]">{t.requiredNote}</p>
+              <p className="mt-1.5 text-sm font-semibold text-[var(--about-muted-text)]">{t.requiredNote}</p>
               <div className="mt-6">
                 <ContactPageForm
                   dict={t}
@@ -184,15 +184,15 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                               <a
                                 href={row.href}
                                 {...(row.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                                className="inline-flex min-h-11 items-center break-words text-base font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+                                className="inline-flex min-h-11 items-center break-words text-base font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline"
                               >
                                 {row.ltr ? <bdi dir="ltr">{row.value}</bdi> : row.value}
                               </a>
                             ) : (
-                              <p className="text-base font-medium text-foreground">{row.value}</p>
+                              <p className="text-base font-semibold text-foreground">{row.value}</p>
                             )}
                             {row.note && (
-                              <p className="text-sm text-[var(--about-muted-text)]" data-testid="contact-call-center-note">
+                              <p className="text-sm font-semibold text-[var(--about-muted-text)]" data-testid="contact-call-center-note">
                                 {row.note}
                               </p>
                             )}
@@ -213,15 +213,20 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                   <dl className="mt-4 divide-y divide-border">
                     {hours.map((row, index) => (
                       <div key={`${row.label}-${index}`} className="flex items-baseline justify-between gap-4 py-2.5 text-base">
-                        <dt className="text-[var(--about-body-text)]">{row.label}</dt>
-                        <dd className="text-end font-medium text-foreground">{row.value}</dd>
+                        <dt className="font-semibold text-[var(--about-body-text)]">{row.label}</dt>
+                        <dd className="text-end font-semibold text-foreground">{row.value}</dd>
                       </div>
                     ))}
                   </dl>
                 </section>
               )}
 
-              {emergency && <EmergencyNoticeCard text={emergency.summary} />}
+              {/* Paket AN: ortak acil uyari karti yalniz iletisim sayfasinda kalin (bilesen diger sayfalarda degismez). */}
+              {emergency && (
+                <div className="[&_p]:font-semibold" data-testid="contact-emergency-notice">
+                  <EmergencyNoticeCard text={emergency.summary} />
+                </div>
+              )}
 
               {addressMapHref && (
                 <section className={cn(CARD_CLASS, "overflow-hidden p-0 sm:p-0")} aria-labelledby="contact-map-title">
@@ -233,7 +238,7 @@ export default async function ContactPage({ params, searchParams }: PageProps) {
                     <img src={page.mapImageUrl} alt={t.mapImageAlt} loading="lazy" className="aspect-[16/10] w-full object-cover" />
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-3 p-5">
-                    {content.address && <p className="min-w-0 text-sm text-[var(--about-body-text)]">{content.address}</p>}
+                    {content.address && <p className="min-w-0 text-sm font-semibold text-[var(--about-body-text)]">{content.address}</p>}
                     <a
                       href={addressMapHref}
                       target="_blank"

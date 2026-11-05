@@ -334,7 +334,7 @@ export function ContactPageForm({
         <h2 ref={successHeadingRef} tabIndex={-1} className="text-2xl font-semibold text-foreground outline-none">
           {dict.successTitle}
         </h2>
-        <p className="text-base leading-relaxed text-[var(--about-body-text)]">{dict.successBody}</p>
+        <p className="text-base font-semibold leading-relaxed text-[var(--about-body-text)]">{dict.successBody}</p>
         <button
           type="button"
           onClick={reset}
@@ -536,14 +536,14 @@ export function ContactPageForm({
             ))}
             <option value={treatmentNotSure}>{dict.treatmentNotSure}</option>
           </select>
-          <p id={id("treatment-help")} className="mt-1.5 text-sm text-[var(--about-muted-text)]">
+          <p id={id("treatment-help")} className="mt-1.5 text-sm font-semibold text-[var(--about-muted-text)]">
             {dict.treatmentHelp}
           </p>
           {errorText("treatment")}
 
           {showExplicit && (
             <div className="mt-3 rounded-xl border border-border bg-[color-mix(in_oklch,var(--site-primary)_5%,var(--site-surface))] p-3">
-              <label htmlFor={id("explicitConsent")} className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-foreground">
+              <label htmlFor={id("explicitConsent")} className="flex cursor-pointer items-start gap-3 text-sm font-semibold leading-relaxed text-foreground">
                 <input
                   ref={(el) => {
                     fieldRefs.current.explicitConsent = el;
@@ -609,7 +609,7 @@ export function ContactPageForm({
             </label>
           ))}
         </div>
-        <p id={id("whatsapp-note")} className="mt-2 text-xs leading-relaxed text-[var(--about-muted-text)]">
+        <p id={id("whatsapp-note")} className="mt-2 text-xs font-semibold leading-relaxed text-[var(--about-muted-text)]">
           {dict.whatsappNote}
         </p>
       </fieldset>
@@ -635,14 +635,14 @@ export function ContactPageForm({
           onChange={(e) => update("message", e.target.value)}
           className={cn(INPUT_CLASS, "mt-2 min-h-32 resize-y py-3")}
         />
-        <p id={id("message-help")} className="mt-1.5 text-sm text-[var(--about-muted-text)]">
+        <p id={id("message-help")} className="mt-1.5 text-sm font-semibold text-[var(--about-muted-text)]">
           {dict.messageHelp}
         </p>
         {errorText("message")}
       </div>
 
       <div>
-        <label htmlFor={id("noticeAccepted")} className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-foreground">
+        <label htmlFor={id("noticeAccepted")} className="flex cursor-pointer items-start gap-3 text-sm font-semibold leading-relaxed text-foreground">
           <input
             ref={(el) => {
               fieldRefs.current.noticeAccepted = el;
@@ -674,7 +674,7 @@ export function ContactPageForm({
         >
           {submitting ? dict.sending : dict.submit}
         </button>
-        {responseTime && <p className="text-sm text-[var(--about-muted-text)]">{responseTime}</p>}
+        {responseTime && <p className="text-sm font-semibold text-[var(--about-muted-text)]">{responseTime}</p>}
       </div>
     </form>
   );
