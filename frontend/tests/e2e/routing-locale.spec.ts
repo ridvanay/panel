@@ -22,6 +22,10 @@ test.afterAll(async () => {
   for (const id of createdPageIds) await deletePagePermanently(token, id);
 });
 
+// AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor (CMS sayfası + dil değiştirici ilk kez derleniyor)
+test.use({ navigationTimeout: 90_000 });
+test.describe.configure({ timeout: 120_000 });
+
 test.describe("Public locale routing (§9 madde 1-3)", () => {
   test("Varsayılan (EN) sayfa açılır, dil değiştirici ile DE'ye geçilince /de/<de-slug> altında DE içerik gösterilir", async ({
     page,

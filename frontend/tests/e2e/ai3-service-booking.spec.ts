@@ -373,7 +373,8 @@ test("7) serviceBookingEnabled kapaliyken header 'Book a consultation' /request'
   const { context, page } = await newVisitor(browser, { width: 1440 });
   const headerCta = () => page.getByRole("link", { name: /^Book (a|an online) consultation/i }).first();
   try {
-    await setBookingEnabled(adminToken, false);
+    // AL: seri akışta erişim jetonu bu teste gelene dek/sırada süresi dolabiliyor (401) — her yazmada taze oturum alınır.
+    await setBookingEnabled((await getCachedAdminSession()).accessToken, false);
     await expect(async () => {
       await page.goto("/");
       await expect(headerCta()).toBeVisible({ timeout: 15_000 });
@@ -383,7 +384,7 @@ test("7) serviceBookingEnabled kapaliyken header 'Book a consultation' /request'
     await page.goto(`/book-consultation?service=${SERVICE_SLUG}`);
     await expect(page.getByTestId("service-booking-unavailable").or(page.getByTestId("service-booking-wizard")).first()).toBeVisible({ timeout: 60_000 });
   } finally {
-    await setBookingEnabled(adminToken, true);
+    await setBookingEnabled((await getCachedAdminSession()).accessToken, true);
     await context.close().catch(() => undefined);
   }
   // Geri aciliste (ISR/onbellek <= 60 sn) header yeniden /book-consultation'a gider.

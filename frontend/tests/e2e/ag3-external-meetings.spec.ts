@@ -390,7 +390,7 @@ test("2) misafir: gecersiz baglanti tek tip ekran; yaklasan geri sayim; ad dogru
 });
 
 test("3) ev sahibi: Katil penceresi -> oda sayfasi acilir; bekleyen misafir panelde gorunur", async ({ browser }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
   await ensureUi();
   shiftMeeting(uiMeetingId, 5);
   // Gercek Chrome + sahte kamera/mikrofon (varsayilan Chromium bunu desteklemiyor; bkz. playwright.config chrome-livekit-media). Yoksa varsayilan tarayici.
@@ -420,7 +420,7 @@ test("3) ev sahibi: Katil penceresi -> oda sayfasi acilir; bekleyen misafir pane
     await shot(page, "06-admin-toplanti-katil-penceresi", false);
     await join.click();
     await page.waitForURL(new RegExp(`/meet/${uiMeetingId}`), { timeout: 90_000, waitUntil: "commit" });
-    await expect(page.getByTestId("host-room-prejoin")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("host-room-prejoin")).toBeVisible({ timeout: 150_000 }); // AL: /meet/[id] dev sunucuda ilk ziyarette uzun derlenebiliyor
     await expect(page.getByTestId("host-room-join")).toBeEnabled();
     await settle(page);
     await shot(page, "40-ev-sahibi-oda-hazirlik");

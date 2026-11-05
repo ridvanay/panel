@@ -153,7 +153,7 @@ test("madde 6: ADMIN /admin/demo-templates'te kart görünür + GERÇEK UI akı�
     // (`<span>...Uygulandı</span>`) HEM "... tarafından uygulandı." tarih paragrafı birlikte var
     // olur; `exact: false` (varsayılan, büyük/küçük harf duyarsız alt-dize) İKİSİYLE de eşleşip
     // strict-mode ihlaline düşüyordu.
-    await expect(card.getByText("Uygulandı", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByText("Uygulandı", { exact: true })).toBeVisible({ timeout: 60_000 }); // AL: dev sunucuda liste yenilemesi gecikebiliyor
   } finally {
     await close();
   }
