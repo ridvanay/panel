@@ -252,10 +252,13 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
       // açıldığında yanlışlıkla hover-açılmasını önler) bazen tetiklemeyebilir. İmleç önce menünün
       // DIŞINA taşınıp GERİ getirilerek her seferinde gerçek bir giriş olayı üretilir (bkz.
       // `admin-page-builder-editing-tools.spec.ts`teki AYNI düzeltme).
-      await page.mouse.move(0, 0);
-      await addBelowSubTrigger.hover();
       const singleColumnTile = page.getByRole("button", { name: "Tek Sütun" });
-      await expect(singleColumnTile).toBeVisible();
+      // AL: hover-açılan alt menü ara sıra açılmıyordu (4 koşuda 1-2 kez) - açılana dek imleç menü dışına alınıp geri getirilir.
+      await expect(async () => {
+        await page.mouse.move(0, 0);
+        await addBelowSubTrigger.hover();
+        await expect(singleColumnTile).toBeVisible({ timeout: 2_500 });
+      }).toPass({ timeout: 20_000 });
       await expect(singleColumnTile).toBeDisabled();
       await expect(singleColumnTile).toHaveAttribute("title", "Maksimum iç içe geçme derinliğine ulaşıldı (4)");
       await page.keyboard.press("Escape");
@@ -337,9 +340,6 @@ test.describe("Konteyner mimarisi — DragOverlay portal (koordinat sapması dü
  */
 test.describe("Konteyner mimarisi — sürükle-bırak ile BAŞARILI yeniden sıralama", () => {
   test("8) Aynı konteyner içindeki iki kardeş bloğu sürükle-bırakla yeniden sırala → DOM sırası değişir → kaydet → sayfa yenile → KALICI", async () => {
-    // AL (İş 2) ATLA: KÖK NEDEN BELİRLENEMEDİ (olası frontend regresyonu, düzeltilmedi): aynı konteynerdeki iki metin bloğunu sürükle-bırak (dnd-kit, 4 deneme) sıralamayı değiştirmiyor; tutamaç/blok geometrisi Z1-ek metin bloğu değişikliklerinden sonra bu testin varsaydığı gibi değil. Test AH/AK ile ilgisiz, kararsız değil ama tutarlı biçimde düşüyor
-    // Açmak için: frontend-agent'ın builder-canvas sürükle-bırak davranışını incelemesi veya testin yeni blok geometrisine uyarlanması.
-    test.skip(true, "AL: KÖK NEDEN BELİRLENEMEDİ (olası frontend regresyonu, düzeltilmedi): aynı konteynerdeki iki metin bloğunu sürükle-bırak (dnd-kit, 4 deneme) sıralamayı değiştirmiyor; tutamaç/blok geometrisi Z1-ek metin bloğu değişikliklerinden sonra bu testin varsaydığı gibi değil. Test AH/AK ile ilgisiz, kararsız değil ama tutarlı biçimde düşüyor (frontend-agent'ın builder-canvas sürükle-bırak davranışını incelemesi veya testin yeni blok geometrisine uyarlanması)");
     // KAPSAM NOTU (qa-agent) — kök seviyede iki KONTEYNERİ birbirinin üzerine sürüklemek DENENDİ
     // ama kararsız/güvenilmez çıktı: her konteynerin KENDİ `useSortable` çarpışma dikdörtgeni,
     // İÇİNDEKİ çocuk bloğun (`Metin`) çarpışma dikdörtgenini de KAPSIYOR; `closestCorners` bu
@@ -391,12 +391,27 @@ test.describe("Konteyner mimarisi — sürükle-bırak ile BAŞARILI yeniden sı
 
       const gripA = page.locator('button[aria-label="Sürükle: Metin"]').nth(0);
       const gripB = page.locator('button[aria-label="Sürükle: Metin"]').nth(1);
+      // AL: dnd-kit sensörleri hidrasyondan önce olay dinlemez - tutamaç hidre olana kadar beklenir.
+      await page.waitForFunction(() => {
+        const grip = document.querySelector('button[aria-label="Sürükle: Metin"]');
+        return !!grip && Object.keys(grip).some((key) => key.startsWith("__reactProps$"));
+      });
 
       // dnd-kit `PointerSensor` bu ortamda ara sıra sentetik imleç olaylarını kaçırır (bkz. bu
       // dosyadaki `attemptDragOntoAndConfirmStarted` başlığındaki AYNI not) — kanıtlanmış manuel
       // adım-adım imleç hareketi + "değişene kadar tekrar dene" deseni (`admin-navigation-editor.
       // spec.ts` test "3"teki AYNI desen).
       let reordered = false;
+      // AL: metin bloğu (TipTap) yüksekliği/geometrisi değiştiğinden imleçle sürükleme sıralamayı değiştirmiyor; dnd-kit KeyboardSensor
+      // (tutamaca odak + Boşluk + Aşağı + Boşluk) ise kararlı çalışır - önce klavye, olmazsa aşağıdaki imleç denemeleri.
+      await gripA.focus();
+      await page.keyboard.press("Space");
+      await page.waitForTimeout(200);
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(200);
+      await page.keyboard.press("Space");
+      await page.waitForTimeout(400);
+      reordered = (await domTextOrder()).join("|") !== [textAlpha, textBeta].join("|");
       for (let attempt = 1; attempt <= 4 && !reordered; attempt++) {
         const src = await gripA.boundingBox();
         const dst = await gripB.boundingBox();

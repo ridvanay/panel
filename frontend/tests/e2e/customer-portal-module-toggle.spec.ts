@@ -183,7 +183,8 @@ test("madde 21: products AÇIK — ürün kartından favoriye ekle, /hesabim/fav
 
   await customerPage.getByRole("button", { name: "Sepete Ekle" }).first().click();
   await expect(customerPage.getByText("Ürün sepete eklendi.")).toBeVisible();
-  await expect(customerPage.locator("header").getByLabel(/^Sepet, 1 ürün$/)).toBeVisible();
+  // AL: ziyaretçi üst bilgisi artık İngilizce (Türkçe kapalı): "Cart, {count} items".
+  await expect(customerPage.locator("header").getByLabel(/^Cart, 1 items?$/)).toBeVisible();
 
   // Favori listede kalır — "sepete ekle" favoriden ÇIKARMAZ (§design-notes §5).
   await expect(customerPage.getByRole("button", { name: "Favorilerden çıkar" }).first()).toBeVisible();

@@ -159,21 +159,21 @@ test.describe("Mega menü — masaüstü (1440)", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("header: 'Find your treatment' -> /find-your-treatment, 'Book a consultation' -> /request; 'Find my physician' / 'Appointment' yok", async ({ page }) => {
+  test("header: 'Find your treatment' -> /find-your-treatment, 'Book a consultation' -> /book-consultation (AK anahtarı açık); 'Find my physician' / 'Appointment' yok", async ({ page }) => {
     await page.goto("/");
     const find = page.getByTestId("header-find-treatment");
     await expect(find).toContainText("Find your treatment");
     await expect(find).toHaveAttribute("href", /\/find-your-treatment$/);
     const book = page.getByTestId("header-book-consultation");
     await expect(book).toHaveText("Book a consultation");
-    await expect(book).toHaveAttribute("href", /\/request$/);
+    await expect(book).toHaveAttribute("href", /\/book-consultation$/); // AK: anahtar açıkken /book-consultation (kapalıyken proxy 302 ile /request)
     const header = page.locator("header").first();
     await expect(header).not.toContainText(/Find my physician|Request a consultation|^Appointment$/i);
     await find.click();
     await expect(page).toHaveURL(/\/find-your-treatment$/);
     await page.goto("/");
     await page.getByTestId("header-book-consultation").click();
-    await expect(page).toHaveURL(/\/request$/);
+    await expect(page).toHaveURL(/\/book-consultation$/);
   });
 });
 
@@ -229,7 +229,7 @@ test.describe("Mobil (390)", () => {
     await expect(find).toContainText("Find your treatment");
     await expect(book).toHaveText("Book a consultation");
     await expect(find).toHaveAttribute("href", /\/find-your-treatment$/);
-    await expect(book).toHaveAttribute("href", /\/request$/);
+    await expect(book).toHaveAttribute("href", /\/book-consultation$/); // AK: anahtar açıkken /book-consultation (kapalıyken proxy 302 ile /request)
     const fy = (await find.boundingBox())!.y;
     const by = (await book.boundingBox())!.y;
     // Hizmetler akordeonu: iki düğmenin altında.

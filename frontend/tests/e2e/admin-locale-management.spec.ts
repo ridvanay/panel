@@ -34,7 +34,6 @@ test.describe.configure({ retries: 2 });
 // AL: baz hat saas_e2e'de en/ar/de etkin dillerdir (AH/AG3/AI3 testleri /de bekler) — bu spec ESKİ "de" kodunu silip geri eklediği için
 // bazı koşularda "de"yi kaybediyordu. Taban hattı dillerine dokunmamak için kullanılmayan bir dil kodu ("it") kullanılır.
 const NEW_LOCALE_CODE = "it";
-const FRONTEND_URL = process.env.E2E_FRONTEND_URL ?? "http://localhost:3100";
 
 let page: Page;
 let closeSession: () => Promise<void>;
@@ -54,9 +53,6 @@ test.afterAll(async () => {
 });
 
 test("madde 7 — panelden yeni dil (de) eklenip etkinleştirilince deploy/migration OLMADAN rotalar ve /locales çalışır", async () => {
-  // AL (İş 2) ATLA: BİLİNEN ORTAM SORUNU (spec başlığında belgeli): yerel Windows/Playwright koşusunda 'Dil Ekle' diyaloğundaki Kod alanına fill çağrısında tarayıcı bağlamı takılıyor/çöküyor (bu turda da fill {"it"} adımında 150 sn askıda kaldı); aynı akış API ile ve bağımsız betikle sorunsuz çalışıyor. Kök neden uygulama koduna bağlanamadı
-  // Açmak için: temiz Linux CI runner'ında (ci.yml) veya tarayıcı çökmesinin kaynağı bulunduğunda.
-  test.skip(true, "AL: BİLİNEN ORTAM SORUNU (spec başlığında belgeli): yerel Windows/Playwright koşusunda 'Dil Ekle' diyaloğundaki Kod alanına fill çağrısında tarayıcı bağlamı takılıyor/çöküyor (bu turda da fill {\"it\"} adımında 150 sn askıda kaldı); aynı akış API ile ve bağımsız betikle sorunsuz çalışıyor. Kök neden uygulama koduna bağlanamadı (temiz Linux CI runner'ında (ci.yml) veya tarayıcı çökmesinin kaynağı bulunduğunda)");
   test.setTimeout(150_000); // AL: proxy dil listesi 60 sn önbellekli — poll (65 sn) varsayılan 30 sn sınırına sığmaz
   await page.goto("/admin/settings");
   await page.getByRole("tab", { name: "Diller" }).click();
@@ -66,12 +62,16 @@ test("madde 7 — panelden yeni dil (de) eklenip etkinleştirilince deploy/migra
   const before = await page.request.get(`${API_BASE_URL}/locales`);
   expect((await before.json()).data.map((l: { code: string }) => l.code)).not.toContain(NEW_LOCALE_CODE);
 
-  await page.getByRole("button", { name: "Dil Ekle" }).click();
-  await page.getByLabel("Kod", { exact: true }).fill(NEW_LOCALE_CODE);
-  await page.getByLabel("Etiket", { exact: true }).fill("İtalyanca");
-  await page.getByLabel("Kendi Dilindeki Ad", { exact: true }).fill("Italiano");
+  // AL: dev sunucuda hidrasyon bitmeden yapılan tıklama yutulur (diyalog hiç açılmaz, alanlar "bulunamaz" ve test askıda kalırdı) - diyalog açılana dek yeniden tıklanır.
+  await expect(async () => {
+    await page.getByRole("button", { name: "Dil Ekle" }).click();
+    await expect(page.getByRole("dialog", { name: "Dil Ekle" })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await page.getByLabel(/^Kod(\s*\*)?$/).fill(NEW_LOCALE_CODE);
+  await page.getByLabel(/^Etiket(\s*\*)?$/).fill("İtalyanca");
+  await page.getByLabel(/^Kendi Dilindeki Ad(\s*\*)?$/).fill("Italiano");
   // "Etkin" switch'i AÇIK yapılmalı — kapalıysa dil public rota uzayına GİRMEZ.
-  await page.getByText("Etkin", { exact: true }).locator("..").getByRole("switch").click();
+  await page.getByRole("dialog", { name: "Dil Ekle" }).getByRole("switch").click(); // AL: "Etkin" metni ile anahtar artık kardeş kapsayıcılarda
   await page.getByRole("button", { name: "Dili Ekle" }).click();
 
   await expect(page.getByText('"Italiano" eklendi.')).toBeVisible();
@@ -96,7 +96,7 @@ test("madde 7 — panelden yeni dil (de) eklenip etkinleştirilince deploy/migra
   // demiyor, "deploy gerektirmeden" diyor. Test bunu tek bir anlık istekle DEĞİL, poll ile
   // doğrular (gerçek eventual-consistency penceresini kabul eder).
   await expect
-    .poll(async () => (await page.request.get(`${FRONTEND_URL}/it`)).status(), { timeout: 65_000, intervals: [2_000] })
+    .poll(async () => (await page.goto("/it"))?.status() ?? 0, { timeout: 65_000, intervals: [2_000] }) // AL: Node API istemcisi *.localhost çözemez - tarayıcı gezinmesi kullanılır
     .toBe(200);
 });
 

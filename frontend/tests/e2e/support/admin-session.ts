@@ -59,6 +59,28 @@ export async function createAuthenticatedPageAs(
   // (doktor hesapları BU yardımcıyla ÇAĞRILMAZ — bkz. grep doğrulaması, qa-agent görev raporu).
   await page.waitForURL((url) => url.pathname !== "/login", { timeout: 15_000 });
 
+  // Paket AL — `next dev` (React StrictMode) sayfa yüklemesinde iki /auth/refresh isteğini AYNI ANDA gönderir; tek kullanımlık
+  // refresh-token rotasyonunda ikisi yarışırsa biri 401 alır ve oturum düşer ("Sign in" sayfası) — rastgele (kararsız) bir yerel
+  // ortam etkisi (üretimde StrictMode çift çağrısı yoktur). `/admin/**` gezintilerinde oturum düştüyse aynı kimlikle bir kez yeniden
+  // girilir; ziyaretçi/hasta (/hesabim vb.) gezintilerine ve bilerek giriş yapılmamış bağlamlara DOKUNMAZ.
+  const originalGoto = page.goto.bind(page) as Page["goto"];
+  page.goto = (async (url: string, options?: Parameters<Page["goto"]>[1]) => {
+    const response = await originalGoto(url, options);
+    if (!/^\/admin(?:[/?#]|$)/.test(url)) return response;
+    const state = await Promise.race([
+      page.locator('input[type="email"]').first().waitFor({ state: "visible", timeout: 12_000 }).then(() => "login" as const),
+      page.locator('a[href="/admin"]').first().waitFor({ state: "attached", timeout: 12_000 }).then(() => "admin" as const),
+      // Yetkisiz rol başka bir sayfaya (ör. /hesabim/profil) yönlenir — beklemeden çık (toast gibi geçici öğeler kaçmasın).
+      page.waitForURL((u) => !u.pathname.startsWith("/admin") && !u.pathname.startsWith("/login"), { timeout: 12_000 }).then(() => "other" as const),
+    ]).catch(() => "unknown" as const);
+    if (state !== "login" || !new URL(page.url()).pathname.startsWith("/login")) return response;
+    await page.locator('input[type="email"]').fill(email);
+    await page.locator('input[type="password"]').fill(password);
+    await page.locator('button[type="submit"]').click();
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 15_000 });
+    return originalGoto(url, options);
+  }) as Page["goto"];
+
   return {
     page,
     close: async () => {

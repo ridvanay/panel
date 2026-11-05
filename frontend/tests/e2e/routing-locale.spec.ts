@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createPage, deletePagePermanently, getCachedAdminSession } from "./support/api";
+import { createPage, deletePagePermanently, getCachedAdminSession, ensureLocaleEnabled } from "./support/api";
 
 /**
  * `.claude/architect-scope-i18n.md` §9 qa-agent madde 1-3, 9-10.
@@ -14,6 +14,8 @@ const createdPageIds: string[] = [];
 test.beforeAll(async () => {
   const admin = await getCachedAdminSession();
   token = admin.accessToken;
+  // AL: ziyaretçi varsayılan dili İngilizce (Türkçe kapalı, AH); ikinci dil testleri için "de" kullanılır.
+  await ensureLocaleEnabled(token, "de", "German", "Deutsch");
 });
 
 test.afterAll(async () => {
@@ -21,37 +23,31 @@ test.afterAll(async () => {
 });
 
 test.describe("Public locale routing (§9 madde 1-3)", () => {
-  test("TR sayfa açılır, dil değiştirici ile EN'e geçilince /en/<en-slug> altında EN içerik gösterilir", async ({
+  test("Varsayılan (EN) sayfa açılır, dil değiştirici ile DE'ye geçilince /de/<de-slug> altında DE içerik gösterilir", async ({
     page,
   }) => {
-    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
-    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
-    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     const created = await createPage(token, {
-      title: "QA Rota Testi",
-      slug: `qa-rota-testi-${Date.now()}`,
-      html: "<p>Bu Turkce icerik.</p>",
-      translations: { en: { title: "QA Routing Test", slug: `qa-routing-test-${Date.now()}`, html: "<p>This is English content.</p>" } },
+      title: "QA Routing Test",
+      slug: `qa-routing-test-${Date.now()}`,
+      html: "<p>This is English content.</p>",
+      translations: { de: { title: "QA Routing Test DE", slug: `qa-routing-test-de-${Date.now()}`, html: "<p>Das ist deutscher Inhalt.</p>" } },
     });
     createdPageIds.push(created.id as string);
-    const trSlug = created.slug as string;
-    const enSlug = (created.translations as Record<string, { slug: string }>).en.slug;
+    const defaultSlug = created.slug as string;
+    const deSlug = (created.translations as Record<string, { slug: string }>).de.slug;
 
-    await page.goto(`/${trSlug}`);
-    await expect(page.locator("body")).toContainText("Bu Turkce icerik.");
-
-    // Dil değiştirici — Paket M: bayraklı tetik, erişilebilir ad "{Dil}: {aktif dil}" (ör. "Dil: Türkçe").
-    await page.getByRole("button", { name: /^(Dil|Language): / }).click();
-    await page.getByRole("menuitem", { name: "English" }).click();
-
-    await page.waitForURL(new RegExp(`/en/${enSlug}$`));
+    await page.goto(`/${defaultSlug}`);
     await expect(page.locator("body")).toContainText("This is English content.");
+
+    // Dil değiştirici — bayraklı tetik, erişilebilir ad "{Dil}: {aktif dil}" (ör. "Language: English").
+    await page.getByRole("button", { name: /^(Dil|Language): / }).click();
+    await page.getByRole("menuitem", { name: "Deutsch" }).click();
+
+    await page.waitForURL(new RegExp(`/de/${deSlug}$`));
+    await expect(page.locator("body")).toContainText("Das ist deutscher Inhalt.");
   });
 
   test("dil değiştiriciyle CLIENT-SIDE geçişte <html lang> güncellenir", async ({ page }) => {
-    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
-    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
-    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     // §6.3 "`<html lang>` aktif locale'den türetilecek" — `app/layout.tsx` bunu `x-active-locale`
     // request header'ından okur (yalnızca TAM sayfa yüklemesinde). Kök layout `[lang]` segmentinin
     // ÜSTÜNDE olduğundan (Next.js layout'ları navigasyonda yeniden RENDER EDİLMEZ), dil
@@ -63,17 +59,17 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
     const created = await createPage(token, {
       title: "QA Lang Attr",
       slug: `qa-lang-attr-${Date.now()}`,
-      html: "<p>TR icerik.</p>",
-      translations: { en: { title: "QA Lang Attr EN", slug: `qa-lang-attr-en-${Date.now()}`, html: "<p>EN content.</p>" } },
+      html: "<p>EN content.</p>",
+      translations: { de: { title: "QA Lang Attr DE", slug: `qa-lang-attr-de-${Date.now()}`, html: "<p>DE Inhalt.</p>" } },
     });
     createdPageIds.push(created.id as string);
 
     await page.goto(`/${created.slug}`);
     await page.getByRole("button", { name: /^(Dil|Language): / }).click();
-    await page.getByRole("menuitem", { name: "English" }).click();
-    await page.waitForURL(/\/en\//);
+    await page.getByRole("menuitem", { name: "Deutsch" }).click();
+    await page.waitForURL(/\/de\//);
 
-    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
   });
 
   test("çevrilmemiş içerik /en/... altında 404 DEĞİL, varsayılan (TR) dilde açılır (§5 sessiz fallback)", async ({
@@ -109,12 +105,9 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
     await expect(page.locator("body")).toContainText("TR prefix testi.");
   });
 
-  test("§12.2: kanonik TR slug'ı ile ama /en/ prefix'i altında gelen istek, EN'in KENDİ slug'ına 301 ile yönlendirilir", async ({
+  test("§12.2: varsayılan dilin kanonik slug'ı ile ama /de/ prefix'i altında gelen istek, DE'nin KENDİ slug'ına yönlendirilir", async ({
     page,
   }) => {
-    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
-    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
-    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     // `.claude/architect-scope-i18n.md` §12.2 (bağlayıcı): "/en/gizlilik-politikasi" gibi bir
     // istek (varsayılan dilin kanonik slug'ı + farklı bir locale prefix'i) İÇERİĞİ doğru bulur
     // (backend slug fallback'i zaten çözer — bu kısım ÇALIŞIYOR, aşağıda ayrıca doğrulanıyor)
@@ -125,37 +118,34 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
     // içindeki aktif-dil slug'ı istenenden farklıysa `permanentRedirect()` (308 — Next.js Server
     // Component'lerden üretilebilen tek "kalıcı" yönlendirme kodu, ham 301 YOKTUR) tetikler.
     // Daha önce BUG olarak `test.fail()` işaretliydi — düzeltildi (qa-agent raporu → frontend-agent).
-    const enSlug = `qa-1222-en-slug-${Date.now()}`;
+    const deSlug = `qa-1222-de-slug-${Date.now()}`;
     const created = await createPage(token, {
-      title: "QA 12.2 Canonical Under EN",
-      slug: `qa-1222-tr-slug-${Date.now()}`,
-      html: "<p>TR icerik.</p>",
-      translations: { en: { title: "QA 12.2 EN", slug: enSlug, html: "<p>EN icerik.</p>" } },
+      title: "QA 12.2 Canonical Under DE",
+      slug: `qa-1222-default-slug-${Date.now()}`,
+      html: "<p>Default content.</p>",
+      translations: { de: { title: "QA 12.2 DE", slug: deSlug, html: "<p>DE Inhalt.</p>" } },
     });
     createdPageIds.push(created.id as string);
-    const trSlug = created.slug as string;
+    const defaultSlug = created.slug as string;
 
-    const response = await page.goto(`/en/${trSlug}`);
+    const response = await page.goto(`/de/${defaultSlug}`);
     // İçerik doğru bulunur (backend fallback'i) — bu kısım zaten ÇALIŞIYOR.
     expect(response?.status()).toBe(200);
-    await expect(page.locator("body")).toContainText("EN icerik.");
+    await expect(page.locator("body")).toContainText("DE Inhalt.");
 
-    // Beklenen (mimari §12.2): 301 ile /en/<en-slug>'a yönlendirilmeliydi.
-    expect(new URL(page.url()).pathname).toBe(`/en/${enSlug}`);
+    // Beklenen (mimari §12.2): /de/<de-slug>'a kalıcı yönlendirme.
+    expect(new URL(page.url()).pathname).toBe(`/de/${deSlug}`);
   });
 
-  test("REGRESYON — mevcut TR ana sayfa ve liste rotaları prefix'siz, [lang] taşımasından etkilenmemiş", async ({
+  test("REGRESYON — varsayılan dil (EN) ana sayfa ve liste rotaları prefix'siz, [lang] taşımasından etkilenmemiş", async ({
     page,
   }) => {
-    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
-    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
-    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     // §11 açık risk tablosu: "(site) → [lang]/(site) taşıması tüm public rotalara dokunur".
     // Ana sayfa ve `/blog` liste sayfası — her ikisi de taşımadan ÖNCE de bu path'lerde
     // yayındaydı; 200 dönmeleri ve `<html lang="tr">` taşımaları regresyon YOK demektir.
     const home = await page.goto("/");
     expect(home?.status()).toBe(200);
-    await expect(page.locator("html")).toHaveAttribute("lang", "tr");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
     expect(new URL(page.url()).pathname).toBe("/");
 
     const blogList = await page.goto("/blog");
@@ -166,37 +156,34 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
 
 test.describe("SEO — hreflang / x-default (§9 madde 10)", () => {
   test("çevrilmiş içerikte hreflang + x-default var; çevrilmemiş dil için alternate YOK", async ({ page }) => {
-    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
-    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
-    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     const translatedSlug = `qa-seo-translated-${Date.now()}`;
-    const enSlug = `qa-seo-translated-en-${Date.now()}`;
+    const deSlug = `qa-seo-translated-de-${Date.now()}`;
     const created = await createPage(token, {
       title: "QA SEO Translated",
       slug: translatedSlug,
-      html: "<p>SEO icerik.</p>",
-      translations: { en: { title: "QA SEO EN", slug: enSlug, html: "<p>SEO content.</p>" } },
+      html: "<p>SEO content.</p>",
+      translations: { de: { title: "QA SEO DE", slug: deSlug, html: "<p>SEO Inhalt.</p>" } },
     });
     createdPageIds.push(created.id as string);
 
     await page.goto(`/${translatedSlug}`);
-    const trHref = await page.locator('link[rel="alternate"][hreflang="tr"]').getAttribute("href");
     const enHref = await page.locator('link[rel="alternate"][hreflang="en"]').getAttribute("href");
+    const deHref = await page.locator('link[rel="alternate"][hreflang="de"]').getAttribute("href");
     const xDefaultHref = await page.locator('link[rel="alternate"][hreflang="x-default"]').getAttribute("href");
 
-    expect(trHref).toContain(`/${translatedSlug}`);
-    expect(enHref).toContain(`/en/${enSlug}`);
-    expect(xDefaultHref).toBe(trHref);
+    expect(enHref).toContain(`/${translatedSlug}`);
+    expect(deHref).toContain(`/de/${deSlug}`);
+    expect(xDefaultHref).toBe(enHref);
 
-    // Çevrilmemiş bir sayfada EN alternate'i OLMAMALI.
+    // Çevrilmemiş bir sayfada DE alternate'i OLMAMALI.
     const untranslated = await createPage(token, {
       title: "QA SEO Untranslated",
       slug: `qa-seo-untranslated-${Date.now()}`,
-      html: "<p>Sadece TR SEO.</p>",
+      html: "<p>Default-only SEO.</p>",
     });
     createdPageIds.push(untranslated.id as string);
     await page.goto(`/${untranslated.slug}`);
-    await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveCount(0);
+    await expect(page.locator('link[rel="alternate"][hreflang="de"]')).toHaveCount(0);
     await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveCount(1);
   });
 });

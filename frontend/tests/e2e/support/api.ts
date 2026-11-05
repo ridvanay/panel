@@ -391,9 +391,10 @@ export interface TestMedia {
  * `MediaPicker`'ı GERÇEKTEN kullanabilmesi için (mock/stub DEĞİL) — backend `detectImageMimeType`
  * ile magic-byte doğrulaması yaptığı için rastgele byte'lar YETMEZ, gerçek bir PNG gerekir.
  */
-export async function uploadTestMedia(token: string, filename: string): Promise<TestMedia> {
+export async function uploadTestMedia(token: string, filename: string, folderId?: string): Promise<TestMedia> {
   const bytes = Buffer.from(TEST_PNG_BASE64, "base64");
   const form = new FormData();
+  if (folderId) form.append("folderId", folderId); // Paket AL: MediaPicker yalnız ilk 100 (en eski) medyayı listeler — test görselleri kendi klasöründe yüklenir
   form.append("file", new Blob([bytes], { type: "image/png" }), filename);
   const res = await fetch(`${API_BASE_URL}/admin/media`, {
     method: "POST",
@@ -401,6 +402,16 @@ export async function uploadTestMedia(token: string, filename: string): Promise<
     body: form,
   });
   return json<{ data: TestMedia }>(res).then((b) => b.data);
+}
+
+/** `POST /admin/media/folders` — kök seviyede klasör oluşturur (Paket AL: galeri e2e testleri görselleri klasörde yükler). */
+export async function createTestMediaFolder(token: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await fetch(`${API_BASE_URL}/admin/media/folders`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({ name }) });
+  return json<{ data: { id: string; name: string } }>(res).then((b) => b.data);
+}
+
+export async function deleteTestMediaFolder(token: string, folderId: string) {
+  await fetch(`${API_BASE_URL}/admin/media/folders/${folderId}`, { method: "DELETE", headers: authHeadersNoBody(token) });
 }
 
 export async function deleteTestMedia(token: string, mediaId: string) {

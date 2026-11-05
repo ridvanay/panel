@@ -385,7 +385,7 @@ test("Fix 1 regresyon: hero katmanları (rozet/başlık/metin/buton) desktop/tab
     // false` olduğu için ilerleme çubuğu YOK) İTMİŞ Mİ — bu, `expectNoVerticalOverlap`İLE
     // YAKALANMAZ (buton `xPercent:8` SOLA yaslı, kontroller ORTA/SAĞA yaslı, aynı sütunda DEĞİLLER),
     // bu yüzden TAM 2 boyutlu kutu kesişimi (`expectNoBoxOverlap`) kullanılır.
-    const playPause = slider.getByRole("button", { name: /Otomatik oynatmayı/ });
+    const playPause = slider.getByRole("button", { name: /Otomatik oynatmayı|(Pause|Start) autoplay/ });
     const firstBullet = slider.getByRole("button", { name: "1. slayta git" });
     const [playPauseBox, bulletBox] = await Promise.all([playPause.boundingBox(), firstBullet.boundingBox()]);
     if (!playPauseBox || !bulletBox) {

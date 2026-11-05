@@ -192,7 +192,7 @@ test("madde 4 — tagIds TAM SET (delta değil): 3 etiketten 1'i kaldırılınca
   await page.getByRole("button", { name: `${t2.name} etiketini kaldır` }).click();
 
   const patchUrl = `${API_BASE_URL}/admin/blog/${post.id}`;
-  const requestPromise = page.waitForRequest((req) => req.url() === patchUrl && req.method() === "PATCH");
+  const requestPromise = page.waitForRequest((req) => new URL(req.url()).pathname === new URL(patchUrl).pathname && req.method() === "PATCH");
   await page.getByRole("button", { name: "Güncelle" }).click();
   const request = await requestPromise;
   const body = request.postDataJSON() as { tagIds?: string[] };
@@ -230,7 +230,7 @@ test("madde 4 (gözlemlenen davranış belgesi) — Hızlı Düzenle'de kategori
   await titleInput.fill(`${post.title} (düzenlendi)`);
 
   const patchUrl = `${API_BASE_URL}/admin/blog/${post.id}`;
-  const requestPromise = page.waitForRequest((req) => req.url() === patchUrl && req.method() === "PATCH");
+  const requestPromise = page.waitForRequest((req) => new URL(req.url()).pathname === new URL(patchUrl).pathname && req.method() === "PATCH");
   await page.getByRole("button", { name: "Güncelle" }).click();
   const request = await requestPromise;
   const body = request.postDataJSON() as { tagIds?: string[] };

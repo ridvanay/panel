@@ -120,7 +120,8 @@ test("madde 7/9/10/13/14: ziyaretçi mesajı 'Bekleyen'de görünür → MANAGER
     await expect(sessionButton).toBeVisible({ timeout: 20_000 });
     await sessionButton.click();
 
-    await expect(page.getByText(visitorMessage)).toBeVisible({ timeout: 10_000 });
+    // AL: mesaj hem oturum listesi önizlemesinde hem konuşma balonunda geçer; balon (listeden sonraki) seçilir.
+    await expect(page.getByText(visitorMessage).last()).toBeVisible({ timeout: 10_000 });
 
     const templateSelect = page.getByLabel("Hazır yanıt şablonu seç");
     await expect(templateSelect).toBeVisible({ timeout: 10_000 });

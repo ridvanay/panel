@@ -5,6 +5,8 @@ import {
   deletePagePermanently,
   uploadTestMedia,
   deleteTestMedia,
+  createTestMediaFolder,
+  deleteTestMediaFolder,
   setTestMediaAltText,
   patchPageBlocks,
 } from "./support/api";
@@ -133,14 +135,26 @@ function altInput(index: number) {
   return page.getByRole("textbox", { name: `Görsel ${index + 1} alt metni` });
 }
 
+// AL: MediaPicker listMedia'yı tek sayfa (limit=100, en eskiler önce) çeker; saas_e2e'de yüzlerce medya birikmiş olduğundan yeni yüklenen test görselleri
+// "Tüm Dosyalar"da görünmez (frontend bulgusu, bkz. rapor). Test görselleri bu koşuya özel bir klasöre yüklenir ve seçicide o klasör açılır.
+let galleryFolder: { id: string; name: string } | null = null;
+async function uploadGalleryMedia(filename: string) {
+  if (!galleryFolder) galleryFolder = await createTestMediaFolder(token, `QaGallery${Date.now().toString(36)}`);
+  return uploadTestMedia(token, filename, galleryFolder.id);
+}
+async function selectGalleryFolder() {
+  await expect(page.getByRole("heading", { name: "Görsel Seç" })).toBeVisible();
+  await page.getByRole("dialog").getByText(galleryFolder!.name, { exact: true }).click();
+}
+test.afterAll(async () => {
+  if (galleryFolder) await deleteTestMediaFolder(token, galleryFolder.id).catch(() => undefined);
+});
+
 test.describe("Galeri bloğu — admin editörü", () => {
   test("boş durum → 'Görsel Ekle' → MediaPicker çoklu seçim → birden fazla görsel thumbnail grid'inde görünür", async () => {
-    // AL (İş 2) ATLA: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez
-    // Açmak için: MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi.
-    test.skip(true, "AL: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez (MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi)");
     test.setTimeout(60_000);
-    const media1 = await uploadTestMedia(token, `qa-gallery-multi-a-${Date.now()}.png`);
-    const media2 = await uploadTestMedia(token, `qa-gallery-multi-b-${Date.now()}.png`);
+    const media1 = await uploadGalleryMedia(`qa-gallery-multi-a-${Date.now()}.png`);
+    const media2 = await uploadGalleryMedia(`qa-gallery-multi-b-${Date.now()}.png`);
     const { pageId } = await createHostPage("multi-add");
 
     try {
@@ -149,6 +163,7 @@ test.describe("Galeri bloğu — admin editörü", () => {
 
       // EmptyState'in KENDİ "Görsel Ekle" butonu (henüz thumbnail toolbar'ı YOK).
       await page.getByRole("button", { name: "Görsel Ekle" }).click();
+      await selectGalleryFolder();
 
       // MediaPicker çoklu seçim modunda açılır (bkz. `media-picker.tsx` §10.15.3).
       await expect(page.getByRole("heading", { name: "Görsel Seç" })).toBeVisible();
@@ -174,14 +189,11 @@ test.describe("Galeri bloğu — admin editörü", () => {
   });
 
   test("klavye ile sürükle-sıralama (dnd-kit KeyboardSensor) — sıra değişir ve kaydedilip kalıcı olur", async () => {
-    // AL (İş 2) ATLA: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez
-    // Açmak için: MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi.
-    test.skip(true, "AL: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez (MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi)");
     test.setTimeout(60_000);
     const unique = Date.now();
-    const mediaA = await uploadTestMedia(token, `qa-gallery-order-a-${unique}.png`);
-    const mediaB = await uploadTestMedia(token, `qa-gallery-order-b-${unique}.png`);
-    const mediaC = await uploadTestMedia(token, `qa-gallery-order-c-${unique}.png`);
+    const mediaA = await uploadGalleryMedia(`qa-gallery-order-a-${unique}.png`);
+    const mediaB = await uploadGalleryMedia(`qa-gallery-order-b-${unique}.png`);
+    const mediaC = await uploadGalleryMedia(`qa-gallery-order-c-${unique}.png`);
     await setTestMediaAltText(token, mediaA.id, "QA Gallery Alt A");
     await setTestMediaAltText(token, mediaB.id, "QA Gallery Alt B");
     await setTestMediaAltText(token, mediaC.id, "QA Gallery Alt C");
@@ -191,6 +203,7 @@ test.describe("Galeri bloğu — admin editörü", () => {
       await openEditorAndRemoveDefaultBlock(pageId);
       await addGalleryBlock();
       await page.getByRole("button", { name: "Görsel Ekle" }).click();
+      await selectGalleryFolder();
       await expect(page.getByRole("heading", { name: "Görsel Seç" })).toBeVisible();
       // Sırayla A, B, C tıklanır — `MediaPicker`'ın `onSelect` çağrısı seçim (tıklama) SIRASINI korur
       // (bkz. `media-picker.tsx::selectedMedia` — `Map` insertion-order).
@@ -250,11 +263,8 @@ test.describe("Galeri bloğu — admin editörü", () => {
   });
 
   test("alt metni eksik görselde uyarı rozeti görünür, alt metin girilince kaybolur", async () => {
-    // AL (İş 2) ATLA: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez
-    // Açmak için: MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi.
-    test.skip(true, "AL: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez (MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi)");
     test.setTimeout(60_000);
-    const media = await uploadTestMedia(token, `qa-gallery-altwarn-${Date.now()}.png`);
+    const media = await uploadGalleryMedia(`qa-gallery-altwarn-${Date.now()}.png`);
     // KASITLI OLARAK altText BOŞ bırakılır (`uploadMedia` varsayılanı zaten `null`).
     const { pageId } = await createHostPage("alt-warning");
 
@@ -262,6 +272,7 @@ test.describe("Galeri bloğu — admin editörü", () => {
       await openEditorAndRemoveDefaultBlock(pageId);
       await addGalleryBlock();
       await page.getByRole("button", { name: "Görsel Ekle" }).click();
+      await selectGalleryFolder();
       await page.getByRole("button", { name: `${media.filename} seç` }).click();
       await page.getByRole("button", { name: "Seç (1)" }).click();
 
@@ -280,17 +291,15 @@ test.describe("Galeri bloğu — admin editörü", () => {
   });
 
   test("Grid/Carousel/Masonry stil seçimi — geçiş yapılabilir ve kaydedilip yeniden açıldığında korunur", async () => {
-    // AL (İş 2) ATLA: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez
-    // Açmak için: MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi.
-    test.skip(true, "AL: BİLİNEN ÜRÜN HATASI (kodda, düzeltilmedi): MediaPicker listMedia'yı tek sayfa (limit=100, cursor döngüsü yok) ve seq ASC (en eskiler önce) çeker; saas_e2e'de 279 medya olduğundan testin yüklediği yeni görsel seçicide hiç görünmez (MediaPicker'ın tüm sayfaları yüklemesi/en yeniler önce sıralaması (frontend-agent) veya saas_e2e medya sayısının 100'ün altına indirilmesi)");
     test.setTimeout(60_000);
-    const media = await uploadTestMedia(token, `qa-gallery-layout-${Date.now()}.png`);
+    const media = await uploadGalleryMedia(`qa-gallery-layout-${Date.now()}.png`);
     const { pageId } = await createHostPage("layout-select");
 
     try {
       await openEditorAndRemoveDefaultBlock(pageId);
       await addGalleryBlock();
       await page.getByRole("button", { name: "Görsel Ekle" }).click();
+      await selectGalleryFolder();
       await page.getByRole("button", { name: `${media.filename} seç` }).click();
       await page.getByRole("button", { name: "Seç (1)" }).click();
 

@@ -49,6 +49,7 @@ const createdMediaIds: string[] = [];
  */
 function matchesMediaUrl(url: URL, target: string): boolean {
   if (url.href === target) return true;
+  if (target.startsWith("/") && url.pathname === target) return true; // AL: yerelde medya adresleri göreli ("/uploads/…")
   return url.searchParams.get("url") === target;
 }
 
@@ -87,6 +88,24 @@ test.afterAll(async () => {
   for (const id of createdMediaIds) await deleteTestMedia(adminToken, id).catch(() => undefined);
 });
 
+/**
+ * AL: SSR ile gelen <img> 404 hatasını React hidrasyonundan ÖNCE alırsa `onError` (yer tutucuya geçiş) hiç tetiklenmez — yavaş `next dev`
+ * hidrasyonunda test rastgele kırılıyordu (kullanıcıda da yavaş hidrasyonda aynı etki olur, bkz. rapor). Kırık görsel yanıtı bu
+ * kapıyla hidrasyon tamamlanana dek bekletilir; sayfa hidrasyonu `__reactProps$` anahtarının favori butonunda belirmesiyle anlaşılır.
+ */
+async function gotoAfterHydrationGate(page: Page, url: string, release: () => void): Promise<void> {
+  await page.goto(url, { waitUntil: "commit" });
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('button[aria-label="Favorilere ekle"]');
+      return !!button && Object.keys(button).some((k) => k.startsWith("__reactProps$"));
+    },
+    undefined,
+    { timeout: 30_000 }
+  );
+  release();
+}
+
 test("Fix 2 regresyon: kapak görseli 404 dönen ürün kartı ImageOff yer tutucusu gösterir, rozet/favori KARDEŞLERİ hâlâ görünür, kırık <img> DOM'da KALMAZ; müdahale edilmeyen kart normal yükleniyor", async ({
   page,
 }) => {
@@ -94,9 +113,14 @@ test("Fix 2 regresyon: kapak görseli 404 dönen ürün kartı ImageOff yer tutu
 
   // Yalnızca `brokenProduct`ın kapak görseli ağ seviyesinde 404'e zorlanır — `okProduct`ın
   // görseli GERÇEK backend'den (saas_e2e) normal şekilde servis edilmeye devam eder.
+  let releaseBroken!: () => void;
+  const brokenGate = new Promise<void>((resolve) => (releaseBroken = resolve));
   await page.route(
     (url) => matchesMediaUrl(url, brokenMedia.url),
-    (route) => route.fulfill({ status: 404, contentType: "text/plain", body: "not found" })
+    async (route) => {
+      await brokenGate; // hidrasyon bitmeden 404 dönülmez (bkz. gotoAfterHydrationGate)
+      await route.fulfill({ status: 404, contentType: "text/plain", body: "not found" });
+    }
   );
   // `okMedia`nın GERÇEKTEN 200 ile servis edildiğini (route tarafından YANLIŞLIKLA da engellenmediğini)
   // ağ seviyesinde doğrulamak için `goto`'DAN ÖNCE kurulur (istek sayfa yüklenirken atılır).
@@ -106,7 +130,7 @@ test("Fix 2 regresyon: kapak görseli 404 dönen ürün kartı ImageOff yer tutu
     { timeout: 15_000 }
   );
 
-  await page.goto(`/products?search=${encodeURIComponent(TITLE_PREFIX)}`);
+  await gotoAfterHydrationGate(page, `/products?search=${encodeURIComponent(TITLE_PREFIX)}`, releaseBroken);
   await expect(page.getByRole("heading", { level: 3, name: `${TITLE_PREFIX} Kirik`, exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { level: 3, name: `${TITLE_PREFIX} Saglam`, exact: true })).toBeVisible();
 

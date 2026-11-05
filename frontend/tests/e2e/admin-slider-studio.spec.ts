@@ -602,6 +602,7 @@ test.describe("Hero Studio — admin akışları", () => {
   });
 
   test("10) Katman Ekle çubuğu (tuval üstü) + hizalama + çift tık düzenleme + Esnek Sıçrama + cihaz görünürlüğü → kaydet → kalıcı", async () => {
+    test.setTimeout(90_000); // AL: uzun akış (çok adımlı stüdyo etkileşimi) + dev sunucuda ilk derleme 30 sn varsayılanını aşıyor
     // (2026-08-28) Slider Revolution düzeyinde katman/animasyon stüdyosu genişletmesi —
     // bkz. `.claude/ui-designer-scope-advanced-slider.md` §7. Önceki testler (1-9) katmanı sağ
     // panelin "Katman" sekmesine GÖMÜLÜ eski quick-add düğmelerinden ekliyordu; bu buton tuvalin
@@ -650,7 +651,7 @@ test.describe("Hero Studio — admin akışları", () => {
       await resetScroll(adminPage);
       await clickViaDom(adminPage.getByRole("button", { name: "Mobil", exact: true }));
       await clickViaDom(adminPage.getByRole("tab", { name: "Katman" }));
-      await clickViaDom(adminPage.getByRole("switch", { name: "Mobil'de göster/gizle" }));
+      await clickViaDom(adminPage.getByRole("switch", { name: /Mobil/ }).first());
 
       await saveStudio(adminPage);
       await adminPage.reload();

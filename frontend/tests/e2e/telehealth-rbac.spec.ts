@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
 import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken } from "./support/api";
 import { createAuthenticatedPageAs } from "./support/admin-session";
 import { resetFixtureUserToBaseline, adminGetUserByEmail, adminUpdateRole } from "./support/admin-users-fixtures";
@@ -55,8 +56,11 @@ async function cleanupFixtures() {
   await resetFixtureUserToBaseline(adminToken, MANAGER_EMAIL);
 }
 
+// AL: telehealth demo şablon importu menü/altbilgi/ayarları Türkçe demoyla ezer — afterAll geri yükler (support/site-state-snapshot.ts)
+let siteStateBefore: SiteStateSnapshot | undefined;
 test.beforeAll(async ({ browser }, testInfo) => {
   testInfo.setTimeout(120_000);
+  siteStateBefore = snapshotSiteState();
   const session = await getCachedAdminSession();
   adminToken = session.accessToken;
   await cleanupFixtures();
@@ -86,6 +90,7 @@ test.afterAll(async () => {
   if (closeManagerSession) await closeManagerSession();
   await cleanupFixtures();
   await patchSiteModule(adminToken, "telehealth", initialTelehealthEnabled).catch(() => undefined);
+  if (siteStateBefore) await restoreSiteStateAndRevalidate(siteStateBefore);
 });
 
 test("madde 12a: EDITOR — sidebar'da 'Randevular' HİÇ görünmez (Tele-Sağlık/Uzmanlıklar salt-okunur GÖRÜNÜR — §8.4 farkı)", async () => {

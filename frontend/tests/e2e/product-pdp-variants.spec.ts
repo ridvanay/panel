@@ -1,5 +1,6 @@
+import "./support/loopback-dns"; // AL: Node tarafı *.localhost çözümlemesi (page.request.get siteadi.localhost)
 import { test, expect, type Locator } from "@playwright/test";
-import { getCachedAdminSession } from "./support/api";
+import { API_BASE_URL, getCachedAdminSession } from "./support/api";
 import {
   adminCreateProductFull,
   adminCreateProductVariant,
@@ -186,8 +187,11 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
   await expect(page.getByRole("button", { name: "Sepete ekle" })).toBeDisabled();
   await expect(page.getByText(/Devam etmek için Renk seçin\./)).toBeVisible();
 
-  await redRadio.click();
-  await expect(redRadio).toHaveAttribute("aria-checked", "true");
+  // AL: dev sunucuda hidrasyon bitmeden tıklama yutulabiliyor — seçim işlenene dek yeniden tıklanır.
+  await expect(async () => {
+    await redRadio.click();
+    await expect(redRadio).toHaveAttribute("aria-checked", "true", { timeout: 1_500 });
+  }).toPass({ timeout: 15_000 });
   await expectMainImageUrl(mainImage, redMedia.url);
   // Kırmızı: priceCents null → ürün fiyatını miras alır — DEĞİŞMEMELİ.
   await expect(mainPrice).toHaveText(priceRegexFromCentsTRY(10000));
@@ -195,8 +199,10 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
 
   // Yeşil: priceCents mutlak override (150,00 ₺) + kendi görseli — HEM görsel HEM fiyat değişmeli.
   const greenRadio = page.getByRole("radio", { name: "Yeşil" });
-  await greenRadio.click();
-  await expect(greenRadio).toHaveAttribute("aria-checked", "true");
+  await expect(async () => {
+    await greenRadio.click();
+    await expect(greenRadio).toHaveAttribute("aria-checked", "true", { timeout: 1_500 });
+  }).toPass({ timeout: 15_000 });
   await expectMainImageUrl(mainImage, greenMedia.url);
   await expect(mainPrice).toHaveText(priceRegexFromCentsTRY(15000));
 
@@ -231,7 +237,8 @@ test("madde 4: PDF döküman kartından indirme — 200 + application/pdf + Cont
   const href = await downloadLink.getAttribute("href");
   expect(href).toBeTruthy();
 
-  const response = await page.request.get(href!);
+  // AL: Playwright'ın API istemcisi (Node) *.localhost adını çözemez ve yerelde /uploads Next'e değil backend'e aittir - dosya doğrudan backend'den istenir.
+  const response = await page.request.get(`${new URL(API_BASE_URL).origin}${new URL(href!, "http://x.invalid").pathname}`);
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toContain("application/pdf");
   expect(response.headers()["content-disposition"]).toBe("attachment");

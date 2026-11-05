@@ -75,15 +75,17 @@ async function newGuest(browser: Browser, width: number): Promise<{ context: Bro
   return { context, page: await context.newPage() };
 }
 
-async function fetchList(token: string, url: string): Promise<Array<Record<string, any>>> {
-  const out: Array<Record<string, any>> = [];
+type ListItem = Record<string, unknown> & { id: string; title?: string; maxParticipants?: number; serviceConsultation?: { consultationNumber?: string } | null };
+
+async function fetchList(token: string, url: string): Promise<ListItem[]> {
+  const out: ListItem[] = [];
   let cursor: string | null = null;
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${API_BASE_URL}${url}${url.includes("?") ? "&" : "?"}${cursor ? `cursor=${encodeURIComponent(cursor)}` : ""}`, { headers: { Authorization: `Bearer ${token}` } });
-    const body = (await res.json()) as { data: any; meta?: { nextCursor?: string | null } };
+    const body = (await res.json()) as { data: ListItem[] | { items?: ListItem[]; nextCursor?: string | null }; meta?: { nextCursor?: string | null } };
     const items = Array.isArray(body.data) ? body.data : (body.data?.items ?? []);
     out.push(...items);
-    cursor = body.meta?.nextCursor ?? body.data?.nextCursor ?? null;
+    cursor = body.meta?.nextCursor ?? (Array.isArray(body.data) ? null : (body.data?.nextCursor ?? null));
     if (!cursor) break;
   }
   return out;
@@ -135,7 +137,7 @@ async function rowByText(page: Page, text: string) {
 async function ensureUi(): Promise<void> {
   if (uiMeetingId && uiLink) return;
   adminToken ||= (await getCachedAdminSession()).accessToken;
-  let m = (await fetchList(adminToken, "/meetings?scope=upcoming")).find((x) => String(x.title).startsWith(PREFIX + " UI meeting"));
+  const m = (await fetchList(adminToken, "/meetings?scope=upcoming")).find((x) => String(x.title).startsWith(PREFIX + " UI meeting"));
   if (!m) {
     const c = await createViaApi(adminToken, `${PREFIX} UI meeting ${Date.now().toString(36)}`);
     uiMeetingId = c.meeting.id;

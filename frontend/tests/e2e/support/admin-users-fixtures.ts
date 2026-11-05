@@ -182,3 +182,27 @@ export async function resetFixtureUserToBaseline(token: string, email: string): 
     await adminUpdateRole(token, user.id, "USER");
   }
 }
+
+/**
+ * Paket AL — yarıda kesilen önceki koşumlardan (ör. `ah-intermediary.spec.ts` CRM yöneticisi fixture'ı) kalmış
+ * `qa-` önekli AKTİF ADMIN fixture'larını askıya alır; böylece "sistemin tek aktif admini" varsayımı (admin-user-management
+ * senaryo (a)) deterministik olur. `keepEmail` (koşan yönetici) ve `qa-` öneksiz hesaplara dokunmaz.
+ */
+export async function suspendStrayFixtureAdmins(token: string, keepEmail: string): Promise<number> {
+  let suspended = 0;
+  let cursor: string | undefined;
+  while (true) {
+    const url = new URL(`${API_BASE_URL}/admin/users`);
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers: authHeadersNoBody(token) });
+    const body = await json<{ data: FixtureAdminUser[]; meta: { nextCursor?: string | null } }>(res);
+    for (const u of body.data) {
+      if (u.role === "ADMIN" && u.status === "ACTIVE" && u.email.toLowerCase() !== keepEmail.toLowerCase() && u.email.toLowerCase().startsWith("qa-")) {
+        if ((await adminUpdateStatus(token, u.id, "SUSPENDED")).status === 200) suspended += 1;
+      }
+    }
+    if (!body.meta.nextCursor) return suspended;
+    cursor = body.meta.nextCursor;
+  }
+}

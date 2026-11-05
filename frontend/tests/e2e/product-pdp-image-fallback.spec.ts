@@ -45,6 +45,7 @@ const createdMediaIds: string[] = [];
  */
 function matchesMediaUrl(url: URL, target: string): boolean {
   if (url.href === target) return true;
+  if (target.startsWith("/") && url.pathname === target) return true; // AL: yerelde medya adresleri göreli ("/uploads/…")
   return url.searchParams.get("url") === target;
 }
 
@@ -83,6 +84,24 @@ test.afterAll(async () => {
   for (const id of createdMediaIds) await deleteTestMedia(adminToken, id).catch(() => undefined);
 });
 
+/**
+ * AL: SSR ile gelen <img> 404 hatasını React hidrasyonundan ÖNCE alırsa `onError` (yer tutucuya geçiş) hiç tetiklenmez — yavaş `next dev`
+ * hidrasyonunda test rastgele kırılıyordu (kullanıcıda da yavaş hidrasyonda aynı etki olur, bkz. rapor). Kırık görsel yanıtı bu
+ * kapıyla hidrasyon tamamlanana dek bekletilir; sayfa hidrasyonu `__reactProps$` anahtarının favori butonunda belirmesiyle anlaşılır.
+ */
+async function gotoAfterHydrationGate(page: Page, url: string, release: () => void): Promise<void> {
+  await page.goto(url, { waitUntil: "commit" });
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('button[aria-label="Favorilere ekle"]');
+      return !!button && Object.keys(button).some((k) => k.startsWith("__reactProps$"));
+    },
+    undefined,
+    { timeout: 30_000 }
+  );
+  release();
+}
+
 test("Fix 3: PDP'de 404 dönen kapak görseli 'Görsel yüklenemedi' placeholder'ı gösterir, kırık thumbnail TIKLANABİLİR kalır, sağlıklı görsele geçiş normal render eder", async ({
   page,
 }) => {
@@ -90,9 +109,14 @@ test("Fix 3: PDP'de 404 dönen kapak görseli 'Görsel yüklenemedi' placeholder
 
   // Yalnızca kapak (`brokenCoverMedia`) ağ seviyesinde 404'e zorlanır — galerideki ikinci görsel
   // (`okGalleryMedia`) GERÇEK backend'den normal şekilde servis edilmeye devam eder.
+  let releaseBroken!: () => void;
+  const brokenGate = new Promise<void>((resolve) => (releaseBroken = resolve));
   await page.route(
     (url) => matchesMediaUrl(url, brokenCoverMedia.url),
-    (route) => route.fulfill({ status: 404, contentType: "text/plain", body: "not found" })
+    async (route) => {
+      await brokenGate; // hidrasyon bitmeden 404 dönülmez (bkz. gotoAfterHydrationGate)
+      await route.fulfill({ status: 404, contentType: "text/plain", body: "not found" });
+    }
   );
   await serveLocalMedia(page, okGalleryMedia.url); // AL: yerelde göreli medya adresi sağlıklı görseli de yüklemez
   const okImageResponsePromise = page.waitForResponse(
@@ -100,7 +124,7 @@ test("Fix 3: PDP'de 404 dönen kapak görseli 'Görsel yüklenemedi' placeholder
     { timeout: 15_000 }
   );
 
-  await page.goto(`/products/${product.slug}`);
+  await gotoAfterHydrationGate(page, `/products/${product.slug}`, releaseBroken);
   await expect(page.getByRole("heading", { level: 1, name: product.title })).toBeVisible();
 
   // Asıl regresyon/yeni-özellik kontrolü — `onError` state güncellemesi ASENKRON, bu yüzden

@@ -290,11 +290,16 @@ for (const width of WIDTHS) {
       await expect(page.getByTestId("package-book-cta")).toBeVisible({ timeout: 60_000 });
 
       // Find your treatment ve Book a consultation sayfalari erisilebilir
-      const find = await page.goto("/find-your-treatment");
-      expect(find?.status()).toBe(200);
+      // AL: dev sunucusunda ilk derleme/gezinme yarisinda goto bazen yanitsiz (null) donuyordu - yanit gelene dek yeniden denenir.
+      await expect(async () => {
+        const find = await page.goto("/find-your-treatment");
+        expect(find?.status()).toBe(200);
+      }).toPass({ timeout: 45_000 });
       expect(page.url()).toContain("/find-your-treatment");
-      const book = await page.goto("/book-consultation");
-      expect(book?.status()).toBe(200);
+      await expect(async () => {
+        const book = await page.goto("/book-consultation");
+        expect(book?.status()).toBe(200);
+      }).toPass({ timeout: 45_000 });
       await expect(page.getByTestId("book-consultation-page").or(page.getByTestId("service-booking-wizard")).first()).toBeVisible({ timeout: 60_000 });
       expect(page.url()).toContain("/book-consultation");
       expect(await sitemapAll()).toContain("find-your-treatment");

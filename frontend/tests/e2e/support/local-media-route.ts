@@ -11,7 +11,7 @@ import { API_BASE_URL } from "./api";
 export async function serveLocalMedia(page: Page, mediaUrl: string): Promise<void> {
   const origin = new URL(API_BASE_URL).origin;
   await page.route(
-    (url) => url.href === mediaUrl || url.searchParams.get("url") === mediaUrl,
+    (url) => url.href === mediaUrl || url.pathname === mediaUrl || url.searchParams.get("url") === mediaUrl,
     async (route) => {
       const res = await fetch(`${origin}${mediaUrl}`);
       await route.fulfill({

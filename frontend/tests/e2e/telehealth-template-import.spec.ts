@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
 import { getCachedAdminSession, getSiteModules, patchSiteModule, API_BASE_URL } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { getDemoTemplatesRaw, importDemoTemplateRaw, resetDemoTemplateImportRow } from "./support/demo-templates-fixtures";
@@ -32,8 +33,11 @@ test.describe.configure({ mode: "serial" });
 let adminToken: string;
 let initialTelehealthEnabled: boolean;
 
+// AL: telehealth demo şablon importu menü/altbilgi/ayarları Türkçe demoyla ezer — afterAll geri yükler (support/site-state-snapshot.ts)
+let siteStateBefore: SiteStateSnapshot | undefined;
 test.beforeAll(async ({}, testInfo) => {
   testInfo.setTimeout(120_000);
+  siteStateBefore = snapshotSiteState();
   const session = await getCachedAdminSession();
   adminToken = session.accessToken;
 
@@ -52,6 +56,7 @@ test.afterAll(async () => {
   // yazar — `customer-portal-module-toggle.spec.ts::initialProductsModuleEnabled` İLE AYNI ilke.
   // İçerik (doktor/uzmanlık/sayfa) KASITLI OLARAK silinmez (bkz. dosya başlığı).
   await patchSiteModule(adminToken, "telehealth", initialTelehealthEnabled).catch(() => undefined);
+  if (siteStateBefore) await restoreSiteStateAndRevalidate(siteStateBefore);
 });
 
 test("madde 6: ADMIN /admin/demo-templates'te kart görünür + GERÇEK UI akışıyla uygulanır → 6 uzmanlık+4 doktor oluşur, hiçbir userId dolu değil, appointments BOŞ, modül kapalı kalır", async ({

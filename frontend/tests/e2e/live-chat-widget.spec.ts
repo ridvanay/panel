@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
 import { getCachedAdminSession, getAdminSettings, patchSiteSettings, getSiteModules, patchSiteModule } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { ensureTelehealthModuleWithDoctors, listAllAdminDoctors, getPublicDoctorSlotsRaw, defaultSlotRangeISODates, createAppointmentRaw } from "./support/telehealth-fixtures";
@@ -45,8 +46,11 @@ async function bookRealAppointmentForConsultation(): Promise<{ id: string; acces
   return { id: res.data.id, accessToken: res.data.accessToken };
 }
 
+// AL: telehealth demo şablon importu menü/altbilgi/ayarları Türkçe demoyla ezer — afterAll geri yükler (support/site-state-snapshot.ts)
+let siteStateBefore: SiteStateSnapshot | undefined;
 test.beforeAll(async ({}, testInfo) => {
   testInfo.setTimeout(90_000);
+  siteStateBefore = snapshotSiteState();
   const session = await getCachedAdminSession();
   adminToken = session.accessToken;
 
@@ -88,6 +92,7 @@ test.afterAll(async () => {
     liveChatProvider: initialLiveChatProvider as "internal" | "crisp" | "tawkto",
   }).catch(() => undefined);
   await patchSiteModule(adminToken, "telehealth", initialTelehealthEnabled).catch(() => undefined);
+  if (siteStateBefore) await restoreSiteStateAndRevalidate(siteStateBefore);
 });
 
 // =============================================================================

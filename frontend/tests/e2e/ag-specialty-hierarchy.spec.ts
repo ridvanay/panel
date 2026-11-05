@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getCachedAdminSession, getNavigationConfig, updateNavigationConfig, API_BASE_URL } from "./support/api";
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./support/api";
+import { createAuthenticatedPage } from "./support/admin-session";
 import { deleteSpecialty } from "./support/blog-z1-fixtures";
 
 /**
@@ -139,15 +139,8 @@ test("admin Ayarlar: randevu bildirimi alicilari kaydedilir (gecersiz adres redd
   const bad = await adminFetch("/admin/settings", { method: "PATCH", body: JSON.stringify({ bookingNotificationRecipients: "ok@example.com, not-an-email" }) });
   expect(bad.status).toBe(422);
 
-  // Oturum yardımcısı dil belirtmez; giriş sayfası Accept-Language'e göre dillendiği için tr-TR açıkça verilir.
-  const context = await browser.newContext({ baseURL: "http://siteadi.localhost:3100", locale: "tr-TR" });
-  const page = await context.newPage();
-  const close = () => context.close();
-  await page.goto("/login");
-  await page.getByLabel("E-posta").fill(ADMIN_EMAIL);
-  await page.getByLabel("Şifre").fill(ADMIN_PASSWORD);
-  await page.getByRole("button", { name: "Giriş yap" }).click();
-  await page.waitForURL(/\/admin/, { timeout: 30_000 });
+  // AL: ziyaretçi/giriş sayfası artık yalnız İngilizce (Türkçe kapalı); yönetici oturumu ortak yardımcıyla açılır.
+  const { page, close } = await createAuthenticatedPage(browser);
   try {
     await page.goto("/admin/settings");
     const field = page.getByLabel("Alıcı e-posta adresleri");

@@ -1,11 +1,10 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { getCachedAdminSession } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { cleanupContactSubmissionsByEmail } from "./support/notifications-fixtures";
 
-// AL (İş 2) ATLA: ziyaretçi /contact sayfası artık yeni ContactPageForm kullanıyor (POST /contact/page-submissions; alanlar fullName/e-posta/telefon/yöntem/mesaj/onay). Eski satır içi form (#name/#email/#message + honeypot #website, POST /contact/submissions ve admin Gelen Kutusu) sayfaya bağlı değil; components/site/contact-form.tsx hiçbir yerden içe aktarılmıyor ama backend uçları ve admin gelen kutusu duruyor
-// Açmak için: eski ContactForm bileşeninin /contact (veya bir CMS bloğu) içine geri bağlanması ya da spec'in yeni forma yeniden yazılması.
-test.skip(true, "AL: ziyaretçi /contact sayfası artık yeni ContactPageForm kullanıyor (POST /contact/page-submissions; alanlar fullName/e-posta/telefon/yöntem/mesaj/onay). Eski satır içi form (#name/#email/#message + honeypot #website, POST /contact/submissions ve admin Gelen Kutusu) sayfaya bağlı değil; components/site/contact-form.tsx hiçbir yerden içe aktarılmıyor ama backend uçları ve admin gelen kutusu duruyor (eski ContactForm bileşeninin /contact (veya bir CMS bloğu) içine geri bağlanması ya da spec'in yeni forma yeniden yazılması)");
+// AL (İş 2) GÜNCELLEME: /contact artık ContactPageForm (POST /contact/page-submissions; İngilizce etiketler, dinamik alan kimlikleri,
+// zaman damgalı honeypot). Kayıt aynı ContactSubmission tablosuna düştüğü için admin Gelen Kutusu doğrulaması değişmedi.
 
 /**
  * Kullanıcının istediği kısa akış: public iletişim formuna gidip (honeypot alanını BOŞ bırakarak)
@@ -16,11 +15,21 @@ test.skip(true, "AL: ziyaretçi /contact sayfası artık yeni ContactPageForm ku
  */
 test.describe.configure({ retries: 1 });
 
+/** ContactPageForm alanlarını doldurur (tedavi seçilmediği için açık rıza gerekmez; aydınlatma onayı zorunlu). */
+async function fillContactPageForm(page: Page, values: { name: string; email: string; message: string }): Promise<void> {
+  const nameInput = page.locator('input[name="name"]');
+  await expect(nameInput).toBeVisible({ timeout: 30_000 });
+  await nameInput.fill(values.name);
+  await page.locator('input[name="email"]').fill(values.email);
+  await page.locator("textarea").first().fill(values.message);
+  await page.locator('input[type="checkbox"][required]').first().check();
+}
+
 test("public iletişim formu gönderimi (honeypot boş) → admin Gelen Kutusu'nda görünür ve okundu işaretlenir", async ({
   page,
   browser,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   const session = await getCachedAdminSession();
   const token = session.accessToken;
   const unique = Date.now();
@@ -33,26 +42,16 @@ test("public iletişim formu gönderimi (honeypot boş) → admin Gelen Kutusu'n
   try {
     // 1) Public form.
     await page.goto("/contact");
-    await expect(page.getByRole("heading", { name: /Contact us|İletişim/ })).toBeVisible({ timeout: 15_000 });
-
-    await page.locator("#name").fill(name);
-    await page.locator("#email").fill(email);
-    await page.locator("#message").fill(message);
+    await fillContactPageForm(page, { name, email, message });
 
     // Honeypot ("website") — CSS ile gizli, dokunulmaz/boş bırakılır (§10.16.9).
-    const honeypot = page.locator("#website");
-    await expect(honeypot).toHaveValue("");
+    await expect(page.locator('input[name="website"]')).toHaveValue("");
 
-    // KVKK onay kutusu — consentRequired=true (varsayılan), işaretlenmeden gönderim 422 olur.
-    await page.locator('label[for="consent"]').click();
+    await page.getByRole("button", { name: "Send message" }).click();
 
-    await page.getByRole("button", { name: /^(Gönder|Send message)$/ }).click();
-
-    // 2) Başarı — form kaybolur, successMessage kutusu (role="status") görünür.
-    await expect(page.getByRole("status")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/Mesajınız alındı. En kısa sürede dönüş yapacağız.|your message has been sent/)).toBeVisible();
-    // Form artık DOM'da yok (spam'i teşvik etmemek için "yeni mesaj gönder" linki de YOK — §Ek).
-    await expect(page.locator("#name")).toHaveCount(0);
+    // 2) Başarı — form kaybolur, başarı kutusu (role="status") görünür (form yeniden yüklenmesi için "Send another" düğmesi var).
+    await expect(page.getByRole("status")).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('input[name="name"]')).toHaveCount(0);
 
     // 3) Admin tarafı — Gelen Kutusu'nda submission NEW olarak görünür.
     const { page: adminPage, close } = await createAuthenticatedPage(browser);
@@ -69,7 +68,8 @@ test("public iletişim formu gönderimi (honeypot boş) → admin Gelen Kutusu'n
       // 4) Detaya gir — mesaj içeriği + KVKK onay kaydı doğru taşınmış, GET yan etkisiz açılışın
       // ARDINDAN otomatik "Okundu" işaretlenir (§10.16.8).
       await row.click();
-      await expect(adminPage.getByRole("heading", { name, level: 1 })).toBeVisible({ timeout: 10_000 });
+      // AL: detay sayfasının dev sunucuda ilk derlemesi 10 sn'yi aşabiliyor.
+      await expect(adminPage.getByRole("heading", { name, level: 1 })).toBeVisible({ timeout: 45_000 });
       await expect(adminPage.getByText(message)).toBeVisible();
       await expect(adminPage.getByLabel("Durum")).toHaveValue("READ", { timeout: 10_000 });
       await expect(adminPage.getByText(/^Onaylandı:/)).toBeVisible(); // consentAt dolu
@@ -90,7 +90,7 @@ test("public iletişim formu — honeypot DOLU gönderim sessizce SPAM olarak ka
   page,
   browser,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   const session = await getCachedAdminSession();
   const token = session.accessToken;
   const unique = Date.now();
@@ -101,19 +101,15 @@ test("public iletişim formu — honeypot DOLU gönderim sessizce SPAM olarak ka
 
   try {
     await page.goto("/contact");
-    await expect(page.getByRole("heading", { name: /Contact us|İletişim/ })).toBeVisible({ timeout: 15_000 });
-    await page.locator("#name").fill(name);
-    await page.locator("#email").fill(email);
-    await page.locator("#message").fill("Bot tarafından doldurulmuş gibi davranılan mesaj.");
-    await page.locator('label[for="consent"]').click();
+    await fillContactPageForm(page, { name, email, message: "Bot tarafından doldurulmuş gibi davranılan mesaj." });
 
     // §10.16.9 — honeypot'u bilerek doldur (gerçek bir bot davranışını simüle eder).
-    await page.locator("#website").fill("https://spam-bot.example.com");
+    await page.locator('input[name="website"]').fill("https://spam-bot.example.com");
 
-    await page.getByRole("button", { name: /^(Gönder|Send message)$/ }).click();
+    await page.getByRole("button", { name: "Send message" }).click();
 
-    // Sahte başarı — ziyaretçi botun "başarısız oldum" sinyali almaz (§10.16.9), 201 + successMessage.
-    await expect(page.getByRole("status")).toBeVisible({ timeout: 15_000 });
+    // Sahte başarı — ziyaretçi botun "başarısız oldum" sinyali almaz (§10.16.9), 201 + başarı kutusu.
+    await expect(page.getByRole("status")).toBeVisible({ timeout: 20_000 });
 
     const { page: adminPage, close } = await createAuthenticatedPage(browser);
     try {
