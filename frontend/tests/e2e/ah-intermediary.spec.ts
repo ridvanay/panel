@@ -71,7 +71,21 @@ let originalHomePageId: string | null = null;
 let crmToken = "";
 
 /** Node `*.localhost` çözemez (bkz. playwright.config.ts) — 127.0.0.1'e bağlanıp Host başlığını elle veririz. */
-function rawGet(path: string): Promise<{ status: number; location: string | null; body: string }> {
+// AL: dev sunucu yeniden derlerken/bellek temizlerken bağlantı kopabilir (ECONNRESET/ECONNREFUSED); yalnız AĞ hatasında yeniden denenir
+// (HTTP durumu/içerik doğrulamaları değişmez).
+async function rawGet(path: string): Promise<{ status: number; location: string | null; body: string }> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rawGetOnce(path);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (attempt >= 4 || (code !== "ECONNRESET" && code !== "ECONNREFUSED")) throw err;
+      await new Promise((r) => setTimeout(r, 3_000));
+    }
+  }
+}
+
+function rawGetOnce(path: string): Promise<{ status: number; location: string | null; body: string }> {
   return new Promise((resolve, reject) => {
     http
       .get({ host: "127.0.0.1", port: 3100, path, headers: { Host: "siteadi.localhost:3100" } }, (res) => {
@@ -323,16 +337,22 @@ test.describe("Ziyaretçide doktor yok", () => {
   });
 
   test("sitemap'ler ve llms.txt'de doktor/hekim adresi ve /tr yok", async () => {
-    const index = await rawGet("/sitemap.xml");
-    expect(index.status).toBe(200);
-    const subs = [...index.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]!).pathname);
-    expect(subs.length).toBeGreaterThan(0);
-    const bodies = [index.body];
-    for (const p of subs) {
-      const r = await rawGet(p);
-      expect(r.status, p).toBe(200);
-      bodies.push(r.body);
-    }
+    test.setTimeout(150_000);
+    // AL: dizin ISR önbelleğinden (60 sn) gelir; önceki spec'lerin açıp kapattığı bir modülün (ör. products) alt site haritasını
+    // hâlâ listeleyebilir (alt harita 404). Dizin ve alt haritalar birbiriyle tutarlı olana kadar yoklanır.
+    let bodies: string[] = [];
+    await expect(async () => {
+      const index = await rawGet("/sitemap.xml");
+      expect(index.status).toBe(200);
+      const subs = [...index.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]!).pathname);
+      expect(subs.length).toBeGreaterThan(0);
+      bodies = [index.body];
+      for (const p of subs) {
+        const r = await rawGet(p);
+        expect(r.status, p).toBe(200);
+        bodies.push(r.body);
+      }
+    }).toPass({ timeout: 120_000, intervals: [3_000, 10_000] });
     for (const body of bodies) {
       expect(body).not.toMatch(/\/physicians|\/doctors/);
       expect(body).not.toMatch(/siteadi\.localhost:3100\/tr(\/|<|")/);
@@ -526,6 +546,7 @@ test.describe("Kimlik ibaresi", () => {
   });
 
   test("bölüm sayfası, talep formu ve VIP sayfasında bilgi kutusu (IntermediaryNotice) var; belge satırı yok", async ({ page }) => {
+    test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor
     for (const path of [`/specialties/${PARENT_SLUG}`, "/request", "/vip-accommodation-transfer"]) {
       await page.goto(path);
       const notice = page.getByTestId("intermediary-notice").first();

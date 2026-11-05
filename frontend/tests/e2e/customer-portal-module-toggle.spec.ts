@@ -95,7 +95,7 @@ test.afterAll(async () => {
 test("madde 14/22: products AÇIK — /hesabim 4 sekmeye yönlenir, sipariş kargoya verilince takip no detayda görünür", async () => {
   test.setTimeout(120000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor ("Compiling…")
   await customerPage.goto("/hesabim");
-  await expect(customerPage).toHaveURL(/\/hesabim\/profil$/);
+  await expect(customerPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 60_000 }); // AL: dev sunucuda ilk ziyarette sayfa derlemesi
 
   const nav = customerPage.getByRole("navigation", { name: "Hesap bölümleri" }).first();
   await expect(nav.getByRole("link", { name: "Profilim & Güvenlik" })).toBeVisible();
@@ -107,7 +107,7 @@ test("madde 14/22: products AÇIK — /hesabim 4 sekmeye yönlenir, sipariş kar
   await customerPage.goto("/hesabim/siparislerim");
   await expect(customerPage.getByRole("link", { name: orderNumber })).toBeVisible();
   await customerPage.getByRole("link", { name: orderNumber }).click();
-  await expect(customerPage).toHaveURL(new RegExp(`/hesabim/siparislerim/${orderId}$`));
+  await expect(customerPage).toHaveURL(new RegExp(`/hesabim/siparislerim/${orderId}$`), { timeout: 60_000 });
   await expect(customerPage.getByText("Kargo Takip Numarası")).not.toBeVisible();
 
   // Admin siparişi kargoya verir (§2.4 — `trackingNumber` zorunlu) — `admin-order-detail-ship.
@@ -195,33 +195,38 @@ test("madde 21: products AÇIK — ürün kartından favoriye ekle, /hesabim/fav
 });
 
 test("madde 20: CUSTOMER /admin'e giderse admin kabuğu render EDİLMEDEN /hesabim/profil'e yönlenir", async () => {
+  test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi
   await customerPage.goto("/admin");
-  await expect(customerPage).toHaveURL(/\/hesabim\/profil$/);
+  await expect(customerPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 60_000 });
   await expect(customerPage.getByText("Bu alana erişim yetkiniz yok, hesap sayfanıza yönlendirildiniz.")).toBeVisible();
   // Admin kabuğunun HİÇ mount edilmediğini doğrula — sidebar'a özgü bir öğe DOM'da olmamalı.
   await expect(customerPage.locator("[data-sidebar]")).toHaveCount(0);
 });
 
 test("madde 19: eski /siparislerim kalıcı yönlendirmeyle /hesabim/siparislerim'e gider", async () => {
+  test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi
   await customerPage.goto("/siparislerim");
-  await expect(customerPage).toHaveURL(/\/hesabim\/siparislerim$/);
+  await expect(customerPage).toHaveURL(/\/hesabim\/siparislerim$/, { timeout: 60_000 });
 });
 
 test("madde 18: oturumsuz kullanıcı /hesabim/adreslerim'e giderse /login?next=... yönlendirilir", async ({ browser }) => {
+  test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi
   const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100" });
   const page = await context.newPage();
   await page.goto("/hesabim/adreslerim");
-  await expect(page).toHaveURL(/\/login\?next=%2Fhesabim%2Fadreslerim/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fhesabim%2Fadreslerim/, { timeout: 60_000 });
   await context.close();
 });
 
 test("security-agent open-redirect fix — /login?next=//evil.com harici bir adrese YÖNLENDİRMEZ", async ({ browser }) => {
+  test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi
   const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100" });
   const page = await context.newPage();
   await page.goto("/login?next=%2F%2Fevil.com");
-  await page.getByLabel("E-posta").fill(CUSTOMER_EMAIL);
-  await page.getByLabel("Şifre").fill(CUSTOMER_PASSWORD);
-  await page.getByRole("button", { name: "Giriş yap" }).click();
+  // AL: giriş sayfası artık İngilizce (Türkçe kapalı); alanlar dilden bağımsız seçicilerle bulunur.
+  await page.locator('input[type="email"]').fill(CUSTOMER_EMAIL);
+  await page.locator('input[type="password"]').fill(CUSTOMER_PASSWORD);
+  await page.locator('button[type="submit"]').click();
   // `isSafeInternalPath` reddeder -> güvenli varsayılan role göre belirlenir (qa-agent GÜNCELLEMESİ,
   // 2026-09-17, `/dashboard` emekliliği) — bu kullanıcı `beforeAll`'daki webhook ile CUSTOMER rolüne
   // terfi etmiştir (panel-DIŞI), bu yüzden `resolvePostLoginPath` `/patient/appointments`'a düşer,
@@ -259,7 +264,7 @@ test.describe("products KAPALI", () => {
     }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
     await customerPage.goto("/hesabim");
-    await expect(customerPage).toHaveURL(/\/hesabim\/profil$/);
+    await expect(customerPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 60_000 });
     const nav = customerPage.getByRole("navigation", { name: "Hesap bölümleri" }).first();
     await expect(nav.getByRole("link", { name: "Profilim & Güvenlik" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Adreslerim" })).toBeVisible();
@@ -269,10 +274,10 @@ test.describe("products KAPALI", () => {
 
   test("madde 16/17: /hesabim/siparislerim ve /hesabim/favorilerim doğrudan girilirse /hesabim/profil'e yönlenir", async () => {
     await customerPage.goto("/hesabim/siparislerim");
-    await expect(customerPage).toHaveURL(/\/hesabim\/profil$/);
+    await expect(customerPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 60_000 });
 
     await customerPage.goto("/hesabim/favorilerim");
-    await expect(customerPage).toHaveURL(/\/hesabim\/profil$/);
+    await expect(customerPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 60_000 });
   });
 
   test("§3 mimari kararının regresyon bekçisi: GET /users/me/orders(/{id}) 200, wishlist* 404 döner", async () => {

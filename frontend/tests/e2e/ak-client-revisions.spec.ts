@@ -2,7 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ensureLocaleEnabled, getCachedAdminSession } from "./support/api";
+import { createPageWithBlocks, deletePagePermanently, ensureLocaleEnabled, getAdminSettings, getCachedAdminSession, patchSiteSettings } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { assertAiState, deactivateNonAiSpecialties, reactivateSpecialties } from "./support/ai-services-fixtures";
 import { DOCTOR_WORDS, TURKISH_CHARS, ensureDeskAndCoordinator, prepareContext, setBookingEnabled, settle } from "./support/ai3-service-fixtures";
@@ -220,9 +220,18 @@ async function setFeaturesViaPanel(page: Page, find: boolean, book: boolean): Pr
     .toBe(`${find},${book}`);
 }
 
+// AL: taban hatta (saas_e2e) ana sayfa seçili olmayabilir (ör. demo şablon geri yükleme sonrası); fixture bir ana sayfaya yazar,
+// bu yüzden yoksa geçici bir sayfa ana sayfa yapılır ve sonda geri alınır.
+let tempHomePageId = "";
+
 test.beforeAll(async () => {
   test.setTimeout(300_000);
   adminToken = (await getCachedAdminSession()).accessToken;
+  if (!(((await getAdminSettings(adminToken)).homePageId as string | null) ?? "")) {
+    const home = await createPageWithBlocks(adminToken, { title: "QA AK Home", slug: `qa-ak-home-${Date.now()}`, status: "PUBLISHED", blocks: [] });
+    tempHomePageId = home.id as string;
+    await patchSiteSettings(adminToken, { homePageId: tempHomePageId });
+  }
   await ensureLocaleEnabled(adminToken, "de", "German", "Deutsch"); // AL: spec /de yollarını sınar; taban hattında de etkin olmalı
   await assertAiState();
   backupAkState();
@@ -245,6 +254,10 @@ test.afterAll(async () => {
     await setBookingEnabled(adminToken, true);
   } finally {
     restoreAkState();
+    if (tempHomePageId) {
+      await patchSiteSettings(adminToken, { homePageId: null }).catch(() => undefined);
+      await deletePagePermanently(adminToken, tempHomePageId).catch(() => undefined);
+    }
     await flushFrontendCache();
   }
   if (shotsEnabled() && findings.length) {

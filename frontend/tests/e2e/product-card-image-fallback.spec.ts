@@ -109,7 +109,7 @@ async function gotoAfterHydrationGate(page: Page, url: string, release: () => vo
 test("Fix 2 regresyon: kapak görseli 404 dönen ürün kartı ImageOff yer tutucusu gösterir, rozet/favori KARDEŞLERİ hâlâ görünür, kırık <img> DOM'da KALMAZ; müdahale edilmeyen kart normal yükleniyor", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi + hidrasyon kapısı 60 sn'yi aşabiliyor
 
   // Yalnızca `brokenProduct`ın kapak görseli ağ seviyesinde 404'e zorlanır — `okProduct`ın
   // görseli GERÇEK backend'den (saas_e2e) normal şekilde servis edilmeye devam eder.
@@ -127,7 +127,7 @@ test("Fix 2 regresyon: kapak görseli 404 dönen ürün kartı ImageOff yer tutu
   await serveLocalMedia(page, okMedia.url); // AL: yerelde göreli medya adresi sağlıklı görseli de yüklemez
   const okImageResponsePromise = page.waitForResponse(
     (res) => matchesMediaUrl(new URL(res.url()), okMedia.url),
-    { timeout: 15_000 }
+    { timeout: 90_000 }
   );
 
   await gotoAfterHydrationGate(page, `/products?search=${encodeURIComponent(TITLE_PREFIX)}`, releaseBroken);

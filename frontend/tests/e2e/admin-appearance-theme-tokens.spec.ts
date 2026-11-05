@@ -28,6 +28,10 @@ let closeSession: () => Promise<void>;
 let token: string;
 let originalAccentColor: string;
 let originalBorderRadius: string;
+// AL: test 3 yedi tema alanını (buttonStyle dahil) değiştirir; yalnız ikisini geri almak buttonStyle=OUTLINE'ı kalıcı bırakıp
+// sonraki spec'leri ("dolgulu" CTA bekleyenler) bozuyordu — tüm alanlar yedeklenip geri yüklenir.
+const THEME_KEYS = ["accentColor", "backgroundColor", "surfaceColor", "textColor", "mutedTextColor", "borderRadius", "buttonStyle"] as const;
+let originalTheme: Record<string, unknown> = {};
 
 test.beforeAll(async ({ browser }) => {
   ({ page, close: closeSession } = await createAuthenticatedPage(browser));
@@ -36,10 +40,11 @@ test.beforeAll(async ({ browser }) => {
   const appearance = await getAdminAppearance(token);
   originalAccentColor = appearance.accentColor as string;
   originalBorderRadius = appearance.borderRadius as string;
+  originalTheme = Object.fromEntries(THEME_KEYS.map((k) => [k, appearance[k]]));
 });
 
 test.afterAll(async () => {
-  await patchAppearance(token, { accentColor: originalAccentColor, borderRadius: originalBorderRadius });
+  await patchAppearance(token, { ...originalTheme, accentColor: originalAccentColor, borderRadius: originalBorderRadius });
   await closeSession();
 });
 

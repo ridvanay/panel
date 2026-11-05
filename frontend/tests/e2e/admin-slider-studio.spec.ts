@@ -1023,9 +1023,14 @@ test.describe("Hero Studio — admin akışları", () => {
     });
 
     test("USER: /admin/sliders'a giderse admin kabuğu render EDİLMEDEN /hesabim/profil'e yönlenir (403 eşleniği)", async () => {
+      test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi + yönlendirme bildirimi gecikebiliyor
+      // Bildirim kısa ömürlüdür (yönlendirme + hedef sayfanın dev derlemesi sürerken kaybolur) — gezinmeden ÖNCE beklenmeye başlanır.
+      const denied = userPage.getByText("Bu alana erişim yetkiniz yok, hesap sayfanıza yönlendirildiniz.");
+      const deniedSeen = denied.waitFor({ state: "visible", timeout: 90_000 });
+      deniedSeen.catch(() => undefined);
       await userPage.goto("/admin/sliders");
-      await expect(userPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 15_000 });
-      await expect(userPage.getByText("Bu alana erişim yetkiniz yok, hesap sayfanıza yönlendirildiniz.")).toBeVisible();
+      await expect(userPage).toHaveURL(/\/hesabim\/profil$/, { timeout: 60_000 });
+      await deniedSeen;
       await expect(userPage.locator("[data-sidebar]")).toHaveCount(0);
     });
   });

@@ -160,6 +160,7 @@ test.describe("Mega menü — masaüstü (1440)", () => {
   });
 
   test("header: 'Find your treatment' -> /find-your-treatment, 'Book a consultation' -> /book-consultation (AK anahtarı açık); 'Find my physician' / 'Appointment' yok", async ({ page }) => {
+    test.setTimeout(120_000);
     await page.goto("/");
     const find = page.getByTestId("header-find-treatment");
     await expect(find).toContainText("Find your treatment");
@@ -170,10 +171,10 @@ test.describe("Mega menü — masaüstü (1440)", () => {
     const header = page.locator("header").first();
     await expect(header).not.toContainText(/Find my physician|Request a consultation|^Appointment$/i);
     await find.click();
-    await expect(page).toHaveURL(/\/find-your-treatment$/);
+    await expect(page).toHaveURL(/\/find-your-treatment$/, { timeout: 60_000 }); // AL: dev sunucuda ilk ziyarette sayfa derlemesi
     await page.goto("/");
     await page.getByTestId("header-book-consultation").click();
-    await expect(page).toHaveURL(/\/book-consultation$/);
+    await expect(page).toHaveURL(/\/book-consultation$/, { timeout: 60_000 });
   });
 });
 
@@ -298,11 +299,16 @@ test.describe("Mobil menü — site renkleri", () => {
     await page.reload();
     await page.getByRole("button", { name: /menu/i }).first().click();
     await expect(page.getByTestId("mobile-menu-book-consultation")).toBeVisible();
-    const mob = await page.evaluate(() => {
-      const f = getComputedStyle(document.querySelector('[data-testid="mobile-menu-find-treatment"]')!);
-      const b = getComputedStyle(document.querySelector('[data-testid="mobile-menu-book-consultation"]')!);
-      return { findBorder: f.borderTopColor, findText: f.color, bookBg: b.backgroundColor, bookText: b.color };
-    });
+    const readMobile = () =>
+      page.evaluate(() => {
+        const f = getComputedStyle(document.querySelector('[data-testid="mobile-menu-find-treatment"]')!);
+        const b = getComputedStyle(document.querySelector('[data-testid="mobile-menu-book-consultation"]')!);
+        return { findBorder: f.borderTopColor, findText: f.color, bookBg: b.backgroundColor, bookText: b.color };
+      });
+    // AL: renk geçişi (transition) sürerken ölçüm şeffaf döner (kararsızlık); site rengi oturana kadar yoklanır.
+    await expect.poll(async () => (await readMobile()).bookBg, { timeout: 15_000 }).not.toBe("rgba(0, 0, 0, 0)");
+    await expect.poll(async () => JSON.stringify(await readMobile()), { timeout: 15_000 }).toBe(JSON.stringify(desk));
+    const mob = await readMobile();
     console.log(`[AI] masaüstü ${JSON.stringify(desk)}\n[AI] mobil ${JSON.stringify(mob)}`);
     expect(mob.bookBg).not.toBe("rgba(0, 0, 0, 0)");
     expect(mob.bookBg).toBe(desk.bookBg);
@@ -329,14 +335,15 @@ test.describe("/specialties — Health Tourism Services sayfası", () => {
     const cards = page.getByTestId("service-card");
     await expect(cards).toHaveCount(11);
     for (const card of await cards.all()) {
-      await expect(card.getByTestId("service-card-book")).toHaveAttribute("href", /\/request\?service=[a-z0-9-]+$/);
+      // AL: AK anahtarı (bookConsultationCtaEnabled) açıkken "Book" -> /book-consultation?service=, kapalıyken /request?service=
+      await expect(card.getByTestId("service-card-book")).toHaveAttribute("href", /\/(?:book-consultation|request)\?service=[a-z0-9-]+$/);
       await expect(card.getByTestId("service-card-request")).toHaveAttribute("href", /\/request\?service=[a-z0-9-]+$/);
       await expect(card.getByTestId("service-card-book")).toContainText(/Book/i);
       await expect(card.getByTestId("service-card-request")).toContainText(/Request/i);
     }
     const gastro = page.getByTestId("service-card").filter({ hasText: "Gastroenterology" });
     await expect(gastro.getByTestId("service-card-chips").locator("a")).toHaveText(["ERCP", "ESD", "POEM"]);
-    await expect(gastro.getByTestId("service-card-book")).toHaveAttribute("href", /\/request\?service=gastroenterology$/);
+    await expect(gastro.getByTestId("service-card-book")).toHaveAttribute("href", /\/(?:book-consultation|request)\?service=gastroenterology$/);
     const main = await page.locator("main").innerText();
     expect(main).not.toMatch(SHOULD_NOT_APPEAR);
     expect(main).toMatch(/authorized healthcare facilities/i);
@@ -423,8 +430,10 @@ test.describe("Find your treatment", () => {
       const book = card.getByTestId("matcher-book-online");
       const req = card.getByTestId("matcher-request");
       await expect(book).toHaveText("Book an online consultation");
-      await expect(req).toHaveText("Request a consultation");
-      await expect(book).toHaveAttribute("href", /\/request\?service=[a-z0-9-]+$/);
+      // AL: AK anahtarı açıkken ikincil düğme "Request a call back", kapalıyken "Request a consultation"; "Book" bağlantısı
+      // açıkken /book-consultation?service=, kapalıyken /request?service=.
+      await expect(req).toHaveText(/^Request a (consultation|call back)$/);
+      await expect(book).toHaveAttribute("href", /\/(?:book-consultation|request)\?service=[a-z0-9-]+$/);
       await expect(req).toHaveAttribute("href", /\/request\?service=[a-z0-9-]+$/);
     }
     await expect(page.getByTestId("matcher-disclaimer")).toContainText("This tool does not provide a diagnosis or medical advice.");

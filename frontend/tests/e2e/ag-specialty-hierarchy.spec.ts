@@ -147,6 +147,7 @@ test("header menusu: alt uzmanliklar ayri kart degil, 'Procedures:' satirinda gr
 });
 
 test("admin Ayarlar: randevu bildirimi alicilari kaydedilir (gecersiz adres reddedilir)", async ({ browser }) => {
+  test.setTimeout(120_000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor
   const bad = await adminFetch("/admin/settings", { method: "PATCH", body: JSON.stringify({ bookingNotificationRecipients: "ok@example.com, not-an-email" }) });
   expect(bad.status).toBe(422);
 
