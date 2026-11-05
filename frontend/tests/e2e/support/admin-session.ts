@@ -57,7 +57,7 @@ export async function createAuthenticatedPageAs(
   // hedefe DOĞRUDAN `router.replace` eder, `/dashboard` hiç ARA durak OLMAZ. Bu yüzden sabit bir
   // hedef regex'i YERİNE, `/login`'den AYRILMAYI bekleyen rol-agnostik bir predicate kullanılır
   // (doktor hesapları BU yardımcıyla ÇAĞRILMAZ — bkz. grep doğrulaması, qa-agent görev raporu).
-  await page.waitForURL((url) => url.pathname !== "/login", { timeout: 15_000 });
+  await page.waitForURL((url) => url.pathname !== "/login", { timeout: 60_000 }); // AL: dev sunucuda giriş sonrası ilk hedef sayfanın derlemesi 15 sn'yi aşabiliyor
 
   // Paket AL — `next dev` (React StrictMode) sayfa yüklemesinde iki /auth/refresh isteğini AYNI ANDA gönderir; tek kullanımlık
   // refresh-token rotasyonunda ikisi yarışırsa biri 401 alır ve oturum düşer ("Sign in" sayfası) — rastgele (kararsız) bir yerel
@@ -77,7 +77,7 @@ export async function createAuthenticatedPageAs(
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.locator('button[type="submit"]').click();
-    await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 15_000 });
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 60_000 });
     return originalGoto(url, options);
   }) as Page["goto"];
 
