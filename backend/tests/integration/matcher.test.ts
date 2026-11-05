@@ -694,6 +694,9 @@ describe("matcher — tedavi eşleştirme sihirbazı (Paket W)", () => {
       const { purgeOldMatcherStats } = await import("../../src/modules/matcher/matcher.service");
       const now = new Date("2026-12-15T12:00:00Z");
       const day = (daysAgo: number) => new Date(`${new Date(now.getTime() - daysAgo * 86_400_000).toISOString().slice(0, 10)}T00:00:00Z`);
+      // Aynı dosyadaki önceki testler gerçek "bugün" için eşleşmeyen terim kaydı üretir; gerçek tarih day(40)'a denk gelirse
+      // (ör. 2026-11-05) bunlar da seyrek sayılıp sayacı şişiriyordu. Test yalnız kendi kurduğu veriyi ölçsün.
+      await app.prisma.matcherStat.deleteMany({ where: { kind: { in: ["unmatched_term", "unmatched_term_rare"] } } });
       await app.prisma.matcherStat.createMany({
         data: [
           { day: day(40), kind: "unmatched_term", key: "nadirterimx", count: 1 },
