@@ -2,6 +2,17 @@ import { test, expect } from "@playwright/test";
 import { getCachedAdminSession, getNavigationConfig, updateNavigationConfig, API_BASE_URL } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { deleteSpecialty } from "./support/blog-z1-fixtures";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
+// AL: PUT /admin/navigation tam degistirme yapar ve GET->PUT turu menu etiket cevirilerini dusurur; saas_e2e site kimligi (menu/altbilgi/ayarlar)
+// snapshot ile korunur. Geri yukleme iki kez (ilk ve son afterAll) kayitlidir: hook siralamasindan bagimsiz olarak en son o calisir.
+let siteStateGuard: SiteStateSnapshot | undefined;
+test.beforeAll(() => {
+  siteStateGuard = snapshotSiteState();
+});
+test.afterAll(async () => {
+  if (siteStateGuard) await restoreSiteStateAndRevalidate(siteStateGuard);
+});
+
 
 /**
  * qa-agent — Paket AG e2e: alt uzmanlik (tek seviye) hiyerarsisi + admin randevu bildirimi alici ayari.
@@ -156,4 +167,8 @@ test("admin Ayarlar: randevu bildirimi alicilari kaydedilir (gecersiz adres redd
   } finally {
     await close();
   }
+});
+
+test.afterAll(async () => {
+  if (siteStateGuard) await restoreSiteStateAndRevalidate(siteStateGuard);
 });

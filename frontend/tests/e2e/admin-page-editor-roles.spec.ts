@@ -382,10 +382,13 @@ test.describe("Sayfa düzenleyici — rol tabanlı Katman 1 kısıtı (§6, canU
       await moreMenuTrigger.click();
       const addBelowSubTrigger = adminPage.getByRole("menuitem", { name: "Alta Konteyner Ekle" });
       await expect(addBelowSubTrigger).toBeVisible();
-      await adminPage.mouse.move(0, 0);
-      await addBelowSubTrigger.hover();
       const singleColumnTile = adminPage.getByRole("button", { name: "Tek Sütun" });
-      await expect(singleColumnTile).toBeVisible();
+      // AL: hover-açılan alt menü ara sıra açılmıyor - açılana dek imleç dışarı alınıp geri getirilir.
+      await expect(async () => {
+        await adminPage.mouse.move(0, 0);
+        await addBelowSubTrigger.hover();
+        await expect(singleColumnTile).toBeVisible({ timeout: 2_500 });
+      }).toPass({ timeout: 20_000 });
       await singleColumnTile.click();
       await adminPage.keyboard.press("Escape");
       await adminPage.keyboard.press("Escape");

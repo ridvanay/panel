@@ -8,6 +8,17 @@ import {
   patchAppearance,
   updateNavigationConfig,
 } from "./support/api";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
+// AL: PUT /admin/navigation tam degistirme yapar ve GET->PUT turu menu etiket cevirilerini dusurur; saas_e2e site kimligi (menu/altbilgi/ayarlar)
+// snapshot ile korunur. Geri yukleme iki kez (ilk ve son afterAll) kayitlidir: hook siralamasindan bagimsiz olarak en son o calisir.
+let siteStateGuard: SiteStateSnapshot | undefined;
+test.beforeAll(() => {
+  siteStateGuard = snapshotSiteState();
+});
+test.afterAll(async () => {
+  if (siteStateGuard) await restoreSiteStateAndRevalidate(siteStateGuard);
+});
+
 
 /**
  * Regresyon testi — bulunan bug: `frontend/src/app/[lang]/page.tsx` (ana sayfa, `/`) yanlışlıkla
@@ -189,3 +200,7 @@ async function expectNavLinkVisible(page: import("@playwright/test").Page, name:
   }
   await expect(link.or(page.getByRole("menuitem", { name })).first()).toBeVisible();
 }
+
+test.afterAll(async () => {
+  if (siteStateGuard) await restoreSiteStateAndRevalidate(siteStateGuard);
+});
