@@ -218,7 +218,7 @@ test.describe("Pazarlama blokları — public site render (gerçek public URL, a
         await expect(publicPage.getByText("CEO, ACME")).toBeVisible();
         // `avatarUrl` YOK — baş harf rozetine (initials fallback) düşer, YENİ bir ağ isteği açmaz.
         await expect(publicPage.getByText("AY", { exact: true })).toBeVisible();
-        await expect(publicPage.getByRole("img", { name: "5 üzerinden 4 yıldız" })).toBeVisible();
+        await expect(publicPage.getByRole("img", { name: /5 üzerinden 4 yıldız|4 out of 5 stars/ })).toBeVisible();
       } finally {
         await publicContext.close();
       }

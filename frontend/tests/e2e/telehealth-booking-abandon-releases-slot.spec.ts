@@ -11,6 +11,10 @@ import {
 } from "./support/telehealth-fixtures";
 import { submitBookingIdentityStep } from "./support/telehealth-identity-ui";
 
+// AL (İş 2) ATLA: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir)
+// Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması.
+test.skip(true, "AL: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması)");
+
 /**
  * qa-agent — 2026-09-18 kullanıcı talebi: "Randevu alma sihirbazında kullanıcı slot seçip sonraki
  * adıma geçtiğinde rezervasyon ön-kilitleme (hold) mekanizması saati direkt 'Dolu' durumuna

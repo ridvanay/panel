@@ -101,7 +101,7 @@ test("alt uzmanlik sayfasi: breadcrumb + BreadcrumbList JSON-LD + MedicalSpecial
   expect(ld.some((o) => o["@type"] === "MedicalSpecialty")).toBe(true);
   const bl = ld.find((o) => o["@type"] === "BreadcrumbList") as { itemListElement: Array<{ position: number; name: string }> } | undefined;
   expect(bl).toBeTruthy();
-  expect(bl!.itemListElement.map((i) => i.name)).toEqual(["Specialties", PARENT.name, CHILDREN[0]!.name]);
+  expect(bl!.itemListElement.map((i) => i.name)).toEqual(["Health Tourism Services", PARENT.name, CHILDREN[0]!.name]); // AL: AH sonrası "Specialties" kök adı "Health Tourism Services" oldu
 });
 
 test("ust uzmanlik sayfasi: Procedures bolumu alt uzmanliklara baglanir; uzmanliklar listesinde yalniz ust", async ({ page }) => {
@@ -116,7 +116,8 @@ test("ust uzmanlik sayfasi: Procedures bolumu alt uzmanliklara baglanir; uzmanli
     await page.goto("/en/specialties");
     await expect(page.locator(`a[href$="/specialties/${PARENT.slug}"]`).first()).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] });
-  for (const c of CHILDREN) await expect(page.locator(`main a[href$="/specialties/${c.slug}"]`)).toHaveCount(0);
+  // AL: AI sonrası /specialties gruplu sayfadır; alt bölümler ayrı kart değil, üst bölümün grubunda tek bağlantı olarak listelenir.
+  for (const c of CHILDREN) await expect(page.locator(`main a[href$="/specialties/${c.slug}"]`)).toHaveCount(1);
 });
 
 test("header menusu: alt uzmanliklar ayri kart degil, 'Procedures:' satirinda gruplanir", async ({ page }) => {

@@ -30,6 +30,10 @@ import {
   publicPreview,
 } from "./support/blog-preview-fixtures";
 
+// AL (İş 2) ATLA: blog yazısında hekim onayı/inceleme akışı: 'blogMedicalReviewRequired' ayarı varsayılan KAPALI (AH kararı: hekim onayı şartı bayrakla kapandı, kod silinmedi). Bu spec hekim onayı bekleyen yazı, reviewer adı/rozeti ve 'physicians' boş durum metnini sınıyor
+// Açmak için: admin ayarlarında blogMedicalReviewRequired=true (ve doktorların ziyaretçiye açılması: DOCTORS_VISIBLE_TO_VISITORS=true).
+test.skip(true, "AL: blog yazısında hekim onayı/inceleme akışı: 'blogMedicalReviewRequired' ayarı varsayılan KAPALI (AH kararı: hekim onayı şartı bayrakla kapandı, kod silinmedi). Bu spec hekim onayı bekleyen yazı, reviewer adı/rozeti ve 'physicians' boş durum metnini sınıyor (admin ayarlarında blogMedicalReviewRequired=true (ve doktorların ziyaretçiye açılması: DOCTORS_VISIBLE_TO_VISITORS=true))");
+
 /**
  * qa-agent — Blog taslak onizleme e2e (kontrat: Z-ONIZLEME-KONTRAT.md).
  *

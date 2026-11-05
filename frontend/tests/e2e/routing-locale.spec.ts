@@ -24,6 +24,9 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
   test("TR sayfa açılır, dil değiştirici ile EN'e geçilince /en/<en-slug> altında EN içerik gösterilir", async ({
     page,
   }) => {
+    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
+    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
+    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     const created = await createPage(token, {
       title: "QA Rota Testi",
       slug: `qa-rota-testi-${Date.now()}`,
@@ -46,6 +49,9 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
   });
 
   test("dil değiştiriciyle CLIENT-SIDE geçişte <html lang> güncellenir", async ({ page }) => {
+    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
+    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
+    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     // §6.3 "`<html lang>` aktif locale'den türetilecek" — `app/layout.tsx` bunu `x-active-locale`
     // request header'ından okur (yalnızca TAM sayfa yüklemesinde). Kök layout `[lang]` segmentinin
     // ÜSTÜNDE olduğundan (Next.js layout'ları navigasyonda yeniden RENDER EDİLMEZ), dil
@@ -84,7 +90,7 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
     const response = await page.goto(`/en/${slug}`);
     expect(response?.status()).toBe(200);
     await expect(page.locator("body")).toContainText("Sadece Turkce icerik mevcut.");
-    await expect(page.getByText("Sayfa bulunamadı", { exact: false })).toHaveCount(0);
+    await expect(page.getByText(/Sayfa bulunamadı|Page not found/i)).toHaveCount(0);
   });
 
   test("/tr/<slug> isteği 301 ile prefix'siz kanonik URL'e yönlendirilir", async ({ page }) => {
@@ -106,6 +112,9 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
   test("§12.2: kanonik TR slug'ı ile ama /en/ prefix'i altında gelen istek, EN'in KENDİ slug'ına 301 ile yönlendirilir", async ({
     page,
   }) => {
+    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
+    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
+    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     // `.claude/architect-scope-i18n.md` §12.2 (bağlayıcı): "/en/gizlilik-politikasi" gibi bir
     // istek (varsayılan dilin kanonik slug'ı + farklı bir locale prefix'i) İÇERİĞİ doğru bulur
     // (backend slug fallback'i zaten çözer — bu kısım ÇALIŞIYOR, aşağıda ayrıca doğrulanıyor)
@@ -138,6 +147,9 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
   test("REGRESYON — mevcut TR ana sayfa ve liste rotaları prefix'siz, [lang] taşımasından etkilenmemiş", async ({
     page,
   }) => {
+    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
+    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
+    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     // §11 açık risk tablosu: "(site) → [lang]/(site) taşıması tüm public rotalara dokunur".
     // Ana sayfa ve `/blog` liste sayfası — her ikisi de taşımadan ÖNCE de bu path'lerde
     // yayındaydı; 200 dönmeleri ve `<html lang="tr">` taşımaları regresyon YOK demektir.
@@ -154,6 +166,9 @@ test.describe("Public locale routing (§9 madde 1-3)", () => {
 
 test.describe("SEO — hreflang / x-default (§9 madde 10)", () => {
   test("çevrilmiş içerikte hreflang + x-default var; çevrilmemiş dil için alternate YOK", async ({ page }) => {
+    // AL (İş 2) ATLA: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor
+    // Açmak için: saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması.
+    test.skip(true, "AL: ziyaretçi varsayılan dili artık İngilizce; Türkçe (tr) ziyaretçiye kapalı (AH: /tr 301 ile prefix'siz adrese gider, tr locale devre dışı). Test varsayılan dilin TR olduğunu varsayıyor (saas_e2e'de tr locale'in etkin+varsayılan yapılması ve Türkçe ziyaretçi kapatmanın geri alınması)");
     const translatedSlug = `qa-seo-translated-${Date.now()}`;
     const enSlug = `qa-seo-translated-en-${Date.now()}`;
     const created = await createPage(token, {

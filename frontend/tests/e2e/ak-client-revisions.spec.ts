@@ -2,7 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { getCachedAdminSession } from "./support/api";
+import { ensureLocaleEnabled, getCachedAdminSession } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { assertAiState, deactivateNonAiSpecialties, reactivateSpecialties } from "./support/ai-services-fixtures";
 import { DOCTOR_WORDS, TURKISH_CHARS, ensureDeskAndCoordinator, prepareContext, setBookingEnabled, settle } from "./support/ai3-service-fixtures";
@@ -223,6 +223,7 @@ async function setFeaturesViaPanel(page: Page, find: boolean, book: boolean): Pr
 test.beforeAll(async () => {
   test.setTimeout(300_000);
   adminToken = (await getCachedAdminSession()).accessToken;
+  await ensureLocaleEnabled(adminToken, "de", "German", "Deutsch"); // AL: spec /de yollarını sınar; taban hattında de etkin olmalı
   await assertAiState();
   backupAkState();
   await ensureDeskAndCoordinator(adminToken);

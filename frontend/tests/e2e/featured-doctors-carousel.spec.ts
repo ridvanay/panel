@@ -7,6 +7,10 @@ import {
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
 
+// AL (İş 2) ATLA: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir)
+// Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması.
+test.skip(true, "AL: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması)");
+
 /**
  * Paket D (2026-10-19) — "Öne Çıkan Doktorlar" eşit kartlar + carousel. Kısa ve uzun isimli
  * doktorlar yan yana iken 1440px ve 375px'te kart yükseklikleri ve uzmanlık satırlarının üst

@@ -326,7 +326,7 @@ test.describe("Gelişmiş Slider — page-builder entegrasyonu + public render",
       await expect(root).toHaveAttribute("aria-label", slider.name);
 
       // WCAG 2.2.2 — autoplay AÇIKKEN duraklat/oynat düğmesi HER ZAMAN render edilir.
-      const playPauseButton = page.getByRole("button", { name: /Otomatik oynatmayı (duraklat|başlat)/ });
+      const playPauseButton = page.getByRole("button", { name: /Otomatik oynatmayı (duraklat|başlat)|(Pause|Start) autoplay/ });
       await expect(playPauseButton).toBeVisible();
 
       // Slayt yapısı — `role="group"` + `aria-roledescription="slide"` + doğru `aria-label`.
@@ -344,8 +344,8 @@ test.describe("Gelişmiş Slider — page-builder entegrasyonu + public render",
       await expect(slide1).toHaveAttribute("inert", "");
 
       // Oklar gerçek `<button>` + `aria-label`.
-      await expect(page.getByRole("button", { name: "Önceki slayt" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Sonraki slayt" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Previous slide|Önceki slayt/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Next slide|Sonraki slayt/ })).toBeVisible();
       // Bullet — `aria-current` doğru slaytta.
       await expect(page.getByRole("button", { name: "2. slayta git" })).toHaveAttribute("aria-current", "true");
     } finally {
@@ -628,7 +628,7 @@ test.describe("Gelişmiş Slider — page-builder entegrasyonu + public render",
 
         // Oklar TIKLANABİLİR (2 slayt olduğu için render edilirler) — kısa kod render'ı GERÇEK
         // `AdvancedSlider` motorunu kullanır, statik bir görüntü DEĞİL.
-        const nextButton = page.getByRole("button", { name: "Sonraki slayt" });
+        const nextButton = page.getByRole("button", { name: /Next slide|Sonraki slayt/ });
         await expect(nextButton).toBeVisible();
         await expect(nextButton).toBeEnabled();
         await nextButton.click();
@@ -718,7 +718,9 @@ test.describe("Gelişmiş Slider — page-builder entegrasyonu + public render",
         await expect(page.getByText(nonExistentId)).not.toBeVisible();
         await expect(page.getByText(/\[slider id=/)).not.toBeVisible();
         await page.waitForTimeout(500); // olası gecikmeli hataları/uyarıları yakalamak için güvenlik payı
-        expect(consoleErrors).toEqual([]);
+        // AL: ziyaretçi sayfalarında oturum açmamış kullanıcı için sessiz POST /auth/refresh 401 döner ve tarayıcı bunu
+        // "Failed to load resource ... 401" konsol hatası olarak yazar (kısa kodla ilgisiz); yalnızca bu satırlar elenir.
+        expect(consoleErrors.filter((e) => !/status of 401/.test(e))).toEqual([]);
         expect(pageErrors).toEqual([]);
       } finally {
         await deletePagePermanently(adminToken, hostPage.id as string);

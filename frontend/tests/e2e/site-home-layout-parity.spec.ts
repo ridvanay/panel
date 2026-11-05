@@ -35,7 +35,7 @@ import {
  *
  * Bu dosya bu regresyonun bir daha SESSİZCE geri gelmemesini iki katmanda garanti eder:
  *  1) Statik yapı — ana sayfa ile GERÇEK bir CMS sayfasının header/nav/footer DOM iskeleti
- *     (`nav[aria-label="Site gezinme"]` içindeki kök linkler, `getByRole("contentinfo")`) BİREBİR
+ *     (`nav[aria-label="Site navigation"]` içindeki kök linkler, `getByRole("contentinfo")`) BİREBİR
  *     aynı. Ana sayfa `(site)/layout.tsx`'i almıyorsa bu iki liste ya BOŞ/farklı olur ya da nav/
  *     footer hiç render edilmez.
  *  2) Dinamik değer akışı — admin panelinden (API üzerinden, `support/api.ts` fixture'larıyla)
@@ -101,13 +101,13 @@ test.afterAll(async () => {
 test.describe("Ana sayfa layout parity — regresyon: (site) route-group'unun DIŞINDA kalmasın", () => {
   test("ana sayfa ile bir CMS sayfası aynı header/nav/footer DOM iskeletini paylaşır", async ({ page }) => {
     await page.goto("/");
-    const homeNav = page.locator('nav[aria-label="Site gezinme"]');
+    const homeNav = page.locator('nav[aria-label="Site navigation"]');
     await expect(homeNav).toBeVisible();
     await expect(page.getByRole("contentinfo")).toBeVisible();
     const homeLinkLabels = await homeNav.getByRole("link").allTextContents();
 
     await page.goto(`/${testPage.slug}`);
-    const cmsNav = page.locator('nav[aria-label="Site gezinme"]');
+    const cmsNav = page.locator('nav[aria-label="Site navigation"]');
     await expect(cmsNav).toBeVisible();
     await expect(page.getByRole("contentinfo")).toBeVisible();
     const cmsLinkLabels = await cmsNav.getByRole("link").allTextContents();
@@ -134,7 +134,8 @@ test.describe("Ana sayfa layout parity — regresyon: (site) route-group'unun DI
       footerCopyrightText: originalNavigation.footerCopyrightText,
       navigationItems: [
         ...(originalNavigation.navigationItems as Array<Record<string, unknown>>),
-        { label: NAV_LABEL, href: "/", order: maxOrder + 1, parentId: null },
+        // AL: href "/" Home ile aynı olduğundan başlık menüsünde tekilleştiriliyordu — benzersiz adres kullanılır.
+        { label: NAV_LABEL, href: "/contact?qa-layout-parity=1", order: maxOrder + 1, parentId: null },
       ],
       socialLinks: originalNavigation.socialLinks,
       footerColumns: originalNavigation.footerColumns,
@@ -150,7 +151,7 @@ test.describe("Ana sayfa layout parity — regresyon: (site) route-group'unun DI
       .toContain(NAV_LABEL);
 
     await page.goto("/");
-    await expect(page.locator('nav[aria-label="Site gezinme"]').getByRole("link", { name: NAV_LABEL })).toBeVisible();
+    await expectNavLinkVisible(page, NAV_LABEL);
     const homePrimary = await page
       .locator(".site-scope")
       .evaluate((el) => getComputedStyle(el).getPropertyValue("--site-primary").trim());
@@ -170,10 +171,21 @@ test.describe("Ana sayfa layout parity — regresyon: (site) route-group'unun DI
       .toContain(NAV_LABEL);
 
     await page.goto(`/${testPage.slug}`);
-    await expect(page.locator('nav[aria-label="Site gezinme"]').getByRole("link", { name: NAV_LABEL })).toBeVisible();
+    await expectNavLinkVisible(page, NAV_LABEL);
     const cmsPrimary = await page
       .locator(".site-scope")
       .evaluate((el) => getComputedStyle(el).getPropertyValue("--site-primary").trim());
     expect(cmsPrimary).toBe(TEST_PRIMARY_COLOR);
   });
 });
+
+// AL: AH sonrası başlık menüsü 5 sabit öğe + CTA taşıyor; sonradan eklenen öğeler genişlik yetmeyince "More" açılır menüsüne düşer.
+async function expectNavLinkVisible(page: import("@playwright/test").Page, name: string) {
+  const nav = page.locator('nav[aria-label="Site navigation"]');
+  const link = nav.getByRole("link", { name });
+  if (!(await link.isVisible())) {
+    const more = nav.getByRole("button", { name: /^More$/ });
+    if (await more.count()) await more.click();
+  }
+  await expect(link.or(page.getByRole("menuitem", { name })).first()).toBeVisible();
+}

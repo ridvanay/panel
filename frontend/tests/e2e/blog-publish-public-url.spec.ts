@@ -76,7 +76,7 @@ test("yazı PUBLISHED oluşturulunca Türkçe 'ı' içeren başlığın slug'ı 
   const response = await page.goto(`/blog/${post.slug}`);
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
-  await expect(page.getByText("Sayfa bulunamadı", { exact: false })).toHaveCount(0);
+  await expect(page.getByText(/Sayfa bulunamadı|Page not found/i)).toHaveCount(0);
 
   // `/tr/blog/{slug}` → proxy'nin prefix'siz kanonik URL'e 301 yönlendirmesi (bkz.
   // `routing-locale.spec.ts` "REGRESYON" testinin aynı deseni) — dolaylı olarak da doğrulanır.
@@ -127,5 +127,5 @@ test("REGRESYON (korunması gereken doğru davranış) — DRAFT yazının publi
 
   const response = await page.goto(`/blog/${post.slug}`);
   expect(response?.status()).toBe(404);
-  await expect(page.getByText("Sayfa bulunamadı", { exact: false })).toBeVisible();
+  await expect(page.getByText(/Sayfa bulunamadı|Page not found/i)).toBeVisible();
 });

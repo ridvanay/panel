@@ -1,5 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
 import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
   getCachedAdminSession,
   getFixtureUserToken,
   createPage as createPageFixture,
@@ -123,7 +126,10 @@ function modernArchitectureCard(page: Page) {
   return page.locator(".flex.h-full.flex-col.overflow-hidden.p-0").filter({ hasText: "Modern Mimarlık & İnşaat" });
 }
 
+// AL: demo import saas_e2e'nin site kimligi verisini Turkce demoyla kalici ezmesin (bkz. support/site-state-snapshot.ts)
+let siteStateBefore: SiteStateSnapshot | undefined;
 test.beforeAll(async ({ browser }, testInfo) => {
+  siteStateBefore = snapshotSiteState(); // AL: importer menu/altbilgi/ayarlari yeniden yazar — afterAll geri yukler
   testInfo.setTimeout(120_000);
   const session = await getCachedAdminSession();
   adminToken = session.accessToken;
@@ -214,7 +220,7 @@ test("madde 6: ADMIN olarak uygula → 201, ana sayfa şablonun sayfası olur, p
   beforeFirstImportHomePageId = (beforeSettings.homePageId as string | null) ?? null;
   const mediaBefore = await listAllAdminMediaIds(adminToken);
 
-  await adminPage.goto("/admin/demo-templates");
+  await gotoAdmin("/admin/demo-templates");
   await expect(adminPage.getByRole("heading", { name: "Modern Mimarlık & İnşaat" })).toBeVisible({ timeout: 15_000 });
   // Temiz zemin (`beforeAll` idempotency satırını sıfırladı) → kart "Uygula" gösterir, henüz
   // "Uygulandı" rozeti/"Yeniden Uygula" YOK. Kart-scope'lu (bkz. `modernArchitectureCard` başlığı) —
@@ -298,12 +304,12 @@ test("madde 14: /admin/logs'ta demo_template.import satırı ve metadata.previou
 
   // UI kanıtı — `/admin/logs` ekranında satır GÖRÜNÜR (en yeni-önce sıralı, testin kendi isteği
   // son dakikalarda olduğu için ilk sayfada olmalı).
-  await adminPage.goto("/admin/logs");
+  await gotoAdmin("/admin/logs");
   await expect(adminPage.getByText("demo_template.import").first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("madde 7: aynı şablonu tekrar uygula (force olmadan) → 409, importedAt diyalogda görünür", async () => {
-  await adminPage.goto("/admin/demo-templates");
+  await gotoAdmin("/admin/demo-templates");
   // Kart-scope'lu (bkz. `modernArchitectureCard` başlığı) — `ecommerce-pro` kartı da AYNI anda
   // "uygulanmış" durumda olabilir, sayfa-geneli arama İKİ eşleşmeyle strict-mode ihlaline düşer.
   const card = modernArchitectureCard(adminPage);
@@ -418,7 +424,7 @@ test("madde 11: import sonrası medya kütüphanesinde 12 yeni görsel var ve me
   let uploadedMediaId: string | null = null;
 
   try {
-    await adminPage.goto(`/admin/pages/${tempPage.id}`);
+    await gotoAdmin(`/admin/pages/${tempPage.id}`);
     await expect(adminPage.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
     await adminPage.waitForTimeout(500); // bkz. gallery spec başlığındaki AYNI güvenlik payı notu
 
@@ -517,3 +523,20 @@ test("regresyon: bu dosya boyunca `/admin/demo-templates`'in izlediği önizleme
   // `brokenPreviewAssetResponses` başlığı) — koleksiyon TÜM o navigasyonların birikimidir.
   expect(brokenPreviewAssetResponses).toEqual([]);
 });
+
+test.afterAll(async () => {
+  if (siteStateBefore) await restoreSiteStateAndRevalidate(siteStateBefore);
+});
+
+// AL: madde 13'ün 65 sn beklemesi + fixture kullanıcı kayıtlarının auth hız sınırı sonrası tarayıcı oturumu bazı koşularda
+// düşüyor ("Sign in" sayfası). Oturum düşmüşse aynı yönetici hesabıyla yeniden girilir; amaç demo içe aktarmayı sınamak.
+async function gotoAdmin(url: string) {
+  await adminPage.goto(url);
+  if (new URL(adminPage.url()).pathname === "/login") {
+    await adminPage.locator('input[type="email"]').fill(ADMIN_EMAIL);
+    await adminPage.locator('input[type="password"]').fill(ADMIN_PASSWORD);
+    await adminPage.locator('button[type="submit"]').click();
+    await adminPage.waitForURL((u) => u.pathname !== "/login", { timeout: 15_000 });
+    await adminPage.goto(url);
+  }
+}

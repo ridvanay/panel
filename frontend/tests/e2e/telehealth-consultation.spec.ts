@@ -11,6 +11,10 @@ import {
   type CreatedAppointment,
 } from "./support/telehealth-fixtures";
 
+// AL (İş 2) ATLA: eski doktor randevusu/görüşme akışı: fixture doktor + hasta randevusu gerektirir, hasta arayüzü Türkçe etiket bekler (AH: Türkçe ziyaretçiye kapalı, doktorlar kaldırıldı)
+// Açmak için: DOCTORS_VISIBLE_TO_VISITORS=true (frontend/src/lib/intermediary.ts), DOCTOR_PORTAL_ENABLED=true ve Türkçe arayüzün geri açılması; ayrıca spec'in İngilizce etiketlere uyarlanması gerekir.
+test.skip(true, "AL: eski doktor randevusu/görüşme akışı: fixture doktor + hasta randevusu gerektirir, hasta arayüzü Türkçe etiket bekler (AH: Türkçe ziyaretçiye kapalı, doktorlar kaldırıldı) (DOCTORS_VISIBLE_TO_VISITORS=true (frontend/src/lib/intermediary.ts), DOCTOR_PORTAL_ENABLED=true ve Türkçe arayüzün geri açılması; ayrıca spec'in İngilizce etiketlere uyarlanması gerekir)");
+
 /**
  * qa-agent — `.claude/architect-scope-telehealth-template.md` §10 (QA kapsamı) madde 10/11. Backend'in
  * `tests/unit/telehealth-livekit.test.ts` + `tests/integration/telehealth-livekit.test.ts` ZATEN

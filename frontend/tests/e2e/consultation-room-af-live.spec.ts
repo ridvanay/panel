@@ -22,6 +22,10 @@ import {
 import { consultationStrings as trStrings } from "../../src/lib/i18n/site-dictionaries/tr/consultation";
 import { consultationStrings as arStrings } from "../../src/lib/i18n/site-dictionaries/ar/consultation";
 
+// AL (İş 2) ATLA: eski doktor randevusu/görüşme akışı: fixture doktor + hasta randevusu gerektirir, hasta arayüzü Türkçe etiket bekler (AH: Türkçe ziyaretçiye kapalı, doktorlar kaldırıldı)
+// Açmak için: DOCTORS_VISIBLE_TO_VISITORS=true (frontend/src/lib/intermediary.ts), DOCTOR_PORTAL_ENABLED=true ve Türkçe arayüzün geri açılması; ayrıca spec'in İngilizce etiketlere uyarlanması gerekir.
+test.skip(true, "AL: eski doktor randevusu/görüşme akışı: fixture doktor + hasta randevusu gerektirir, hasta arayüzü Türkçe etiket bekler (AH: Türkçe ziyaretçiye kapalı, doktorlar kaldırıldı) (DOCTORS_VISIBLE_TO_VISITORS=true (frontend/src/lib/intermediary.ts), DOCTOR_PORTAL_ENABLED=true ve Türkçe arayüzün geri açılması; ayrıca spec'in İngilizce etiketlere uyarlanması gerekir)");
+
 /**
  * qa-agent — Paket AF (görüşme odası profesyonelleştirme) gerçek LiveKit E2E'si + ekran görüntüleri.
  * Çalıştırma (yerel, `chrome-livekit-media` projesi — gerçek Chrome + sahte cihaz):

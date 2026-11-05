@@ -3,6 +3,10 @@ import { getCachedAdminSession } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import { cleanupContactSubmissionsByEmail } from "./support/notifications-fixtures";
 
+// AL (İş 2) ATLA: ziyaretçi /contact sayfası artık yeni ContactPageForm kullanıyor (POST /contact/page-submissions; alanlar fullName/e-posta/telefon/yöntem/mesaj/onay). Eski satır içi form (#name/#email/#message + honeypot #website, POST /contact/submissions ve admin Gelen Kutusu) sayfaya bağlı değil; components/site/contact-form.tsx hiçbir yerden içe aktarılmıyor ama backend uçları ve admin gelen kutusu duruyor
+// Açmak için: eski ContactForm bileşeninin /contact (veya bir CMS bloğu) içine geri bağlanması ya da spec'in yeni forma yeniden yazılması.
+test.skip(true, "AL: ziyaretçi /contact sayfası artık yeni ContactPageForm kullanıyor (POST /contact/page-submissions; alanlar fullName/e-posta/telefon/yöntem/mesaj/onay). Eski satır içi form (#name/#email/#message + honeypot #website, POST /contact/submissions ve admin Gelen Kutusu) sayfaya bağlı değil; components/site/contact-form.tsx hiçbir yerden içe aktarılmıyor ama backend uçları ve admin gelen kutusu duruyor (eski ContactForm bileşeninin /contact (veya bir CMS bloğu) içine geri bağlanması ya da spec'in yeni forma yeniden yazılması)");
+
 /**
  * Kullanıcının istediği kısa akış: public iletişim formuna gidip (honeypot alanını BOŞ bırakarak)
  * formu göndermek ve admin tarafında gönderimin (submission) Gelen Kutusu'nda göründüğünü
@@ -29,7 +33,7 @@ test("public iletişim formu gönderimi (honeypot boş) → admin Gelen Kutusu'n
   try {
     // 1) Public form.
     await page.goto("/contact");
-    await expect(page.getByRole("heading", { name: "İletişim" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /Contact us|İletişim/ })).toBeVisible({ timeout: 15_000 });
 
     await page.locator("#name").fill(name);
     await page.locator("#email").fill(email);
@@ -42,11 +46,11 @@ test("public iletişim formu gönderimi (honeypot boş) → admin Gelen Kutusu'n
     // KVKK onay kutusu — consentRequired=true (varsayılan), işaretlenmeden gönderim 422 olur.
     await page.locator('label[for="consent"]').click();
 
-    await page.getByRole("button", { name: "Gönder", exact: true }).click();
+    await page.getByRole("button", { name: /^(Gönder|Send message)$/ }).click();
 
     // 2) Başarı — form kaybolur, successMessage kutusu (role="status") görünür.
     await expect(page.getByRole("status")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Mesajınız alındı. En kısa sürede dönüş yapacağız.")).toBeVisible();
+    await expect(page.getByText(/Mesajınız alındı. En kısa sürede dönüş yapacağız.|your message has been sent/)).toBeVisible();
     // Form artık DOM'da yok (spam'i teşvik etmemek için "yeni mesaj gönder" linki de YOK — §Ek).
     await expect(page.locator("#name")).toHaveCount(0);
 
@@ -97,7 +101,7 @@ test("public iletişim formu — honeypot DOLU gönderim sessizce SPAM olarak ka
 
   try {
     await page.goto("/contact");
-    await expect(page.getByRole("heading", { name: "İletişim" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /Contact us|İletişim/ })).toBeVisible({ timeout: 15_000 });
     await page.locator("#name").fill(name);
     await page.locator("#email").fill(email);
     await page.locator("#message").fill("Bot tarafından doldurulmuş gibi davranılan mesaj.");
@@ -106,7 +110,7 @@ test("public iletişim formu — honeypot DOLU gönderim sessizce SPAM olarak ka
     // §10.16.9 — honeypot'u bilerek doldur (gerçek bir bot davranışını simüle eder).
     await page.locator("#website").fill("https://spam-bot.example.com");
 
-    await page.getByRole("button", { name: "Gönder", exact: true }).click();
+    await page.getByRole("button", { name: /^(Gönder|Send message)$/ }).click();
 
     // Sahte başarı — ziyaretçi botun "başarısız oldum" sinyali almaz (§10.16.9), 201 + successMessage.
     await expect(page.getByRole("status")).toBeVisible({ timeout: 15_000 });

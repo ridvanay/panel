@@ -29,6 +29,10 @@ import {
 } from "./support/telehealth-fixtures";
 import { submitBookingIdentityStep, continueBookingWizard } from "./support/telehealth-identity-ui";
 
+// AL (İş 2) ATLA: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir)
+// Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması.
+test.skip(true, "AL: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması)");
+
 /**
  * qa-agent — `.claude/architect-scope-telehealth-template.md` §9.7.11 "QA kapsamı — §10'a EK"
  * (bağlayıcı), madde 21-28. Backend'in KENDİ `tests/integration/telehealth-bookings.test.ts` +

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { getCachedAdminSession } from "./support/api";
+import { serveLocalMedia } from "./support/local-media-route";
 import {
   adminCreateProductFull,
   adminDeleteProductPermanently,
@@ -99,6 +100,7 @@ test("Fix 2 regresyon: kapak görseli 404 dönen ürün kartı ImageOff yer tutu
   );
   // `okMedia`nın GERÇEKTEN 200 ile servis edildiğini (route tarafından YANLIŞLIKLA da engellenmediğini)
   // ağ seviyesinde doğrulamak için `goto`'DAN ÖNCE kurulur (istek sayfa yüklenirken atılır).
+  await serveLocalMedia(page, okMedia.url); // AL: yerelde göreli medya adresi sağlıklı görseli de yüklemez
   const okImageResponsePromise = page.waitForResponse(
     (res) => matchesMediaUrl(new URL(res.url()), okMedia.url),
     { timeout: 15_000 }

@@ -9,6 +9,7 @@ import {
   uploadTestPdfMedia,
   deleteTestMedia,
   formatPriceFromCentsTRY,
+  priceRegexFromCentsTRY,
   type FixtureProduct,
 } from "./support/product-variants-fixtures";
 
@@ -171,7 +172,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
   await expect(mavRadio).toBeDisabled();
   await expect(mavRadio).toHaveAttribute("aria-disabled", "true");
 
-  const mainImage = page.locator('button[aria-label="Görseli büyüt"] img');
+  const mainImage = page.locator('button[aria-label="Görseli büyüt"] img, button[aria-label="Enlarge image"] img');
   // Ana fiyat bloğu — `sticky-add-to-cart-bar.tsx`nin AYNI fiyatı AYRI bir sınıfla ("text-base")
   // tekrar gösterdiği için `getByText` sayfa genelinde İKİ eşleşme buluyordu (strict-mode ihlali);
   // bu yüzden ana panelin KENDİ sınıfına ("text-2xl") sınırlandırılır.
@@ -179,7 +180,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
 
   // Henüz hiçbir varyasyon seçilmedi — ana görsel ürün kapak görseli.
   await expectMainImageUrl(mainImage, coverMedia.url);
-  await expect(mainPrice).toHaveText(formatPriceFromCentsTRY(10000));
+  await expect(mainPrice).toHaveText(priceRegexFromCentsTRY(10000));
 
   // "Sepete Ekle" varyasyon seçilmeden PASİF olmalı (design-notes §2).
   await expect(page.getByRole("button", { name: "Sepete ekle" })).toBeDisabled();
@@ -189,7 +190,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
   await expect(redRadio).toHaveAttribute("aria-checked", "true");
   await expectMainImageUrl(mainImage, redMedia.url);
   // Kırmızı: priceCents null → ürün fiyatını miras alır — DEĞİŞMEMELİ.
-  await expect(mainPrice).toHaveText(formatPriceFromCentsTRY(10000));
+  await expect(mainPrice).toHaveText(priceRegexFromCentsTRY(10000));
   await expect(page.getByRole("button", { name: "Sepete ekle" })).toBeEnabled();
 
   // Yeşil: priceCents mutlak override (150,00 ₺) + kendi görseli — HEM görsel HEM fiyat değişmeli.
@@ -197,7 +198,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
   await greenRadio.click();
   await expect(greenRadio).toHaveAttribute("aria-checked", "true");
   await expectMainImageUrl(mainImage, greenMedia.url);
-  await expect(mainPrice).toHaveText(formatPriceFromCentsTRY(15000));
+  await expect(mainPrice).toHaveText(priceRegexFromCentsTRY(15000));
 
   // Stoksuz "Mavi"ye TIKLAMA DENEMESİ no-op olmalı (disabled buton) — seçim Yeşil'de kalır.
   await mavRadio.click({ force: true }).catch(() => undefined);

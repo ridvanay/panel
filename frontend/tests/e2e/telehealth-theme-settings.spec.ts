@@ -8,6 +8,10 @@ import {
   type FixtureTelehealthThemeSettings,
 } from "./support/telehealth-fixtures";
 
+// AL (İş 2) ATLA: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir)
+// Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması.
+test.skip(true, "AL: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması)");
+
 /**
  * qa-agent — Grid görevi (2026-09-14) Görev 2 (backend-agent → frontend-agent → qa-agent
  * daraltılmış akış): randevu sihirbazının (`/doctors/[slug]`) admin panelinden yönetilen 4 tema

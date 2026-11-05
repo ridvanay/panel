@@ -1,6 +1,6 @@
 import http from "node:http";
 import { test, expect, type Page } from "@playwright/test";
-import { getCachedAdminSession } from "./support/api";
+import { ensureLocaleEnabled, getCachedAdminSession } from "./support/api";
 import {
   EXPECTED_GROUPS,
   assertAiState,
@@ -31,6 +31,7 @@ const SHOULD_NOT_APPEAR = /\bSpecialists?\b|\bDr\.?\s|\bProf\.?\s|\bMD\b/;
 test.beforeAll(async () => {
   test.setTimeout(240_000);
   token = (await getCachedAdminSession()).accessToken;
+  await ensureLocaleEnabled(token, "de", "German", "Deutsch"); // AL: spec /de yollarını sınar; taban hattında de etkin olmalı
   await assertAiState();
   await ensureTopicServiceLinks(token);
   deactivated = await deactivateNonAiSpecialties(token);
@@ -101,7 +102,7 @@ test.describe("Mega menü — masaüstü (1440)", () => {
     const panel = page.getByTestId("services-mega-panel");
     await expect(panel).toContainText("Not sure which treatment you need?");
     await expect(panel.getByRole("menuitem", { name: "Find your treatment" })).toHaveAttribute("href", /\/find-your-treatment$/);
-    await expect(panel.getByRole("menuitem", { name: "Book an online consultation" })).toHaveAttribute("href", /\/request$/);
+    await expect(panel.getByRole("menuitem", { name: "Book an online consultation" })).toHaveAttribute("href", /\/book-consultation$/); // AL: AK sonrası "Book a consultation" anahtarı açıkken menü /book-consultation adresine gider (eskiden /request)
     const menu = page.getByTestId("services-mega-menu");
     await expect(menu.getByRole("menuitem", { name: /View all services/i })).toHaveAttribute("href", /\/specialties$/);
     await expect(menu).toContainText("Treatments at authorized healthcare facilities");

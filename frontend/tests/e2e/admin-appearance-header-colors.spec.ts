@@ -252,6 +252,8 @@ test.describe("Akıllı yapışkan (smart sticky) header — gerçek scroll sim�
   test("aşağı kaydırma > 120px'te gizlenir; YUKARI kaydırmanın HERHANGİ bir noktasında (sadece scrollY=0'da DEĞİL) anında/pürüzsüzce geri gelir; scrollY < 20'de idle'a döner", async ({
     page: publicPage,
   }) => {
+    // AL: akıllı gizleme yalnızca mobilde (max-lg) çalışır; masaüstünde (lg+) başlık her zaman yapışkan kalır (site-header.tsx).
+    await publicPage.setViewportSize({ width: 390, height: 844 });
     await publicPage.goto(`/${stickyTestSlug}`);
     const header = publicPage.locator(".site-scope > header").first();
     await expect(header).toBeVisible();

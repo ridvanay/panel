@@ -93,6 +93,7 @@ test.afterAll(async () => {
 });
 
 test("madde 14/22: products AÇIK — /hesabim 4 sekmeye yönlenir, sipariş kargoya verilince takip no detayda görünür", async () => {
+  test.setTimeout(120000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor ("Compiling…")
   await customerPage.goto("/hesabim");
   await expect(customerPage).toHaveURL(/\/hesabim\/profil$/);
 

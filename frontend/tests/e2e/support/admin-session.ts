@@ -1,3 +1,4 @@
+import "./loopback-dns";
 import type { Browser, Page } from "@playwright/test";
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./api";
 

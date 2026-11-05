@@ -249,12 +249,13 @@ test(
         bodyFont: style.getPropertyValue("--site-body-font").trim(),
       };
     });
-    expect(cssVars.headingFont).toBe(TEST_FONT_PAIRING.headingResolvedFontFamily);
-    expect(cssVars.bodyFont).toBe(TEST_FONT_PAIRING.bodyResolvedFontFamily);
+    // AL: fontlar next/font/local'a taşındı (e7232b4) — aile adı artık 'sitePlayfairDisplay' + Ext/Cyrillic yedekleri; adın KENDİSİ değil, doğru ailenin çözümlendiği doğrulanır.
+    expect(cssVars.headingFont).toMatch(/playfair[ ]?display/i);
+    expect(cssVars.bodyFont).toMatch(/source[ ]?serif[ ]?4/i);
   }
 );
 
-test("pageHeader: BANNER + SPLIT şablonu seçilip kaydedilince gerçek bir sayfada (/blog) SPLIT düzeni render edilir", async ({
+test("pageHeader: BANNER + SPLIT şablonu seçilip kaydedilince gerçek bir sayfada (/portfolio) SPLIT düzeni render edilir", async ({
   page: publicPage,
 }) => {
   await page.goto("/admin/appearance");
@@ -285,18 +286,20 @@ test("pageHeader: BANNER + SPLIT şablonu seçilip kaydedilince gerçek bir sayf
   await expect
     .poll(
       async () => {
-        const res = await fetch(`${FRONTEND_URL}/blog`);
+        // AL: /blog artık PageHeader kullanmıyor (Paket Z1 "Health Guides" ana sayfası) — PageHeader'ı
+        // kullanan bir ziyaretçi sayfası olan /portfolio kullanılır.
+        const res = await fetch(`${FRONTEND_URL}/portfolio`);
         return res.text();
       },
       { timeout: 90_000, intervals: [2_000] }
     )
     .toContain("grid-cols-1 md:grid-cols-2");
 
-  await publicPage.goto("/blog");
+  await publicPage.goto("/portfolio");
   // SPLIT düzeni (`components/site/page-header.tsx`): sol kolon görsel (veya nötr yer tutucu),
   // sağ kolon `bg-surface` zemin + başlık — CENTERED/LEFT_OVERLAY'in aksine (`bg-black/60` pill
   // İLE metin görsel üzerine biner) burada başlık DÜZ bir yüzey kolonunun içindedir.
   const splitTextColumn = publicPage.locator("div.grid.w-full > div.bg-surface");
   await expect(splitTextColumn).toBeVisible();
-  await expect(splitTextColumn.getByRole("heading", { name: "Blog", level: 1 })).toBeVisible();
+  await expect(splitTextColumn.getByRole("heading", { level: 1 })).toBeVisible();
 });

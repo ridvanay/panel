@@ -3,6 +3,10 @@ import { getFixtureUserToken } from "./support/api";
 import { createAuthenticatedPageAs } from "./support/admin-session";
 import { getPublicDoctorsRaw, getPublicDoctorSlotsRaw, defaultSlotRangeISODates, createBookingRaw } from "./support/telehealth-fixtures";
 
+// AL (İş 2) ATLA: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir)
+// Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması.
+test.skip(true, "AL: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması)");
+
 /**
  * qa-agent — "Tele-Sağlık Vitrini + Ödeme Ekranı Köprüsü" görev talimatı madde 1-2.
  *

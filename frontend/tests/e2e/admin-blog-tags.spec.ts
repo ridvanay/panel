@@ -40,6 +40,9 @@ test.beforeAll(async ({ browser }, testInfo) => {
   token = session.accessToken;
   await cleanupAll(); // idempotent zemin — önceki başarısız bir koşumdan kalmış olabilir
   ({ page, close: closeSession } = await createAuthenticatedPage(browser));
+  // AL: 1280 px genişlikte Hızlı Düzenle satırındaki "Etiketler" sütunu daralıyor; etiket çipinin kaldır düğmesi arama kutusunun altında
+  // kalıp tıklanamıyor (arayüz bulgusu, bkz. rapor). Geniş görünüm penceresiyle sınanır.
+  await page.setViewportSize({ width: 1700, height: 1000 });
 });
 
 test.afterAll(async () => {

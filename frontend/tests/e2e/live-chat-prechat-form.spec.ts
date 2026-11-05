@@ -81,7 +81,7 @@ test.afterAll(async ({ browser }) => {
     try {
       await expect(async () => {
         await page.goto("/", { waitUntil: "domcontentloaded" });
-        await expect(page.getByRole("button", { name: "Canlı destek sohbetini aç" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: /Open live support chat|Canlı destek sohbetini aç/ })).toHaveCount(0);
       }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
     } catch {
       // Sessiz geç — bu yalnızca bir SONRAKİ dosyanın kendi toleransını KOLAYLAŞTIRMA denemesidir,
@@ -167,31 +167,31 @@ test("madde 2: misafir ziyaretçi İsim/Telefon BOŞ bırakıp gönderemez — i
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
-    // Not: `getByLabel("Mesajınız")` (substring) `Mesajınızı yazın` (sohbet kutusu sr-only
+    // Not: `getByLabel(/Your message|Mesajınız/)` (substring) `Mesajınızı yazın` (sohbet kutusu sr-only
     // etiketi) İLE de eşleşir (`Mesajınız` iki metnin de ORTAK ÖN EKİDİR) — bu yüzden pre-chat
     // metin alanı `exact: true` ile TAM etiketiyle (`Mesajınız *`, mesaj HER ZAMAN zorunlu)
     // hedeflenir (qa-agent bulgusu — bu turda düzeltildi).
-    const trigger = page.getByRole("button", { name: "Canlı destek sohbetini aç" });
+    const trigger = page.getByRole("button", { name: /Open live support chat|Canlı destek sohbetini aç/ });
     let dialog = page.getByRole("dialog");
-    let messageField = dialog.getByLabel("Mesajınız *", { exact: true });
+    let messageField = dialog.getByLabel(/^(Your message|Mesajınız) [*]$/);
     await expect(async () => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await expect(trigger).toBeVisible({ timeout: 5_000 });
-      await trigger.click();
+      await clickUntilOpen(page, trigger);
       dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible({ timeout: 5_000 });
-      messageField = dialog.getByLabel("Mesajınız *", { exact: true });
+      messageField = dialog.getByLabel(/^(Your message|Mesajınız) [*]$/);
       // Pre-chat form gösteriliyor — mesajlaşma ekranı (Mesajınızı yazın) DEĞİL.
       await expect(messageField).toBeVisible({ timeout: 5_000 });
-      await expect(dialog.getByLabel("Mesajınızı yazın")).toHaveCount(0);
+      await expect(dialog.getByLabel(/Type your message|Mesajınızı yazın/)).toHaveCount(0);
       // KRİTİK — yalnızca formun GÖRÜNÜRLÜĞÜ değil, `requireName`/`requirePhone`in DE bu ÖZEL
       // fetch'te TAZE olduğu doğrulanır (zorunluluk yıldızı `*`): önbellekli bir ÖNCEKİ koşumun
       // (ör. madde 7'nin `require*=false` durumu) `liveChatPreChatEnabled=true` ile ÇAKIŞAN ama
       // `requireName/Phone=false` olan bir ARA STATE'İ döndürmesi mümkündür — form YİNE görünür
       // olurdu (yanlışlıkla "taze" sanılırdı) ama zorunluluk yıldızı EKSİK kalırdı. qa-agent
       // bulgusu (bu turda düzeltildi) — yıldız da AYNI `toPass` döngüsünde doğrulanır.
-      await expect(dialog.getByText("Adınız Soyadınız *")).toBeVisible({ timeout: 5_000 });
-      await expect(dialog.getByText("Telefon Numaranız *")).toBeVisible({ timeout: 5_000 });
+      await expect(dialog.getByText(/^(Your full name|Adınız Soyadınız) [*]$/)).toBeVisible({ timeout: 5_000 });
+      await expect(dialog.getByText(/^(Your phone number|Telefon Numaranız) [*]$/)).toBeVisible({ timeout: 5_000 });
     }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
     let sessionsRequestFired = false;
@@ -202,10 +202,10 @@ test("madde 2: misafir ziyaretçi İsim/Telefon BOŞ bırakıp gönderemez — i
 
     // Yalnızca mesajı doldur, İsim/Telefon'u BOŞ bırak — zorunlu.
     await messageField.fill("Randevumu değiştirmek istiyorum ama bilgilerimi vermek istemiyorum.");
-    await dialog.getByRole("button", { name: "Görüşmeyi Başlat" }).click();
+    await dialog.getByRole("button", { name: /Start chat|Görüşmeyi Başlat/ }).click();
 
-    await expect(dialog.getByText("Ad soyad zorunludur.")).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText("Telefon numarası zorunludur.")).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText(/Full name is required\.|Ad soyad zorunludur\./)).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText(/Phone number is required\.|Telefon numarası zorunludur\./)).toBeVisible({ timeout: 5_000 });
 
     // Kısa bir bekleme payı — RHF senkron doğrulama zaten submit'i engeller, bu yalnızca
     // "hiç ağa çıkmadı" iddiasını sağlamlaştırır.
@@ -234,28 +234,28 @@ test("madde 3: form doğru doldurulunca POST /support/sessions çağrılır (vis
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
-    const trigger = page.getByRole("button", { name: "Canlı destek sohbetini aç" });
+    const trigger = page.getByRole("button", { name: /Open live support chat|Canlı destek sohbetini aç/ });
     let dialog = page.getByRole("dialog");
     await expect(async () => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await expect(trigger).toBeVisible({ timeout: 5_000 });
-      await trigger.click();
+      await clickUntilOpen(page, trigger);
       dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible({ timeout: 5_000 });
-      await expect(dialog.getByLabel("Adınız Soyadınız")).toBeVisible({ timeout: 5_000 });
+      await expect(dialog.getByLabel(/Your full name|Adınız Soyadınız/)).toBeVisible({ timeout: 5_000 });
     }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
     visitorTestMessage = `QA e2e pre-chat mesajı — ${Date.now().toString(36)}`;
-    await dialog.getByLabel("Adınız Soyadınız").fill(VISITOR_NAME);
-    await dialog.getByLabel("Telefon Numaranız").fill(VISITOR_PHONE);
+    await dialog.getByLabel(/Your full name|Adınız Soyadınız/).fill(VISITOR_NAME);
+    await dialog.getByLabel(/Your phone number|Telefon Numaranız/).fill(VISITOR_PHONE);
     // E-posta zorunlu DEĞİL (madde 1'de `liveChatRequireEmail=false` kaydedildi) — BİLEREK boş
     // bırakılır (madde 5'in "E-posta belirtilmedi" iddiasını besler).
     // `exact: true` — `Mesajınız` `Mesajınızı yazın` (sohbet kutusu) İLE substring ÇAKIŞIR (madde 2 notu).
-    await dialog.getByLabel("Mesajınız *", { exact: true }).fill(visitorTestMessage);
+    await dialog.getByLabel(/^(Your message|Mesajınız) [*]$/).fill(visitorTestMessage);
 
     const [createSessionResponse] = await Promise.all([
       page.waitForResponse((res) => /\/support\/sessions$/.test(res.url()) && res.request().method() === "POST"),
-      dialog.getByRole("button", { name: "Görüşmeyi Başlat" }).click(),
+      dialog.getByRole("button", { name: /Start chat|Görüşmeyi Başlat/ }).click(),
     ]);
     expect(createSessionResponse.status()).toBe(201);
     const requestBody = createSessionResponse.request().postDataJSON() as Record<string, unknown>;
@@ -264,9 +264,9 @@ test("madde 3: form doğru doldurulunca POST /support/sessions çağrılır (vis
     expect(requestBody.message).toBe(visitorTestMessage);
 
     // Sohbet ekranına geçildi — form artık YOK, mesaj kabarcığı görünür.
-    await expect(dialog.getByLabel("Adınız Soyadınız")).toHaveCount(0);
+    await expect(dialog.getByLabel(/Your full name|Adınız Soyadınız/)).toHaveCount(0);
     await expect(dialog.getByText(visitorTestMessage)).toBeVisible({ timeout: 10_000 });
-    await expect(dialog.getByLabel("Mesajınızı yazın")).toBeVisible();
+    await expect(dialog.getByLabel(/Type your message|Mesajınızı yazın/)).toBeVisible();
   } finally {
     await context.close();
   }
@@ -284,19 +284,19 @@ test("madde 4: giriş yapmış kullanıcıda pre-chat form GÖSTERİLMEZ — liv
   const { page, close } = await createAuthenticatedPage(browser);
   try {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const trigger = page.getByRole("button", { name: "Canlı destek sohbetini aç" });
+    const trigger = page.getByRole("button", { name: /Open live support chat|Canlı destek sohbetini aç/ });
     await expect(trigger).toBeVisible({ timeout: 15_000 });
-    await trigger.click();
+    await clickUntilOpen(page, trigger);
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     // Form alanları HİÇ render edilmedi.
-    await expect(dialog.getByLabel("Adınız Soyadınız")).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: "Görüşmeyi Başlat" })).toHaveCount(0);
+    await expect(dialog.getByLabel(/Your full name|Adınız Soyadınız/)).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /Start chat|Görüşmeyi Başlat/ })).toHaveCount(0);
     // Doğrudan sohbet ekranı — selamlama mesajı + mesaj kutusu.
-    await expect(dialog.getByText("Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?")).toBeVisible();
-    await expect(dialog.getByLabel("Mesajınızı yazın")).toBeVisible();
+    await expect(dialog.getByText(/Hello! How can we help you with your consultation request or technical questions\?|Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz\?/)).toBeVisible();
+    await expect(dialog.getByLabel(/Type your message|Mesajınızı yazın/)).toBeVisible();
   } finally {
     await close();
   }
@@ -342,19 +342,19 @@ test("madde 6 (regresyon): liveChatPreChatEnabled=false iken form gösterilmeden
     // `liveChatEnabled`/trigger görünürlüğü DEĞİL, `liveChatPreChatEnabled`in KENDİSİ de aynı
     // önbellekli DTO'nun bir parçası) — bu yüzden asıl iddia (form YOK) da `toPass`+reload ile
     // YOKLANIR, yalnızca tetikleyici görünürlüğü DEĞİL.
-    const trigger = page.getByRole("button", { name: "Canlı destek sohbetini aç" });
+    const trigger = page.getByRole("button", { name: /Open live support chat|Canlı destek sohbetini aç/ });
     await expect(async () => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await expect(trigger).toBeVisible({ timeout: 5_000 });
-      await trigger.click();
+      await clickUntilOpen(page, trigger);
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible({ timeout: 5_000 });
-      await expect(dialog.getByLabel("Adınız Soyadınız")).toHaveCount(0);
+      await expect(dialog.getByLabel(/Your full name|Adınız Soyadınız/)).toHaveCount(0);
     }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByText("Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?")).toBeVisible();
-    await expect(dialog.getByLabel("Mesajınızı yazın")).toBeVisible();
+    await expect(dialog.getByText(/Hello! How can we help you with your consultation request or technical questions\?|Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz\?/)).toBeVisible();
+    await expect(dialog.getByLabel(/Type your message|Mesajınızı yazın/)).toBeVisible();
   } finally {
     await context.close();
   }
@@ -381,29 +381,29 @@ test("madde 7: üç require* de false iken form gösterilir, hiçbir alan zorunl
     // Madde 6 İLE AYNI gerekçe (60sn önbellek) — bu turda `liveChatPreChatEnabled` false→true VE
     // `liveChatRequireName/Phone` true→false değişti; asıl iddia (form VAR, yıldız YOK) `toPass`
     // içinde yoklanır.
-    const trigger = page.getByRole("button", { name: "Canlı destek sohbetini aç" });
+    const trigger = page.getByRole("button", { name: /Open live support chat|Canlı destek sohbetini aç/ });
     await expect(async () => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await expect(trigger).toBeVisible({ timeout: 5_000 });
-      await trigger.click();
+      await clickUntilOpen(page, trigger);
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible({ timeout: 5_000 });
       // `exact: true` — `Mesajınız` (mesaj HER ZAMAN zorunlu, yıldız koşulsuz) `Mesajınızı yazın`
       // (sohbet kutusu) İLE substring ÇAKIŞIR (madde 2 notu).
-      await expect(dialog.getByLabel("Mesajınız *", { exact: true })).toBeVisible({ timeout: 5_000 });
-      await expect(dialog.getByText("Adınız Soyadınız *")).toHaveCount(0);
-      await expect(dialog.getByText("Telefon Numaranız *")).toHaveCount(0);
+      await expect(dialog.getByLabel(/^(Your message|Mesajınız) [*]$/)).toBeVisible({ timeout: 5_000 });
+      await expect(dialog.getByText(/^(Your full name|Adınız Soyadınız) [*]$/)).toHaveCount(0);
+      await expect(dialog.getByText(/^(Your phone number|Telefon Numaranız) [*]$/)).toHaveCount(0);
     }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
 
     const dialog = page.getByRole("dialog");
-    const messageField = dialog.getByLabel("Mesajınız *", { exact: true });
+    const messageField = dialog.getByLabel(/^(Your message|Mesajınız) [*]$/);
 
     const emptyFormMessage = `QA e2e boş-form mesajı ${Date.now().toString(36)}`;
     await messageField.fill(emptyFormMessage);
     // İsim/Telefon/E-posta BİLEREK boş bırakılır.
     const [createSessionResponse] = await Promise.all([
       page.waitForResponse((res) => /\/support\/sessions$/.test(res.url()) && res.request().method() === "POST"),
-      dialog.getByRole("button", { name: "Görüşmeyi Başlat" }).click(),
+      dialog.getByRole("button", { name: /Start chat|Görüşmeyi Başlat/ }).click(),
     ]);
     expect(createSessionResponse.status(), "qa-agent: üç require* de false iken boş isim/telefon/e-posta 201 kabul edilmeli.").toBe(
       201
@@ -418,3 +418,12 @@ test("madde 7: üç require* de false iken form gösterilir, hiçbir alan zorunl
     await context.close();
   }
 });
+
+// AL: dev sunucuda hidrasyon gecikebilir; hidrasyondan önceki tıklama panel açmaz. Panel açılana dek (kapalıyken) tıklar.
+async function clickUntilOpen(page: import("@playwright/test").Page, trigger: import("@playwright/test").Locator) {
+  const dialog = page.getByRole("dialog");
+  await expect(async () => {
+    if ((await dialog.count()) === 0) await trigger.click();
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+}

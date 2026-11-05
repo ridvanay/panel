@@ -24,6 +24,10 @@ import {
   type Z1Doctor,
 } from "./support/blog-z1-fixtures";
 
+// AL (İş 2) ATLA: blog yazısında hekim onayı/inceleme akışı: 'blogMedicalReviewRequired' ayarı varsayılan KAPALI (AH kararı: hekim onayı şartı bayrakla kapandı, kod silinmedi). Bu spec hekim onayı bekleyen yazı, reviewer adı/rozeti ve 'physicians' boş durum metnini sınıyor
+// Açmak için: admin ayarlarında blogMedicalReviewRequired=true (ve doktorların ziyaretçiye açılması: DOCTORS_VISIBLE_TO_VISITORS=true).
+test.skip(true, "AL: blog yazısında hekim onayı/inceleme akışı: 'blogMedicalReviewRequired' ayarı varsayılan KAPALI (AH kararı: hekim onayı şartı bayrakla kapandı, kod silinmedi). Bu spec hekim onayı bekleyen yazı, reviewer adı/rozeti ve 'physicians' boş durum metnini sınıyor (admin ayarlarında blogMedicalReviewRequired=true (ve doktorların ziyaretçiye açılması: DOCTORS_VISIBLE_TO_VISITORS=true))");
+
 /**
  * qa-agent — Paket Z1 blog altyapisi e2e (docs/prompts/2026-10-30-Z-blog-yenileme-100-yazi.md "Testler (Z1)").
  *

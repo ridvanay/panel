@@ -21,6 +21,10 @@ import {
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
 
+// AL (İş 2) ATLA: eski doktor randevusu/görüşme akışı: fixture doktor + hasta randevusu gerektirir, hasta arayüzü Türkçe etiket bekler (AH: Türkçe ziyaretçiye kapalı, doktorlar kaldırıldı)
+// Açmak için: DOCTORS_VISIBLE_TO_VISITORS=true (frontend/src/lib/intermediary.ts), DOCTOR_PORTAL_ENABLED=true ve Türkçe arayüzün geri açılması; ayrıca spec'in İngilizce etiketlere uyarlanması gerekir.
+test.skip(true, "AL: eski doktor randevusu/görüşme akışı: fixture doktor + hasta randevusu gerektirir, hasta arayüzü Türkçe etiket bekler (AH: Türkçe ziyaretçiye kapalı, doktorlar kaldırıldı) (DOCTORS_VISIBLE_TO_VISITORS=true (frontend/src/lib/intermediary.ts), DOCTOR_PORTAL_ENABLED=true ve Türkçe arayüzün geri açılması; ayrıca spec'in İngilizce etiketlere uyarlanması gerekir)");
+
 // Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
 // kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
 test.describe.configure({ timeout: 120_000 });

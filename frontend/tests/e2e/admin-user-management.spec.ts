@@ -163,6 +163,7 @@ test("senaryo (c): admin olmayan bir kullanıcının rolü ve durumu panelden ba
 });
 
 test("senaryo (c) devamı: admin olmayan bir kullanıcı panelden silinip geri yüklenebilir", async () => {
+  test.setTimeout(90000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor ("Compiling…")
   await page.goto("/admin/users");
   const row = await rowFor(page, EDITOR_EMAIL);
 
@@ -190,6 +191,7 @@ test("senaryo (c) devamı: admin olmayan bir kullanıcı panelden silinip geri y
 });
 
 test("senaryo (b): 2+ admin varken biri diğerinin rolünü/durumunu değiştirebilir ve silebilir (başarılı)", async () => {
+  test.setTimeout(90000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor ("Compiling…")
   await registerFixtureUser(ADMIN_CANDIDATE_EMAIL, FIXTURE_PASSWORD, "QA E2E Admin Candidate");
 
   await page.goto("/admin/users");

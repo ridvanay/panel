@@ -15,6 +15,10 @@ import {
 } from "./support/telehealth-fixtures";
 import { submitBookingIdentityStep } from "./support/telehealth-identity-ui";
 
+// AL (İş 2) ATLA: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir)
+// Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması.
+test.skip(true, "AL: doktor listesi/profili ve doktor randevu sihirbazı ziyaretçiden kaldırıldı (AH: /doctors ve /physicians 308 ile /specialties'e gider; sihirbaz hekim yerine bölüm önerir) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true ve proxy.ts doktor yönlendirmelerinin geri alınması)");
+
 // Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
 // kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
 test.describe.configure({ timeout: 120_000 });

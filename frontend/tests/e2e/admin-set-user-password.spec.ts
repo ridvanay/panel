@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE_URL } from "./support/api";
+import { API_BASE_URL, getFixtureUserToken } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 
 /**
@@ -24,7 +24,8 @@ import { createAuthenticatedPage } from "./support/admin-session";
 test.describe.configure({ mode: "serial" });
 
 const TARGET_EMAIL = "aylin.kara@deneme.com";
-const ORIGINAL_PASSWORD = "Demo12345!";
+// AL: "Demo12345!" parola politikasını geçmiyor ve hedef kullanıcı artık seed ile gelmiyor — fixture kendini kurar.
+const ORIGINAL_PASSWORD = "Zx9-Plover-Quartz-71!";
 const TEMP_PASSWORD = "Kv7-Heron-Basalt-58!";
 
 let page: Page;
@@ -63,6 +64,7 @@ async function loginStatus(email: string, password: string): Promise<number> {
 
 test.beforeAll(async ({ browser }, testInfo) => {
   testInfo.setTimeout(60_000);
+  await getFixtureUserToken(TARGET_EMAIL, ORIGINAL_PASSWORD, "Aylin Kara"); // kullanıcıyı yoksa kaydeder (e-posta doğrulanmış)
   ({ page, close: closeSession } = await createAuthenticatedPage(browser));
 });
 
@@ -76,6 +78,7 @@ test.afterAll(async () => {
 });
 
 test("madde 4: admin '/admin/users' üzerinden hedef kullanıcının şifresini manuel değiştirir (toast.success), eski şifre ARTIK ÇALIŞMAZ (401), yeni şifre ÇALIŞIR (200)", async () => {
+  test.setTimeout(90000); // AL: dev sunucuda ilk ziyarette sayfa derlemesi 30 sn'yi aşabiliyor ("Compiling…")
   // Ön koşul — hedef hesap ORİJİNAL şifreyle giriş yapabiliyor olmalı (görev talimatındaki
   // varsayımın canlı doğrulaması, değişiklik başlamadan ÖNCE).
   expect(await loginStatus(TARGET_EMAIL, ORIGINAL_PASSWORD), "qa-agent: ön koşul — orijinal şifre ÇALIŞMALI.").toBe(200);

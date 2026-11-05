@@ -268,3 +268,15 @@ export async function patchShippingSettings(token: string, patch: ShippingSettin
 export function formatPriceFromCentsTRY(cents: number, currency = "TRY"): string {
   return new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(cents / 100);
 }
+
+/**
+ * Paket AL (İş 2) — ziyaretçi arayüzü artık İngilizce biçimler kullanabiliyor ("₺100,00" yerine "₺100.00" / "TRY 100.00");
+ * ondalık ve binlik ayracı ile para birimi gösterimi dilden bağımsız eşleşir. Yalnızca tutarın kendisini sabitler.
+ */
+export function priceRegexFromCentsTRY(cents: number): RegExp {
+  const whole = Math.floor(cents / 100);
+  const frac = String(cents % 100).padStart(2, "0");
+  const sep = `[.,${String.fromCharCode(160)} ]?`;
+  const intPart = String(whole).replace(/\B(?=([0-9]{3})+(?![0-9]))/g, sep);
+  return new RegExp(`(₺|TRY|TL)[ ${String.fromCharCode(160)}]?${intPart}[.,]${frac}|${intPart}[.,]${frac}[ ${String.fromCharCode(160)}]?(₺|TRY|TL)`);
+}

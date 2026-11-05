@@ -10,6 +10,7 @@ import {
   getFixtureUserToken,
   patchSiteSettings,
   setupAndEnableTwoFactorForSelf,
+  ensureLocaleEnabled,
 } from "./support/api";
 import { adminGetUserByEmail, adminUpdateRole } from "./support/admin-users-fixtures";
 import {
@@ -117,12 +118,46 @@ async function postRequest(body: Record<string, unknown>) {
 }
 
 
-/** Yeni bölümler fetch önbelleğinde (60 sn) bayat olabilir: talep formunda seçenek görünene dek yokla. */
+/** Yeni bölümler fetch önbelleğinde (60 sn) bayat olabilir: talep formunda hizmet kartı görünene dek yokla. */
 async function gotoRequestWhenServiceListed(page: Page, query = "") {
   await expect(async () => {
     await page.goto(`/request${query}`);
-    await expect(page.locator(`#request-service option[value="${CHILD_SLUG}"]`)).toHaveCount(1, { timeout: 2_000 });
+    await expect(page.getByTestId(`request-service-${CHILD_SLUG}`)).toHaveCount(1, { timeout: 2_000 });
   }).toPass({ timeout: 100_000, intervals: [3_000, 5_000] });
+}
+
+/** AL: AJ-7 sihirbazı — hizmet kartı (gizli radyo) etiketine tıklanarak seçilir. */
+async function selectService(page: Page, slug: string) {
+  await page.getByTestId(`request-service-${slug}`).locator("xpath=ancestor::label").click();
+  await expect(page.getByTestId(`request-service-${slug}`)).toBeChecked();
+}
+
+/** AL: AJ-7 sihirbazını 4. adıma (özet + rıza) kadar doldurur; hizmet ?service= ile ön seçili varsayılır. */
+async function walkRequestToReview(
+  page: Page,
+  o: { dateFrom?: string; dateTo?: string; interpreter?: boolean; contactLanguage?: string; phone?: string; message?: string }
+) {
+  const next = page.getByTestId("request-next");
+  await expect(page.getByTestId(`request-service-${CHILD_SLUG}`)).toBeChecked();
+  await next.click();
+  await expect(page.getByTestId("request-step-2")).toBeVisible();
+  if (o.dateFrom && o.dateTo) {
+    await page.getByTestId("request-date-from").fill(o.dateFrom);
+    await page.getByTestId("request-date-to").fill(o.dateTo);
+  } else {
+    await page.getByTestId("request-flexible").check();
+  }
+  await page.locator("#request-country").selectOption("DE");
+  if (o.contactLanguage) await page.locator("#request-contact-language").selectOption(o.contactLanguage);
+  if (o.interpreter) await page.getByTestId("request-interpreter").check({ force: true }); // AL: sr-only radyo/anahtar üzerinde görsel katman tıklamayı keser
+  await next.click();
+  await expect(page.getByTestId("request-step-3")).toBeVisible();
+  await page.locator("#request-full-name").fill("Max Mustermann QA");
+  await page.locator("#request-email").fill(REQUEST_EMAIL);
+  if (o.phone) await page.locator("#request-phone").fill(o.phone);
+  if (o.message) await page.locator("#request-message").fill(o.message);
+  await next.click();
+  await expect(page.getByTestId("request-step-4")).toBeVisible();
 }
 
 async function visibleAndHtml(page: Page) {
@@ -161,6 +196,8 @@ async function ldTypes(page: Page): Promise<{ types: string[]; keys: string[] }>
 
 test.beforeAll(async () => {
   token = (await getCachedAdminSession()).accessToken;
+  // AL: spec /de yollarını sınar — saas_e2e taban hattında "de" etkin olmalı (bkz. support/api.ts::ensureLocaleEnabled).
+  await ensureLocaleEnabled(token, "de", "German", "Deutsch");
   await patchSiteSettings(token, { healthTourismCertificateNo: null });
   parent = await createSpecialty(token, { name: `QA AH Gastro ${RUN}`, slug: PARENT_SLUG, enName: `QA AH Gastroenterology ${RUN}` });
   const childRes = await adminFetch("/admin/telehealth/specialties", {
@@ -498,9 +535,9 @@ test.describe("Kimlik ibaresi", () => {
     }
   });
 
-  test("bölüm sayfası: hekim listesi yerine 'Request a consultation' düğmesi (bölüm dolu) var", async ({ page }) => {
+  test("bölüm sayfası: hekim listesi yerine 'Request a call back' (AK) ve 'Book a consultation' düğmeleri (bölüm dolu) var", async ({ page }) => {
     await page.goto(`/specialties/${PARENT_SLUG}`);
-    const cta = page.locator("main").getByRole("link", { name: /Request a consultation/i }).first();
+    const cta = page.locator("main").getByRole("link", { name: /Request a call back/i }).first();
     await expect(cta).toBeVisible();
     await expect(cta).toHaveAttribute("href", new RegExp(`/request\\?service=${PARENT_SLUG}`));
   });
@@ -566,36 +603,64 @@ test.describe("Kimlik ibaresi", () => {
 });
 
 test.describe("Talep formu", () => {
-  test("istemci doğrulaması: boş gönderimde alan hataları görünür ve API'ye istek gitmez", async ({ page }) => {
+  // AL: talep formu AJ-7'de 4 adımlı sihirbaza dönüştü (1 hizmet kartları, 2 tarih/ülke/dil/tercüman, 3 iletişim+mesaj, 4 özet+rıza).
+  // Eski tek sayfalı seçiciler (#request-service select, ilk adımda request-submit) yok; testler adım adım yürür.
+  test("istemci doğrulaması: boş ilerlemede alan hataları görünür ve API'ye istek gitmez", async ({ page }) => {
     let posts = 0;
     page.on("request", (r) => {
       if (r.method() === "POST" && r.url().includes("/consultation-requests")) posts++;
     });
-    await page.goto("/request");
+    await gotoRequestWhenServiceListed(page);
     await expect(page.getByTestId("request-form")).toBeVisible();
-    await expect(page.getByTestId("request-submit")).toBeEnabled();
-    await page.getByTestId("request-submit").click();
-    await expect(page.locator('[role="alert"]').first()).toBeVisible();
-    await expect(page.locator("#request-service")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByTestId("request-next")).toBeEnabled();
+    // Adım 1: hizmet seçmeden ilerlenemez.
+    await page.getByTestId("request-next").click();
+    await expect(page.locator("#request-service-error")).toBeVisible();
+    await expect(page.getByTestId("request-step-1")).toBeVisible();
+    await selectService(page, CHILD_SLUG);
+    await page.getByTestId("request-next").click();
+    // Adım 2: ülke zorunlu.
+    await expect(page.getByTestId("request-step-2")).toBeVisible();
+    await page.getByTestId("request-flexible").check();
+    await page.getByTestId("request-next").click();
+    await expect(page.locator("#request-country")).toHaveAttribute("aria-invalid", "true");
+    await page.locator("#request-country").selectOption("DE");
+    await page.getByTestId("request-next").click();
+    // Adım 3: ad ve e-posta zorunlu.
+    await expect(page.getByTestId("request-step-3")).toBeVisible();
+    await page.getByTestId("request-next").click();
     await expect(page.locator("#request-full-name")).toHaveAttribute("aria-invalid", "true");
     await expect(page.locator("#request-email")).toHaveAttribute("aria-invalid", "true");
+    await page.locator("#request-full-name").fill("Max Mustermann QA");
+    await page.locator("#request-email").fill(REQUEST_EMAIL);
+    await page.getByTestId("request-next").click();
+    // Adım 4: iletişim rızası olmadan gönderim engellenir.
+    await expect(page.getByTestId("request-step-4")).toBeVisible();
+    await page.getByTestId("request-submit").click();
     await expect(page.getByTestId("request-consent-contact-error")).toBeVisible();
     expect(posts).toBe(0);
     await expect(page.getByTestId("request-success")).toHaveCount(0);
   });
 
-  test("hizmet seçimi: ?service=<alt bölüm> ile ön seçili; üst/alt bölümler gruplu; honeypot gizli; aydınlatma bağlantısı ve uyarı", async ({ page }) => {
+  test("hizmet seçimi: ?service=<alt bölüm> ile ön seçili; üst/alt bölümler kartlarda; honeypot gizli; aydınlatma bağlantısı ve uyarı", async ({ page }) => {
     await gotoRequestWhenServiceListed(page, `?service=${CHILD_SLUG}`);
-    await expect(page.locator("#request-service")).toHaveValue(CHILD_SLUG);
-    await expect(page.locator(`#request-service optgroup option[value="${PARENT_SLUG}"]`)).toHaveCount(1);
-    await expect(page.locator(`#request-service optgroup option[value="${CHILD_SLUG}"]`)).toHaveCount(1);
+    await expect(page.getByTestId(`request-service-${CHILD_SLUG}`)).toBeChecked();
+    await expect(page.getByTestId(`request-service-${PARENT_SLUG}`)).toHaveCount(1);
     const hp = page.getByTestId("request-website");
     // İnsana görünmez + odaklanılamaz: aria-hidden sarmalayıcı, ekran dışı, tabindex=-1.
-    expect(await hp.evaluate((el) => { const w = el.closest('[aria-hidden="true"]'); const r = (w ?? el).getBoundingClientRect(); return Boolean(w) && el.getAttribute("tabindex") === "-1" && (r.right <= 0 || r.left >= window.innerWidth || (r.width === 0 && r.height === 0)); })).toBe(true);
+    expect(await hp.evaluate((el) => { const w = el.closest('[aria-hidden="true"]'); const r = (w ?? el).getBoundingClientRect(); return Boolean(w) && el.getAttribute("tabindex") === "-1" && (r.width === 0 || r.height === 0 || r.right < 0 || r.bottom < 0 || r.left < -100 || r.top < -100); })).toBe(true);
+    await page.getByTestId("request-next").click();
+    await expect(page.getByTestId("request-step-2")).toBeVisible();
+    await expect(page.locator("#request-contact-language option")).toHaveCount(8);
+    expect(await page.locator("#request-contact-language option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).toEqual(expect.arrayContaining(["en", "de", "ar"]));
+    await page.getByTestId("request-flexible").check();
+    await page.locator("#request-country").selectOption("DE");
+    await page.getByTestId("request-next").click();
     await expect(page.getByTestId("request-message-notice")).toContainText("Do not share detailed medical information here; our coordinator will guide you securely.");
-    await expect(page.locator('#request-contact-language option')).toHaveCount(8);
-    expect(await page.locator("#request-contact-language option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).toEqual(expect.arrayContaining(["en", "de", "ar", "ru", "fr", "es", "ro", "sr-latn"]));
-    await expect(page.getByTestId("request-consent-contact").locator("xpath=ancestor::label")).toContainText(/privacy|consent|notice/i);
+    await page.locator("#request-full-name").fill("Max Mustermann QA");
+    await page.locator("#request-email").fill(REQUEST_EMAIL);
+    await page.getByTestId("request-next").click();
+    await expect(page.getByTestId("request-consent-contact").locator("xpath=ancestor::label")).toContainText(/agree|consent/i);
   });
 
   test("mesaj doluyken sağlık verisi rızası zorunlu: işaretlenmeden gönderim engellenir", async ({ page }) => {
@@ -604,10 +669,7 @@ test.describe("Talep formu", () => {
       if (r.method() === "POST" && r.url().includes("/consultation-requests")) posts++;
     });
     await gotoRequestWhenServiceListed(page, `?service=${CHILD_SLUG}`);
-    await page.locator("#request-country").selectOption("DE");
-    await page.locator("#request-full-name").fill("Max Mustermann QA");
-    await page.locator("#request-email").fill(REQUEST_EMAIL);
-    await page.locator("#request-message").fill("I would like to ask about options.");
+    await walkRequestToReview(page, { message: "I would like to ask about options." });
     await page.getByTestId("request-consent-contact").check();
     await page.getByTestId("request-submit").click();
     await expect(page.getByTestId("request-consent-health-error")).toBeVisible();
@@ -634,15 +696,7 @@ test.describe("Talep formu", () => {
       if (r.request().method() === "POST" && r.url().includes("/consultation-requests")) responses.push({ status: r.status(), body: await r.text().catch(() => "") });
     });
     await gotoRequestWhenServiceListed(page, `?service=${CHILD_SLUG}`);
-    await page.locator("#request-country").selectOption("DE");
-    await page.locator("#request-contact-language").selectOption("de");
-    await page.getByTestId("request-date-from").fill("2026-12-01");
-    await page.getByTestId("request-date-to").fill("2026-12-15");
-    await page.getByTestId("request-interpreter-yes").check();
-    await page.locator("#request-full-name").fill("Max Mustermann QA");
-    await page.locator("#request-email").fill(REQUEST_EMAIL);
-    await page.locator("#request-phone").fill("+49 170 1234567");
-    await page.locator("#request-message").fill("QA AH test message — please call me.");
+    await walkRequestToReview(page, { dateFrom: "2026-12-01", dateTo: "2026-12-15", interpreter: true, contactLanguage: "de", phone: "+49 170 1234567", message: "QA AH test message — please call me." });
     await page.getByTestId("request-consent-contact").check();
     await page.getByTestId("request-consent-health").check();
     await page.getByTestId("request-submit").click();

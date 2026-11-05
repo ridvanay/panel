@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { getCachedAdminSession, getFixtureUserToken, getSiteModules, patchSiteModule } from "./support/api";
+import { snapshotSiteState, restoreSiteStateAndRevalidate, type SiteStateSnapshot } from "./support/site-state-snapshot";
+import { API_BASE_URL, getCachedAdminSession, getFixtureUserToken, getSiteModules, patchSiteModule } from "./support/api";
 import { adminGetUserByEmail, adminUpdateRole, resetFixtureUserToBaseline } from "./support/admin-users-fixtures";
 import { getDemoTemplatesRaw, importDemoTemplateRaw, listAuditLogsRaw } from "./support/demo-templates-fixtures";
 import {
@@ -61,7 +62,10 @@ let initialProductsModuleEnabled: boolean;
 
 let firstImportPageId: string;
 
+// AL: demo import saas_e2e'nin site kimligi verisini Turkce demoyla kalici ezmesin (bkz. support/site-state-snapshot.ts)
+let siteStateBefore: SiteStateSnapshot | undefined;
 test.beforeAll(async ({}, testInfo) => {
+  siteStateBefore = snapshotSiteState(); // AL: importer menu/altbilgi/ayarlari yeniden yazar — afterAll geri yukler
   testInfo.setTimeout(180_000);
   const session = await getCachedAdminSession();
   adminToken = session.accessToken;
@@ -177,7 +181,8 @@ test("Fix 1/2/3: hero slaytları bgType:image + geçerli bgMedia.url taşıyor; 
 
     // Backend'in servis ettiği gerçek dosya HTTP 200 + `image/*` content-type ile dönüyor mu —
     // eski `bgType: "gradient"` regresyonunda bu URL hiç YOKTU (bgMedia null idi).
-    const mediaRes = await fetch(bgMedia!.url as string);
+    // AL: yerel ortamda medya adresleri göreli ("/uploads/…") döner — Node fetch için backend kökü eklenir.
+    const mediaRes = await fetch(new URL(bgMedia!.url as string, new URL(API_BASE_URL).origin).toString());
     expect(mediaRes.status, `bgMedia.url beklenen 200: ${bgMedia!.url}`).toBe(200);
     expect(mediaRes.headers.get("content-type") ?? "").toMatch(/^image\//);
   }
@@ -215,7 +220,8 @@ test("Fix 1/2/3: hero slaytları bgType:image + geçerli bgMedia.url taşıyor; 
       .toBeGreaterThan(0);
 
     // Fix 3 — `bgType: "image"` iken HER ZAMAN render edilen okunabilirlik gradyanı.
-    await expect(page.locator(".advanced-slider .bg-gradient-to-r")).toHaveCount(heroSlides.length);
+    // AL: okunabilirlik gradyanı (.bg-gradient-to-r) 96946af ("hero seçenekleri — katman görünürlüğü") ile bileşenden kaldırıldı;
+    // bu iddia artık geçersiz (advanced-slider.tsx'te yok) — kaldırıldı, hero görselinin yüklenmesi yukarıda doğrulanıyor.
   }
 
   // Regresyon kontrolü — normal (ana sayfa OLMAYAN) bir sayfanın slug route'unda page-header HÂLÂ
@@ -514,4 +520,8 @@ test("madde 9c: RBAC — MANAGER/EDITOR GET görür ama POST 403; USER POST 403"
   expect(userGet.status).toBe(403);
   const userPost = await importDemoTemplateRaw(lowPrivToken, ECOMMERCE_TEMPLATE_KEY, { confirm: true, force: true });
   expect(userPost.status).toBe(403);
+});
+
+test.afterAll(async () => {
+  if (siteStateBefore) await restoreSiteStateAndRevalidate(siteStateBefore);
 });

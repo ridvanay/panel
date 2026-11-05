@@ -516,7 +516,7 @@ test.describe("Public render — google-map + kurumsal bloklar (CLS=0, JSON-LD, 
       try {
         await publicPage.goto(`${FRONTEND_URL}/${slug}`);
         await expect(publicPage.getByRole("heading", { name: "Kurumsal" })).toBeVisible({ timeout: 15_000 });
-        await expect(publicPage.getByText("Yıllık", { exact: true })).toBeVisible();
+        await expect(publicPage.getByText(/^(Yıllık|Yearly)$/)).toBeVisible();
         await expect(publicPage.getByText("Aylık", { exact: true })).toHaveCount(0);
       } finally {
         await publicContext.close();
@@ -614,7 +614,7 @@ test.describe("Public render — google-map + kurumsal bloklar (CLS=0, JSON-LD, 
       const publicPage = await publicContext.newPage();
       try {
         await publicPage.goto(`${FRONTEND_URL}/${slug}`);
-        const trigger = publicPage.getByRole("button", { name: "Videoyu oynat" });
+        const trigger = publicPage.getByRole("button", { name: /Play video|Videoyu oynat/ });
         await expect(trigger).toBeVisible({ timeout: 15_000 });
         await expect(publicPage.locator('img[src="https://example.com/qa-video-cover.png"]')).toBeVisible();
         // Tıklanmadan ÖNCE embed iframe DOM'da YOK (lightbox tetikleyicisi salt kapak+rozet).
@@ -714,16 +714,16 @@ test.describe("Geriye dönük uyumluluk — eski veri şekli (yeni alanlar YOK)"
         // pricing-table — billingInterval YOK → "Aylık"/"Yıllık" rozeti HİÇ render EDİLMEZ.
         await expect(publicPage.getByRole("heading", { name: "Eski Plan" })).toBeVisible();
         await expect(publicPage.getByText("Aylık", { exact: true })).toHaveCount(0);
-        await expect(publicPage.getByText("Yıllık", { exact: true })).toHaveCount(0);
+        await expect(publicPage.getByText(/^(Yıllık|Yearly)$/)).toHaveCount(0);
 
         // logo-marquee — R1: `grayscale` alanı YOK → hâlâ grayscale (marquee modu, 2 kopya).
         const legacyLogoImg = publicPage.locator('img[src="https://example.com/qa-legacy-logo.png"]');
         await expect(legacyLogoImg).toHaveCount(2);
         await expect(legacyLogoImg.first()).toHaveClass(/grayscale/);
 
-        // video — playStyle YOK → inline (bugünkü) davranış: "Videoyu oynat" tetikleyicisi YOK,
+        // video — playStyle YOK → inline (bugünkü) davranış: /Play video|Videoyu oynat/ tetikleyicisi YOK,
         // iframe doğrudan gömülü ve `loop` parametresi YOK.
-        await expect(publicPage.getByRole("button", { name: "Videoyu oynat" })).toHaveCount(0);
+        await expect(publicPage.getByRole("button", { name: /Play video|Videoyu oynat/ })).toHaveCount(0);
         const legacyVideoIframe = publicPage.locator('iframe[src*="youtube-nocookie.com/embed/dQw4w9WgXcQ"]');
         await expect(legacyVideoIframe).toBeVisible();
         await expect(legacyVideoIframe).not.toHaveAttribute("src", /loop=1/);

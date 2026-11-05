@@ -325,7 +325,7 @@ test.describe("Sayfa düzenleyici — rol tabanlı Katman 1 kısıtı (§6, canU
         if (mutatedBlocks[0] && Array.isArray(mutatedBlocks[0].children)) {
           (mutatedBlocks[0].children as unknown[]).push(heading("qa-3-injected", "Enjekte edilmiş yapı"));
         }
-        const response = await route.fetch({ postData: JSON.stringify({ ...payload, blocks: mutatedBlocks }) });
+        const response = await route.fetch({ url: route.request().url().replace("//siteadi.localhost", "//localhost") /* AL: Node DNS *.localhost cozemez */, postData: JSON.stringify({ ...payload, blocks: mutatedBlocks }) });
         injectedAutosaveCount += 1;
         injectedAutosaveStatus = response.status();
         await route.fulfill({ response });
@@ -539,7 +539,7 @@ test.describe("Sayfa düzenleyici — rol tabanlı Katman 1 kısıtı (§6, canU
         if (mutatedBlocks[0] && Array.isArray(mutatedBlocks[0].children)) {
           (mutatedBlocks[0].children as unknown[]).push(heading("qa-8-injected", "Enjekte edilmiş yapı"));
         }
-        const response = await route.fetch({ postData: JSON.stringify({ ...payload, blocks: mutatedBlocks }) });
+        const response = await route.fetch({ url: route.request().url().replace("//siteadi.localhost", "//localhost") /* AL: Node DNS *.localhost cozemez */, postData: JSON.stringify({ ...payload, blocks: mutatedBlocks }) });
         injectedAutosaveCount += 1;
         injectedAutosaveStatus = response.status();
         await route.fulfill({ response });

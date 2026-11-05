@@ -8,6 +8,10 @@ import {
   type FixtureProduct,
 } from "./support/product-variants-fixtures";
 
+// AL (İş 2) ATLA: sepet ve ödeme sayfaları ziyaretçiye kapalı (AH: /cart, /checkout, /checkout/success, /checkout/cancel 308 ile /request'e yönlenir; sepet çekmecesi/Ödeme akışı erişilemez)
+// Açmak için: frontend/src/proxy.ts içindeki sepet/ödeme -> /request yönlendirmesinin kaldırılması (kod ve backend ödeme akışı duruyor); spec'in İngilizce etiketlere (Cart, N items) uyarlanması.
+test.skip(true, "AL: sepet ve ödeme sayfaları ziyaretçiye kapalı (AH: /cart, /checkout, /checkout/success, /checkout/cancel 308 ile /request'e yönlenir; sepet çekmecesi/Ödeme akışı erişilemez) (frontend/src/proxy.ts içindeki sepet/ödeme -> /request yönlendirmesinin kaldırılması (kod ve backend ödeme akışı duruyor); spec'in İngilizce etiketlere (Cart, N items) uyarlanması)");
+
 /**
  * qa-agent — kullanıcının açıkça istediği "sepete ekleme akışı" kapsamı (bkz. görev tanımı madde
  * 4): (a) PDP'de adet seçip Sepete Ekle'ye basınca sepetin SEÇİLEN miktarla güncellenmesi, (b)

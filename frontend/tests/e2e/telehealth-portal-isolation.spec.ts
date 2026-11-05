@@ -24,6 +24,10 @@ import {
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
 
+// AL (İş 2) ATLA: doktor portalı/alt alan adı ziyaretçiye kapalı (AJ-5: /doctor ve doktor alt alan adı 301 ile ana site köküne gider)
+// Açmak için: frontend ve backend ortamında DOCTOR_PORTAL_ENABLED=true.
+test.skip(true, "AL: doktor portalı/alt alan adı ziyaretçiye kapalı (AJ-5: /doctor ve doktor alt alan adı 301 ile ana site köküne gider) (frontend ve backend ortamında DOCTOR_PORTAL_ENABLED=true)");
+
 // Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
 // kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
 test.describe.configure({ timeout: 120_000 });

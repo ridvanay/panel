@@ -11,6 +11,10 @@ import {
 import { createAuthenticatedPageAs } from "./support/admin-session";
 import { registerFixtureUser, resetFixtureUserToBaseline } from "./support/admin-users-fixtures";
 
+// AL (İş 2) ATLA: sepet ve ödeme sayfaları ziyaretçiye kapalı (AH: /cart, /checkout, /checkout/success, /checkout/cancel 308 ile /request'e yönlenir; sepet çekmecesi/Ödeme akışı erişilemez)
+// Açmak için: frontend/src/proxy.ts içindeki sepet/ödeme -> /request yönlendirmesinin kaldırılması (kod ve backend ödeme akışı duruyor); spec'in İngilizce etiketlere (Cart, N items) uyarlanması.
+test.skip(true, "AL: sepet ve ödeme sayfaları ziyaretçiye kapalı (AH: /cart, /checkout, /checkout/success, /checkout/cancel 308 ile /request'e yönlenir; sepet çekmecesi/Ödeme akışı erişilemez) (frontend/src/proxy.ts içindeki sepet/ödeme -> /request yönlendirmesinin kaldırılması (kod ve backend ödeme akışı duruyor); spec'in İngilizce etiketlere (Cart, N items) uyarlanması)");
+
 /**
  * qa-agent — `.claude/architect-scope-checkout-redesign.md` §9 "qa-agent kapsamı (kritik
  * senaryolar)" (bağlayıcı, 10 madde) doğrulaması. Gerçek tarayıcı + gerçek backend + gerçek

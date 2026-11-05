@@ -5,6 +5,7 @@
  * gerçekçi içerik/locale durumları kurmak — backend zaten bu uçları `tests/integration/*.test.ts`
  * ile ayrı doğruluyor, burada YALNIZCA fixture amaçlı kullanılıyor.
  */
+import "./loopback-dns";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -851,3 +852,31 @@ export async function setupAndEnableTwoFactorForSelf(token: string, password: st
 }
 
 export { API_BASE_URL };
+
+/**
+ * Paket AL (İş 2) — saas_e2e taban hattında `de` dilinin ETKİN olduğunu garanti eder (AH/AI/AK spec'leri `/de/...`
+ * yollarını sınar; `de` yalnızca eski admin-locale-management koşusunun artığı olarak varmış). Yoksa ekler ve
+ * proxy.ts'in 60 sn'lik dil önbelleği için `/<code>` 200 verene dek bekler. Idempotent, `de`yi SİLMEZ.
+ */
+export async function ensureLocaleEnabled(token: string, code: string, label: string, nativeLabel: string) {
+  const locales = await listAdminLocales(token);
+  const existing = locales.find((l) => l.code === code);
+  if (!existing) {
+    await createLocale(token, { code, label, nativeLabel, enabled: true });
+  } else if (existing.enabled === false) {
+    const res = await fetch(`${API_BASE_URL}/admin/locales/${code}`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ enabled: true }),
+    });
+    await json(res);
+  }
+  const base = process.env.E2E_FRONTEND_URL ?? "http://localhost:3100";
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    const res = await fetch(`${base}/${code}`, { redirect: "follow" }).catch(() => null);
+    if (res && res.status === 200) return;
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+  throw new Error(`ensureLocaleEnabled: /${code} 90 sn içinde 200 vermedi`);
+}

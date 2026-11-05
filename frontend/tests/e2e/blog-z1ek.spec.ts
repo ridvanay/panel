@@ -20,6 +20,10 @@ import {
 } from "./support/blog-z1ek-fixtures";
 import { SHOT_PAGES, shotBuilderBlocks, shotLegalBlocks } from "./support/blog-z1ek-shot-content";
 
+// AL (İş 2) ATLA: blog yazısında hekim onayı/inceleme akışı: 'blogMedicalReviewRequired' ayarı varsayılan KAPALI (AH kararı: hekim onayı şartı bayrakla kapandı, kod silinmedi). Bu spec hekim onayı bekleyen yazı, reviewer adı/rozeti ve 'physicians' boş durum metnini sınıyor
+// Açmak için: admin ayarlarında blogMedicalReviewRequired=true (ve doktorların ziyaretçiye açılması: DOCTORS_VISIBLE_TO_VISITORS=true).
+test.skip(true, "AL: blog yazısında hekim onayı/inceleme akışı: 'blogMedicalReviewRequired' ayarı varsayılan KAPALI (AH kararı: hekim onayı şartı bayrakla kapandı, kod silinmedi). Bu spec hekim onayı bekleyen yazı, reviewer adı/rozeti ve 'physicians' boş durum metnini sınıyor (admin ayarlarında blogMedicalReviewRequired=true (ve doktorların ziyaretçiye açılması: DOCTORS_VISIBLE_TO_VISITORS=true))");
+
 /**
  * qa-agent — Paket Z1-ek e2e (docs/prompts/2026-11-01-Z1-ek-blog-tasarim.md "Testler" + "Ekran goruntuleri").
  *

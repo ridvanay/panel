@@ -11,6 +11,10 @@ import {
   type ShippingSettingsFixture,
 } from "./support/product-variants-fixtures";
 
+// AL (İş 2) ATLA: sepet ve ödeme sayfaları ziyaretçiye kapalı (AH: /cart, /checkout, /checkout/success, /checkout/cancel 308 ile /request'e yönlenir; sepet çekmecesi/Ödeme akışı erişilemez)
+// Açmak için: frontend/src/proxy.ts içindeki sepet/ödeme -> /request yönlendirmesinin kaldırılması (kod ve backend ödeme akışı duruyor); spec'in İngilizce etiketlere (Cart, N items) uyarlanması.
+test.skip(true, "AL: sepet ve ödeme sayfaları ziyaretçiye kapalı (AH: /cart, /checkout, /checkout/success, /checkout/cancel 308 ile /request'e yönlenir; sepet çekmecesi/Ödeme akışı erişilemez) (frontend/src/proxy.ts içindeki sepet/ödeme -> /request yönlendirmesinin kaldırılması (kod ve backend ödeme akışı duruyor); spec'in İngilizce etiketlere (Cart, N items) uyarlanması)");
+
 /**
  * qa-agent — `.claude/architect-scope-ecommerce-pro-template.md` §9.9 madde 3/5/6 (bağlayıcı E2E
  * kapsam listesi). §1.4'ün KRİTİK regresyon koruması (sepet dedupe) + kargo eşiği + sepet

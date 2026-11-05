@@ -94,7 +94,7 @@ test.describe("Görsel widget'lar — admin editörü (kategori/menü kaydı)", 
       await page.getByRole("button", { name: "Konteynere daha fazla blok ekle" }).click();
       await page.getByRole("tab", { name: "Pazarlama & Sosyal Kanıt" }).click();
       await page.getByRole("menuitem", { name: "İlerleme Çubuğu & Yetenekler", exact: true }).click();
-      // "Yüzde" bu sayfada BENZERSİZ bir alan adı (skill-bar'a özgü) — "Başlık"ın aksine sayfanın
+      // "Yüzde" bu sayfada BENZERSİZ bir alan adı (skill-bar'a özgü) — /Title|Başlık/ın aksine sayfanın
       // kendi başlık alanıyla ÇAKIŞMAZ.
       await expect(page.getByRole("spinbutton", { name: "Yüzde" }).first()).toHaveValue("80");
 
@@ -207,6 +207,9 @@ test.describe("Görsel widget'lar — public site render (gerçek public URL, ad
   });
 
   test("Ekip Üyesi Kartı — ad/unvan/biyografi + sosyal bağlantı ikonu doğru render olur", async () => {
+    // AL (İş 2) ATLA: ekip (team) bloğu ziyaretçiye gizli (AH/AK: DOCTORS_VISIBLE_TO_VISITORS=false iken TeamBlockView null döner)
+    // Açmak için: frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true.
+    test.skip(true, "AL: ekip (team) bloğu ziyaretçiye gizli (AH/AK: DOCTORS_VISIBLE_TO_VISITORS=false iken TeamBlockView null döner) (frontend/src/lib/intermediary.ts içinde DOCTORS_VISIBLE_TO_VISITORS=true)");
     const { pageId, slug } = await createHostPage("team", "PUBLISHED");
     try {
       await patchPageBlocks(token, pageId, [

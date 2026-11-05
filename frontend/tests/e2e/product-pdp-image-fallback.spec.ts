@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { getCachedAdminSession } from "./support/api";
+import { serveLocalMedia } from "./support/local-media-route";
 import {
   adminCreateProductFull,
   adminAddProductImage,
@@ -49,7 +50,7 @@ function matchesMediaUrl(url: URL, target: string): boolean {
 
 /** Ana görsel görüntüleyici (`aria-label="Görseli büyüt"` butonu) — hem `<img>` hem placeholder dalı için ortak sarmalayıcı. */
 function mainViewer(page: Page) {
-  return page.locator('button[aria-label="Görseli büyüt"]');
+  return page.locator('button[aria-label="Görseli büyüt"], button[aria-label="Enlarge image"]');
 }
 
 function thumbnail(page: Page, index: number) {
@@ -93,6 +94,7 @@ test("Fix 3: PDP'de 404 dönen kapak görseli 'Görsel yüklenemedi' placeholder
     (url) => matchesMediaUrl(url, brokenCoverMedia.url),
     (route) => route.fulfill({ status: 404, contentType: "text/plain", body: "not found" })
   );
+  await serveLocalMedia(page, okGalleryMedia.url); // AL: yerelde göreli medya adresi sağlıklı görseli de yüklemez
   const okImageResponsePromise = page.waitForResponse(
     (res) => matchesMediaUrl(new URL(res.url()), okGalleryMedia.url),
     { timeout: 15_000 }
