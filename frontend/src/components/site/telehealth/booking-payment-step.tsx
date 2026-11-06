@@ -14,6 +14,7 @@ import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
+import { tokenFragment } from "@/lib/access-token-url";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.7.1 (bağlayıcı) — Stripe Checkout'a
@@ -173,8 +174,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
           if (onDemoPaid) {
             onDemoPaid(booking);
           } else {
-            const tokenSuffix = accessToken ? `&t=${encodeURIComponent(accessToken)}` : "";
-            router.push(`/${lang}/patient/bookings/${bookingId}?payment=success${tokenSuffix}`);
+            router.push(`/${lang}/patient/bookings/${bookingId}?payment=success${tokenFragment(accessToken)}`);
           }
           return;
         }
@@ -213,7 +213,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
    * §1.5 — "sihirbaz mevcut başarı akışına girer (`?payment=success` dönüşüyle AYNI sonuç
    * durumu)". Yeni bir yönlendirme mekanizması İCAT EDİLMEZ: hedef, Stripe'ın
    * `buildPatientReturnUrl`'ünün ürettiği AYNI rota (`/{lang}/patient/bookings/{bookingId}
-   * ?payment=success&t=...`) — misafir `?t=` varsa AYNEN taşınır (demo-pay ucu token'ı rotate
+   * ?payment=success#t=...`) — misafir token'ı varsa `#t=` parçasında AYNEN taşınır (Paket AP) (demo-pay ucu token'ı rotate
    * ETMEZ, bkz. backend handler yorumu).
    */
   async function handleDemoPay() {
@@ -225,8 +225,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
       if (onDemoPaid) {
         onDemoPaid(paidBooking);
       } else {
-        const tokenSuffix = accessToken ? `&t=${encodeURIComponent(accessToken)}` : "";
-        router.push(`/${lang}/patient/bookings/${bookingId}?payment=success${tokenSuffix}`);
+        router.push(`/${lang}/patient/bookings/${bookingId}?payment=success${tokenFragment(accessToken)}`);
       }
     } catch (err) {
       // `.claude/security-review-demo-payment-toggle.md` Madde 5 — env-gate AÇIK olduğu halde

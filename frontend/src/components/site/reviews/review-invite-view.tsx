@@ -9,13 +9,38 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReviewForm } from "@/components/site/reviews/review-form";
+import { useLocationToken } from "@/lib/use-location-token";
 
 type InviteState = { kind: "loading" } | { kind: "ready"; doctorName: string } | { kind: "invalid" } | { kind: "error" };
 
-/** Paket Y — `/[lang]/review/[token]`: davet bilgisini çeker (yükleme/404/hata durumları) ve formu gösterir. */
-export function ReviewInviteView({ token, optOut = false }: { token: string; optOut?: boolean }) {
+/** Eski `/{lang}/review/<token>` → `/{lang}/review` (modül düzeyinde: `useLocationToken` bağımlılığı sabit kalsın). */
+const reviewCleanPath = (pathname: string) => pathname.replace(/\/[^/]+\/?$/, "");
+
+/**
+ * Paket AP — `/[lang]/review#<token>` (eski `/[lang]/review/<token>` geçiş süresince): token adresten silinir,
+ * sekmede `sessionStorage`'da tutulur ve API'ye POST gövdesiyle gider.
+ */
+export function ReviewInvitePage({ legacyPathToken, optOut = false }: { legacyPathToken?: string; optOut?: boolean }) {
+  const { ready, token } = useLocationToken({ legacyPathToken, cleanPath: reviewCleanPath, storageKey: "review-invite" });
+  if (!ready) return <InviteSkeleton />;
+  return <ReviewInviteView token={token} optOut={optOut} />;
+}
+
+/** Paket Y — davet bilgisini çeker (yükleme/404/hata durumları) ve formu gösterir. */
+export function ReviewInviteView({ token, optOut = false }: { token: string | null; optOut?: boolean }) {
+  if (!token) return <InvalidInvite />;
   if (optOut) return <ReviewOptOut token={token} />;
   return <ReviewInviteForm token={token} />;
+}
+
+function InviteSkeleton() {
+  const { t } = useReviewStrings();
+  return (
+    <div role="status" aria-label={t.inviteLoading} className="space-y-4">
+      <Skeleton className="h-8 w-2/3" />
+      <Skeleton className="h-40 w-full" />
+    </div>
+  );
 }
 
 /** `?optout=1` — "Bir daha yorum isteği almak istemiyorum" onay ekranı (token geçersiz olsa da sunucu 204 döner). */
@@ -64,14 +89,7 @@ function ReviewInviteForm({ token }: { token: string }) {
     };
   }, [token]);
 
-  if (state.kind === "loading") {
-    return (
-      <div role="status" aria-label={t.inviteLoading} className="space-y-4">
-        <Skeleton className="h-8 w-2/3" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    );
-  }
+  if (state.kind === "loading") return <InviteSkeleton />;
   if (state.kind === "invalid") return <InvalidInvite />;
   if (state.kind === "error") return <Alert variant="error">{t.errGeneric}</Alert>;
 

@@ -26,6 +26,8 @@ interface ServerFetchOptions {
   noStore?: boolean;
   /** Ham gövdeye JSON.parse ÖNCESİ uygulanır (ör. `toInternalMediaUrl`). */
   transformText?: (text: string) => string;
+  /** Ek istek başlıkları (ör. Paket AP `X-Access-Token`). */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -36,6 +38,7 @@ export async function fetchServerJson<T>(path: string, options: ServerFetchOptio
   const init: RequestInit = options.noStore
     ? { cache: "no-store" }
     : { next: { revalidate: SERVER_FETCH_REVALIDATE_SECONDS, ...(options.tags?.length ? { tags: options.tags } : {}) } };
+  if (options.headers) init.headers = options.headers;
   const res = await fetch(`${SERVER_API_BASE_URL}${path}`, init);
   if (res.status === 404) return null;
   if (!res.ok) throw new ServerFetchError(res.status, path);

@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { AuthLink } from "@/components/auth/auth-link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import * as authApi from "@/lib/api/auth";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,15 @@ import { Spinner } from "@/components/ui/spinner";
 import { useFriendlyError } from "@/lib/i18n/use-portal-strings";
 import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 import { PasswordField, passwordPolicyMessage } from "@/components/auth/password-field";
+import { useLocationToken } from "@/lib/use-location-token";
 
+/**
+ * Paket AP — bağlantı `/reset-password#token=<…>`: token `#` parçasında gelir (sunucuya, log'a, `Referer`'a gitmez),
+ * adresten silinir, sekmede `sessionStorage`'da tutulur ve POST gövdesiyle gider. Eski `?token=` geçiş süresince.
+ */
 function ResetPasswordForm() {
   const router = useRouter();
-  const token = useSearchParams().get("token") ?? "";
+  const { ready, token } = useLocationToken({ hashKey: "token", legacyQueryKey: "token", storageKey: "reset-password-token" });
   const authStrings = useAuthStrings();
   const t = authStrings.reset;
   const friendlyErrorMessage = useFriendlyError();
@@ -28,7 +33,12 @@ function ResetPasswordForm() {
     setError(null);
     setSubmitting(true);
     try {
-      await authApi.resetPassword(token, password);
+      await authApi.resetPassword(token ?? "", password);
+      try {
+        window.sessionStorage.removeItem("reset-password-token");
+      } catch {
+        /* depolama engelli: yok sayılır */
+      }
       router.replace("/login");
     } catch (err) {
       // Paket S — şifre politikası ihlali: sunucunun kural kodları aktif dilde.
@@ -38,6 +48,7 @@ function ResetPasswordForm() {
     }
   }
 
+  if (!ready) return <Spinner className="h-5 w-5 text-primary" />;
   if (!token) {
     return <Alert variant="error">{t.invalidLink}</Alert>;
   }
@@ -72,9 +83,7 @@ export default function ResetPasswordPage() {
         </AuthLink>
       }
     >
-      <Suspense fallback={<Spinner className="h-5 w-5 text-primary" />}>
-        <ResetPasswordForm />
-      </Suspense>
+      <ResetPasswordForm />
     </AuthPageShell>
   );
 }

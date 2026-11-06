@@ -2,6 +2,7 @@ import { API_BASE_URL } from "../env";
 import { getAccessToken } from "./token-store";
 import { ApiClientError } from "./error";
 import { apiFetch, apiFetchPage, apiFetchWithMeta } from "./client";
+import { ACCESS_TOKEN_HEADER } from "../access-token-url";
 import type {
   UpdateLanguageSupportRequest,
   ApiErrorBody,
@@ -107,9 +108,9 @@ export function createAppointment(input: CreateAppointmentRequest): Promise<Crea
   return apiFetch<CreateAppointmentResult>("/appointments", { method: "POST", body: input });
 }
 
-/** `?t=` opak misafir erişim token'ı — oturum sahibi hasta/doktor/ADMIN/MANAGER için opsiyoneldir. */
+/** Opak misafir erişim token'ı (`X-Access-Token` başlığı, Paket AP) — oturum sahibi hasta/doktor/ADMIN/MANAGER için opsiyoneldir. */
 export function getAppointment(id: string, accessToken?: string): Promise<Appointment> {
-  return apiFetch<Appointment>(`/appointments/${id}`, { query: { t: accessToken } });
+  return apiFetch<Appointment>(`/appointments/${id}`, { accessToken });
 }
 
 /** Gerekçe yoksa da `{}` gönderilir — gövdesiz istek eski backend'de 422 "Girdi doğrulama hatası" veriyordu. */
@@ -117,7 +118,7 @@ export function cancelAppointment(id: string, accessToken?: string, reason?: str
   const trimmedReason = reason?.trim();
   return apiFetch<Appointment>(`/appointments/${id}/cancel`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
     body: trimmedReason ? { reason: trimmedReason } : {},
   });
 }
@@ -141,7 +142,7 @@ export function deleteAppointment(id: string): Promise<void> {
 export function requestMeetingToken(id: string, accessToken?: string): Promise<MeetingTokenResponse> {
   return apiFetch<MeetingTokenResponse>(`/appointments/${id}/meeting-token`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
   });
 }
 
@@ -154,7 +155,7 @@ export function completeAppointment(id: string, accessToken?: string, note?: str
   const trimmedNote = note?.trim();
   return apiFetch<Appointment>(`/appointments/${id}/complete`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
     body: trimmedNote ? { note: trimmedNote } : undefined,
   });
 }
@@ -170,7 +171,7 @@ export function startRecording(appointmentId: string): Promise<ConsultationRecor
 export function submitRecordingConsent(appointmentId: string, granted: boolean, accessToken?: string): Promise<ConsultationRecording> {
   return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording/consent`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
     body: { granted },
   });
 }
@@ -182,7 +183,7 @@ export function stopRecording(appointmentId: string): Promise<ConsultationRecord
 
 /** Hasta/booking'in doktoru/ADMIN. Kayıt YOKSA `data: null` döner (`404` DEĞİL). */
 export function getRecordingStatus(appointmentId: string, accessToken?: string): Promise<ConsultationRecording | null> {
-  return apiFetch<ConsultationRecording | null>(`/appointments/${appointmentId}/recording`, { query: { t: accessToken } });
+  return apiFetch<ConsultationRecording | null>(`/appointments/${appointmentId}/recording`, { accessToken });
 }
 
 /**
@@ -190,6 +191,7 @@ export function getRecordingStatus(appointmentId: string, accessToken?: string):
  * Büyük video dosyaları için tarayıcının kendi stream/Range desteğine güvenilir; bu yüzden
  * `fetchDocumentContentBlob`'un aksine burada blob'a ÇEKİLMEZ, dönen URL doğrudan `<video src>`/
  * indirme linki `href` olarak kullanılır. `disposition`: `"inline"` (izle) | `"attachment"` (indir).
+ * Paket AP: `<video src>`/`<a href>` özel başlık taşıyamadığı için bu uç token'ı hâlâ sorguda alır (açık madde).
  */
 export function getRecordingContentUrl(
   appointmentId: string,
@@ -203,7 +205,7 @@ export function getRecordingContentUrl(
 
 /** Hasta/ADMIN — doktor DAHİL DEĞİL (backend `404` döner). */
 export function deleteRecording(appointmentId: string, accessToken?: string): Promise<ConsultationRecording> {
-  return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording`, { method: "DELETE", query: { t: accessToken } });
+  return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording`, { method: "DELETE", accessToken });
 }
 
 // ---------- [TCT] §9.7 TADİLAT TURU 2 — çoklu slot booking + ödeme + sağlık verisi ----------
@@ -217,9 +219,9 @@ export function createBooking(input: CreateBookingRequest): Promise<CreateBookin
   return apiFetch<CreateBookingResult>("/appointments/bookings", { method: "POST", body: input });
 }
 
-/** `?t=` opak misafir erişim token'ı — oturum sahibi hasta/booking'in doktoru/ADMIN/MANAGER için opsiyoneldir. */
+/** Opak misafir erişim token'ı (`X-Access-Token` başlığı, Paket AP) — oturum sahibi hasta/booking'in doktoru/ADMIN/MANAGER için opsiyoneldir. */
 export function getBooking(bookingId: string, accessToken?: string): Promise<AppointmentBooking> {
-  return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}`, { query: { t: accessToken } });
+  return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}`, { accessToken });
 }
 
 /**
@@ -229,7 +231,7 @@ export function getBooking(bookingId: string, accessToken?: string): Promise<App
 export function createBookingCheckoutSession(bookingId: string, accessToken?: string): Promise<BookingCheckoutSessionResponse> {
   return apiFetch<BookingCheckoutSessionResponse>(`/appointments/bookings/${bookingId}/checkout-session`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
   });
 }
 
@@ -244,21 +246,21 @@ export function createBookingCheckoutSession(bookingId: string, accessToken?: st
 export function demoPayBooking(bookingId: string, accessToken?: string): Promise<AppointmentBooking> {
   return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}/demo-pay`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
   });
 }
 
 export function cancelBooking(bookingId: string, accessToken?: string, input?: CancelBookingRequest): Promise<AppointmentBooking> {
   return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}/cancel`, {
     method: "POST",
-    query: { t: accessToken },
+    accessToken,
     body: input,
   });
 }
 
 /** §9.7.0 madde 11 — "Ödeme Belgesi (bilgi amaçlıdır)", yalnızca `paymentStatus: "PAID"` iken üretilebilir. */
 export function getBookingInvoice(bookingId: string, accessToken?: string): Promise<BookingInvoice> {
-  return apiFetch<BookingInvoice>(`/appointments/bookings/${bookingId}/invoice`, { query: { t: accessToken } });
+  return apiFetch<BookingInvoice>(`/appointments/bookings/${bookingId}/invoice`, { accessToken });
 }
 
 /**
@@ -275,14 +277,14 @@ export function resendBookingLink(bookingId: string): Promise<void> {
 export function upsertBookingIntake(bookingId: string, input: UpsertIntakeRequest, accessToken?: string): Promise<AppointmentIntake> {
   return apiFetch<AppointmentIntake>(`/appointments/bookings/${bookingId}/intake`, {
     method: "PUT",
-    query: { t: accessToken },
+    accessToken,
     body: input,
   });
 }
 
 /** Hasta/booking'in doktoru/ADMIN (MANAGER HARİÇ) — her okuma sunucuda denetlenir (audit log). */
 export function getBookingIntake(bookingId: string, accessToken?: string): Promise<AppointmentIntake> {
-  return apiFetch<AppointmentIntake>(`/appointments/bookings/${bookingId}/intake`, { query: { t: accessToken } });
+  return apiFetch<AppointmentIntake>(`/appointments/bookings/${bookingId}/intake`, { accessToken });
 }
 
 /**
@@ -291,7 +293,7 @@ export function getBookingIntake(bookingId: string, accessToken?: string): Promi
  * sunucuda denetim kaydı üretir.
  */
 export function getBookingIdentity(bookingId: string, accessToken?: string): Promise<BookingIdentity> {
-  return apiFetch<BookingIdentity>(`/appointments/bookings/${bookingId}/identity`, { query: { t: accessToken } });
+  return apiFetch<BookingIdentity>(`/appointments/bookings/${bookingId}/identity`, { accessToken });
 }
 
 /**
@@ -301,19 +303,19 @@ export function getBookingIdentity(bookingId: string, accessToken?: string): Pro
 export function updateBookingIdentity(bookingId: string, input: BookingIdentityInput, accessToken?: string): Promise<AppointmentBooking> {
   return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}/identity`, {
     method: "PUT",
-    query: { t: accessToken },
+    accessToken,
     body: input,
   });
 }
 
 /** `GET .../consultation-note` — not yoksa `html: null` ile 200 döner (404 DEĞİL). */
 export function getConsultationNote(bookingId: string, accessToken?: string): Promise<ConsultationNote> {
-  return apiFetch<ConsultationNote>(`/appointments/bookings/${bookingId}/consultation-note`, { query: { t: accessToken } });
+  return apiFetch<ConsultationNote>(`/appointments/bookings/${bookingId}/consultation-note`, { accessToken });
 }
 
 /** KVKK md.11 — not METNİ `null`'lanır, rıza kanıtı denetim bütünlüğü için korunur. */
 export function deleteBookingIntake(bookingId: string, accessToken?: string): Promise<void> {
-  return apiFetch<void>(`/appointments/bookings/${bookingId}/intake`, { method: "DELETE", query: { t: accessToken } });
+  return apiFetch<void>(`/appointments/bookings/${bookingId}/intake`, { method: "DELETE", accessToken });
 }
 
 /**
@@ -329,13 +331,13 @@ export function uploadBookingDocument(
 ): Promise<AppointmentDocument> {
   return new Promise((resolve, reject) => {
     const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}/documents`);
-    if (options.accessToken) url.searchParams.set("t", options.accessToken);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url.toString());
     xhr.withCredentials = true;
     const token = getAccessToken();
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (options.accessToken) xhr.setRequestHeader(ACCESS_TOKEN_HEADER, options.accessToken);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && options.onProgress) {
@@ -372,23 +374,23 @@ export function uploadBookingDocument(
 
 /** Hasta/doktor/ADMIN (MANAGER yalnızca sayıyı — `booking.documentCount` — görebilir, bu listeyi GÖREMEZ). */
 export function listBookingDocuments(bookingId: string, accessToken?: string): Promise<AppointmentDocument[]> {
-  return apiFetch<AppointmentDocument[]>(`/appointments/bookings/${bookingId}/documents`, { query: { t: accessToken } });
+  return apiFetch<AppointmentDocument[]>(`/appointments/bookings/${bookingId}/documents`, { accessToken });
 }
 
 /**
  * `GET /appointments/documents/{documentId}/content` düz bir `<a href>` ile AÇILAMAZ — uç yalnızca
- * `Authorization: Bearer` (bellekte tutulan access token, çerez DEĞİL) veya `?t=` ile yetkilendirir;
+ * `Authorization: Bearer` (bellekte tutulan access token, çerez DEĞİL) veya `X-Access-Token` ile yetkilendirir;
  * bu yüzden içerik burada BLOB olarak alınıp yeni sekmede açılır (`window.open`) — görsel sonuç
  * (`.claude/design-notes-telehealth.md` §12.5.4 "yeni sekmede açar") DEĞİŞMEZ, yalnızca taşıma
  * mekanizması bu projenin auth modeliyle uyumlu hâle getirilir.
  */
 export async function fetchDocumentContentBlob(documentId: string, accessToken?: string): Promise<{ blob: Blob; filename: string | null }> {
   const url = new URL(`${API_BASE_URL}/appointments/documents/${documentId}/content`);
-  if (accessToken) url.searchParams.set("t", accessToken);
 
   const headers: Record<string, string> = {};
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (accessToken) headers[ACCESS_TOKEN_HEADER] = accessToken;
 
   let res: Response;
   try {
@@ -407,7 +409,7 @@ export async function fetchDocumentContentBlob(documentId: string, accessToken?:
 }
 
 export function deleteBookingDocument(documentId: string, accessToken?: string): Promise<void> {
-  return apiFetch<void>(`/appointments/documents/${documentId}`, { method: "DELETE", query: { t: accessToken } });
+  return apiFetch<void>(`/appointments/documents/${documentId}`, { method: "DELETE", accessToken });
 }
 
 // ---------- [TCT] §9.7.7 — Doktor portalı (`/doctor/*`, oturum + 2FA ZORUNLU) ----------

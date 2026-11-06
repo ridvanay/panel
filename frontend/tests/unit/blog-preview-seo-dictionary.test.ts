@@ -57,10 +57,10 @@ describe("Önizleme — CRM hariç yol", () => {
 
 describe("Önizleme — yol yardımcıları", () => {
   it("belirteç kodlanır; varsayılan dil önek almaz, diğerleri alır; mutlak adres site kökünden", () => {
-    expect(previewPath("p 1", "s_a+b")).toBe("/blog/preview/p%201?t=s_a%2Bb");
-    expect(localizedPreviewPath("p1", "t", "tr", "tr")).toBe("/blog/preview/p1?t=t");
-    expect(localizedPreviewPath("p1", "t", "en", "tr")).toBe("/en/blog/preview/p1?t=t");
-    expect(absolutePreviewUrl("p1", "s_x", "tr")).toMatch(/^https?:\/\/[^/]+\/blog\/preview\/p1\?t=s_x$/);
+    expect(previewPath("p 1", "s_a+b")).toBe("/blog/preview/p%201#t=s_a%2Bb");
+    expect(localizedPreviewPath("p1", "t", "tr", "tr")).toBe("/blog/preview/p1#t=t");
+    expect(localizedPreviewPath("p1", "t", "en", "tr")).toBe("/en/blog/preview/p1#t=t");
+    expect(absolutePreviewUrl("p1", "s_x", "tr")).toMatch(/^https?:\/\/[^/]+\/blog\/preview\/p1#t=s_x$/);
   });
 });
 

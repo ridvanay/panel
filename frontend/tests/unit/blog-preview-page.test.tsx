@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import type { PublicBlogPreviewDetail } from "@/lib/api/types";
 import { makeDetail } from "./blog-z1-fixtures";
 
-const mocks = vi.hoisted(() => ({ preview: vi.fn(), detail: vi.fn() }));
+const mocks = vi.hoisted(() => ({ preview: vi.fn(), detail: vi.fn(), cookies: new Map<string, string>() }));
 
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -12,6 +12,14 @@ vi.mock("next/navigation", () => ({
   permanentRedirect: (path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`);
   },
+}));
+// Paket AP — belirteç `#t=` parçasından istemcide okunur ve önizleme yoluna kapsanan HttpOnly çereze yazılır;
+// sunucu sayfası belirteci çerezden okur.
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: (name: string) => (mocks.cookies.has(name) ? { name, value: mocks.cookies.get(name)! } : undefined) }),
+}));
+vi.mock("@/components/site/blog/blog-preview-token-bootstrap", () => ({
+  BlogPreviewTokenBootstrap: ({ hasContent }: { hasContent: boolean }) => <span data-testid={hasContent ? "preview-bootstrap-cleanup" : "preview-bootstrap-pending"} />,
 }));
 vi.mock("@/lib/api/server-blog", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/server-blog")>()),
@@ -38,8 +46,11 @@ function makePreview(over: Partial<PublicBlogPreviewDetail> = {}): PublicBlogPre
   };
 }
 
-function props(lang = "en", postId = "p1", t?: string | string[]) {
-  return { params: Promise.resolve({ lang, postId }), searchParams: Promise.resolve(t === undefined ? {} : { t }) };
+/** `t` verilirse o yazının önizleme çerezine yazılır (istemci bileşeninin yaptığı gibi). */
+function props(lang = "en", postId = "p1", t?: string) {
+  mocks.cookies.clear();
+  if (t !== undefined) mocks.cookies.set(`blog_preview_${postId}`, t);
+  return { params: Promise.resolve({ lang, postId }) };
 }
 
 async function renderPreview(lang = "en", over: Partial<PublicBlogPreviewDetail> = {}) {
@@ -53,21 +64,28 @@ beforeEach(() => {
 });
 
 describe("Taslak önizleme sayfası — erişim", () => {
-  it("belirteç yoksa notFound ve backend çağrılmaz", async () => {
-    await expect(BlogPreviewRoute(props("en", "p1"))).rejects.toThrow("NEXT_NOT_FOUND");
-    await expect(BlogPreviewRoute(props("en", "p1", "  "))).rejects.toThrow("NEXT_NOT_FOUND");
+  it("çerezde belirteç yoksa backend çağrılmaz; `#t=` parçasını okuyacak istemci bileşeni döner (404'ü o verir)", async () => {
+    render(await BlogPreviewRoute(props("en", "p1")));
+    expect(screen.getByTestId("preview-bootstrap-pending")).toBeInTheDocument();
+    render(await BlogPreviewRoute(props("en", "p1", "  ")));
     expect(mocks.preview).not.toHaveBeenCalled();
   });
 
-  it("backend 404 (geçersiz/süresi dolmuş/iptal) dönerse notFound", async () => {
+  it("backend 404 (geçersiz/süresi dolmuş/iptal) dönerse içerik yok; istemci bileşeni yeni belirteç arar ya da 404", async () => {
     mocks.preview.mockResolvedValue(null);
-    await expect(BlogPreviewRoute(props("en", "p1", "s_bad"))).rejects.toThrow("NEXT_NOT_FOUND");
+    render(await BlogPreviewRoute(props("en", "p1", "s_bad")));
+    expect(screen.getByTestId("preview-bootstrap-pending")).toBeInTheDocument();
     expect(mocks.preview).toHaveBeenCalledWith("p1", "s_bad", "en");
   });
 
-  it("dizi olarak gelen ?t ilk değerle okunur", async () => {
-    await BlogPreviewRoute(props("en", "p1", ["p_first", "p_second"]));
+  it("çerez yazıya özgüdür: başka yazının çerezi okunmaz; geçerli içerikte adres temizleyici de render edilir", async () => {
+    mocks.cookies.clear();
+    mocks.cookies.set("blog_preview_other", "p_token");
+    render(await BlogPreviewRoute({ params: Promise.resolve({ lang: "en", postId: "p1" }) }));
+    expect(mocks.preview).not.toHaveBeenCalled();
+    render(await BlogPreviewRoute(props("en", "p1", "p_first")));
     expect(mocks.preview).toHaveBeenCalledWith("p1", "p_first", "en");
+    expect(screen.getByTestId("preview-bootstrap-cleanup")).toBeInTheDocument();
   });
 });
 
@@ -181,15 +199,16 @@ describe("Taslak önizleme sayfası — görünüm", () => {
 describe("fetchBlogPreviewServer", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("belirteçli adrese no-store ile gider; 404 → null; 200 → data", async () => {
+  it("belirteç X-Access-Token başlığında (adreste DEĞİL), no-store; 404 → null; 200 → data", async () => {
     const real = await vi.importActual<typeof import("@/lib/api/server-blog")>("@/lib/api/server-blog");
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response("{}", { status: 404 })).mockResolvedValueOnce(new Response(JSON.stringify({ data: { id: "p1" } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     expect(await real.fetchBlogPreviewServer("p 1", "s_a+b", "tr")).toBeNull();
-    expect(String(fetchMock.mock.calls[0]![0])).toMatch(/\/blog\/preview\/p%201\?t=s_a%2Bb&locale=tr$/);
-    expect(fetchMock.mock.calls[0]![1]).toEqual({ cache: "no-store" });
+    expect(String(fetchMock.mock.calls[0]![0])).toMatch(/\/blog\/preview\/p%201\?locale=tr$/);
+    expect(fetchMock.mock.calls[0]![1]).toEqual({ cache: "no-store", headers: { "X-Access-Token": "s_a+b" } });
     expect(await real.fetchBlogPreviewServer("p1", "s_x")).toEqual({ id: "p1" });
-    expect(String(fetchMock.mock.calls[1]![0])).toMatch(/\/blog\/preview\/p1\?t=s_x$/);
+    expect(String(fetchMock.mock.calls[1]![0])).toMatch(/\/blog\/preview\/p1$/);
+    expect(String(fetchMock.mock.calls[1]![0])).not.toContain("s_x");
     expect(fetchBlogPreviewServer).toBeTypeOf("function");
   });
 });

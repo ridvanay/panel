@@ -24,7 +24,7 @@ describe("demoPayBooking (lib/api/telehealth.ts)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("POST /appointments/bookings/{id}/demo-pay çağırır ve accessToken'ı ?t= olarak taşır", async () => {
+  it("POST /appointments/bookings/{id}/demo-pay çağırır ve accessToken'ı X-Access-Token başlığıyla taşır (Paket AP; adreste DEĞİL)", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: { id: "booking-1", paymentStatus: "PAID" } }), { status: 200 }));
 
     const { demoPayBooking } = await import("@/lib/api/telehealth");
@@ -33,19 +33,21 @@ describe("demoPayBooking (lib/api/telehealth.ts)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/appointments/bookings/booking-1/demo-pay");
-    expect(url).toContain("t=magic-token-abc");
+    expect(url).not.toContain("magic-token-abc");
+    expect((init.headers as Record<string, string>)["X-Access-Token"]).toBe("magic-token-abc");
     expect(init.method).toBe("POST");
     expect(result).toEqual({ id: "booking-1", paymentStatus: "PAID" });
   });
 
-  it("accessToken verilmezse ?t= sorgu parametresi EKLENMEZ (oturumlu hasta akışı)", async () => {
+  it("accessToken verilmezse ne sorgu ne başlık eklenir (oturumlu hasta akışı)", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: { id: "booking-2", paymentStatus: "PAID" } }), { status: 200 }));
 
     const { demoPayBooking } = await import("@/lib/api/telehealth");
     await demoPayBooking("booking-2");
 
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).not.toContain("t=");
+    expect((init.headers as Record<string, string>)["X-Access-Token"]).toBeUndefined();
   });
 
   it("404 (uç kapalı/register edilmemiş) ApiClientError olarak fırlatılır", async () => {

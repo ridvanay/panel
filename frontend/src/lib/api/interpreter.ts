@@ -57,7 +57,7 @@ export function getInterpreterRecordingStatus(assignmentId: string): Promise<{ s
 
 /** Hasta/doktor — görüşmeye atanmış tercüman (yoksa `null`). */
 export function getAppointmentInterpreter(appointmentId: string, accessToken?: string): Promise<AppointmentInterpreterInfo | null> {
-  return apiFetch<AppointmentInterpreterInfo | null>(`/appointments/${encodeURIComponent(appointmentId)}/interpreter`, { query: { t: accessToken } });
+  return apiFetch<AppointmentInterpreterInfo | null>(`/appointments/${encodeURIComponent(appointmentId)}/interpreter`, { accessToken });
 }
 
 /** Doktor — tercümanı görüşmeden çıkarır. */
@@ -70,7 +70,7 @@ export function setInterpreterRequest(bookingId: string, language: string | null
   return apiFetch<void>(`/appointments/bookings/${encodeURIComponent(bookingId)}/interpreter-request`, {
     method: "PUT",
     body: { language },
-    query: { t: accessToken },
+    accessToken,
   });
 }
 

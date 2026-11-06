@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ReviewInviteView } from "@/components/site/reviews/review-invite-view";
+import { ReviewInvitePage as ReviewInviteGate } from "@/components/site/reviews/review-invite-view";
 
 /**
  * Paket Y — e-postadaki "Deneyiminizi paylaşın" bağlantısı. Token URL'de olduğu için sayfa indekslenmez
@@ -19,7 +19,7 @@ export default async function ReviewInvitePage({ params, searchParams }: ReviewI
   const { optout } = await searchParams;
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <ReviewInviteView token={token} optOut={optout === "1"} />
+      <ReviewInviteGate legacyPathToken={token} optOut={optout === "1"} />
     </div>
   );
 }

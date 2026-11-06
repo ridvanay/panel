@@ -24,6 +24,7 @@ import { BookingStepperBar, type BookingStepperStep } from "@/components/site/te
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { isLegacyTokenTransportAllowed, tokenFragment } from "@/lib/access-token-url";
 import { InterpreterRequestBox, type InterpreterOfferLanguage } from "@/components/site/interpreter/interpreter-request-box";
 
 /**
@@ -84,18 +85,25 @@ interface PendingBookingRef {
 }
 
 /**
- * URL (`?booking=&t=`) ÖNCELİKLİDİR — sayfa yenilendiğinde tarayıcı tarafından AYNEN korunur
- * (`sessionStorage` da AYNI sekmede korunur ama URL AYRICA paylaşılabilir/yer imine eklenebilir
- * bir "kaldığın yerden devam et" bağlantısı sağlar, mevcut `magic_link`/`join_link` deseniyle
- * AYNI — bkz. `notifications.ts::buildMagicLink`). `sessionStorage` yalnızca URL parametreleri
- * YOKSA (ör. kullanıcı elle `?booking=`i sildiyse) yedek olarak okunur.
+ * Paket AP — erişim token'ı adreste TAŞINMAZ: URL'de yalnızca `?booking=` kalır, token sekmeye özgü
+ * `sessionStorage`'dadır (yenilemede korunur). Eski `?booking=&t=` adresleri geçiş süresince okunur, token
+ * hemen adresten silinip `sessionStorage`'a alınır.
  */
 function readPendingBooking(doctorSlug: string): PendingBookingRef | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   const urlBookingId = params.get("booking");
   const urlToken = params.get("t");
-  if (urlBookingId && urlToken) return { bookingId: urlBookingId, accessToken: urlToken };
+  if (urlToken) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("t");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+    if (urlBookingId && isLegacyTokenTransportAllowed()) {
+      const ref = { bookingId: urlBookingId, accessToken: urlToken };
+      persistPendingBooking(doctorSlug, ref);
+      return ref;
+    }
+  }
   try {
     const raw = sessionStorage.getItem(pendingBookingStorageKey(doctorSlug));
     return raw ? (JSON.parse(raw) as PendingBookingRef) : null;
@@ -114,7 +122,7 @@ function persistPendingBooking(doctorSlug: string, ref: PendingBookingRef): void
   }
   const url = new URL(window.location.href);
   url.searchParams.set("booking", ref.bookingId);
-  url.searchParams.set("t", ref.accessToken);
+  url.searchParams.delete("t");
   window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
 }
 
@@ -497,7 +505,7 @@ export function BookingWizard({
                           endsAt: range.endsAt,
                           url:
                             typeof window !== "undefined"
-                              ? `${window.location.origin}${withLocalePrefix(`/patient/bookings/${bookingResult.bookingId}?t=${encodeURIComponent(bookingResult.accessToken)}`, lang, defaultLocaleCode)}`
+                              ? `${window.location.origin}${withLocalePrefix(`/patient/bookings/${bookingResult.bookingId}${tokenFragment(bookingResult.accessToken)}`, lang, defaultLocaleCode)}`
                               : null,
                         }))}
                       />

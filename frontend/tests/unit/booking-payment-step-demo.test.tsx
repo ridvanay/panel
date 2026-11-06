@@ -115,7 +115,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     await userEvent.click(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i }));
 
     await waitFor(() => expect(demoPayBookingMock).toHaveBeenCalledWith("booking-1", "magic-token-xyz"));
-    expect(pushMock).toHaveBeenCalledWith("/tr/patient/bookings/booking-1?payment=success&t=magic-token-xyz");
+    expect(pushMock).toHaveBeenCalledWith("/tr/patient/bookings/booking-1?payment=success#t=magic-token-xyz");
   });
 
   it("onDemoPaid verilmişse yönlendirme YAPILMAZ, callback güncel booking ile çağrılır", async () => {
@@ -171,7 +171,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
 
         await renderStep({ accessToken: "magic-token-xyz" });
 
-        await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/tr/patient/bookings/booking-1?payment=success&t=magic-token-xyz"), {
+        await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/tr/patient/bookings/booking-1?payment=success#t=magic-token-xyz"), {
           timeout: 8000,
         });
       },

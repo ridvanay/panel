@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { API_BASE_URL } from "../env";
 import { ApiClientError } from "./error";
 import { clearAccessToken, getAccessToken, setAccessToken } from "./token-store";
+import { ACCESS_TOKEN_HEADER } from "../access-token-url";
 import type { ApiErrorBody, AuthTokens, Page, PageMeta } from "./types";
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -14,6 +15,8 @@ interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   /** /auth/* uçlarının kendisi için true: 401'de sonsuz refresh döngüsünü engeller. */
   skipAuthRetry?: boolean;
+  /** Paket AP — misafir erişim token'ı `X-Access-Token` başlığıyla gider (URL'de taşınmaz). */
+  accessToken?: string;
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
@@ -77,6 +80,7 @@ async function doFetch(path: string, options: RequestOptions, requestId: string)
   const headers: Record<string, string> = { "x-request-id": requestId };
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.accessToken) headers[ACCESS_TOKEN_HEADER] = options.accessToken;
 
   const isFormData = options.body instanceof FormData;
   // FormData için Content-Type'ı bilerek set etmiyoruz — tarayıcı sınırı (boundary) kendisi ekler.

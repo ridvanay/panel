@@ -9,6 +9,7 @@ export function createInvitation(orgId: string, input: CreateInvitationRequest) 
   return apiFetch<Invitation>(`/organizations/${orgId}/invitations`, { method: "POST", body: input });
 }
 
+/** Paket AP — token POST gövdesinde (URL'de taşınmaz). */
 export function acceptInvitation(token: string) {
-  return apiFetch<Membership>(`/invitations/${token}/accept`, { method: "POST" });
+  return apiFetch<Membership>("/invitations/accept", { method: "POST", body: { token } });
 }

@@ -14,6 +14,7 @@ import { EARLY_JOIN_WARNING_THRESHOLD_MINUTES, formatDayLabel, formatTime } from
 import { getJoinState } from "@/lib/telehealth-join-window";
 import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
+import { tokenFragment } from "@/lib/access-token-url";
 
 /**
  * `.claude/design-notes-telehealth.md` §12.5.3 — "Toplantıya Katıl" CTA, aktif/pasif durumları.
@@ -112,7 +113,7 @@ export function JoinMeetingButton({
   const [earlyJoinDialogOpen, setEarlyJoinDialogOpen] = useState(false);
 
   const relativeHref = firstAppointment
-    ? localize(`/consultation/${firstAppointment.id}${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)
+    ? localize(`/consultation/${firstAppointment.id}${tokenFragment(accessToken)}`)
     : "#";
   // Doktor konsolu (`mergeRemainingTime=true`) doktor-subdomain izolasyonu açıkken kendi origin'inde
   // (`doktor.siteadi.localhost`) render edilir; `/consultation/...` ise ana site origin'inde yaşar

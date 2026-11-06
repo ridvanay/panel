@@ -55,7 +55,7 @@ describe("Admin editörü — önizleme düğmeleri", () => {
     const user = userEvent.setup();
     render(<BlogPreviewControls postId="post-1" defaultLocale="tr" />);
     await user.click(screen.getByRole("button", { name: "Önizle" }));
-    await waitFor(() => expect(tab.location.href).toBe("/blog/preview/post-1?t=p_session"));
+    await waitFor(() => expect(tab.location.href).toBe("/blog/preview/post-1#t=p_session"));
     expect(openSpy).toHaveBeenCalledWith("", "_blank");
     expect(blogApi.createPreviewSession).toHaveBeenCalledWith("post-1");
     expect(tab.opener).toBeNull();
@@ -67,7 +67,7 @@ describe("Admin editörü — önizleme düğmeleri", () => {
     vi.mocked(localesApi.listAdminLocales).mockResolvedValue([{ code: "en", isDefault: false }, { code: "tr", isDefault: true }] as never);
     render(<BlogPreviewControls postId="post-1" />);
     await user.click(screen.getByRole("button", { name: "Önizle" }));
-    await waitFor(() => expect(tab.location.href).toBe("/blog/preview/post-1?t=p_session"));
+    await waitFor(() => expect(tab.location.href).toBe("/blog/preview/post-1#t=p_session"));
     expect(localesApi.listAdminLocales).toHaveBeenCalled();
   });
 
@@ -87,7 +87,7 @@ describe("Admin editörü — önizleme düğmeleri", () => {
     render(<BlogPreviewControls postId="post-1" defaultLocale="tr" />);
     await user.click(screen.getByRole("button", { name: "Önizleme bağlantısı oluştur" }));
     const field = (await screen.findByLabelText(/Paylaşılabilir bağlantı/)) as HTMLInputElement;
-    expect(field.value).toMatch(/^https?:\/\/[^/]+\/blog\/preview\/post-1\?t=s_secret$/);
+    expect(field.value).toMatch(/^https?:\/\/[^/]+\/blog\/preview\/post-1#t=s_secret$/);
     expect(field).toHaveAttribute("readonly");
     expect(screen.getByTestId("blog-preview-link-fresh")).toHaveTextContent("Son geçerlilik:");
     await user.click(screen.getByRole("button", { name: "Kopyala" }));
@@ -225,7 +225,7 @@ describe("Doktor paneli — Medical review listesinde Preview", () => {
     const hip = await screen.findByRole("button", { name: "Preview: Hip guide" });
     expect(screen.getAllByRole("button", { name: /^Preview: / })).toHaveLength(2);
     await user.click(hip);
-    await waitFor(() => expect(tab.location.href).toBe("/blog/preview/r2?t=p_doctor"));
+    await waitFor(() => expect(tab.location.href).toBe("/blog/preview/r2#t=p_doctor"));
     expect(blogApi.createDoctorPreviewSession).toHaveBeenCalledWith("r2");
     expect(openSpy).toHaveBeenCalledWith("", "_blank");
   });

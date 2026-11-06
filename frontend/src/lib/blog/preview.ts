@@ -2,10 +2,11 @@ import * as blogApi from "@/lib/api/blog";
 import * as localesApi from "@/lib/api/locales";
 import { SITE_URL } from "@/lib/env";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { tokenFragment } from "@/lib/access-token-url";
 
-/** Önizleme sayfası yolu (dil öneksiz): `/blog/preview/<id>?t=<belirteç>`. */
+/** Önizleme sayfası yolu (dil öneksiz): `/blog/preview/<id>#t=<belirteç>` — Paket AP: belirteç `#` parçasında. */
 export function previewPath(postId: string, token: string): string {
-  return `/blog/preview/${encodeURIComponent(postId)}?t=${encodeURIComponent(token)}`;
+  return `/blog/preview/${encodeURIComponent(postId)}${tokenFragment(token)}`;
 }
 
 /** Dil önekli göreli yol (varsayılan dil önek almaz). */

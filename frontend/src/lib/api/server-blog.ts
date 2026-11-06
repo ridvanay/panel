@@ -1,5 +1,6 @@
 import { CACHE_TAGS } from "../cache-tags";
 import { fetchServerJson } from "./server-fetch";
+import { ACCESS_TOKEN_HEADER } from "../access-token-url";
 import type { BlogPost, PublicBlogDetail, PublicBlogPreviewDetail, PublicBlogList, PublicBlogReviewerItem, PublicBlogTopicGroup } from "./types";
 
 /**
@@ -80,11 +81,14 @@ export async function fetchBlogReviewersServer(locale?: string): Promise<PublicB
 }
 
 /**
- * Taslak önizleme — `GET /blog/preview/:postId?t=`. Önbelleğe ALINMAZ (`no-store`); belirteç yok/geçersiz/
+ * Taslak önizleme — `GET /blog/preview/:postId`, belirteç `X-Access-Token` başlığında (Paket AP). Önbelleğe ALINMAZ (`no-store`); belirteç yok/geçersiz/
  * süresi dolmuş/iptal edilmiş ya da yazı bulunamadı → 404 → `null` (çağıran `notFound()` çağırır).
  */
 export async function fetchBlogPreviewServer(postId: string, token: string, locale?: string): Promise<PublicBlogPreviewDetail | null> {
-  const query = `?t=${encodeURIComponent(token)}${locale ? `&locale=${encodeURIComponent(locale)}` : ""}`;
-  const json = await fetchServerJson<{ data: PublicBlogPreviewDetail }>(`/blog/preview/${encodeURIComponent(postId)}${query}`, { noStore: true });
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: PublicBlogPreviewDetail }>(`/blog/preview/${encodeURIComponent(postId)}${query}`, {
+    noStore: true,
+    headers: { [ACCESS_TOKEN_HEADER]: token },
+  });
   return json?.data ?? null;
 }

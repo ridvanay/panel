@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { AddToCalendar, DualDateTimeSummary, DualSlotLabel } from "@/components/site/telehealth/dual-time";
 import { fmt } from "@/lib/i18n/use-portal-strings";
 import { mergeSlotRanges } from "@/lib/country-display";
+import { tokenFragment } from "@/lib/access-token-url";
 
 /**
  * Ortak rezervasyon özet kartı — ödeme dönüş sayfaları (§9.7.1) VE hasta booking detay sayfası
@@ -64,7 +65,7 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
             endsAt: range.endsAt,
             url:
               typeof window !== "undefined"
-                ? `${window.location.origin}${localize(`/patient/bookings/${booking.id}${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)}`
+                ? `${window.location.origin}${localize(`/patient/bookings/${booking.id}${tokenFragment(accessToken)}`)}`
                 : null,
           }))}
         />
@@ -79,7 +80,7 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
         <JoinMeetingButton booking={booking} accessToken={accessToken} />
         {booking.paymentStatus === "PAID" && (
           <a
-            href={localize(`/patient/bookings/${booking.id}/invoice${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)}
+            href={localize(`/patient/bookings/${booking.id}/invoice${tokenFragment(accessToken)}`)}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[var(--site-radius)]")}
           >
             {t.common.paymentDocument}

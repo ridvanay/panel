@@ -26,17 +26,18 @@ export function listDoctorReviews(slug: string, params: ListDoctorReviewsParams)
   });
 }
 
+// Paket AP — davet token'ı POST gövdesinde (URL'de taşınmaz).
 export function getReviewInvite(token: string): Promise<ReviewInviteInfo> {
-  return apiFetch<ReviewInviteInfo>(`/reviews/invite/${encodeURIComponent(token)}`, { skipAuthRetry: true });
+  return apiFetch<ReviewInviteInfo>("/reviews/invite/lookup", { method: "POST", body: { token }, skipAuthRetry: true });
 }
 
 export function submitReviewInvite(token: string, input: SubmitReviewRequest): Promise<SubmitReviewResult> {
-  return apiFetch<SubmitReviewResult>(`/reviews/invite/${encodeURIComponent(token)}`, { method: "POST", body: input, skipAuthRetry: true });
+  return apiFetch<SubmitReviewResult>("/reviews/invite/submit", { method: "POST", body: { ...input, token }, skipAuthRetry: true });
 }
 
-/** `POST /reviews/invite/:token/opt-out` — gövdesiz, 204. Geçersiz/kullanılmış token da 204 döner. */
+/** `POST /reviews/invite/opt-out` — 204. Geçersiz/kullanılmış token da 204 döner. */
 export function optOutReviewInvite(token: string): Promise<void> {
-  return apiFetch<void>(`/reviews/invite/${encodeURIComponent(token)}/opt-out`, { method: "POST", skipAuthRetry: true });
+  return apiFetch<void>("/reviews/invite/opt-out", { method: "POST", body: { token }, skipAuthRetry: true });
 }
 
 export function getPatientBookingReview(bookingId: string): Promise<PatientBookingReviewState> {
