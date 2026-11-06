@@ -7,6 +7,9 @@ import { PREVIEW_TOKEN_MAX_LENGTH, isValidPreviewPostId, previewCookieName, prev
  * Paket AP — önizleme belirtecini (POST gövdesi) yalnızca o önizleme yoluna kapsanan `HttpOnly`,
  * `SameSite=Strict` oturum çerezine yazar (bkz. `lib/blog/preview-cookie.ts`). Belirteç burada doğrulanmaz:
  * sayfa backend'e iletir, backend geçersizse 404 döner. Belirteç yanıtta ve log'da yer almaz.
+ *
+ * Yol `/api` DIŞINDA: canlıda Nginx `location /api/` bloğu bütün `/api/*` isteklerini backend'e gönderir, frontend'in
+ * `/api/*` rotalarına dışarıdan erişilemez. Dil öneki almaz; `proxy.ts` matcher'ı bu yolu hariç tutar.
  */
 export async function POST(request: NextRequest) {
   // Yalnızca aynı origin'den (sayfanın kendi istemci bileşeni); başka siteler kurbana çerez yazdıramaz.

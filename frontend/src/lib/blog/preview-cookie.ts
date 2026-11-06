@@ -1,7 +1,7 @@
 /**
  * Paket AP — taslak blog önizlemesi sunucuda render edilir (SSR), ama belirteç bağlantıda `#t=` parçasında gelir
  * ve parça sunucuya gitmez. Sayfadaki istemci bileşeni belirteci okur, adresten siler ve `POST
- * /api/blog-preview-token` gövdesiyle gönderir; bu uç belirteci YALNIZCA o önizleme yoluna kapsanan `HttpOnly`,
+ * /preview-token` gövdesiyle gönderir; bu uç belirteci YALNIZCA o önizleme yoluna kapsanan `HttpOnly`,
  * `SameSite=Strict` bir oturum çerezine yazar. Sayfa belirteci çerezden okuyup backend'e `X-Access-Token`
  * başlığıyla iletir. Belirteç böylece URL'de, Nginx log'unda ve `Referer`'da yer almaz.
  */

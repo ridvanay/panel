@@ -90,7 +90,8 @@ import { doctorPortalRetiredRedirect } from "@/lib/doctor-portal-redirect";
  */
 export const config = {
   matcher: [
-    "/((?!admin|api|invitations|pricing|dashboard|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
+    // Paket AP — `preview-token`: blog önizleme çerez ucu (POST, dil öneki yok; bkz. app/preview-token/route.ts).
+    "/((?!admin|api|invitations|pricing|dashboard|preview-token|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
   ],
 };
 

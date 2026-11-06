@@ -8,7 +8,7 @@ import { reloadPage } from "@/lib/page-reload";
 
 /**
  * Paket AP — önizleme belirtecini `#t=` parçasından (eski `?t=` geçiş süresince) alır, adresten siler ve
- * `POST /api/blog-preview-token` ile o önizleme yoluna kapsanan HttpOnly çereze yazdırır (bkz.
+ * `POST /preview-token` ile o önizleme yoluna kapsanan HttpOnly çereze yazdırır (bkz.
  * `lib/blog/preview-cookie.ts`). İçerik henüz yoksa sayfayı TAM yeniler (adres artık token'sız): sunucu belirteci
  * çerezden okur; belirteç geçersizse yenilenen sayfada `#` parçası olmadığı için 404 verilir. Yumuşak yenileme
  * (`router.refresh`) aynı bileşeni yeniden bağlamadığından geçersiz belirteçte sonsuz bekleme olurdu.
@@ -24,7 +24,7 @@ export function BlogPreviewTokenBootstrap({ postId, hasContent }: { postId: stri
       if (!hasContent) setMissing(true);
       return;
     }
-    fetch("/api/blog-preview-token", {
+    fetch("/preview-token", {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "same-origin",

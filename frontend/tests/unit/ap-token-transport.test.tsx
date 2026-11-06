@@ -47,7 +47,8 @@ vi.mock("@/components/site/telehealth/consultation-room", () => ({
 import { LEGACY_TOKEN_IN_URL_UNTIL, readHashToken, takeTokenFromLocation, tokenFragment } from "@/lib/access-token-url";
 import { ConsultationGate, PatientBookingDetailGate, PatientBookingInvoiceGate } from "@/components/site/telehealth/access-token-gates";
 import { BlogPreviewTokenBootstrap } from "@/components/site/blog/blog-preview-token-bootstrap";
-import { POST as previewTokenPost } from "@/app/api/blog-preview-token/route";
+import { POST as previewTokenPost } from "@/app/preview-token/route";
+import { config as proxyConfig } from "@/proxy";
 
 /** Next'in not-found sınırının test karşılığı. */
 class NotFoundBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -197,7 +198,7 @@ describe("blog önizleme — belirteç çereze", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(currentUrl()).toBe("/en/blog/preview/p1");
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/blog-preview-token");
+    expect(url).toBe("/preview-token");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ postId: "p1", token: "p_session", path: "/en/blog/preview/p1" });
   });
@@ -218,7 +219,7 @@ describe("blog önizleme — belirteç çereze", () => {
   function previewRequest(body: unknown, origin: string | null = "http://siteadi.localhost:3100", proto = "http") {
     const headers: Record<string, string> = { "content-type": "application/json", host: "siteadi.localhost:3100", "x-forwarded-proto": proto };
     if (origin) headers.origin = origin;
-    return new NextRequest("http://siteadi.localhost:3100/api/blog-preview-token", { method: "POST", headers, body: JSON.stringify(body) });
+    return new NextRequest("http://siteadi.localhost:3100/preview-token", { method: "POST", headers, body: JSON.stringify(body) });
   }
 
   it("uç: çerez HttpOnly + SameSite=Strict, yalnızca o önizleme yoluna; yanıt gövdesinde belirteç yok", async () => {
@@ -231,6 +232,14 @@ describe("blog önizleme — belirteç çereze", () => {
     expect(cookie).toMatch(/SameSite=strict/i);
     expect(cookie).toMatch(/Secure/i);
     expect(await res.text()).toBe("");
+  });
+
+  it("uç /api dışında (canlıda Nginx /api/* isteklerini backend'e gönderir) ve proxy matcher'ı onu hariç tutar", () => {
+    const re = new RegExp(`^${proxyConfig.matcher[0]}$`);
+    expect(re.test("/preview-token")).toBe(false);
+    expect(re.test("/blog/preview/p1")).toBe(true);
+    expect(re.test("/ar/blog/preview/p1")).toBe(true);
+    expect(re.test("/preview")).toBe(true);
   });
 
   it("uç: başka origin 403; yol/yazı uyuşmazlığı ve aşırı uzun belirteç 400", async () => {

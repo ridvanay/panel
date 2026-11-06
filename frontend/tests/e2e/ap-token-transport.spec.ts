@@ -12,6 +12,7 @@ import { createBlogPost } from "./support/blog-fixtures";
  * Token satırları `saas_e2e`'ye bilinen özetle (SHA-256) eklenir; testten sonra silinir.
  */
 const API = process.env.E2E_API_URL ?? "http://localhost:4001/api/v1";
+const FRONTEND = process.env.E2E_FRONTEND_URL ?? "http://siteadi.localhost:3100";
 const RUN = Date.now().toString(36);
 const sha256 = (raw: string) => crypto.createHash("sha256").update(raw).digest("hex");
 const newToken = () => crypto.randomBytes(32).toString("base64url");
@@ -104,6 +105,30 @@ test.describe("blog önizleme", () => {
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite).toBe("Strict");
     expect(cookie?.path).toBe(`/blog/preview/${postId}`);
+  });
+
+  test("Nginx benzeri ortam: frontend origin'indeki /api/* backend'e gider; önizleme akışı yine çalışır", async ({ page }) => {
+    // Canlı Nginx: `location /api/ { proxy_pass http://127.0.0.1:4000; }` — yol aynen backend'e gider; frontend'in
+    // kendi /api/* rotalarına dışarıdan erişilemez. Yerel ortamda bu görünmediği için burada taklit edilir.
+    const frontendOrigin = new URL(FRONTEND).origin;
+    const backendOrigin = new URL(API).origin;
+    const forwarded: string[] = [];
+    await page.route("**/api/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.origin !== frontendOrigin) return route.continue();
+      forwarded.push(url.pathname);
+      const response = await route.fetch({ url: `${backendOrigin}${url.pathname}${url.search}` });
+      return route.fulfill({ response });
+    });
+    await page.context().clearCookies();
+    await page.goto("/");
+    // Taklit devrede: frontend'in kendi /api/health rotası artık backend'e gider (orada yok → 404).
+    expect(await page.evaluate(() => fetch("/api/health").then((r) => r.status))).toBe(404);
+
+    await page.goto(`/blog/preview/${postId}#t=${encodeURIComponent(shareToken)}`);
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    expect(page.url()).toMatch(new RegExp(`/blog/preview/${postId}$`));
+    expect(forwarded).toEqual(["/api/health"]);
   });
 
   test("eski ?t= çalışır, adres temizlenir; geçersiz belirteç 404", async ({ page }) => {
