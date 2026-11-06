@@ -65,7 +65,7 @@ describe("Paket P — hasta saat dilimi", () => {
     const row = await app.prisma.appointmentBooking.findUniqueOrThrow({ where: { id: body.bookingId } });
     expect(row.patientTimeZone).toBe("Europe/Berlin");
 
-    const detail = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${body.bookingId}?t=${body.accessToken}` });
+    const detail = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${body.bookingId}`, headers: { "x-access-token": body.accessToken } });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data.patientTimeZone).toBe("Europe/Berlin");
   });

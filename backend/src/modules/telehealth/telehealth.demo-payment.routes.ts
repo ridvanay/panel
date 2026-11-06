@@ -17,6 +17,7 @@ import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
 import { notifyAdminsOfBookingEvent } from "./lib/admin-booking-notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 (BAĞLAYICI) —
@@ -102,7 +103,7 @@ export async function telehealthDemoPaymentRoutes(app: FastifyInstance) {
 
       // §9.7.10 uç tablosu (bağlayıcı) — YALNIZCA hasta (`?t=`/oturum); doktor/`MANAGER`/`ADMIN`
       // bu ucu KULLANMAZ (`checkout-session` İLE BİREBİR AYNI eşik).
-      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       if (booking.paymentStatus !== "PENDING") {
         throw new BookingNotPayableError();
@@ -123,7 +124,7 @@ export async function telehealthDemoPaymentRoutes(app: FastifyInstance) {
         bookingId: booking.id,
         paidBy: "demo",
         paidNote: "Geliştirme ortamı demo ödemesi — gerçek tahsilat YAPILMAMIŞTIR.",
-        knownRawAccessToken: request.query.t,
+        knownRawAccessToken: readAccessToken(request, request.query.t),
       });
 
       // Denetim yerine `app.log.warn` (§1.4, bağlayıcı) — aktör anonim misafir olabilir, audit

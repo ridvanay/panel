@@ -177,7 +177,7 @@ describe("webhooks/stripe — telehealth booking ödeme akışı ([TCT] §9.7.1 
     expect(appointments.every((a) => a.status === "SCHEDULED")).toBe(true);
 
     // Orijinal magic-link ARTIK ÇALIŞMAZ (rotate edildiği için) — booking bulunamadı (404).
-    const staleAccess = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${booking.bookingId}?t=${booking.accessToken}` });
+    const staleAccess = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${booking.bookingId}`, headers: { "x-access-token": booking.accessToken } });
     expect(staleAccess.statusCode).toBe(404);
 
     expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
@@ -210,13 +210,14 @@ describe("webhooks/stripe — telehealth booking ödeme akışı ([TCT] §9.7.1 
     expect(updatedBooking.accessTokenHash).toBe(originalTokenHash); // ROTATE EDİLMEDİ — AYNI hash.
 
     // Orijinal magic-link ödeme SONRASI da ÇALIŞIR.
-    const stillWorks = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${booking.bookingId}?t=${booking.accessToken}` });
+    const stillWorks = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${booking.bookingId}`, headers: { "x-access-token": booking.accessToken } });
     expect(stillWorks.statusCode).toBe(200);
     expect(stillWorks.json().data.paymentStatus).toBe("PAID");
 
     expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
     const [, , , values] = sendTemplateEmailMock.mock.calls[0] as unknown as [unknown, unknown, unknown, { magic_link: string }];
-    expect(new URL(values.magic_link).searchParams.get("t")).toBe(booking.accessToken);
+    // Paket AP — token `#t=` parçasında.
+    expect(new URLSearchParams(new URL(values.magic_link).hash.slice(1)).get("t")).toBe(booking.accessToken);
   });
 
   it("İDEMPOTENCY — AYNI event 2 kez gönderilirse randevular yalnızca 1 kez SCHEDULED'a geçer, e-posta yalnızca 1 kez gider", async () => {

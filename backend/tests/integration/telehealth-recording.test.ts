@@ -254,7 +254,7 @@ describe("telehealth/recording — /recording/start", () => {
     const { appointment: appointment2, rawAccessToken: token2 } = await createAppointmentDirect(app, doctor);
     const withGuestToken = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointment2.id}/recording/start?t=${token2}`,
+      url: `/api/v1/appointments/${appointment2.id}/recording/start`, headers: { "x-access-token": token2 },
     });
     expect(withGuestToken.statusCode).toBe(404);
   });
@@ -420,7 +420,7 @@ describe("telehealth/recording — /recording/consent", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/recording/consent?t=${rawAccessToken}`,
+      url: `/api/v1/appointments/${appointmentId}/recording/consent`, headers: { "x-access-token": rawAccessToken },
       payload: { granted: false },
     });
     expect(res.statusCode).toBe(200);
@@ -441,7 +441,7 @@ describe("telehealth/recording — /recording/consent", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/recording/consent?t=${rawAccessToken}`,
+      url: `/api/v1/appointments/${appointmentId}/recording/consent`, headers: { "x-access-token": rawAccessToken },
       payload: { granted: true },
     });
     expect(res.statusCode).toBe(200);
@@ -466,7 +466,7 @@ describe("telehealth/recording — /recording/consent", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/recording/consent?t=${rawAccessToken}`,
+      url: `/api/v1/appointments/${appointmentId}/recording/consent`, headers: { "x-access-token": rawAccessToken },
       payload: { granted: true },
     });
     expect(res.statusCode).toBe(200);
@@ -492,7 +492,7 @@ describe("telehealth/recording — /recording/consent", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/recording/consent?t=${rawAccessToken}`,
+      url: `/api/v1/appointments/${appointmentId}/recording/consent`, headers: { "x-access-token": rawAccessToken },
       payload: { granted: true },
     });
     expect(res.statusCode).toBe(409);

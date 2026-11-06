@@ -146,8 +146,8 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
             booking_number: "BKG-1024-ABCD",
             slots_summary: "12.11.2026 13:30 (Europe/Istanbul)",
             total_formatted: "€120.00",
-            magic_link: `${base}/en/patient/bookings/sample?t=sample`,
-            join_link: `${base}/en/consultation/sample?t=sample`,
+            magic_link: `${base}/en/patient/bookings/sample#t=sample`,
+            join_link: `${base}/en/consultation/sample#t=sample`,
           },
           FALLBACK_APPOINTMENT_CONFIRMATION_KEYS
         ),
@@ -157,7 +157,7 @@ function codeSample(id: string, locale: BrandLocale): { subject: string; bodyHtm
       return { subject: mail.subject, bodyHtml: mail.html };
     }
     case "code:review-request": {
-      const mail = buildReviewInviteEmail({ locale, patientName: "Ayşe Yılmaz", doctorName: "Op. Dr. M. Demir", url: `${base}/${locale}/review/sample-token`, optOutUrl: `${base}/${locale}/review/sample-token?optout=1` });
+      const mail = buildReviewInviteEmail({ locale, patientName: "Ayşe Yılmaz", doctorName: "Op. Dr. M. Demir", url: `${base}/${locale}/review#sample-token`, optOutUrl: `${base}/${locale}/review?optout=1#sample-token` });
       return { subject: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, afterCtaHtml: mail.afterCtaHtml };
     }
     case "code:matcher-new-lead-fallback":

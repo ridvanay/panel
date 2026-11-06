@@ -479,7 +479,7 @@ describe("Paket AE-ek — otomatik medya dönüştürme", () => {
           consentVersion: "v1",
         },
       });
-      const intake = await app.inject({ method: "PUT", url: `/api/v1/appointments/bookings/${booking.id}/intake?t=${token}`, payload: { note: "Not", healthDataConsent: true } });
+      const intake = await app.inject({ method: "PUT", url: `/api/v1/appointments/bookings/${booking.id}/intake`, headers: { "x-access-token": token }, payload: { note: "Not", healthDataConsent: true } });
       expect(intake.statusCode).toBe(200);
       const jpeg = await realSharp({ create: { width: 50, height: 50, channels: 3, background: "#ccc" } })
         .jpeg()
@@ -488,7 +488,7 @@ describe("Paket AE-ek — otomatik medya dönüştürme", () => {
       sharpCalls.count = 0;
       spawnCalls.commands.length = 0;
       const { body, contentType } = buildMultipartPayload({ file: { filename: "tahlil.jpg", contentType: "image/jpeg", content: jpeg } });
-      const res = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${booking.id}/documents?t=${token}`, headers: { "content-type": contentType }, payload: body });
+      const res = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${booking.id}/documents`, headers: { "x-access-token": token, "content-type": contentType }, payload: body });
       expect(res.statusCode).toBe(201);
       expect(sharpCalls.count).toBe(0);
       expect(spawnCalls.commands).toEqual([]);

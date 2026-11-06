@@ -157,11 +157,11 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(de.html).toContain("Op. Dr. M. Demir");
       expect(de.html).toContain("?optout=1");
       expect(de.html).toContain('<html lang="de"');
-      expect(de.html).toContain("/de/review/");
+      expect(de.html).toContain("/de/review#");
       expect(de.html).toContain("Ayşe Yılmaz");
       const tr = mailSpy.mock.calls.find((c) => (c[1] as { to: string }).to === noLocale.booking.patientEmail)![1] as { subject: string; html: string };
       expect(tr.subject).toBe("How was your consultation?");
-      expect(tr.html).toContain("/en/review/");
+      expect(tr.html).toContain("/en/review#");
       mailSpy.mockClear();
       expect((await runReviewRequestSweep(app)).sent).toBe(0);
       expect(mailSpy).not.toHaveBeenCalled();
@@ -200,18 +200,18 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       const d = await doctor();
       const { booking } = await completedBooking({ doctorId: d.id });
       const token = await inviteToken(booking.id);
-      expect((await app.inject({ method: "GET", url: `/api/v1/reviews/invite/${token}`, remoteAddress: nextIp() })).json().data.doctorName).toBe("Op. Dr. M. Demir");
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/lookup", headers: ORIGIN, payload: { token }, remoteAddress: nextIp() })).json().data.doctorName).toBe("Op. Dr. M. Demir");
       // Yayın onayı zorunlu; metin en az 30 karakter.
-      expect((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${token}`, headers: ORIGIN, payload: reviewBody({ publishConsent: false }), remoteAddress: nextIp() })).statusCode).toBe(422);
-      expect((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${token}`, headers: ORIGIN, payload: reviewBody({ body: "kısa" }), remoteAddress: nextIp() })).statusCode).toBe(422);
-      const res = await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${token}`, headers: ORIGIN, payload: reviewBody(), remoteAddress: nextIp() });
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: ORIGIN, payload: { ...reviewBody({ publishConsent: false }), token }, remoteAddress: nextIp() })).statusCode).toBe(422);
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: ORIGIN, payload: { ...reviewBody({ body: "kısa" }), token }, remoteAddress: nextIp() })).statusCode).toBe(422);
+      const res = await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: ORIGIN, payload: { ...reviewBody(), token }, remoteAddress: nextIp() });
       expect(res.statusCode).toBe(201);
       expect(res.json().data.status).toBe("pending");
       const row = await app.prisma.testimonial.findUniqueOrThrow({ where: { id: res.json().data.id } });
       // Ülke kimlik belgesinden alınmaz; hasta seçmediyse boş. Rıza metni sürümü kaydedilir.
       expect([row.source, row.authorDisplay, row.country, row.language, row.consentTextVersion]).toEqual(["verified_booking", "A. Y.", null, "de", "2026-11-review-v1"]);
       // İkinci kullanım reddedilir.
-      expect((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${token}`, headers: ORIGIN, payload: reviewBody(), remoteAddress: nextIp() })).statusCode).toBe(404);
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: ORIGIN, payload: { ...reviewBody(), token }, remoteAddress: nextIp() })).statusCode).toBe(404);
       // Pending görünmez.
       const list = (await app.inject({ method: "GET", url: `/api/v1/doctors/${d.slug}/reviews`, remoteAddress: nextIp() })).json().data;
       expect([list.total, list.summary.count]).toEqual([0, 0]);
@@ -219,9 +219,9 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       const b2 = await completedBooking({ doctorId: d.id });
       const t2 = await inviteToken(b2.booking.id);
       await app.prisma.testimonialInvite.update({ where: { bookingId: b2.booking.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
-      expect((await app.inject({ method: "GET", url: `/api/v1/reviews/invite/${t2}`, remoteAddress: nextIp() })).statusCode).toBe(404);
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/lookup", headers: ORIGIN, payload: { token: t2 }, remoteAddress: nextIp() })).statusCode).toBe(404);
       // Yabancı origin.
-      expect((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${t2}`, headers: { origin: "https://evil.example" }, payload: reviewBody(), remoteAddress: nextIp() })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: { origin: "https://evil.example" }, payload: { ...reviewBody(), token: t2 }, remoteAddress: nextIp() })).statusCode).toBe(403);
     });
   });
 
@@ -232,7 +232,7 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       for (const rating of [5, 4]) {
         const { booking } = await completedBooking({ doctorId: d.id });
         const token = await inviteToken(booking.id);
-        ids.push((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${token}`, headers: ORIGIN, payload: reviewBody({ rating, body: "Dr. bana Parol yazdı, Ahmet Bey de çok yardımcı oldu, her şey için teşekkürler." }), remoteAddress: nextIp() })).json().data.id);
+        ids.push((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: ORIGIN, payload: { ...reviewBody({ rating, body: "Dr. bana Parol yazdı, Ahmet Bey de çok yardımcı oldu, her şey için teşekkürler." }), token }, remoteAddress: nextIp() })).json().data.id);
       }
       // Metin düzenleme alanı yok.
       expect((await app.inject({ method: "PATCH", url: `/api/v1/admin/testimonials/${ids[0]}`, headers: auth(admin.token), payload: { body: "değiştirilmiş" } })).statusCode).toBe(422);
@@ -253,7 +253,7 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       expect(list.items[0].verified).toBe(true);
       // Üçüncü onaylıyla ortalama görünür.
       const { booking } = await completedBooking({ doctorId: d.id });
-      const third = (await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${await inviteToken(booking.id)}`, headers: ORIGIN, payload: reviewBody({ rating: 3 }), remoteAddress: nextIp() })).json().data.id;
+      const third = (await app.inject({ method: "POST", url: "/api/v1/reviews/invite/submit", headers: ORIGIN, payload: { ...reviewBody({ rating: 3 }), token: await inviteToken(booking.id) }, remoteAddress: nextIp() })).json().data.id;
       await approve(third);
       list = (await app.inject({ method: "GET", url: `/api/v1/doctors/${d.slug}/reviews?sort=highest`, remoteAddress: nextIp() })).json().data;
       expect(list.summary).toMatchObject({ count: 3, average: 4, distribution: { "5": 1, "4": 1, "3": 1, "2": 0, "1": 0 } });
@@ -395,8 +395,8 @@ describe("Paket Y — hekim profili ve hasta yorumları", () => {
       const email = `optout-${crypto.randomUUID()}@example.com`;
       const first = await completedBooking({ doctorId: d.id, patientEmail: email });
       const token = await inviteToken(first.booking.id);
-      expect((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${token}/opt-out`, headers: ORIGIN, remoteAddress: nextIp() })).statusCode).toBe(204);
-      expect((await app.inject({ method: "POST", url: `/api/v1/reviews/invite/${"x".repeat(43)}/opt-out`, headers: ORIGIN, remoteAddress: nextIp() })).statusCode).toBe(204);
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/opt-out", headers: ORIGIN, payload: { token }, remoteAddress: nextIp() })).statusCode).toBe(204);
+      expect((await app.inject({ method: "POST", url: "/api/v1/reviews/invite/opt-out", headers: ORIGIN, payload: { token: "x".repeat(43) }, remoteAddress: nextIp() })).statusCode).toBe(204);
       expect(await app.prisma.reviewRequestOptOut.count()).toBeGreaterThanOrEqual(1);
       const { sendReviewInvite, purgeReviewData } = await import("../../src/modules/reviews/reviews.service");
       const second = await completedBooking({ doctorId: d.id, patientEmail: email.toUpperCase() });

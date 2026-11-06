@@ -104,7 +104,8 @@ describe("invitation audit log — invitation.create ve invitation.accept", () =
     // Ham token'ı, mocklanmış sendMail çağrısından (yanıt gövdesinde asla dönmüyor) çıkarıyoruz.
     expect(sendMailMock).toHaveBeenCalledTimes(1);
     const [, mailInput] = sendMailMock.mock.calls[0] as unknown as [unknown, { html: string }];
-    const tokenMatch = mailInput.html.match(/\/invitations\/([^/]+)\/accept/);
+    // Paket AP — bağlantı `/invitations/accept#<token>` (token `#` parçasında, yolda DEĞİL).
+    const tokenMatch = mailInput.html.match(/\/invitations\/accept#([^"&<\s]+)/);
     expect(tokenMatch).not.toBeNull();
     rawToken = tokenMatch![1]!;
   });
@@ -112,8 +113,9 @@ describe("invitation audit log — invitation.create ve invitation.accept", () =
   it("davet kabul edilince AuditLog'da doğru actorId/targetId/metadata ile 'invitation.accept' kaydı oluşur", async () => {
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/invitations/${rawToken}/accept`,
+      url: "/api/v1/invitations/accept",
       headers: authHeader(invitee.accessToken),
+      payload: { token: rawToken },
     });
 
     expect(res.statusCode).toBe(200);

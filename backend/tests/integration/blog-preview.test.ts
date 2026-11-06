@@ -59,8 +59,9 @@ describe("blog taslak önizleme", () => {
 
   const createLink = async (id: string, headers = admin) =>
     app.inject({ method: "POST", url: `/api/v1/admin/blog/${id}/preview-link`, headers });
+  // Paket AP — belirteç `X-Access-Token` başlığında (eski `?t=` biçimi `ap-token-transport.test.ts`'te).
   const open = (id: string, t?: string, extra = "") =>
-    app.inject({ method: "GET", url: `/api/v1/blog/preview/${id}${t !== undefined ? `?t=${encodeURIComponent(t)}${extra}` : extra ? `?${extra.slice(1)}` : ""}` });
+    app.inject({ method: "GET", url: `/api/v1/blog/preview/${id}${extra ? `?${extra.slice(1)}` : ""}`, headers: t !== undefined ? { "x-access-token": t } : {} });
   const shareToken = async (id: string) => (await createLink(id)).json().data.token as string;
 
   beforeAll(async () => {

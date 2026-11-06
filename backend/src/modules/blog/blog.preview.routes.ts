@@ -10,6 +10,7 @@ import { ApiSuccessSchema, LocaleQuerySchema } from "../../schemas/common";
 import { NotFoundError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
 import { getPreviewPostDetail } from "./lib/blog-public";
+import { readAccessToken } from "../../lib/access-token-transport";
 import {
   PREVIEW_SHARE_TTL_MS,
   generateShareToken,
@@ -121,6 +122,7 @@ export async function adminBlogPreviewRoutes(app: FastifyInstance) {
   );
 }
 
+/** `t`: eski bağlantı biçimi (geçiş süresi, bkz. lib/access-token-transport.ts). */
 const PreviewQuerySchema = LocaleQuerySchema.extend({ t: z.string().max(400).optional() });
 
 /** `/blog` prefix'i altında bağlanır — herkese açık; erişim YALNIZCA geçerli belirteçle. */
@@ -141,7 +143,9 @@ export async function publicBlogPreviewRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { postId } = request.params;
-      const { t, locale } = request.query;
+      const { locale } = request.query;
+      // Paket AP — belirteç `X-Access-Token` başlığında; eski `?t=` yalnızca geçiş süresince.
+      const t = readAccessToken(request, request.query.t);
       const post = await app.prisma.blogPost.findFirst({
         where: { id: postId, deletedAt: null },
         select: { id: true, previewTokenHash: true, previewTokenExpiresAt: true },

@@ -299,7 +299,7 @@ describe("telehealth/qa-listener — ADMIN kalite kontrol dinleyicisi", () => {
 
   it("KIRMIZI ÇİZGİ — hasta meeting-token'ı DEĞİŞMEDİ: yayın yetkili, `patient:` kimlikli, dinleyici metadata'sı yok", async () => {
     const { appointment, rawAccessToken } = await createAppointment("IN_PROGRESS");
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": rawAccessToken } });
     expect(res.statusCode).toBe(200);
     const claims = jwt.verify(res.json().data.token, FAKE_SECRET) as ListenerClaims;
     expect(claims.sub).toBe(`patient:${appointment.id}`);

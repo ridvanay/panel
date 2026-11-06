@@ -98,7 +98,7 @@ export function patientEmailLocale(booking: { locale?: string | null } | null | 
 
 /** Hastanın kendi rezervasyon bağlantısı — hastanın dil segmentiyle. */
 async function buildMagicLink(app: FastifyInstance, bookingId: string, rawAccessToken: string, locale: string): Promise<string> {
-  return `${env.FRONTEND_URL}/${locale}/patient/bookings/${bookingId}?t=${rawAccessToken}`;
+  return `${env.FRONTEND_URL}/${locale}/patient/bookings/${bookingId}#t=${rawAccessToken}`;
 }
 
 /**
@@ -109,7 +109,7 @@ async function buildMagicLink(app: FastifyInstance, bookingId: string, rawAccess
  * `accessTokenHash`'ine düşer (bkz. o dosyanın başındaki yorum), yani AYNI token burada da geçerli.
  */
 async function buildConsultationJoinLink(app: FastifyInstance, appointmentId: string, rawAccessToken: string, locale: string): Promise<string> {
-  return `${env.FRONTEND_URL}/${locale}/consultation/${appointmentId}?t=${rawAccessToken}`;
+  return `${env.FRONTEND_URL}/${locale}/consultation/${appointmentId}#t=${rawAccessToken}`;
 }
 
 export async function triggerAppointmentConfirmationEmail(

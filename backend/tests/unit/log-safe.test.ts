@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import pino from "pino";
-import { maskEmails, maskUrlQuery, safeErrorMessage, serializeRequestForLog } from "../../src/lib/log-safe";
+import { maskEmails, maskUrlPathTokens, maskUrlQuery, safeErrorMessage, serializeRequestForLog } from "../../src/lib/log-safe";
 
 describe("log-safe", () => {
   it("e-posta adresi kalıplarını maskeler", () => {
@@ -45,6 +45,25 @@ describe("log-safe", () => {
       );
       expect(lines.join("")).not.toContain("SECRET123");
       expect(lines.join("")).toContain("token=***&lang=tr");
+    });
+  });
+
+  describe("maskUrlPathTokens (Paket AP — eski yol biçimli token'lar)", () => {
+    it("yorum daveti ve kullanıcı daveti yol token'larını *** yapar", () => {
+      expect(maskUrlPathTokens("/api/v1/reviews/invite/AbC123xyz")).toBe("/api/v1/reviews/invite/***");
+      expect(maskUrlPathTokens("/api/v1/reviews/invite/AbC123xyz/opt-out")).toBe("/api/v1/reviews/invite/***/opt-out");
+      expect(maskUrlPathTokens("/api/v1/invitations/AbC123xyz/accept")).toBe("/api/v1/invitations/***/accept");
+    });
+    it("token'ı gövdede taşıyan yeni uçlara ve ilgisiz yollara dokunmaz", () => {
+      expect(maskUrlPathTokens("/api/v1/reviews/invite/lookup")).toBe("/api/v1/reviews/invite/lookup");
+      expect(maskUrlPathTokens("/api/v1/reviews/invite/submit")).toBe("/api/v1/reviews/invite/submit");
+      expect(maskUrlPathTokens("/api/v1/reviews/invite/opt-out")).toBe("/api/v1/reviews/invite/opt-out");
+      expect(maskUrlPathTokens("/api/v1/invitations/accept")).toBe("/api/v1/invitations/accept");
+      expect(maskUrlPathTokens("/api/v1/organizations/o1/invitations")).toBe("/api/v1/organizations/o1/invitations");
+    });
+    it("serializer sorgu ve yol maskelemesini birlikte uygular", () => {
+      const out = serializeRequestForLog({ method: "GET", url: "/api/v1/reviews/invite/SECRETPATH?t=SECRETQ", headers: {}, host: "h", ip: "1.2.3.4", socket: { remotePort: 1 } } as never);
+      expect(out.url).toBe("/api/v1/reviews/invite/***?t=***");
     });
   });
 });

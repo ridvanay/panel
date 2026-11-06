@@ -831,7 +831,7 @@ async function runUsersJob(app: FastifyInstance, ctx: JobRunContext, buffer: Buf
       try {
         await throttleEmail();
         const rawToken = await createPasswordResetToken(app, user.id);
-        const setPasswordUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+        const setPasswordUrl = `${env.FRONTEND_URL}/reset-password#token=${rawToken}`;
         await sendPasswordResetEmail(app, { email: user.email, name: user.name }, setPasswordUrl);
         ctx.recordSuccess();
       } catch (mailErr) {

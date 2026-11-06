@@ -98,7 +98,7 @@ describe("telehealth demo-pay — KATMAN 2 (register-time gizleme, bayrak/prod v
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -128,7 +128,7 @@ describe("telehealth demo-pay — KATMAN 3 (runtime defense-in-depth, register-t
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(404);
 
@@ -187,7 +187,7 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -211,7 +211,7 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -254,7 +254,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json().data;
@@ -277,7 +277,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
     // Aynı (rotate edilmemiş) token ile booking detayına ERİŞİLEBİLİR olmalı.
     const detail = await app.inject({
       method: "GET",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}`, headers: { "x-access-token": booking.accessToken },
     });
     expect(detail.statusCode).toBe(200);
   });
@@ -307,7 +307,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const wrongToken = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=yanlis-token-degeri`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": "yanlis-token-degeri" },
     });
     expect(wrongToken.statusCode).toBe(404);
 
@@ -341,13 +341,13 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const first = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(first.statusCode).toBe(200);
 
     const second = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(second.statusCode).toBe(409);
     expect(second.json().error.code).toBe("BOOKING_NOT_PAYABLE");
@@ -364,7 +364,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("BOOKING_EXPIRED");
@@ -397,7 +397,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe("DEMO_PAYMENTS_DISABLED");
@@ -415,7 +415,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(200);
   });
@@ -432,7 +432,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const disabled = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(disabled.statusCode).toBe(403);
 
@@ -440,7 +440,7 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
 
     const enabled = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken },
     });
     expect(enabled.statusCode).toBe(200);
   });

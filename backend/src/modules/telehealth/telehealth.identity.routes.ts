@@ -18,6 +18,7 @@ import {
   validateBookingIdentityInput,
 } from "../../lib/identity";
 import { AccessTokenQuerySchema, BookingIdentityInputSchema, BookingIdParamSchema } from "./telehealth.schemas";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2.6/§2.7 — hasta
@@ -68,7 +69,7 @@ export async function telehealthIdentityRoutes(app: FastifyInstance) {
       });
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
-      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       // Booking'de kimlik hiç yoksa (bu turdan önceki satırlar / deprecated `POST /appointments`
       // akışı) → `404`; istemci bunu `AppointmentBooking.identity === null` ile zaten bilir.
@@ -130,7 +131,7 @@ export async function telehealthIdentityRoutes(app: FastifyInstance) {
       });
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
-      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       if (booking.paymentStatus !== "PENDING") {
         throw new IdentityLockedError();
@@ -163,7 +164,7 @@ export async function telehealthIdentityRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      const hasHealthDataAccess = canAccessBookingHealthData(updated, { user: request.user, providedToken: request.query.t });
+      const hasHealthDataAccess = canAccessBookingHealthData(updated, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
       return reply.send(ok(toAppointmentBookingDto(updated, hasHealthDataAccess)));
     }
   );

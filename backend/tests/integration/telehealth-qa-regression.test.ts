@@ -151,7 +151,7 @@ describe("[qa] telehealth — ödenmemiş booking'de meeting-token (§9.7.11 mad
     // Booking'in KENDİ token'ı ile (çoklu-slot akışında istemciye dönen TEK token budur).
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/meeting-token?t=${body.accessToken}`,
+      url: `/api/v1/appointments/${appointmentId}/meeting-token`, headers: { "x-access-token": body.accessToken },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
@@ -233,7 +233,7 @@ describe("[qa] telehealth — magic-link TTL süresi dolmuş token reddi ([TCT] 
     const endsAt = new Date(Date.now() - MAGIC_LINK_TOKEN_TTL_MS + 30_000);
     const { bookingId, accessToken } = await createBookingWithEndsAt(endsAt);
 
-    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}?t=${accessToken}` });
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}`, headers: { "x-access-token": accessToken } });
     expect(res.statusCode).toBe(200);
   });
 
@@ -241,7 +241,7 @@ describe("[qa] telehealth — magic-link TTL süresi dolmuş token reddi ([TCT] 
     const endsAt = new Date(Date.now() - MAGIC_LINK_TOKEN_TTL_MS - 1000);
     const { bookingId, accessToken } = await createBookingWithEndsAt(endsAt);
 
-    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}?t=${accessToken}` });
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}`, headers: { "x-access-token": accessToken } });
     expect(res.statusCode).toBe(404);
   });
 
@@ -251,7 +251,7 @@ describe("[qa] telehealth — magic-link TTL süresi dolmuş token reddi ([TCT] 
 
     const res = await app.inject({
       method: "PUT",
-      url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken },
       payload: { healthDataConsent: true, note: "test" },
     });
     expect(res.statusCode).toBe(404);
@@ -343,7 +343,7 @@ describe("[qa] telehealth — checkout-session gecikme senaryosunda booking KAYB
 
     const checkoutRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${body.bookingId}/checkout-session?t=${body.accessToken}`,
+      url: `/api/v1/appointments/bookings/${body.bookingId}/checkout-session`, headers: { "x-access-token": body.accessToken },
     });
     expect(checkoutRes.statusCode).toBe(200);
 

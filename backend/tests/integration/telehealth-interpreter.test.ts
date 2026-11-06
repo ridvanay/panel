@@ -358,7 +358,7 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
       const a = await assignmentFor(b.id);
       expect((await requestToken(a.id, interp.token)).statusCode).toBe(200);
 
-      const info = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}/interpreter?t=${raw}` });
+      const info = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}/interpreter`, headers: { "x-access-token": raw } });
       expect(info.json().data).toEqual({ language: "ar", languageName: "العربية", displayName: "A. Yılmaz", status: "JOINED" });
 
       const patient = await user("USER");
@@ -368,19 +368,20 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
       expect(await app.prisma.auditLog.count({ where: { action: "interpreter.removed_by_doctor", targetId: b.id } })).toBe(1);
       expect(await app.prisma.auditLog.count({ where: { action: "interpreter.left", targetId: b.id } })).toBe(1);
       expect((await requestToken(a.id, interp.token)).statusCode).toBe(409);
-      expect((await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}/interpreter?t=${raw}` })).json().data).toBeNull();
+      expect((await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}/interpreter`, headers: { "x-access-token": raw } })).json().data).toBeNull();
     });
 
     it("hasta talebi: yalnızca interpreterIncluded=true iken; booking token'ı ile; kaldırılabilir", async () => {
       const { booking: b, raw } = await booking();
-      const url = `/api/v1/appointments/bookings/${b.id}/interpreter-request?t=${raw}`;
-      expect((await app.inject({ method: "PUT", url, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(409);
+      const url = `/api/v1/appointments/bookings/${b.id}/interpreter-request`;
+      const headers = { "x-access-token": raw };
+      expect((await app.inject({ method: "PUT", url, headers, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(409);
       await app.prisma.siteModule.update({ where: { key: "telehealth" }, data: { settings: { languageSupport: { supportLanguages: ["ar", "en"], supportHours: {}, interpreterIncluded: true } } } });
-      expect((await app.inject({ method: "PUT", url, payload: { language: "ru" }, remoteAddress: nextIp() })).statusCode).toBe(422);
-      expect((await app.inject({ method: "PUT", url: url.replace(raw, "yanlis"), payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(404);
-      expect((await app.inject({ method: "PUT", url, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(204);
+      expect((await app.inject({ method: "PUT", url, headers, payload: { language: "ru" }, remoteAddress: nextIp() })).statusCode).toBe(422);
+      expect((await app.inject({ method: "PUT", url, headers: { "x-access-token": "yanlis" }, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(404);
+      expect((await app.inject({ method: "PUT", url, headers, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(204);
       expect((await app.prisma.interpreterRequest.findUniqueOrThrow({ where: { bookingId: b.id } })).language).toBe("ar");
-      expect((await app.inject({ method: "PUT", url, payload: { language: null }, remoteAddress: nextIp() })).statusCode).toBe(204);
+      expect((await app.inject({ method: "PUT", url, headers, payload: { language: null }, remoteAddress: nextIp() })).statusCode).toBe(204);
       expect(await app.prisma.interpreterRequest.count({ where: { bookingId: b.id } })).toBe(0);
     });
   });
@@ -462,9 +463,10 @@ describe("telehealth — tercüman katılımı (Paket AA)", () => {
     it("biten/iptal randevuya tercüman talebi açılmaz (kaldırma serbest)", async () => {
       await app.prisma.siteModule.update({ where: { key: "telehealth" }, data: { settings: { languageSupport: { supportLanguages: ["ar"], supportHours: {}, interpreterIncluded: true } } } });
       const { booking: b, raw } = await booking({ status: "COMPLETED" });
-      const url = `/api/v1/appointments/bookings/${b.id}/interpreter-request?t=${raw}`;
-      expect((await app.inject({ method: "PUT", url, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(409);
-      expect((await app.inject({ method: "PUT", url, payload: { language: null }, remoteAddress: nextIp() })).statusCode).toBe(204);
+      const url = `/api/v1/appointments/bookings/${b.id}/interpreter-request`;
+      const headers = { "x-access-token": raw };
+      expect((await app.inject({ method: "PUT", url, headers, payload: { language: "ar" }, remoteAddress: nextIp() })).statusCode).toBe(409);
+      expect((await app.inject({ method: "PUT", url, headers, payload: { language: null }, remoteAddress: nextIp() })).statusCode).toBe(204);
     });
   });
 

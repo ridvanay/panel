@@ -112,11 +112,11 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(values.booking_number).toBe("BKG-ABC123-XYZ9");
       expect(values.patient_name).toBe("Ayşe Yılmaz");
       expect(values.total_formatted).toBe("750.00 TRY");
-      expect(values.magic_link).toBe("http://localhost:3000/en/patient/bookings/11111111-1111-1111-1111-111111111111?t=raw-token-abc");
+      expect(values.magic_link).toBe("http://localhost:3000/en/patient/bookings/11111111-1111-1111-1111-111111111111#t=raw-token-abc");
       // 2026-09-18 (kullanıcı talebi) — DOĞRUDAN görüşme odasına giden bağlantı, EN ERKEN
       // randevuya (appointments[0], `firstAppointment`) işaret eder — `JoinMeetingButton` İLE
       // AYNI seçim kuralı.
-      expect(values.join_link).toBe("http://localhost:3000/en/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=raw-token-abc");
+      expect(values.join_link).toBe("http://localhost:3000/en/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa#t=raw-token-abc");
       // 2026-09-21 (kullanıcı talebi) — ücretli randevu (totalCents > 0): ödeme onayına özgü cümle.
       expect(values.status_message).toBe("We have received your payment and your appointment is confirmed.");
     });
@@ -149,7 +149,7 @@ describe("modules/telehealth/lib/notifications", () => {
       const values = sendTemplateEmailMock.mock.calls[0]![3];
       expect(values.status_message).toBe("Your appointment has been successfully created and confirmed.");
       // join_link ücretsiz randevularda da GÖNDERİLİR — bu turun asıl şikâyeti buydu.
-      expect(values.join_link).toBe("http://localhost:3000/en/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=t");
+      expect(values.join_link).toBe("http://localhost:3000/en/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa#t=t");
     });
 
     it("appointments boşsa join_link ATLANIR (literal {{join_link}} basılmaz, anahtar hiç gönderilmez)", async () => {
@@ -203,7 +203,7 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(mailInput.subject).toBe("Your appointment is confirmed");
       expect(mailInput.html).toContain("BKG-ABC123-XYZ9");
       expect(mailInput.html).toContain("Ayşe Yılmaz");
-      expect(mailInput.html).toContain("http://localhost:3000/en/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=raw-token-abc");
+      expect(mailInput.html).toContain("http://localhost:3000/en/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa#t=raw-token-abc");
       // Sağlık verisi/uzmanlık/şikâyet notu YOK — bağlayıcı sızma yasağı yedek şablonda da geçerli.
       expect(mailInput.html).not.toMatch(/specialt|complaint|diagnos/i);
 
@@ -254,7 +254,9 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
       const [, purpose, , values] = sendTemplateEmailMock.mock.calls[0]! as [unknown, unknown, unknown, { magic_link: string }];
       expect(purpose).toBe("APPOINTMENT_CONFIRMATION");
-      const sentRawToken = new URL(values.magic_link).searchParams.get("t")!;
+      // Paket AP — token `#t=` parçasında.
+      const sentRawToken = new URLSearchParams(new URL(values.magic_link).hash.slice(1)).get("t")!;
+      expect(new URL(values.magic_link).search).toBe("");
       // Gönderilen ham token'ın hash'i, DB'ye YAZILAN hash İLE AYNI olmalı (yanlış/eski token
       // gönderilmemeli) — ama ham token'ın KENDİSİ asla response'ta/log'da dönmez (bu test
       // yalnızca iç tutarlılığı doğrular, hiçbir HTTP yanıtı üretmez).

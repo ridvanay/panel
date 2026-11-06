@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
@@ -12,7 +12,8 @@ import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { env } from "../../config/env";
 import { sendTemplateEmail } from "../email-templates/email-templates.service";
 import { logAudit } from "../../lib/audit";
-import { CreateInvitationRequestSchema, InvitationTokenParamSchema } from "./invitations.schemas";
+import { CreateInvitationRequestSchema, InvitationTokenBodySchema, InvitationTokenParamSchema } from "./invitations.schemas";
+import { acceptLegacyToken } from "../../lib/access-token-transport";
 
 const USER_SELECT = { id: true, name: true, email: true, avatarUrl: true } as const;
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -87,7 +88,7 @@ export async function orgInvitationsRoutes(app: FastifyInstance) {
       // security-agent kararı — token sızıntısı temizliği). Gönderim best-effort'tur: başarısız
       // olursa davet DB'de PENDING olarak kalır (bkz. GET /organizations/:orgId/invitations),
       // isteği BAŞARISIZ KILMAZ — ayrı bir "resend" ucu bu turun kapsamında GEREKMEZ.
-      const acceptUrl = `${env.FRONTEND_URL}/invitations/${rawToken}/accept`;
+      const acceptUrl = `${env.FRONTEND_URL}/invitations/accept#${rawToken}`;
       const [organization, inviter] = await Promise.all([
         app.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
         app.prisma.user.findUnique({ where: { id: request.user!.id }, select: { name: true } }),
@@ -123,51 +124,66 @@ export async function orgInvitationsRoutes(app: FastifyInstance) {
 export async function acceptInvitationRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
+  /** Davet kabulü — token yalnızca kanıt; taşıma biçimi çağıran uca göre değişir (bkz. aşağıdaki iki uç). */
+  async function acceptInvitation(token: string | undefined, user: NonNullable<FastifyRequest["user"]>, ipAddress: string) {
+    if (!token) throw new ApiError(410, "NOT_FOUND", "Davet süresi dolmuş veya geçersiz.");
+    const tokenHash = hashToken(token);
+    const invitation = await app.prisma.invitation.findUnique({ where: { tokenHash } });
+
+    if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt.getTime() < Date.now()) {
+      throw new ApiError(410, "NOT_FOUND", "Davet süresi dolmuş veya geçersiz.");
+    }
+
+    if (invitation.email.toLowerCase() !== user.email.toLowerCase()) {
+      throw new ForbiddenError("Bu davet başka bir e-posta adresine gönderilmiş.");
+    }
+
+    const membership = await app.prisma.$transaction(async (tx) => {
+      const membershipRow = await tx.membership.upsert({
+        where: { userId_organizationId: { userId: user.id, organizationId: invitation.organizationId } },
+        create: {
+          userId: user.id,
+          organizationId: invitation.organizationId,
+          role: invitation.role,
+          status: "ACTIVE",
+        },
+        update: { role: invitation.role, status: "ACTIVE" },
+        include: { user: { select: USER_SELECT } },
+      });
+      await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED" } });
+      return membershipRow;
+    });
+
+    await logAudit(app, {
+      actorId: user.id,
+      actorEmail: user.email,
+      action: "invitation.accept",
+      targetType: "Membership",
+      targetId: membership.id,
+      metadata: { organizationId: invitation.organizationId, role: invitation.role },
+      ipAddress,
+    });
+
+    return toMembershipDto(membership);
+  }
+
+  // Paket AP — token POST gövdesinde (`/invitations/accept#<token>` bağlantısı).
+  server.post(
+    "/accept",
+    {
+      preHandler: authenticate,
+      schema: { body: InvitationTokenBodySchema, response: { 200: ApiSuccessSchema(MembershipSchema) } },
+    },
+    async (request, reply) => reply.send(ok(await acceptInvitation(request.body.token, request.user!, request.ip)))
+  );
+
+  // Eski yol biçimi (token yol parçasında) — yalnızca geçiş süresince; süre dolunca aynı 410.
   server.post(
     "/:token/accept",
     {
       preHandler: authenticate,
       schema: { params: InvitationTokenParamSchema, response: { 200: ApiSuccessSchema(MembershipSchema) } },
     },
-    async (request, reply) => {
-      const tokenHash = hashToken(request.params.token);
-      const invitation = await app.prisma.invitation.findUnique({ where: { tokenHash } });
-
-      if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt.getTime() < Date.now()) {
-        throw new ApiError(410, "NOT_FOUND", "Davet süresi dolmuş veya geçersiz.");
-      }
-
-      if (invitation.email.toLowerCase() !== request.user!.email.toLowerCase()) {
-        throw new ForbiddenError("Bu davet başka bir e-posta adresine gönderilmiş.");
-      }
-
-      const membership = await app.prisma.$transaction(async (tx) => {
-        const membershipRow = await tx.membership.upsert({
-          where: { userId_organizationId: { userId: request.user!.id, organizationId: invitation.organizationId } },
-          create: {
-            userId: request.user!.id,
-            organizationId: invitation.organizationId,
-            role: invitation.role,
-            status: "ACTIVE",
-          },
-          update: { role: invitation.role, status: "ACTIVE" },
-          include: { user: { select: USER_SELECT } },
-        });
-        await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED" } });
-        return membershipRow;
-      });
-
-      await logAudit(app, {
-        actorId: request.user!.id,
-        actorEmail: request.user!.email,
-        action: "invitation.accept",
-        targetType: "Membership",
-        targetId: membership.id,
-        metadata: { organizationId: invitation.organizationId, role: invitation.role },
-        ipAddress: request.ip,
-      });
-
-      return reply.send(ok(toMembershipDto(membership)));
-    }
+    async (request, reply) => reply.send(ok(await acceptInvitation(acceptLegacyToken(request, request.params.token), request.user!, request.ip)))
   );
 }

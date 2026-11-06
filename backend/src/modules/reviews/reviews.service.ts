@@ -327,8 +327,9 @@ export async function sendReviewInvite(app: FastifyInstance, bookingId: string, 
   const locale = patientEmailLocale(booking);
   // Unvan alıcının (hastanın) dilinde: `translations.<dil>.title` (ör. TR "Doç. Dr."), yoksa kanonik unvan.
   const doctorName = doctorEmailName(booking.doctor, locale);
-  const url = `${env.FRONTEND_URL}/${locale}/review/${raw}`;
-  const mail = buildReviewInviteEmail({ locale, patientName: booking.patientName, doctorName, url, optOutUrl: `${url}?optout=1` });
+  // Paket AP — token `#` parçasında (sunucuya/log'a gitmez); `optout` gizli olmadığı için sorguda kalır.
+  const url = `${env.FRONTEND_URL}/${locale}/review#${raw}`;
+  const mail = buildReviewInviteEmail({ locale, patientName: booking.patientName, doctorName, url, optOutUrl: `${env.FRONTEND_URL}/${locale}/review?optout=1#${raw}` });
   await sendBrandedMail(app, { to: booking.patientEmail, subject: mail.subject, preheader: mail.subject, bodyHtml: mail.bodyHtml, cta: mail.cta, afterCtaHtml: mail.afterCtaHtml, locale: mail.locale, audience: "patient" });
   await app.prisma.testimonialInvite.update({ where: { bookingId }, data: { sentAt: now } });
   return true;

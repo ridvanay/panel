@@ -84,6 +84,6 @@ describe("POST /admin/users — SMTP yapılandırılmadan (test ortamı)", () =>
     });
 
     expect(res.statusCode).toBe(201);
-    expect(res.payload).not.toMatch(/reset-password\?token=/);
+    expect(res.payload).not.toMatch(/reset-password[?#]token=/);
   });
 });

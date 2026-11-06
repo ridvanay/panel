@@ -89,6 +89,7 @@ import {
   SpecialtySlugParamSchema,
   UpsertIntakeRequestSchema,
 } from "./telehealth.schemas";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * Doktor liste/detay sorgularında uzmanlık + avatarını de dönmek için ortak `include`.
@@ -478,7 +479,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       await assertAppointmentAccess(
         app,
         appointment,
-        { user: request.user, providedToken: request.query.t },
+        { user: request.user, providedToken: readAccessToken(request, request.query.t) },
         appointment.booking?.accessTokenHash
       );
 
@@ -511,7 +512,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       await assertAppointmentAccess(
         app,
         appointment,
-        { user: request.user, providedToken: request.query.t },
+        { user: request.user, providedToken: readAccessToken(request, request.query.t) },
         appointment.booking?.accessTokenHash
       );
 
@@ -664,12 +665,12 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
-      assertBookingViewAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingViewAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       // [DPI] §2.7 — görüntüleme eşiği (`assertBookingViewAccess`, MANAGER DAHİL) ile sağlık
       // verisi eşiği (`canAccessBookingHealthData`, MANAGER HARİÇ) FARKLIDIR: booking'in kendisi
       // MANAGER'a görünür ama `identity` alanı `null` döner.
-      const hasHealthDataAccess = canAccessBookingHealthData(booking, { user: request.user, providedToken: request.query.t });
+      const hasHealthDataAccess = canAccessBookingHealthData(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
       return reply.send(ok(toAppointmentBookingDto(booking, hasHealthDataAccess)));
     }
   );
@@ -696,7 +697,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
-      assertBookingPatientOrAdminAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOrAdminAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       // [TCT] §9.7.3 (bağlayıcı) — hiç ödenmemiş booking'in iptali: satırlar SİLİNİR, slot
       // serbest kalır, booking `EXPIRED` olur (süre dolumu süpürücüsüyle AYNI son durum,
@@ -727,7 +728,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
         where: { id: booking.id },
         include: WITH_BOOKING_RELATIONS,
       });
-      const hasHealthDataAccess = canAccessBookingHealthData(updated, { user: request.user, providedToken: request.query.t });
+      const hasHealthDataAccess = canAccessBookingHealthData(updated, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
       return reply.send(ok(toAppointmentBookingDto(updated, hasHealthDataAccess)));
     }
   );
@@ -750,7 +751,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       // §9.7.0 madde 11 — yalnızca ADMIN/hasta erişir (doktor/MANAGER DAHİL DEĞİL — bu bir
       // ödeme belgesidir, tıbbi bir kayıt değil).
-      assertBookingPatientOrAdminAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOrAdminAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       if (booking.paymentStatus !== "PAID" || !booking.paidAt) {
         throw new BookingNotPayableError("Yalnızca ödemesi tamamlanmış rezervasyonlar için ödeme belgesi üretilebilir.");
@@ -804,7 +805,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
       // §9.7.5 madde 1/7 — bu adım OPSİYONELDİR ve yalnızca hastanın KENDİSİ yazabilir.
-      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       if (request.body.healthDataConsent !== true) {
         throw new HealthConsentRequiredError();
@@ -850,7 +851,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
       // §9.7.5 madde 7 (ENGELLEYİCİ) — hasta/booking'in doktoru/ADMIN. MANAGER/EDITOR HARİÇ.
-      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const intake = await app.prisma.appointmentIntake.findUnique({ where: { bookingId: booking.id } });
       if (!intake) throw new NotFoundError("Bu rezervasyon için kaydedilmiş bir not yok.");
@@ -896,7 +897,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       // §9.7.5 madde 7 (ENGELLEYİCİ) — hasta/booking'in doktoru/ADMIN. MANAGER/EDITOR HARİÇ
       // (intake İLE AYNI eşik — bu da sağlık verisi/tıbbi kayıt İÇERİĞİDİR).
-      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       // [TCT] §9.7.6 konvansiyonu — çoklu slot booking'lerde epikriz/reçete HER ZAMAN İLK
       // randevuya yazılır (`/complete` ucu zaten client tarafında `completingFirstAppointment`
@@ -950,7 +951,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
       // KVKK md.11 (bağlayıcı) — hasta (oturum/`?t=`) veya ADMIN; doktor SİLEMEZ.
-      assertBookingPatientOrAdminAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOrAdminAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       // Rıza KANITI (`healthDataConsentAt`/`...Version`) denetim bütünlüğü için KORUNUR —
       // yalnızca not METNİ (`noteCiphertext`) `null`'lanır (§9.7.5 madde 9/10).
@@ -982,7 +983,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
 
       // §9.7.5 madde 1/7 — yalnızca hastanın KENDİSİ yükleyebilir.
-      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const activeDocumentCount = await app.prisma.appointmentDocument.count({ where: { bookingId: booking.id, deletedAt: null } });
       if (activeDocumentCount >= MAX_DOCUMENTS_PER_BOOKING) {
@@ -1070,7 +1071,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       // §9.7.5 madde 7 — METADATA listesi hasta/doktor/ADMIN'e açıktır (MANAGER yalnızca
       // booking görünümündeki `documentCount` sayısını görür, bu listeyi GÖREMEZ).
-      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const documents = await app.prisma.appointmentDocument.findMany({
         where: { bookingId: booking.id, deletedAt: null },
@@ -1097,7 +1098,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       // §9.7.5 madde 5/7 (ENGELLEYİCİ) — TEK servis yolu. Hasta/booking'in doktoru/ADMIN;
       // MANAGER/EDITOR/başka doktor → 404 (varlık sızdırılmaz).
-      assertBookingHealthDataAccess(document.booking, { user: request.user, providedToken: request.query.t });
+      assertBookingHealthDataAccess(document.booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const buffer = await telehealthDocumentStorage.read(document.storagePath);
 
@@ -1137,7 +1138,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       if (!document || document.deletedAt) throw new NotFoundError("Belge bulunamadı.");
 
       // KVKK md.11 — hasta (oturum/`?t=`) veya ADMIN; doktor bir hastanın belgesini SİLEMEZ.
-      assertBookingPatientOrAdminAccess(document.booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOrAdminAccess(document.booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       // Dosya DİSKTEN gerçekten silinir; satır erişim denetim izi bütünlüğü için `deletedAt` ile KALIR.
       await telehealthDocumentStorage.remove(document.storagePath);

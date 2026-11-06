@@ -44,12 +44,26 @@ export function maskUrlQuery(url: string): string {
   return url.slice(0, qIndex + 1) + masked + url.slice(queryEnd);
 }
 
-/** Fastify varsayılan `req` serializer'ı ile AYNI alanlar; yalnızca `url` sorgusu maskelenir. */
+/**
+ * Paket AP — token'ı YOL parçasında taşıyan eski bağlantı biçimleri (geçiş süresince kabul edilir, bkz.
+ * `lib/access-token-transport.ts`): yol parçası `***` olur. Yeni uçlar (`/reviews/invite/lookup|submit|opt-out`,
+ * `/invitations/accept`) token'ı gövdede taşır ve etkilenmez.
+ */
+const PATH_TOKEN_PATTERNS: readonly RegExp[] = [
+  /(\/reviews\/invite\/)(?!(?:lookup|submit|opt-out)(?:[/?#]|$))[^/?#]+/,
+  /(\/invitations\/)(?!accept(?:[/?#]|$))[^/?#]+(?=\/accept(?:[/?#]|$))/,
+];
+
+export function maskUrlPathTokens(url: string): string {
+  return PATH_TOKEN_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, "$1***"), url);
+}
+
+/** Fastify varsayılan `req` serializer'ı ile AYNI alanlar; yalnızca `url` maskelenir (sorgu + eski yol token'ları). */
 export function serializeRequestForLog(req: FastifyRequest) {
   const acceptVersion = req.headers?.["accept-version"];
   return {
     method: req.method,
-    url: typeof req.url === "string" ? maskUrlQuery(req.url) : req.url,
+    url: typeof req.url === "string" ? maskUrlPathTokens(maskUrlQuery(req.url)) : req.url,
     version: Array.isArray(acceptVersion) ? acceptVersion[0] : acceptVersion,
     host: req.host,
     remoteAddress: req.ip,

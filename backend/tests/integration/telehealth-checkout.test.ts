@@ -115,7 +115,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMAMIŞKEN (§9.7.1 madde 6,
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(503);
     expect(res.json().error.code).toBe("PAYMENTS_NOT_CONFIGURED");
@@ -181,7 +181,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.checkoutUrl).toBe("https://checkout.stripe.test/cs_test_booking_1");
@@ -196,6 +196,10 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
       rawAccessToken: booking.accessToken,
     });
     expect(callArgs.payment_intent_data.metadata).toMatchObject({ bookingId: booking.bookingId });
+    // Paket AP — dönüş adresinde token `#t=` parçasında (sorguda DEĞİL; sunucu/log'a gitmez).
+    expect(callArgs.success_url).toContain(`/patient/bookings/${booking.bookingId}?payment=success#t=`);
+    expect(callArgs.cancel_url).toContain(`/patient/bookings/${booking.bookingId}?payment=cancelled#t=`);
+    expect(callArgs.success_url).not.toContain("&t=");
     expect(callArgs.line_items[0].price_data.unit_amount).toBe(75000);
     expect(callArgs.line_items[0].quantity).toBe(2);
     // §9.7.5 madde 8 disiplini — uzmanlık/doktor adı Stripe'a giden satır adına YAZILMAZ.
@@ -212,7 +216,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
     stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_idem", url: "https://checkout.stripe.test/cs_test_idem" });
     const first = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session`, headers: { "x-access-token": booking.accessToken },
     });
     expect(first.statusCode).toBe(200);
 
@@ -225,7 +229,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
 
     const second = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session`, headers: { "x-access-token": booking.accessToken },
     });
     expect(second.statusCode).toBe(200);
     expect(second.json().data.sessionId).toBe("cs_test_idem");
@@ -243,7 +247,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
 
     const wrongToken = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session?t=yanlis-token`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session`, headers: { "x-access-token": "yanlis-token" },
     });
     expect(wrongToken.statusCode).toBe(404);
   });
@@ -354,7 +358,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/checkout-session`, headers: { "x-access-token": booking.accessToken },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("BOOKING_EXPIRED");

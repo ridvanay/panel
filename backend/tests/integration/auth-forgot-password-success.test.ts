@@ -64,6 +64,7 @@ describe("POST /auth/forgot-password — SMTP mock'lanmış (başarı senaryosu)
     const [, input] = sendMailMock.mock.calls[0] as unknown as [unknown, { to: string; subject: string; html: string }];
     expect(input.to).toBe(user.email);
     expect(input.subject).toBe("Şifre sıfırlama talebiniz");
-    expect(input.html).toContain("reset-password?token=");
+    expect(input.html).toContain("reset-password#token=");
+    expect(input.html).not.toContain("reset-password?token=");
   });
 });

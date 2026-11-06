@@ -234,7 +234,7 @@ describe("telehealth booking — iptal (§9.7.3, POST .../cancel)", () => {
     });
     const { bookingId, accessToken } = created.json().data;
 
-    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel?t=${accessToken}`, payload: {} });
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel`, headers: { "x-access-token": accessToken }, payload: {} });
     expect(cancelRes.statusCode).toBe(200);
     expect(cancelRes.json().data.paymentStatus).toBe("EXPIRED");
     expect(cancelRes.json().data.appointments).toHaveLength(0);
@@ -349,7 +349,7 @@ describe("telehealth booking — iptal gövde varyantları (regresyon: eksik/bo�
     });
     const { bookingId, accessToken } = created.json().data;
 
-    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel?t=${accessToken}` });
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel`, headers: { "x-access-token": accessToken } });
     expect(cancelRes.statusCode).toBe(200);
     expect(cancelRes.json().data.paymentStatus).toBe("EXPIRED");
   });
@@ -364,7 +364,7 @@ describe("telehealth booking — iptal gövde varyantları (regresyon: eksik/bo�
     });
     const { bookingId, accessToken } = created.json().data;
 
-    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel?t=${accessToken}`, payload: {} });
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel`, headers: { "x-access-token": accessToken }, payload: {} });
     expect(cancelRes.statusCode).toBe(200);
     expect(cancelRes.json().data.paymentStatus).toBe("EXPIRED");
   });
@@ -430,7 +430,7 @@ describe("telehealth booking — GET /appointments/:id ve POST .../cancel bookin
     const { accessToken, appointments } = created.json().data;
     const appointmentId = appointments[0].id as string;
 
-    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointmentId}?t=${accessToken}` });
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointmentId}`, headers: { "x-access-token": accessToken } });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.id).toBe(appointmentId);
   });
@@ -453,7 +453,7 @@ describe("telehealth booking — GET /appointments/:id ve POST .../cancel bookin
 
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/cancel?t=${accessToken}`,
+      url: `/api/v1/appointments/${appointmentId}/cancel`, headers: { "x-access-token": accessToken },
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -469,7 +469,7 @@ describe("telehealth booking — GET /appointments/:id ve POST .../cancel bookin
     });
     const appointmentId = created.json().data.appointments[0].id as string;
 
-    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointmentId}?t=yanlis-token-degeri` });
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointmentId}`, headers: { "x-access-token": "yanlis-token-degeri" } });
     expect(res.statusCode).toBe(404);
   });
 });
@@ -637,7 +637,7 @@ describe("telehealth booking — mark-paid (§9.7.1 madde 7) + fatura (§9.7.0 m
     const bookingId = created.json().data.bookingId;
     const accessToken = created.json().data.accessToken;
 
-    const beforePaid = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/invoice?t=${accessToken}` });
+    const beforePaid = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/invoice`, headers: { "x-access-token": accessToken } });
     expect(beforePaid.statusCode).toBe(409);
     expect(beforePaid.json().error.code).toBe("BOOKING_NOT_PAYABLE");
 
@@ -743,7 +743,7 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
 
     const noConsent = await app.inject({
       method: "PUT",
-      url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken },
       payload: { note: "Baş ağrısı şikayeti", healthDataConsent: false },
     });
     expect(noConsent.statusCode).toBe(422);
@@ -751,9 +751,9 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
 
     const upload = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/documents`,
       payload: Buffer.from("%PDF-1.4 test"),
-      headers: { "content-type": "multipart/form-data; boundary=----x" },
+      headers: { "x-access-token": accessToken, "content-type": "multipart/form-data; boundary=----x" },
     });
     // Rıza (intake) hiç verilmediği için (malformed multipart olsa da) reddedilmeli — rıza
     // kontrolü dosya ayrıştırmadan ÖNCE yapılır.
@@ -765,7 +765,7 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
 
     const put = await app.inject({
       method: "PUT",
-      url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken },
       payload: { note: "Baş ağrısı şikayeti", healthDataConsent: true },
     });
     expect(put.statusCode).toBe(200);
@@ -776,7 +776,7 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
     expect(rawIntake.noteCiphertext).not.toBeNull();
     expect(rawIntake.noteCiphertext).not.toContain("Baş ağrısı");
 
-    const patientGet = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}` });
+    const patientGet = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken } });
     expect(patientGet.statusCode).toBe(200);
     expect(patientGet.json().data.note).toBe("Baş ağrısı şikayeti");
 
@@ -813,7 +813,7 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
     expect(editorGet.statusCode).toBe(404);
 
     // Hasta kendi notunu SİLEBİLİR (KVKK md.11) — ciphertext null'lanır, rıza kanıtı KORUNUR.
-    const del = await app.inject({ method: "DELETE", url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}` });
+    const del = await app.inject({ method: "DELETE", url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken } });
     expect(del.statusCode).toBe(204);
     const afterDelete = await app.prisma.appointmentIntake.findUniqueOrThrow({ where: { bookingId } });
     expect(afterDelete.noteCiphertext).toBeNull();
@@ -825,7 +825,7 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
 
     await app.inject({
       method: "PUT",
-      url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken },
       payload: { healthDataConsent: true },
     });
 
@@ -833,9 +833,9 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
     const svgForm = buildMultipartBody("file.svg", "image/png", svgBuffer);
     const svgRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/documents`,
       payload: svgForm.body,
-      headers: { "content-type": svgForm.contentType },
+      headers: { "x-access-token": accessToken, "content-type": svgForm.contentType },
     });
     expect(svgRes.statusCode).toBe(422);
     expect(svgRes.json().error.code).toBe("UNSUPPORTED_DOCUMENT_TYPE");
@@ -844,9 +844,9 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
     const pdfForm = buildMultipartBody("tahlil.pdf", "application/pdf", pdfBuffer);
     const pdfRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/documents`,
       payload: pdfForm.body,
-      headers: { "content-type": pdfForm.contentType },
+      headers: { "x-access-token": accessToken, "content-type": pdfForm.contentType },
     });
     expect(pdfRes.statusCode).toBe(201);
     const documentId = pdfRes.json().data.id;
@@ -860,7 +860,7 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
     expect(leakedDirect.statusCode).toBe(404);
 
     // Kapılı akıştan doğru indirme — header'lar ve içerik.
-    const content = await app.inject({ method: "GET", url: `/api/v1/appointments/documents/${documentId}/content?t=${accessToken}` });
+    const content = await app.inject({ method: "GET", url: `/api/v1/appointments/documents/${documentId}/content`, headers: { "x-access-token": accessToken } });
     expect(content.statusCode).toBe(200);
     expect(content.headers["content-disposition"]).toContain("attachment");
     expect(content.headers["cache-control"]).toBe("no-store");
@@ -873,24 +873,24 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
       const extra = buildMultipartBody(`ekstra-${i}.pdf`, "application/pdf", Buffer.concat([Buffer.from("%PDF-1.4\n"), crypto.randomBytes(16)]));
       const res = await app.inject({
         method: "POST",
-        url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}`,
+        url: `/api/v1/appointments/bookings/${bookingId}/documents`,
         payload: extra.body,
-        headers: { "content-type": extra.contentType },
+        headers: { "x-access-token": accessToken, "content-type": extra.contentType },
       });
       expect(res.statusCode).toBe(201);
     }
     const sixth = buildMultipartBody("altinci.pdf", "application/pdf", Buffer.concat([Buffer.from("%PDF-1.4\n"), crypto.randomBytes(16)]));
     const sixthRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/documents`,
       payload: sixth.body,
-      headers: { "content-type": sixth.contentType },
+      headers: { "x-access-token": accessToken, "content-type": sixth.contentType },
     });
     expect(sixthRes.statusCode).toBe(409);
     expect(sixthRes.json().error.code).toBe("DOCUMENT_LIMIT_REACHED");
 
     // Hasta kendi belgesini silebilir; silinen belge listede/`GET /admin/media`de GÖRÜNMEZ.
-    const del = await app.inject({ method: "DELETE", url: `/api/v1/appointments/documents/${documentId}?t=${accessToken}` });
+    const del = await app.inject({ method: "DELETE", url: `/api/v1/appointments/documents/${documentId}`, headers: { "x-access-token": accessToken } });
     expect(del.statusCode).toBe(204);
 
     const adminMedia = await app.inject({ method: "GET", url: "/api/v1/admin/media", headers: authHeader(adminToken) });
@@ -902,18 +902,18 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
     const { bookingId, accessToken } = await createBookingDirect();
     await app.inject({
       method: "PUT",
-      url: `/api/v1/appointments/bookings/${bookingId}/intake?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/intake`, headers: { "x-access-token": accessToken },
       payload: { healthDataConsent: true },
     });
     const upload = buildMultipartBody("belge.pdf", "application/pdf", Buffer.concat([Buffer.from("%PDF-1.4\n"), crypto.randomBytes(16)]));
     await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/documents`,
       payload: upload.body,
-      headers: { "content-type": upload.contentType },
+      headers: { "x-access-token": accessToken, "content-type": upload.contentType },
     });
 
-    const patientList = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/documents?t=${accessToken}` });
+    const patientList = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/documents`, headers: { "x-access-token": accessToken } });
     expect(patientList.statusCode).toBe(200);
     expect(patientList.json().data).toHaveLength(1);
 
@@ -964,7 +964,7 @@ describe("telehealth booking — konsültasyon notu (Adım 4, GET .../consultati
   it("not YOKSA (seans tamamlanmamış) 404 DEĞİL, `{ html: null, updatedAt: null }` ile 200 döner; audit ATILMAZ", async () => {
     const { bookingId, accessToken } = await createBookingDirect();
 
-    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/consultation-note?t=${accessToken}` });
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`, headers: { "x-access-token": accessToken } });
     expect(res.statusCode).toBe(200);
     expect(res.json().data).toEqual({ html: null, updatedAt: null });
     expect(res.headers["cache-control"]).toBe("no-store");
@@ -974,7 +974,7 @@ describe("telehealth booking — konsültasyon notu (Adım 4, GET .../consultati
     });
     expect(audit).toBeNull();
 
-    const bookingView = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}?t=${accessToken}` });
+    const bookingView = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}`, headers: { "x-access-token": accessToken } });
     expect(bookingView.json().data.hasConsultationNote).toBe(false);
   });
 
@@ -1001,7 +1001,7 @@ describe("telehealth booking — konsültasyon notu (Adım 4, GET .../consultati
     // Hasta kendi randevusunda (misafir token) okuyabilir.
     const patientGet = await app.inject({
       method: "GET",
-      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`, headers: { "x-access-token": accessToken },
     });
     expect(patientGet.statusCode).toBe(200);
     expect(patientGet.json().data.html).toBe("<p>Reçete: parasetamol 500mg</p>");
@@ -1016,7 +1016,7 @@ describe("telehealth booking — konsültasyon notu (Adım 4, GET .../consultati
     // Booking görünümünde `hasConsultationNote` artık true.
     const bookingView = await app.inject({
       method: "GET",
-      url: `/api/v1/appointments/bookings/${bookingId}?t=${accessToken}`,
+      url: `/api/v1/appointments/bookings/${bookingId}`, headers: { "x-access-token": accessToken },
     });
     expect(bookingView.json().data.hasConsultationNote).toBe(true);
 
@@ -1062,7 +1062,7 @@ describe("telehealth booking — konsültasyon notu (Adım 4, GET .../consultati
 
     const wrongToken = await app.inject({
       method: "GET",
-      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note?t=yanlis-token-degeri`,
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`, headers: { "x-access-token": "yanlis-token-degeri" },
     });
     expect(wrongToken.statusCode).toBe(404);
   });
@@ -1360,7 +1360,7 @@ describe("telehealth booking — hasta portalı scope/counts (§9.8.4 KARAR O, �
     const accessTokenF = createdF.json().data.accessToken as string;
     const cancelRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingFId}/cancel?t=${accessTokenF}`,
+      url: `/api/v1/appointments/bookings/${bookingFId}/cancel`, headers: { "x-access-token": accessTokenF },
       payload: {},
     });
     expect(cancelRes.statusCode).toBe(200);
@@ -1425,7 +1425,7 @@ describe("telehealth booking — hasta portalı scope/counts (§9.8.4 KARAR O, �
     const accessTokenCancelled = createdCancelled.json().data.accessToken as string;
     await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${bookingCancelledId}/cancel?t=${accessTokenCancelled}`,
+      url: `/api/v1/appointments/bookings/${bookingCancelledId}/cancel`, headers: { "x-access-token": accessTokenCancelled },
       payload: {},
     });
 

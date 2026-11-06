@@ -128,7 +128,7 @@ describe("telehealth — ücretsiz doktor (sessionPriceCents: null) booking akı
     expect(values.join_link).toContain(`t=${body.accessToken}`);
 
     // Rotate EDİLMEDİ — misafirin booking oluşturma anında aldığı token HÂLÂ ÇALIŞIR.
-    const detail = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${body.bookingId}?t=${body.accessToken}` });
+    const detail = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${body.bookingId}`, headers: { "x-access-token": body.accessToken } });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data.paymentStatus).toBe("PAID");
   });
@@ -189,7 +189,7 @@ describe("telehealth — ücretsiz booking + checkout-session ucu (Stripe yapıl
 
     const checkout = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/bookings/${body.bookingId}/checkout-session?t=${body.accessToken}`,
+      url: `/api/v1/appointments/bookings/${body.bookingId}/checkout-session`, headers: { "x-access-token": body.accessToken },
     });
     expect(checkout.statusCode).toBe(409);
     expect(checkout.json().error.code).toBe("BOOKING_NOT_PAYABLE");

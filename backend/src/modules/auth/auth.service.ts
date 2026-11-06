@@ -451,7 +451,7 @@ export async function forgotPassword(app: FastifyInstance, email: string) {
   if (!user) return;
 
   const rawToken = await createPasswordResetToken(app, user.id);
-  const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+  const resetUrl = `${env.FRONTEND_URL}/reset-password#token=${rawToken}`;
 
   // Dev-only kaçış kapısı (bkz. logDevPasswordResetLink) — gönderim BAŞARILI olsun ya da
   // olmasın, resetUrl üretilir üretilmez KOŞULSUZ loglanır (yalnızca development ortamında).

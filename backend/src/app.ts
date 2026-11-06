@@ -124,60 +124,72 @@ import { registerVideoTranscodeWorker } from "./lib/video-transcode/worker";
 import { warnIfRevalidationDisabled } from "./lib/revalidate";
 import { serializeRequestForLog } from "./lib/log-safe";
 
-export function buildApp() {
+/**
+ * Logger güvenliği — üretim/geliştirme logger'ı ve (Paket AP) testin gerçek log akışı AYNI ayarları kullanır.
+ */
+const LOG_SAFETY_OPTIONS = {
+  // Güvenlik ağı (defense-in-depth) — Fastify'ın varsayılan `req` serializer'ı zaten
+  // header'ları (authorization/cookie dahil) HİÇ loglamaz (bkz. node_modules/fastify/
+  // lib/logger.js — sadece method/url/hostname/remoteAddress), bu yüzden onlar için
+  // ayrı bir redact GEREKMEZ. admin-users.routes.ts / invitations.routes.ts artık ham
+  // `setPasswordUrl`/`acceptUrl` içeren HİÇBİR `log.info({...})` çağrısı YAPMIYOR
+  // (bkz. security-agent kararı — token sızıntısı temizliği, gerçek gönderim artık
+  // email-templates.service.ts üzerinden yapılıyor). Aşağıdaki path'ler yine de
+  // ikinci savunma katmanı olarak kalır — ileride biri yanlışlıkla `request.body`'yi
+  // veya benzer bir token/URL alanını loglarsa maskeler. `censor` ile değer tamamen
+  // gizlenir, anahtar adı log'da kalır (hangi alanın redakte edildiği hâlâ görülebilir,
+  // ama değeri asla).
+  // Paket AL (İş 5) — URL sorgusundaki token/t/key/code/signature `***` (bkz. lib/log-safe.ts).
+  serializers: { req: serializeRequestForLog },
+  redact: {
+    paths: [
+      "setPasswordUrl",
+      "acceptUrl",
+      "password",
+      "newPassword",
+      "currentPassword",
+      "token",
+      "rawToken",
+      "refreshToken",
+      "accessToken",
+      "*.setPasswordUrl",
+      "*.acceptUrl",
+      "*.password",
+      "*.newPassword",
+      "*.currentPassword",
+      "*.token",
+      "*.rawToken",
+      "*.refreshToken",
+      "*.accessToken",
+      // Paket AP — erişim token'ı başlığı (`X-Access-Token`); istek serializer'ı başlık yazmaz, bu ikinci katman.
+      'headers["x-access-token"]',
+      '*.headers["x-access-token"]',
+      // §10.13.3/§10.13.9 — API anahtarının/webhook secret'ının düz metin hâli YALNIZCA
+      // ilgili 201/200 yanıtında bir kez döner; loglara ASLA yansımamalıdır.
+      "plainKey",
+      "plainSecret",
+      "*.plainKey",
+      "*.plainSecret",
+    ],
+    censor: "[REDACTED]",
+  },
+};
+
+/** `logStream` yalnızca testler içindir: gerçek istek log'unu (aynı serializer/redact ile) yakalamak için (Paket AP). */
+export function buildApp(options: { logStream?: { write(line: string): void } } = {}) {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
   // (test dahil) güvenle tekrar çağrılabilir, Sentry SDK'sı çoklu init'i kendi içinde tolere eder.
   initSentry();
 
   const app = Fastify({
-    logger:
-      env.NODE_ENV === "test"
+    logger: options.logStream
+      ? { level: "info", stream: options.logStream, ...LOG_SAFETY_OPTIONS }
+      : env.NODE_ENV === "test"
         ? false
         : {
             level: env.NODE_ENV === "production" ? "info" : "debug",
             transport: env.NODE_ENV === "production" ? undefined : { target: "pino-pretty" },
-            // Güvenlik ağı (defense-in-depth) — Fastify'ın varsayılan `req` serializer'ı zaten
-            // header'ları (authorization/cookie dahil) HİÇ loglamaz (bkz. node_modules/fastify/
-            // lib/logger.js — sadece method/url/hostname/remoteAddress), bu yüzden onlar için
-            // ayrı bir redact GEREKMEZ. admin-users.routes.ts / invitations.routes.ts artık ham
-            // `setPasswordUrl`/`acceptUrl` içeren HİÇBİR `log.info({...})` çağrısı YAPMIYOR
-            // (bkz. security-agent kararı — token sızıntısı temizliği, gerçek gönderim artık
-            // email-templates.service.ts üzerinden yapılıyor). Aşağıdaki path'ler yine de
-            // ikinci savunma katmanı olarak kalır — ileride biri yanlışlıkla `request.body`'yi
-            // veya benzer bir token/URL alanını loglarsa maskeler. `censor` ile değer tamamen
-            // gizlenir, anahtar adı log'da kalır (hangi alanın redakte edildiği hâlâ görülebilir,
-            // ama değeri asla).
-            // Paket AL (İş 5) — URL sorgusundaki token/t/key/code/signature `***` (bkz. lib/log-safe.ts).
-            serializers: { req: serializeRequestForLog },
-            redact: {
-              paths: [
-                "setPasswordUrl",
-                "acceptUrl",
-                "password",
-                "newPassword",
-                "currentPassword",
-                "token",
-                "rawToken",
-                "refreshToken",
-                "accessToken",
-                "*.setPasswordUrl",
-                "*.acceptUrl",
-                "*.password",
-                "*.newPassword",
-                "*.currentPassword",
-                "*.token",
-                "*.rawToken",
-                "*.refreshToken",
-                "*.accessToken",
-                // §10.13.3/§10.13.9 — API anahtarının/webhook secret'ının düz metin hâli YALNIZCA
-                // ilgili 201/200 yanıtında bir kez döner; loglara ASLA yansımamalıdır.
-                "plainKey",
-                "plainSecret",
-                "*.plainKey",
-                "*.plainSecret",
-              ],
-              censor: "[REDACTED]",
-            },
+            ...LOG_SAFETY_OPTIONS,
           },
     // Güvenli varsayım: production'da önde henüz gerçek bir reverse-proxy tanımlı değilse
     // (bkz. docker-compose.yml — backend doğrudan host portuna map ediliyor) `false` kalmalı.

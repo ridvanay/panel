@@ -31,6 +31,7 @@ import { getBookingJoinWindow, isWithinJoinWindow } from "./lib/booking";
 import { isLiveKitConfigured } from "./lib/livekit";
 import { isRecordingConfigured, startRoomCompositeRecording, stopRoomCompositeRecording } from "./lib/livekit-egress";
 import { sendRecordingSignal } from "./lib/livekit-signal";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` (TUR 3, bağlayıcı) — integration-agent'ın TEK
@@ -244,7 +245,7 @@ export async function telehealthRecordingRoutes(app: FastifyInstance) {
       if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
 
       // §TUR 3 madde 2 — YALNIZCA hasta; doktor/ADMIN hastanın YERİNE rıza VEREMEZ.
-      assertBookingPatientOnlyAccess(resolveAccessSubject(appointment), { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOnlyAccess(resolveAccessSubject(appointment), { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const recording = appointment.recording;
       if (!recording || recording.status !== "PENDING_CONSENT") {

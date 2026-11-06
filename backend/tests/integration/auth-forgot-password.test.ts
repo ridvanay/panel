@@ -190,6 +190,6 @@ describe("POST /auth/forgot-password", () => {
     }
 
     expect(warnCalls.some((args) => JSON.stringify(args).includes("[AUTH] Password Reset Link"))).toBe(false);
-    expect(warnCalls.some((args) => JSON.stringify(args).includes("reset-password?token="))).toBe(false);
+    expect(warnCalls.some((args) => JSON.stringify(args).includes("reset-password#token="))).toBe(false);
   });
 });

@@ -72,7 +72,8 @@ describe("POST /admin/users — SMTP mock'lanmış (başarı senaryosu)", () => 
     expect(sendMailMock).toHaveBeenCalledTimes(1);
     const [, input] = sendMailMock.mock.calls[0] as unknown as [unknown, { to: string; subject: string; html: string }];
     expect(input.to).toBe("success-user@example.com");
-    expect(input.html).toContain("reset-password?token=");
+    expect(input.html).toContain("reset-password#token=");
+    expect(input.html).not.toContain("reset-password?token=");
   });
 
   /**
@@ -99,7 +100,7 @@ describe("POST /admin/users — SMTP mock'lanmış (başarı senaryosu)", () => 
 
     expect(sendMailMock).toHaveBeenCalledTimes(1);
     const [, input] = sendMailMock.mock.calls[0] as unknown as [unknown, { to: string; html: string }];
-    const match = input.html.match(/reset-password\?token=([\w-]+)/);
+    const match = input.html.match(/reset-password#token=([\w-]+)/);
     expect(match).not.toBeNull();
     const rawToken = match![1]!;
 

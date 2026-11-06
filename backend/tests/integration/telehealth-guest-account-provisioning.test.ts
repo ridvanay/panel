@@ -81,7 +81,7 @@ async function createGuestBooking(app: FastifyInstance, doctorSlug: string, pati
 async function demoPay(app: FastifyInstance, bookingId: string, accessToken: string) {
   const res = await app.inject({
     method: "POST",
-    url: `/api/v1/appointments/bookings/${bookingId}/demo-pay?t=${accessToken}`,
+    url: `/api/v1/appointments/bookings/${bookingId}/demo-pay`, headers: { "x-access-token": accessToken },
   });
   expect(res.statusCode).toBe(200);
   return res.json().data;
@@ -195,7 +195,7 @@ describe("Özellik B — misafir randevu ödemesinden hesap sağlama (demo-pay �
 
     const oldLinkRes = await app.inject({
       method: "GET",
-      url: `/api/v1/appointments/bookings/${booking.bookingId}?t=${booking.accessToken}`,
+      url: `/api/v1/appointments/bookings/${booking.bookingId}`, headers: { "x-access-token": booking.accessToken },
     });
     expect(oldLinkRes.statusCode).not.toBe(200);
   });

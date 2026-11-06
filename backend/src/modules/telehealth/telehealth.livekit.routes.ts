@@ -17,6 +17,7 @@ import { computeEarlyJoinAuditMetadata } from "./lib/early-join";
 import { doctorDisplayName } from "../../lib/doctor-display-name";
 import { encryptSecret } from "../../lib/crypto";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.4/§4.5/§8/§9.4/§9.5/§12 — integration-agent'ın
@@ -131,7 +132,7 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
 
       const { authorized, isDoctor } = isAuthorizedForMeetingAccess(
         appointment,
-        { user: request.user, providedToken: request.query.t },
+        { user: request.user, providedToken: readAccessToken(request, request.query.t) },
         booking?.accessTokenHash
       );
       if (!authorized) throw new NotFoundError("Randevu bulunamadı.");

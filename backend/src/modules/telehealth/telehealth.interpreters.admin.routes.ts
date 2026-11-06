@@ -357,7 +357,7 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
       let emailStatus: "sent" | "failed" = "failed";
       try {
         const rawToken = await createPasswordResetToken(app, profile.userId);
-        await sendPasswordResetEmail(app, { email, name: body.name }, `${env.FRONTEND_URL}/reset-password?token=${rawToken}`);
+        await sendPasswordResetEmail(app, { email, name: body.name }, `${env.FRONTEND_URL}/reset-password#token=${rawToken}`);
         emailStatus = "sent";
       } catch (err) {
         app.log.warn({ err }, "Tercüman davet e-postası gönderilemedi.");
@@ -567,7 +567,7 @@ export async function adminInterpretersRoutes(app: FastifyInstance) {
       if (profile.user.lastLoginAt) throw new ConflictError("Tercüman hesabını zaten etkinleştirmiş; şifresini giriş ekranındaki 'Şifremi unuttum' ile yenileyebilir.");
       const rawToken = await createPasswordResetToken(app, profile.user.id);
       try {
-        await sendPasswordResetEmail(app, profile.user, `${env.FRONTEND_URL}/reset-password?token=${rawToken}`);
+        await sendPasswordResetEmail(app, profile.user, `${env.FRONTEND_URL}/reset-password#token=${rawToken}`);
         return reply.send(ok({ emailStatus: "sent" as const }));
       } catch (err) {
         app.log.warn({ err }, "Tercüman davet e-postası yeniden gönderilemedi.");

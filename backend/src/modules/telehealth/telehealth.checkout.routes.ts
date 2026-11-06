@@ -12,6 +12,7 @@ import { env } from "../../config/env";
 import { BOOKING_CHECKOUT_SESSION_RATE_LIMIT } from "../../lib/rate-limit";
 import { AccessTokenQuerySchema, BookingIdParamSchema } from "./telehealth.schemas";
 import { getLocaleSet } from "../../lib/localization";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.7.1 KARAR G / §9.7.9 / §9.7.10 —
@@ -48,8 +49,9 @@ function resolveStripeExpiresAtSeconds(bookingExpiresAt: Date): number {
 /** `/patient/bookings/{id}` sayfasına dönüş — mevcut `notifications.ts::buildMagicLink` İLE AYNI dil/yol deseni. */
 async function buildPatientReturnUrl(app: FastifyInstance, bookingId: string, providedToken: string | undefined, suffix: string): Promise<string> {
   const localeSet = await getLocaleSet(app);
-  const tokenQuery = providedToken ? `&t=${encodeURIComponent(providedToken)}` : "";
-  return `${env.FRONTEND_URL}/${localeSet.default.code}/patient/bookings/${bookingId}?${suffix}${tokenQuery}`;
+  // Paket AP — token `#` parçasında: tarayıcı Stripe dönüşünde parçayı korur, sunucuya/log'a gitmez.
+  const tokenFragment = providedToken ? `#t=${encodeURIComponent(providedToken)}` : "";
+  return `${env.FRONTEND_URL}/${localeSet.default.code}/patient/bookings/${bookingId}?${suffix}${tokenFragment}`;
 }
 
 /** `/appointments` prefix'i altında bağlanır (bkz. app.ts) — PUBLIC, opsiyonel kimlik doğrulama. */
@@ -85,7 +87,8 @@ export async function telehealthCheckoutRoutes(app: FastifyInstance) {
       // §9.7.10 uç tablosu (bağlayıcı) — YALNIZCA hasta (`?t=`/oturum); `ADMIN` bu ucu
       // KULLANMAZ (manuel ofis-içi ödeme için AYRI `POST /admin/telehealth/bookings/{id}/mark-paid`
       // ucu vardır, §9.7.1 madde 7 — backend-agent'ın sahası).
-      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: request.query.t });
+      const accessToken = readAccessToken(request, request.query.t);
+      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: accessToken });
 
       if (booking.paymentStatus !== "PENDING") {
         throw new BookingNotPayableError();
@@ -130,8 +133,8 @@ export async function telehealthCheckoutRoutes(app: FastifyInstance) {
       // SIZMAZ, ama 3. parti bir sistemde bir erişim kimlik bilgisi bulundurmanın kendi riskini
       // taşır — ayrı sağlık verisi erişim yetkisine denk geldiği için AYRICA denetlenmelidir).
       const metadata: Record<string, string> = { kind: "telehealth_booking", bookingId: booking.id };
-      if (request.query.t) {
-        metadata.rawAccessToken = request.query.t;
+      if (accessToken) {
+        metadata.rawAccessToken = accessToken;
       }
 
       const expiresAtSeconds = resolveStripeExpiresAtSeconds(booking.expiresAt);
@@ -151,8 +154,8 @@ export async function telehealthCheckoutRoutes(app: FastifyInstance) {
             quantity: booking.slotCount,
           },
         ],
-        success_url: await buildPatientReturnUrl(app, booking.id, request.query.t, "payment=success"),
-        cancel_url: await buildPatientReturnUrl(app, booking.id, request.query.t, "payment=cancelled"),
+        success_url: await buildPatientReturnUrl(app, booking.id, accessToken, "payment=success"),
+        cancel_url: await buildPatientReturnUrl(app, booking.id, accessToken, "payment=cancelled"),
         expires_at: expiresAtSeconds,
         // `payment_intent.payment_failed` olayı yalnızca `PaymentIntent`i taşır (Checkout Session'ı
         // DEĞİL) — `bookingId`'yi o olayda da çözebilmek için PaymentIntent'e AYRICA yazılır.

@@ -208,7 +208,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       });
 
       const rawToken = await createPasswordResetToken(app, user.id);
-      const setPasswordUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+      const setPasswordUrl = `${env.FRONTEND_URL}/reset-password#token=${rawToken}`;
 
       // Şifre belirleme bağlantısı ARTIK ne response'ta ne de log'da düz metin dönmez (bkz.
       // security-agent kararı — token sızıntısı temizliği). E-posta gönderimi best-effort'tur:
@@ -623,7 +623,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           data: { userId: target.id, tokenHash: hashToken(rawToken), expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
         }),
       ]);
-      const setPasswordUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+      const setPasswordUrl = `${env.FRONTEND_URL}/reset-password#token=${rawToken}`;
 
       let emailStatus: "sent" | "failed";
       try {

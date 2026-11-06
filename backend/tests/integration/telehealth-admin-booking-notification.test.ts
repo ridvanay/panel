@@ -290,7 +290,7 @@ describe("admin randevu bildirimi (Paket AG, Is 2)", () => {
     mailSpy.mockClear();
     const { doctor } = await createDoctorWithAvailability(app);
     const pending = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
-    const cancelPending = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${pending.bookingId}/cancel?t=${pending.accessToken}` });
+    const cancelPending = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${pending.bookingId}/cancel`, headers: { "x-access-token": pending.accessToken } });
     expect(cancelPending.statusCode).toBe(200);
     expect(sent()).toHaveLength(0);
   });
@@ -601,12 +601,12 @@ describe("admin randevu bildirimi - demo odeme yolu (ENABLE_DEMO_PAYMENTS=true)"
   it("demo odeme: tek e-posta ('Paid (demo)'); ikinci demo odeme 409 ve ek e-posta yok", async () => {
     const { doctor } = await createDoctorWithAvailability(app);
     const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
-    const res = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}` });
+    const res = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken } });
     expect(res.statusCode).toBe(200);
     expect(sent()).toHaveLength(1);
     expect(sent()[0]!.text).toContain("Paid (demo)");
 
-    const again = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}` });
+    const again = await inject(app, { method: "POST", url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay`, headers: { "x-access-token": booking.accessToken } });
     expect(again.statusCode).toBe(409);
     expect(sent()).toHaveLength(1);
   });

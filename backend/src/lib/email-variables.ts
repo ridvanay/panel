@@ -107,12 +107,12 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     },
     { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "Monday, 6 January 2025, 07:00–08:00 (Berlin, CET) — Istanbul: Monday, 6 January 2025, 09:00–10:00 (GMT+3)", source: "system" },
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
-    { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
+    { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc#t=xyz", source: "system" },
     // 2026-09-18 (kullanıcı talebi) — `magic_link`in aksine DOĞRUDAN görüşme odasına gider
     // (`/consultation/{appointmentId}?t=...`, en erken randevuya). `APPOINTMENT_REMINDER_30M`in
     // `join_link`inden FARKLI hedef (o, `/patient/bookings/{id}` — burada BİLİNÇLİ olarak DOĞRUDAN
     // konsültasyon linki, kullanıcı talebiyle).
-    { key: "join_link", label: "Görüşmeye Katıl Bağlantısı", sampleValue: "https://example.com/tr/consultation/xyz?t=abc", source: "system" },
+    { key: "join_link", label: "Görüşmeye Katıl Bağlantısı", sampleValue: "https://example.com/tr/consultation/xyz#t=abc", source: "system" },
   ],
   /**
    * NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — ADMIN bir randevuyu

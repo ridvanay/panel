@@ -13,6 +13,7 @@ import { AccessTokenQuerySchema, AppointmentIdParamSchema, RECORDING_CONSENT_TTL
 import { telehealthRecordingStorage } from "../../lib/telehealth-recording-storage";
 import { createBinaryDecryptStream } from "../../lib/binary-crypto";
 import { purgeRecordingFile } from "../../lib/telehealth-recording-archive";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * backend-agent'ın FAZ B sahası — `telehealth.recording.routes.ts` (integration-agent, LiveKit
@@ -105,7 +106,7 @@ export async function telehealthRecordingAccessRoutes(app: FastifyInstance) {
       if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
 
       // §9.7.5 madde 7 disiplini — hasta + booking'in doktoru + ADMIN. MANAGER/EDITOR YOK.
-      assertBookingHealthDataAccess(resolveAccessSubject(appointment), { user: request.user, providedToken: request.query.t });
+      assertBookingHealthDataAccess(resolveAccessSubject(appointment), { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const recording = appointment.recording;
       if (!recording) {
@@ -195,7 +196,7 @@ export async function telehealthRecordingAccessRoutes(app: FastifyInstance) {
 
       // KVKK md.11 — hasta (oturum/`?t=`) veya ADMIN; doktor DAHİL DEĞİL (doktor bir hastanın
       // kaydını SİLEMEZ, bu yüzden ayrı bir "silme onay kuyruğu" GEREKMEZ).
-      assertBookingPatientOrAdminAccess(resolveAccessSubject(appointment), { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOrAdminAccess(resolveAccessSubject(appointment), { user: request.user, providedToken: readAccessToken(request, request.query.t) });
 
       const recording = appointment.recording;
       if (!recording || recording.status !== "COMPLETED" || recording.deletedAt !== null) {

@@ -11,6 +11,7 @@ import { PUBLIC_DOCTOR_WHERE } from "../telehealth/lib/archive-filters";
 import { assertSameSiteOrigin } from "../crm/crm.public.routes";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { patientEmailLocale } from "../telehealth/lib/notifications";
+import { acceptLegacyToken } from "../../lib/access-token-transport";
 import {
   APPROVED_WHERE,
   REVIEW_LIST_PAGE_SIZE,
@@ -29,6 +30,10 @@ import {
  */
 const localeCode = z.string().regex(LOCALE_CODE_PATTERN);
 const TOKEN = z.string().min(20).max(200);
+/** Paket AP — token POST gövdesinde (`/{lang}/review#<token>` bağlantısı); yol biçimi yalnızca geçiş süresince. */
+const TokenBodySchema = z.object({ token: TOKEN }).strict();
+const SubmitBodySchema = ReviewSubmissionSchema.extend({ token: TOKEN });
+const INVALID_INVITE = "Bağlantı geçersiz ya da süresi dolmuş.";
 /** Paket AE — anasayfa en çok 12 yorum; "Tüm yorumlar" sayfa boyu 12; özet şeridinde en çok 6 bayrak. */
 const FEATURED_LIMIT = 12;
 const REVIEWS_PAGE_SIZE = 12;
@@ -47,33 +52,25 @@ export async function reviewsPublicRoutes(app: FastifyInstance) {
       include: { booking: { select: { id: true, patientName: true, locale: true, doctorId: true, doctor: { select: { title: true, fullName: true, publicName: true, isFounder: true, specialtyId: true } } } } },
     });
     // Varlık sızdırılmaz: yok / kullanılmış / süresi dolmuş → aynı 404.
-    if (!invite || invite.usedAt || invite.expiresAt <= new Date()) throw new NotFoundError("Bağlantı geçersiz ya da süresi dolmuş.");
+    if (!invite || invite.usedAt || invite.expiresAt <= new Date()) throw new NotFoundError(INVALID_INVITE);
     return invite;
   }
 
   /** Davet formu için: yalnızca hekimin görünen adı (hasta bilgisi dönmez). */
-  server.get(
-    "/reviews/invite/:token",
-    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } }, schema: { params: z.object({ token: TOKEN }) } },
-    async (request, reply) => {
-      const invite = await loadInvite(request.params.token);
-      const d = invite.booking.doctor;
-      return reply.header("cache-control", "no-store").send(ok({ doctorName: `${d.title} ${doctorDisplayName(d)}`.trim() }));
-    }
-  );
+  async function inviteInfo(token: string) {
+    const invite = await loadInvite(token);
+    const d = invite.booking.doctor;
+    return { doctorName: `${d.title} ${doctorDisplayName(d)}`.trim() };
+  }
 
-  server.post(
-    "/reviews/invite/:token",
-    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, schema: { params: z.object({ token: TOKEN }), body: ReviewSubmissionSchema } },
-    async (request, reply) => {
-      const invite = await loadInvite(request.params.token);
-      const body = request.body;
-      const now = new Date();
-      const created = await app.prisma
-        .$transaction(async (tx) => {
+  async function submitReview(token: string, body: z.infer<typeof ReviewSubmissionSchema>) {
+    const invite = await loadInvite(token);
+    const now = new Date();
+    const created = await app.prisma
+      .$transaction(async (tx) => {
         // Tek kullanımlık: yarış durumunda yalnızca biri kazanır.
         const claim = await tx.testimonialInvite.updateMany({ where: { id: invite.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
-        if (claim.count === 0) throw new NotFoundError("Bağlantı geçersiz ya da süresi dolmuş.");
+        if (claim.count === 0) throw new NotFoundError(INVALID_INVITE);
         if (await tx.testimonial.findFirst({ where: { bookingId: invite.bookingId }, select: { id: true } })) throw new ConflictError("Bu randevu için zaten yorum gönderilmiş.");
         return tx.testimonial.create({
           data: {
@@ -94,27 +91,74 @@ export async function reviewsPublicRoutes(app: FastifyInstance) {
           },
         });
       })
-        .catch((err: unknown) => {
-          if (isUniqueViolation(err)) throw new ConflictError("Bu randevu için zaten yorum gönderilmiş.");
-          throw err;
-        });
-      return reply.status(201).send(ok({ id: created.id, status: created.status }));
-    }
-  );
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new ConflictError("Bu randevu için zaten yorum gönderilmiş.");
+        throw err;
+      });
+    return { id: created.id, status: created.status };
+  }
 
   /**
    * "Bir daha yorum isteği gönderme" — davet kullanılmış/süresi dolmuş olsa da çalışır. Geçersiz token da
    * 204 döner (varlık sızdırılmaz). E-posta adresinin yalnızca SHA-256 özeti saklanır.
    */
+  async function optOut(token: string | undefined) {
+    if (!token) return;
+    const invite = await app.prisma.testimonialInvite.findUnique({ where: { tokenHash: hashToken(token) }, select: { booking: { select: { patientEmail: true } } } });
+    if (invite) {
+      const emailHash = optOutEmailHash(invite.booking.patientEmail);
+      await app.prisma.reviewRequestOptOut.upsert({ where: { emailHash }, create: { emailHash }, update: {} });
+    }
+  }
+
+  server.post(
+    "/reviews/invite/lookup",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } }, schema: { body: TokenBodySchema } },
+    async (request, reply) => reply.header("cache-control", "no-store").send(ok(await inviteInfo(request.body.token)))
+  );
+
+  server.post(
+    "/reviews/invite/submit",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, schema: { body: SubmitBodySchema } },
+    async (request, reply) => {
+      const { token, ...body } = request.body;
+      return reply.status(201).send(ok(await submitReview(token, body)));
+    }
+  );
+
+  server.post(
+    "/reviews/invite/opt-out",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, schema: { body: TokenBodySchema, response: { 204: z.undefined() } } },
+    async (request, reply) => {
+      await optOut(request.body.token);
+      return reply.code(204).send();
+    }
+  );
+
+  // Eski yol biçimi (token yol parçasında) — yalnızca geçiş süresince; süre dolunca aynı 404 / 204.
+  function legacyPathToken(request: { params: { token: string } } & Parameters<typeof acceptLegacyToken>[0]): string {
+    const token = acceptLegacyToken(request, request.params.token);
+    if (!token) throw new NotFoundError(INVALID_INVITE);
+    return token;
+  }
+
+  server.get(
+    "/reviews/invite/:token",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } }, schema: { params: z.object({ token: TOKEN }) } },
+    async (request, reply) => reply.header("cache-control", "no-store").send(ok(await inviteInfo(legacyPathToken(request))))
+  );
+
+  server.post(
+    "/reviews/invite/:token",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, schema: { params: z.object({ token: TOKEN }), body: ReviewSubmissionSchema } },
+    async (request, reply) => reply.status(201).send(ok(await submitReview(legacyPathToken(request), request.body)))
+  );
+
   server.post(
     "/reviews/invite/:token/opt-out",
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, schema: { params: z.object({ token: TOKEN }), response: { 204: z.undefined() } } },
     async (request, reply) => {
-      const invite = await app.prisma.testimonialInvite.findUnique({ where: { tokenHash: hashToken(request.params.token) }, select: { booking: { select: { patientEmail: true } } } });
-      if (invite) {
-        const emailHash = optOutEmailHash(invite.booking.patientEmail);
-        await app.prisma.reviewRequestOptOut.upsert({ where: { emailHash }, create: { emailHash }, update: {} });
-      }
+      await optOut(acceptLegacyToken(request, request.params.token));
       return reply.code(204).send();
     }
   );

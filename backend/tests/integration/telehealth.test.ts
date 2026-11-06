@@ -388,14 +388,14 @@ describe("telehealth — randevu erişimi (IDOR koruması, §8.5)", () => {
     expect(createRes.statusCode).toBe(201);
     const { id, accessToken } = createRes.json().data;
 
-    const withToken = await app.inject({ method: "GET", url: `/api/v1/appointments/${id}?t=${accessToken}` });
+    const withToken = await app.inject({ method: "GET", url: `/api/v1/appointments/${id}`, headers: { "x-access-token": accessToken } });
     expect(withToken.statusCode).toBe(200);
     expect(withToken.json().data.patientEmail).toBe("erisim@example.com");
 
     const withoutToken = await app.inject({ method: "GET", url: `/api/v1/appointments/${id}` });
     expect(withoutToken.statusCode).toBe(404);
 
-    const wrongToken = await app.inject({ method: "GET", url: `/api/v1/appointments/${id}?t=yanlis-token` });
+    const wrongToken = await app.inject({ method: "GET", url: `/api/v1/appointments/${id}`, headers: { "x-access-token": "yanlis-token" } });
     expect(wrongToken.statusCode).toBe(404);
 
     const asAdmin = await app.inject({ method: "GET", url: `/api/v1/appointments/${id}`, headers: authHeader(adminToken) });
@@ -442,11 +442,11 @@ describe("telehealth — randevu iptali (§4.3, slot serbest KALMAZ)", () => {
     });
     expect(markPaid.statusCode).toBe(200);
 
-    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel?t=${accessToken}`, payload: {} });
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel`, headers: { "x-access-token": accessToken }, payload: {} });
     expect(cancelRes.statusCode).toBe(200);
     expect(cancelRes.json().data.status).toBe("CANCELLED");
 
-    const secondCancel = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel?t=${accessToken}`, payload: {} });
+    const secondCancel = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel`, headers: { "x-access-token": accessToken }, payload: {} });
     expect(secondCancel.statusCode).toBe(409);
 
     const rebook = await app.inject({

@@ -89,8 +89,8 @@ describe("telehealth/meeting-token — ADMIN kestirmesi kapalı (Paket E)", () =
   function requestMeetingToken(appointmentId: string, opts: { token?: string; t?: string } = {}) {
     return app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointmentId}/meeting-token${opts.t !== undefined ? `?t=${opts.t}` : ""}`,
-      headers: opts.token ? authHeader(opts.token) : {},
+      url: `/api/v1/appointments/${appointmentId}/meeting-token`,
+      headers: { ...(opts.token ? authHeader(opts.token) : {}), ...(opts.t !== undefined ? { "x-access-token": opts.t } : {}) },
       remoteAddress: nextIp(),
     });
   }

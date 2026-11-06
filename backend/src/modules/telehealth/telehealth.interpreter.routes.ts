@@ -30,6 +30,7 @@ import {
   patientInitial,
   pickJoinableAppointment,
 } from "./lib/interpreters";
+import { readAccessToken } from "../../lib/access-token-transport";
 
 /**
  * Paket AA — tercümanın kendi uçları (`/interpreter`) ve hasta/doktor
@@ -405,7 +406,7 @@ export async function appointmentInterpreterRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 30, timeWindow: "1 minute" } }, schema: { params: AppointmentIdParamSchema, querystring: AccessTokenQuerySchema, response: { 200: ApiSuccessSchema(InterpreterInfoSchema.nullable()) } } },
     async (request, reply) => {
       const appointment = await loadAppointment(request.params.id);
-      const { authorized } = hasParticipantAccess(appointment, { user: request.user, providedToken: request.query.t }, appointment.booking?.accessTokenHash);
+      const { authorized } = hasParticipantAccess(appointment, { user: request.user, providedToken: readAccessToken(request, request.query.t) }, appointment.booking?.accessTokenHash);
       if (!authorized) throw new NotFoundError("Randevu bulunamadı.");
       if (!appointment.bookingId) return reply.send(ok(null));
       const active = await app.prisma.appointmentInterpreter.findFirst({
@@ -493,7 +494,7 @@ export async function appointmentInterpreterRoutes(app: FastifyInstance) {
         select: { id: true, patientUserId: true, accessTokenHash: true, doctor: { select: { userId: true } }, appointments: { select: { endsAt: true, status: true } } },
       });
       if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
-      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: request.query.t });
+      assertBookingPatientOnlyAccess(booking, { user: request.user, providedToken: readAccessToken(request, request.query.t) });
       // Biten / iptal edilen ya da geçmiş rezervasyona talep açılmaz (kaldırma her zaman serbest).
       const open = booking.appointments.some((a) => (a.status === "SCHEDULED" || a.status === "IN_PROGRESS" || a.status === "PENDING_PAYMENT") && a.endsAt.getTime() > Date.now());
       if (request.body.language !== null && !open) throw new ConflictError("Bu randevu için artık tercüman talep edilemez.");

@@ -194,7 +194,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     const { doctor } = await createDoctorWithAvailability(app);
     const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor);
 
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": rawAccessToken } });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(typeof data.token).toBe("string");
@@ -222,7 +222,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     const noToken = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token` });
     expect(noToken.statusCode).toBe(404);
 
-    const wrongToken = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=yanlis-token` });
+    const wrongToken = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": "yanlis-token" } });
     expect(wrongToken.statusCode).toBe(404);
 
     // Paket E (2026-10-19) — ADMIN rolü tek başına meeting-token VERMEZ (eskiden 200 + `patient:`
@@ -280,7 +280,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
       endsAt: new Date(farFuture.getTime() + 30 * 60 * 1000),
     });
 
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": rawAccessToken } });
     expect(res.statusCode).toBe(200);
   });
 
@@ -300,10 +300,10 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     });
     expect(markPaid.statusCode).toBe(200);
 
-    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel?t=${accessToken}`, payload: {} });
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel`, headers: { "x-access-token": accessToken }, payload: {} });
     expect(cancelRes.statusCode).toBe(200);
 
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/meeting-token?t=${accessToken}` });
+    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/meeting-token`, headers: { "x-access-token": accessToken } });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
   });
@@ -381,7 +381,7 @@ describe("telehealth/livekit — meeting-token, doktor/hasta oda+kimlik ayrımı
 
     const patientRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}`,
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": rawAccessToken },
     });
     expect(patientRes.statusCode).toBe(200);
     const patientData = patientRes.json().data;
@@ -421,7 +421,7 @@ describe("telehealth/livekit — meeting-token, doktor/hasta oda+kimlik ayrımı
     const { doctor } = await createDoctorWithAvailability(app);
     const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor);
     const get = async () =>
-      (await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}?t=${rawAccessToken}` })).json().data.doctor as {
+      (await app.inject({ method: "GET", url: `/api/v1/appointments/${appointment.id}`, headers: { "x-access-token": rawAccessToken } })).json().data.doctor as {
         title: string;
         titleTranslations?: Record<string, string>;
       };
@@ -544,7 +544,7 @@ describe("telehealth/livekit — meeting-token, katılım penceresi ÖDEME DURUM
       endsAt: new Date(farFuture.getTime() + 30 * 60 * 1000),
     });
 
-    const patientRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+    const patientRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": rawAccessToken } });
     expect(patientRes.statusCode).toBe(200);
 
     const doctorRes = await app.inject({
@@ -577,7 +577,7 @@ describe("telehealth/livekit — meeting-token, katılım penceresi ÖDEME DURUM
 
     const patientRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${patientAccessToken}`,
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": patientAccessToken },
     });
     expect(patientRes.statusCode).toBe(409);
     expect(patientRes.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
@@ -603,7 +603,7 @@ describe("telehealth/livekit — meeting-token, katılım penceresi ÖDEME DURUM
 
     const patientRes = await app.inject({
       method: "POST",
-      url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${patientAccessToken}`,
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": patientAccessToken },
     });
     expect(patientRes.statusCode).toBe(200);
     expect(typeof patientRes.json().data.token).toBe("string");
@@ -641,7 +641,7 @@ describe("telehealth/livekit — meeting-token hız sınırı (§8 madde 1 — 1
 
     const results: number[] = [];
     for (let i = 0; i < 11; i += 1) {
-      const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+      const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: { "x-access-token": rawAccessToken } });
       results.push(res.statusCode);
     }
     expect(results.slice(0, 10).every((code) => code === 200)).toBe(true);
@@ -703,7 +703,7 @@ describe("telehealth/livekit — complete (§4.5 son madde: doktor/ADMIN)", () =
     const { doctor } = await createDoctorWithAvailability(app);
     const { id, accessToken } = await bookAppointment(app, doctor.slug, nextMondayNineAmUtc());
 
-    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/complete?t=${accessToken}` });
+    const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/complete`, headers: { "x-access-token": accessToken } });
     expect(res.statusCode).toBe(404);
   });
 
